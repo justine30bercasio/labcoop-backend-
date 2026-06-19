@@ -1,0 +1,1576 @@
+const express = require('express');
+const multer = require('multer');
+const xlsx = require('xlsx');
+const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
+const { v4: uuidv4 } = require('uuid');
+const bcrypt = require('bcryptjs');
+const { getDb, store } = require('../db');
+const { layout } = require('./admin-lib');
+
+const router = express.Router();
+
+function requireSession(req, res, next) {
+  if (!req.session || !req.session.adminId) {
+    return res.redirect('/admin/login');
+  }
+  next();
+}
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if ('.xlsx,.xls,.csv'.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only .xlsx, .xls, and .csv files are allowed'));
+    }
+  },
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
+
+router.post('/upload', requireSession, upload.single('file'), (req, res) => {
+  if (!req.file) return res.redirect('/admin?error=No+file+uploaded');
+  try {
+    const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+    const sheetNames = workbook.SheetNames;
+    let totalRows = 0;
+    for (const name of sheetNames) {
+      totalRows += xlsx.utils.sheet_to_json(workbook.Sheets[name], { defval: '' }).length;
+    }
+    res.redirect(`/admin?import=ok&rows=${totalRows}&sheets=${sheetNames.length}&sheetNames=${encodeURIComponent(sheetNames.join(', '))}&mode=parse`);
+  } catch (err) {
+    res.redirect(`/admin?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/upload-and-seed', requireSession, upload.single('file'), (req, res) => {
+  if (!req.file) return res.redirect('/admin?error=No+file+uploaded');
+  try {
+    const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+    const sheetNames = workbook.SheetNames;
+    let totalRows = 0;
+    let accounts = 0, goals = 0, badges = 0, errorCount = 0;
+
+    for (const sheetName of sheetNames) {
+      const rows = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+      totalRows += rows.length;
+
+      for (const row of rows) {
+        try {
+          switch (sheetName.toLowerCase()) {
+            case 'accounts':
+              store.updateAccount(row.account_id || row.accountId, {
+                child_name: row.child_name || row.childName,
+                actual_balance: Number(row.actual_balance || row.actualBalance || 0),
+                unallocated_balance: Number(row.unallocated_balance || row.unallocatedBalance || 0),
+                current_xp: Number(row.current_xp || row.currentXp || 0),
+                parent_phone: row.parent_phone || row.parentPhone || '',
+              });
+              accounts++;
+              break;
+            case 'goals':
+            case 'goal_jars':
+              store.createGoal({
+                account_id: row.account_id || row.accountId,
+                title: row.title,
+                target_amount: Number(row.target_amount || row.targetAmount || 0),
+                current_allocated: Number(row.current_allocated || row.currentAllocated || 0),
+                category_icon: row.category_icon || row.categoryIcon || 'savings',
+              });
+              goals++;
+              break;
+            case 'badges':
+              store.unlockBadges(row.account_id || row.accountId, Number(row.current_xp || row.currentXp || 0));
+              badges++;
+              break;
+          }
+        } catch (_) {
+          errorCount++;
+        }
+      }
+    }
+
+    res.redirect(`/admin?import=ok&rows=${totalRows}&sheets=${sheetNames.length}&sheetNames=${encodeURIComponent(sheetNames.join(', '))}&mode=seed&accountWrites=${accounts}&goalWrites=${goals}&badgeWrites=${badges}&errors=${errorCount}`);
+  } catch (err) {
+    res.redirect(`/admin?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.get('/', requireSession, (req, res) => {
+  const db = getDb();
+  const dbPath = path.join(__dirname, '..', 'labcoop.db');
+
+  const accounts = db.prepare('SELECT rowid, * FROM accounts').all();
+  const goals = db.prepare('SELECT g.*, a.child_name FROM goal_jars g LEFT JOIN accounts a ON g.account_id = a.account_id ORDER BY g.created_at ASC').all();
+  const badges = db.prepare('SELECT b.*, a.child_name FROM badges b LEFT JOIN accounts a ON b.account_id = a.account_id ORDER BY b.created_at ASC').all();
+  const transactions = db.prepare('SELECT t.*, a.child_name FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id ORDER BY t.created_at DESC LIMIT 200').all();
+  const coopGoals = db.prepare('SELECT cg.*, (SELECT COALESCE(SUM(amount),0) FROM coop_contributions WHERE goal_id=cg.goal_id) as contributed FROM coop_goals cg ORDER BY cg.created_at ASC').all();
+  const coopContribs = db.prepare('SELECT cc.*, a.child_name FROM coop_contributions cc LEFT JOIN accounts a ON cc.account_id = a.account_id ORDER BY cc.created_at DESC LIMIT 50').all();
+
+  const totalBalance = db.prepare('SELECT COALESCE(SUM(actual_balance),0) as s FROM accounts').get().s;
+  const totalXp = db.prepare('SELECT COALESCE(SUM(current_xp),0) as s FROM accounts').get().s;
+  const completedGoals = db.prepare('SELECT COUNT(*) as c FROM goal_jars WHERE is_completed=1').get().c;
+  const totalBadges = db.prepare('SELECT COUNT(*) as c FROM badges').get().c;
+  const unlockedBadges = db.prepare('SELECT COUNT(*) as c FROM badges WHERE is_unlocked=1').get().c;
+  const totalCoopGoals = coopGoals.length;
+  const completedCoopGoals = coopGoals.filter(g => g.is_completed).length;
+
+  const itemsCount = db.prepare('SELECT COUNT(*) as c FROM shop_items').get().c;
+  const dbSize = fs.existsSync(dbPath) ? fs.statSync(dbPath).size : 0;
+  const goalRate = goals.length > 0 ? ((completedGoals / goals.length) * 100).toFixed(0) : 0;
+
+  const q = req.query;
+  const banner = q.import === 'ok'
+    ? `success:${q.mode === 'seed'
+        ? `Seeded ${q.rows} rows across ${q.sheets} sheet(s). Accounts: ${q.accountWrites || 0}, Goals: ${q.goalWrites || 0}, Badges: ${q.badgeWrites || 0}${Number(q.errors) > 0 ? `, ${q.errors} error(s)` : ''}`
+        : `Parsed ${q.rows} rows from ${q.sheets} sheet(s): ${q.sheetNames || ''}`
+      }`
+    : q.error
+      ? `error:${q.error}`
+      : '';
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LabCoop — Dashboard</title>
+<style>
+:root {
+  --sidebar: #0d2818; --sidebar-hover: #1a3d2a; --sidebar-active: #2E7D32;
+  --sidebar-text: #94a3b8; --sidebar-text-active: #ffffff;
+  --bg: #f0f4f8; --card: #ffffff; --border: #e2e8f0;
+  --text: #1e293b; --text-muted: #64748b;
+  --accent: #2E7D32; --accent-hover: #1B5E20;
+  --green: #22c55e; --blue: #3b82f6; --amber: #f59e0b; --purple: #8b5cf6; --red: #ef4444;
+  --radius: 12px; --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-lg: 0 4px 24px rgba(0,0,0,0.08);
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html { font-size: 14px; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); display:flex; min-height:100vh; }
+
+/* ── Sidebar ── */
+.sidebar { width:240px; background:var(--sidebar); display:flex; flex-direction:column; position:fixed; top:0; left:0; bottom:0; z-index:50; }
+.sidebar-brand { padding:20px 20px 16px; border-bottom:1px solid rgba(255,255,255,0.06); }
+.sidebar-brand h1 { font-size:18px; color:#fff; font-weight:700; letter-spacing:-0.3px; }
+.sidebar-brand span { font-size:11px; color:var(--sidebar-text); display:block; margin-top:2px; }
+.sidebar-nav { flex:1; padding:12px 10px; display:flex; flex-direction:column; gap:2px; }
+.sidebar-nav a { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:8px; color:var(--sidebar-text); text-decoration:none; font-size:13px; font-weight:500; transition:all 0.15s; }
+.sidebar-nav a:hover { background:var(--sidebar-hover); color:#fff; }
+.sidebar-nav a.active { background:var(--sidebar-active); color:#fff; font-weight:600; }
+.sidebar-nav a .icon { font-size:16px; width:20px; text-align:center; }
+.sidebar-nav a .badge-count { margin-left:auto; background:rgba(255,255,255,0.1); padding:1px 8px; border-radius:10px; font-size:11px; }
+.sidebar-footer { padding:12px 10px; border-top:1px solid rgba(255,255,255,0.06); }
+.sidebar-footer a { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:8px; color:var(--sidebar-text); text-decoration:none; font-size:13px; transition:all 0.15s; }
+.sidebar-footer a:hover { background:var(--sidebar-hover); color:#fff; }
+
+/* ── Main Content ── */
+.main { margin-left:240px; flex:1; padding:24px 28px; max-width:100%; }
+.page-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:12px; }
+.page-header h2 { font-size:22px; font-weight:700; color:var(--text); letter-spacing:-0.3px; }
+.page-header .meta { font-size:12px; color:var(--text-muted); }
+.header-actions { display:flex; gap:8px; flex-wrap:wrap; }
+
+.toast { position:fixed; top:20px; right:20px; padding:12px 20px; border-radius:10px; font-size:13px; font-weight:500; z-index:999; box-shadow:var(--shadow-lg); animation:slideIn 0.3s ease; max-width:400px; }
+.toast.success { background:#e8f5e9; color:#1B5E20; border:1px solid #a5d6a7; }
+.toast.error { background:#fce4ec; color:#b71c1c; border:1px solid #ef9a9a; }
+@keyframes slideIn { from { transform:translateX(100%); opacity:0; } to { transform:translateX(0); opacity:1; } }
+
+/* ── Stats Grid ── */
+.stats-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:14px; margin-bottom:24px; }
+.stat-card { background:var(--card); border-radius:var(--radius); padding:16px 18px; box-shadow:var(--shadow); border:1px solid var(--border); transition:transform 0.15s, box-shadow 0.15s; cursor:default; }
+.stat-card:hover { transform:translateY(-2px); box-shadow:var(--shadow-lg); }
+.stat-card .stat-icon { font-size:20px; margin-bottom:6px; }
+.stat-card .stat-value { font-size:24px; font-weight:700; letter-spacing:-0.5px; color:var(--text); }
+.stat-card .stat-label { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px; }
+.stat-card .stat-sub { font-size:11px; color:var(--text-muted); margin-top:4px; }
+.stat-card .stat-bar { margin-top:8px; height:3px; background:#e2e8f0; border-radius:2px; overflow:hidden; }
+.stat-card .stat-bar-fill { height:100%; border-radius:2px; transition:width 0.6s ease; }
+
+/* ── Upload Card ── */
+.upload-card { background:var(--card); border-radius:var(--radius); padding:20px; margin-bottom:24px; border:2px dashed #a5d6a7; box-shadow:var(--shadow); }
+.upload-card h3 { font-size:15px; color:var(--accent); margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+.upload-card form { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.upload-card input[type=file] { font-size:13px; flex:1; min-width:200px; padding:6px 0; }
+
+/* ── Buttons ── */
+.btn { display:inline-flex; align-items:center; gap:6px; padding:8px 18px; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; text-decoration:none; transition:all 0.15s; white-space:nowrap; }
+.btn-primary { background:var(--accent); color:#fff; }
+.btn-primary:hover { background:var(--accent-hover); }
+.btn-secondary { background:#e8f5e9; color:var(--accent); }
+.btn-secondary:hover { background:#c8e6c9; }
+.btn-outline { background:transparent; color:var(--text); border:1px solid var(--border); }
+.btn-outline:hover { background:var(--bg); }
+.btn-danger { background:var(--red); color:#fff; }
+.btn-danger:hover { background:#dc2626; }
+.btn-amber { background:var(--amber); color:#fff; }
+.btn-amber:hover { background:#d97706; }
+.btn-xs { padding:4px 10px; font-size:11px; }
+
+/* ── Cards ── */
+.card { background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); border:1px solid var(--border); margin-bottom:20px; overflow:hidden; }
+.card-header { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid var(--border); }
+.card-header h3 { font-size:15px; font-weight:600; display:flex; align-items:center; gap:8px; }
+.card-header .count { font-size:12px; font-weight:400; color:var(--text-muted); }
+.card-body { overflow-x:auto; }
+
+/* ── Tables ── */
+table { width:100%; border-collapse:collapse; }
+th { background:#f8fafc; color:var(--text-muted); padding:10px 14px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; font-weight:600; white-space:nowrap; border-bottom:1px solid var(--border); }
+td { padding:9px 14px; border-bottom:1px solid #f1f5f9; font-size:13px; }
+tr:last-child td { border-bottom:none; }
+tr:hover td { background:#f8fafc; }
+td.mono { font-family:var(--mono); font-size:12px; }
+td.num { text-align:right; font-variant-numeric:tabular-nums; }
+
+.badge { display:inline-flex; align-items:center; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:600; }
+.badge-green { background:#e8f5e9; color:var(--accent); }
+.badge-red { background:#fce4ec; color:var(--red); }
+.badge-purple { background:#f3e5f5; color:var(--purple); }
+.badge-amber { background:#fff8e1; color:#F57F17; }
+.badge-blue { background:#e3f2fd; color:var(--blue); }
+.badge-gray { background:#f1f5f9; color:var(--text-muted); }
+
+.bar { display:inline-flex; align-items:center; gap:8px; }
+.bar-track { background:#e2e8f0; border-radius:4px; width:90px; height:10px; overflow:hidden; display:inline-block; }
+.bar-fill { height:100%; border-radius:4px; transition:width 0.4s ease; }
+.bar-fill.green { background:var(--accent); }
+.bar-fill.blue { background:var(--blue); }
+.bar-fill.amber { background:var(--amber); }
+
+details.scroll-table { margin-bottom:0; }
+details.scroll-table summary { cursor:pointer; padding:12px 18px; font-weight:600; font-size:13px; color:var(--accent); user-select:none; border-bottom:1px solid var(--border); transition:background 0.15s; }
+details.scroll-table summary:hover { background:#f8fafc; }
+details.scroll-table .scroll-wrap { max-height:350px; overflow-y:auto; }
+details.scroll-table[open] .scroll-wrap { max-height:none; }
+
+/* ── Animations ── */
+@keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+.stat-card { animation:fadeUp 0.4s ease both; }
+.stat-card:nth-child(1) { animation-delay:0.02s; }
+.stat-card:nth-child(2) { animation-delay:0.06s; }
+.stat-card:nth-child(3) { animation-delay:0.10s; }
+.stat-card:nth-child(4) { animation-delay:0.14s; }
+.stat-card:nth-child(5) { animation-delay:0.18s; }
+.stat-card:nth-child(6) { animation-delay:0.22s; }
+.stat-card:nth-child(7) { animation-delay:0.26s; }
+.stat-card:nth-child(8) { animation-delay:0.30s; }
+
+/* ── Responsive ── */
+@media(max-width:768px) {
+  .sidebar { width:60px; }
+  .sidebar-brand h1, .sidebar-brand span, .sidebar-nav a span, .sidebar-footer a span { display:none; }
+  .sidebar-nav a { justify-content:center; padding:10px; }
+  .sidebar-footer a { justify-content:center; padding:10px; }
+  .sidebar-nav a .badge-count { display:none; }
+  .main { margin-left:60px; padding:16px; }
+  .stats-grid { grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:10px; }
+  .stat-card .stat-value { font-size:20px; }
+}
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <div class="sidebar-brand">
+    <h1>&#x1F3E6; LabCoop</h1>
+    <span>Admin Dashboard</span>
+  </div>
+  <div class="sidebar-nav">
+    <a href="/admin" class="active"><span class="icon">&#x1F4CA;</span> <span>Dashboard</span><span class="badge-count">${accounts.length}</span></a>
+    <a href="/admin/accounts"><span class="icon">&#x1F465;</span> <span>Accounts</span></a>
+    <a href="/admin/goals"><span class="icon">&#x1F3AF;</span> <span>Goals</span><span class="badge-count">${goals.length}</span></a>
+    <a href="/admin/badges"><span class="icon">&#x1F3C6;</span> <span>Badges</span><span class="badge-count">${badges.length}</span></a>
+    <a href="/admin/transactions"><span class="icon">&#x1F4B3;</span> <span>Transactions</span><span class="badge-count">${transactions.length}</span></a>
+    <a href="/admin/shop"><span class="icon">&#x1F6D2;</span> <span>Shop</span><span class="badge-count">${itemsCount}</span></a>
+    <a href="/admin/settings"><span class="icon">&#x2699;</span> <span>Settings</span></a>
+  </div>
+  <div class="sidebar-footer">
+    <a href="/admin/logout"><span class="icon">&#x1F6AA;</span> <span>Logout</span></a>
+  </div>
+</div>
+
+<!-- Main -->
+<div class="main">
+  <div class="page-header">
+    <div>
+      <h2>&#x1F4CA; Dashboard Overview</h2>
+      <div class="meta">labcoop.db &middot; ${(dbSize / 1024).toFixed(1)} KB &middot; ${db.pragma('journal_mode')[0]?.journal_mode || 'N/A'} mode &middot; <span id="liveTime"></span></div>
+    </div>
+    <div class="header-actions">
+      <a href="/api/excel/export/all" class="btn btn-secondary">&#x1F4E5; Export All</a>
+      <a href="/api/excel/template" class="btn btn-outline">&#x1F4C4; Template</a>
+    </div>
+  </div>
+
+  ${banner ? `<div class="toast ${banner.startsWith('error:') ? 'error' : 'success'}">${banner.startsWith('error:') ? '&#x274C; ' + banner.slice(6) : '&#x2705; ' + banner.slice(8)}</div>` : ''}
+
+  <!-- Stats -->
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-icon">&#x1F464;</div><div class="stat-value" data-count="${accounts.length}">0</div><div class="stat-label">Accounts</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4B0;</div><div class="stat-value" data-count="${Number(totalBalance).toFixed(0)}">0</div><div class="stat-label">Total Balance</div><div class="stat-sub">&#x20B1; PHP</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x2728;</div><div class="stat-value" data-count="${totalXp}">0</div><div class="stat-label">Total XP</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F3AF;</div><div class="stat-value" data-count="${goals.length}">0</div><div class="stat-label">Goal Jars</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x2705;</div><div class="stat-value">${completedGoals}<span style="font-size:14px;color:var(--text-muted)">/${goals.length}</span></div><div class="stat-label">Goals Done</div><div class="stat-bar"><div class="stat-bar-fill" style="width:${goalRate}%;background:var(--accent)"></div></div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F3C6;</div><div class="stat-value">${unlockedBadges}<span style="font-size:14px;color:var(--text-muted)">/${totalBadges}</span></div><div class="stat-label">Badges Unlocked</div><div class="stat-bar"><div class="stat-bar-fill" style="width:${totalBadges > 0 ? (unlockedBadges/totalBadges*100).toFixed(0) : 0}%;background:var(--purple)"></div></div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4B3;</div><div class="stat-value" data-count="${transactions.length}">0</div><div class="stat-label">Transactions</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F91D;</div><div class="stat-value" data-count="${coopGoals.length}">0</div><div class="stat-label">Co-op Goals</div></div>
+  </div>
+
+  <!-- Excel Import -->
+  <div class="upload-card">
+    <h3>&#x1F4C4; Excel Import</h3>
+    <form method="post" enctype="multipart/form-data">
+      <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
+      <button type="submit" formaction="/admin/upload" class="btn btn-secondary">&#x1F4C3; Parse Only</button>
+      <button type="submit" formaction="/admin/upload-and-seed" class="btn btn-primary">&#x1F4E5; Parse &amp; Seed</button>
+    </form>
+  </div>
+
+  <!-- Accounts -->
+  <div class="card">
+    <div class="card-header"><h3>&#x1F464; Accounts</h3><span class="count">${accounts.length} total</span></div>
+    <div class="card-body">
+    <table><tr><th>Member ID</th><th>Name</th><th>Balance</th><th>Unallocated</th><th>XP</th><th>Password</th><th>Phone</th><th>Created</th></tr>
+    ${accounts.map(a => `<tr>
+      <td class="mono">${a.member_id || '-'}</td>
+      <td><b>${a.child_name}</b></td>
+      <td class="num">&#x20B1;${Number(a.actual_balance).toFixed(2)}</td>
+      <td class="num">&#x20B1;${Number(a.unallocated_balance).toFixed(2)}</td>
+      <td class="num">${a.current_xp} <span class="badge badge-purple">XP</span></td>
+      <td><span class="badge ${a.password_changed ? 'badge-green' : 'badge-red'}">${a.password_changed ? 'Changed' : 'Default'}</span></td>
+      <td>${a.parent_phone || '-'}</td>
+      <td class="mono">${(a.created_at || '').slice(0, 10)}</td>
+    </tr>`).join('')}
+    </table></div>
+  </div>
+
+  <!-- Goals -->
+  <div class="card">
+    <div class="card-header"><h3>&#x1F3AF; Goal Jars</h3><span class="count">${goals.length} total</span></div>
+    <div class="card-body">
+    <table><tr><th>Child</th><th>Title</th><th>Target</th><th>Allocated</th><th>Progress</th><th>Icon</th><th>Status</th></tr>
+    ${goals.map(g => {
+      const pct = g.target_amount > 0 ? Math.min((g.current_allocated / g.target_amount) * 100, 100) : 0;
+      return `<tr>
+      <td>${g.child_name || '-'}</td>
+      <td>${g.title}</td>
+      <td class="num">&#x20B1;${Number(g.target_amount).toFixed(2)}</td>
+      <td class="num">&#x20B1;${Number(g.current_allocated).toFixed(2)}</td>
+      <td><span class="bar"><span class="bar-track"><span class="bar-fill green" style="width:${pct}%"></span></span>${pct.toFixed(0)}%</span></td>
+      <td>${g.category_icon}</td>
+      <td><span class="badge ${g.is_completed ? 'badge-green' : pct > 0 ? 'badge-blue' : 'badge-gray'}">${g.is_completed ? 'Done' : pct > 0 ? 'In Progress' : 'Not Started'}</span></td>
+    </tr>`;}).join('')}
+    </table></div>
+  </div>
+
+  <!-- Badges -->
+  <div class="card">
+    <div class="card-header"><h3>&#x1F3C6; Badges</h3><span class="count">${unlockedBadges}/${totalBadges} unlocked</span></div>
+    <div class="card-body">
+    <table><tr><th>Child</th><th>Name</th><th>Required XP</th><th>Status</th><th>Unlocked At</th></tr>
+    ${badges.map(b => `<tr>
+      <td>${b.child_name || '-'}</td>
+      <td>${b.name}</td>
+      <td class="num">${b.required_xp} <span class="badge badge-purple">XP</span></td>
+      <td><span class="badge ${b.is_unlocked ? 'badge-green' : 'badge-red'}">${b.is_unlocked ? 'Unlocked' : 'Locked'}</span></td>
+      <td class="mono">${b.unlocked_at ? b.unlocked_at.slice(0, 19).replace('T', ' ') : '-'}</td>
+    </tr>`).join('')}
+    </table></div>
+  </div>
+
+  <!-- Co-op Goals -->
+  <div class="card">
+    <div class="card-header"><h3>&#x1F91D; Co-op Goals</h3><span class="count">${completedCoopGoals}/${coopGoals.length} completed</span></div>
+    <div class="card-body">
+    ${coopGoals.length === 0 ? '<div style="padding:24px;text-align:center;color:var(--text-muted)">No co-op goals yet.</div>' : `<table><tr><th>Title</th><th>Target</th><th>Raised</th><th>Progress</th><th>Icon</th><th>Status</th></tr>
+    ${coopGoals.map(g => {
+      const raised = Number(g.contributed || 0);
+      const pct = g.target_amount > 0 ? Math.min((raised / g.target_amount) * 100, 100) : 0;
+      return `<tr>
+      <td><b>${g.title}</b></td>
+      <td class="num">&#x20B1;${Number(g.target_amount).toFixed(2)}</td>
+      <td class="num">&#x20B1;${raised.toFixed(2)}</td>
+      <td><span class="bar"><span class="bar-track"><span class="bar-fill blue" style="width:${pct}%"></span></span>${pct.toFixed(0)}%</span></td>
+      <td>${g.category_icon}</td>
+      <td><span class="badge ${g.is_completed ? 'badge-green' : pct > 0 ? 'badge-blue' : 'badge-gray'}">${g.is_completed ? 'Done' : pct > 0 ? 'Active' : 'New'}</span></td>
+    </tr>`;}).join('')}
+    </table>`}
+    </div>
+  </div>
+
+  <!-- Co-op Contributions -->
+  <div class="card">
+    <div class="card-header"><h3>&#x1F91D; Co-op Contributions</h3><span class="count">last 50</span></div>
+    <div class="card-body">
+    ${coopContribs.length === 0 ? '<div style="padding:24px;text-align:center;color:var(--text-muted)">No contributions yet.</div>' : `<table><tr><th>Child</th><th>Goal ID</th><th>Amount</th><th>Date</th></tr>
+    ${coopContribs.map(c => `<tr>
+      <td>${c.child_name || '-'}</td>
+      <td class="mono">${(c.goal_id || '').slice(0, 12)}...</td>
+      <td class="num">&#x20B1;${Number(c.amount).toFixed(2)}</td>
+      <td class="mono">${(c.created_at || '').slice(0, 19).replace('T', ' ')}</td>
+    </tr>`).join('')}
+    </table>`}
+    </div>
+  </div>
+
+  <!-- Transactions -->
+  <div class="card">
+    <details class="scroll-table">
+    <summary>&#x1F4B3; Transactions &mdash; last ${transactions.length}</summary>
+    <div class="scroll-wrap">
+    <table><tr><th>Child</th><th>Type</th><th>Amount</th><th>Description</th><th>Date</th></tr>
+    ${transactions.length === 0 ? '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">No transactions</td></tr>' : transactions.map(t => `<tr>
+      <td>${t.child_name || '-'}</td>
+      <td><span class="badge ${t.type === 'deposit' ? 'badge-green' : t.type === 'allocation' ? 'badge-purple' : 'badge-amber'}">${t.type}</span></td>
+      <td class="num">&#x20B1;${Number(t.amount).toFixed(2)}</td>
+      <td>${t.description || '-'}</td>
+      <td class="mono">${(t.created_at || '').slice(0, 19).replace('T', ' ')}</td>
+    </tr>`).join('')}
+    </table>
+    </div>
+    </details>
+  </div>
+</div>
+
+<script>
+// Animated counters
+document.querySelectorAll('[data-count]').forEach(el => {
+  const target = parseInt(el.dataset.count, 10);
+  if (isNaN(target)) return;
+  const duration = 800;
+  const start = performance.now();
+  function update(now) {
+    const progress = Math.min((now - start) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    el.textContent = Math.round(eased * target);
+    if (progress < 1) requestAnimationFrame(update);
+  }
+  requestAnimationFrame(update);
+});
+
+// Live clock
+(function clock() {
+  const now = new Date();
+  document.getElementById('liveTime').textContent = now.toLocaleString();
+  setTimeout(clock, 1000);
+})();
+
+// Auto-dismiss toast
+const toast = document.querySelector('.toast');
+if (toast) setTimeout(() => { toast.style.opacity='0'; toast.style.transition='opacity 0.5s'; setTimeout(()=>toast.remove(),500); }, 4000);
+
+// Sidebar active state
+document.querySelectorAll('.sidebar-nav a').forEach(a => {
+  if (a.href === location.href || a.href === location.href.split('?')[0]) a.classList.add('active');
+});
+</script>
+</body>
+</html>`;
+
+  res.type('html').send(html);
+});
+
+router.get('/shop', requireSession, (req, res) => {
+  const db = getDb();
+  const items = db.prepare('SELECT * FROM shop_items ORDER BY type, cost ASC').all();
+
+  const q = req.query;
+
+  const banner = q.added === 'ok' ? 'success:Item added successfully.'
+    : q.updated === 'ok' ? 'success:Item updated successfully.'
+    : q.deleted === 'ok' ? 'success:Item deleted successfully.'
+    : q.uploaded === 'ok' ? 'success:Image uploaded successfully.'
+    : q.error ? `error:${q.error}`
+    : '';
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LabCoop — Shop Manager</title>
+<style>
+:root {
+  --sidebar: #0d2818; --sidebar-hover: #1a3d2a; --sidebar-active: #2E7D32;
+  --sidebar-text: #94a3b8; --sidebar-text-active: #ffffff;
+  --bg: #f0f4f8; --card: #ffffff; --border: #e2e8f0;
+  --text: #1e293b; --text-muted: #64748b;
+  --accent: #2E7D32; --accent-hover: #1B5E20;
+  --green: #22c55e; --blue: #3b82f6; --amber: #f59e0b; --purple: #8b5cf6; --red: #ef4444;
+  --radius: 12px; --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-lg: 0 4px 24px rgba(0,0,0,0.08);
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html { font-size:14px; }
+body { font-family:var(--font); background:var(--bg); color:var(--text); display:flex; min-height:100vh; }
+
+.sidebar { width:240px; background:var(--sidebar); display:flex; flex-direction:column; position:fixed; top:0; left:0; bottom:0; z-index:50; }
+.sidebar-brand { padding:20px 20px 16px; border-bottom:1px solid rgba(255,255,255,0.06); }
+.sidebar-brand h1 { font-size:18px; color:#fff; font-weight:700; }
+.sidebar-brand span { font-size:11px; color:var(--sidebar-text); display:block; margin-top:2px; }
+.sidebar-nav { flex:1; padding:12px 10px; display:flex; flex-direction:column; gap:2px; }
+.sidebar-nav a { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:8px; color:var(--sidebar-text); text-decoration:none; font-size:13px; font-weight:500; transition:all 0.15s; }
+.sidebar-nav a:hover { background:var(--sidebar-hover); color:#fff; }
+.sidebar-nav a.active { background:var(--sidebar-active); color:#fff; font-weight:600; }
+.sidebar-nav a .icon { font-size:16px; width:20px; text-align:center; }
+.sidebar-nav a .badge-count { margin-left:auto; background:rgba(255,255,255,0.1); padding:1px 8px; border-radius:10px; font-size:11px; }
+.sidebar-footer { padding:12px 10px; border-top:1px solid rgba(255,255,255,0.06); }
+.sidebar-footer a { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:8px; color:var(--sidebar-text); text-decoration:none; font-size:13px; transition:all 0.15s; }
+.sidebar-footer a:hover { background:var(--sidebar-hover); color:#fff; }
+
+.main { margin-left:240px; flex:1; padding:24px 28px; }
+.page-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:12px; }
+.page-header h2 { font-size:20px; font-weight:700; }
+.page-header .meta { font-size:12px; color:var(--text-muted); }
+.header-actions { display:flex; gap:8px; flex-wrap:wrap; }
+
+.toast { position:fixed; top:20px; right:20px; padding:12px 20px; border-radius:10px; font-size:13px; font-weight:500; z-index:999; box-shadow:var(--shadow-lg); animation:slideIn 0.3s ease; max-width:400px; }
+.toast.success { background:#e8f5e9; color:#1B5E20; border:1px solid #a5d6a7; }
+.toast.error { background:#fce4ec; color:#b71c1c; border:1px solid #ef9a9a; }
+@keyframes slideIn { from{transform:translateX(100%);opacity:0} to{transform:translateX(0);opacity:1} }
+
+.btn { display:inline-flex; align-items:center; gap:6px; padding:8px 18px; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; text-decoration:none; transition:all 0.15s; white-space:nowrap; }
+.btn-primary { background:var(--accent); color:#fff; }
+.btn-primary:hover { background:var(--accent-hover); }
+.btn-secondary { background:#e8f5e9; color:var(--accent); }
+.btn-secondary:hover { background:#c8e6c9; }
+.btn-outline { background:transparent; color:var(--text); border:1px solid var(--border); }
+.btn-outline:hover { background:var(--bg); }
+.btn-danger { background:var(--red); color:#fff; }
+.btn-danger:hover { background:#dc2626; }
+.btn-amber { background:var(--amber); color:#fff; }
+.btn-amber:hover { background:#d97706; }
+.btn-xs { padding:4px 10px; font-size:11px; }
+
+.card { background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); border:1px solid var(--border); margin-bottom:20px; overflow:hidden; }
+.card-header { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid var(--border); }
+.card-header h3 { font-size:15px; font-weight:600; display:flex; align-items:center; gap:8px; }
+.card-body { overflow-x:auto; padding:0; }
+
+table { width:100%; border-collapse:collapse; }
+th { background:#f8fafc; color:var(--text-muted); padding:10px 14px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; font-weight:600; white-space:nowrap; border-bottom:1px solid var(--border); }
+td { padding:9px 14px; border-bottom:1px solid #f1f5f9; font-size:13px; vertical-align:middle; }
+tr:last-child td { border-bottom:none; }
+tr:hover td { background:#f8fafc; }
+td.mono { font-family:var(--mono); font-size:12px; }
+
+.preview-cell { display:flex; align-items:center; gap:8px; }
+.preview-emoji { font-size:26px; line-height:1; }
+.preview-img { width:34px; height:34px; border-radius:50%; object-fit:cover; }
+.preview-img-border { width:48px; height:48px; border-radius:8px; object-fit:contain; background:#f1f5f9; display:inline-flex; align-items:center; justify-content:center; }
+.preview-border { display:inline-block; width:34px; height:34px; border-radius:8px; }
+
+.badge { display:inline-flex; align-items:center; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:600; }
+.badge-green { background:#e8f5e9; color:var(--accent); }
+.badge-red { background:#fce4ec; color:var(--red); }
+.badge-purple { background:#f3e5f5; color:var(--purple); }
+.badge-blue { background:#e3f2fd; color:var(--blue); }
+.badge-gray { background:#f1f5f9; color:var(--text-muted); }
+
+.rarity-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:4px; }
+
+.actions-cell { display:flex; gap:4px; flex-wrap:nowrap; }
+.actions-cell form { display:inline; }
+
+.modal-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:100; align-items:center; justify-content:center; }
+.modal-overlay:target { display:flex; }
+.modal { background:var(--card); border-radius:16px; padding:28px; width:100%; max-width:480px; max-height:90vh; overflow-y:auto; box-shadow:0 8px 32px rgba(0,0,0,0.2); }
+.modal h2 { font-size:17px; font-weight:700; margin-bottom:16px; color:var(--text); }
+.modal label { display:block; font-size:12px; font-weight:600; color:var(--text-muted); margin-top:12px; margin-bottom:3px; }
+.modal input, .modal select { width:100%; padding:9px 12px; border:2px solid var(--border); border-radius:8px; font-size:14px; outline:none; }
+.modal input:focus, .modal select:focus { border-color:var(--accent); }
+.modal .btn { margin-top:14px; }
+.modal .close { float:right; color:#999; text-decoration:none; font-size:24px; line-height:1; }
+.modal .close:hover { color:#333; }
+.form-row { display:flex; gap:12px; }
+.form-row > div { flex:1; }
+
+@media(max-width:768px) {
+  .sidebar { width:60px; }
+  .sidebar-brand h1, .sidebar-brand span, .sidebar-nav a span, .sidebar-footer a span { display:none; }
+  .sidebar-nav a { justify-content:center; padding:10px; }
+  .sidebar-footer a { justify-content:center; padding:10px; }
+  .sidebar-nav a .badge-count { display:none; }
+  .main { margin-left:60px; padding:16px; }
+}
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-brand">
+    <h1>&#x1F3E6; LabCoop</h1>
+    <span>Admin Dashboard</span>
+  </div>
+  <div class="sidebar-nav">
+    <a href="/admin"><span class="icon">&#x1F4CA;</span> <span>Dashboard</span></a>
+    <a href="/admin/accounts"><span class="icon">&#x1F465;</span> <span>Accounts</span></a>
+    <a href="/admin/goals"><span class="icon">&#x1F3AF;</span> <span>Goals</span></a>
+    <a href="/admin/badges"><span class="icon">&#x1F3C6;</span> <span>Badges</span></a>
+    <a href="/admin/transactions"><span class="icon">&#x1F4B3;</span> <span>Transactions</span></a>
+    <a href="/admin/shop" class="active"><span class="icon">&#x1F6D2;</span> <span>Shop</span><span class="badge-count">${items.length}</span></a>
+    <a href="/admin/settings"><span class="icon">&#x2699;</span> <span>Settings</span></a>
+  </div>
+  <div class="sidebar-footer">
+    <a href="/admin/logout"><span class="icon">&#x1F6AA;</span> <span>Logout</span></a>
+  </div>
+</div>
+
+<div class="main">
+  <div class="page-header">
+    <div>
+      <h2>&#x1F6D2; Shop Manager</h2>
+      <div class="meta">${items.filter(i=>i.type==='avatar').length} avatars &middot; ${items.filter(i=>i.type==='border').length} borders &middot; ${items.length} total items</div>
+    </div>
+    <div class="header-actions">
+      <a href="#add-modal" class="btn btn-primary">&#x2795; Add Item</a>
+      <a href="/api/shop/items" target="_blank" class="btn btn-outline">&#x1F4EC; API</a>
+    </div>
+  </div>
+
+  ${banner ? `<div class="toast ${banner.startsWith('error:') ? 'error' : 'success'}">${banner.startsWith('error:') ? '&#x274C; ' + banner.slice(6) : '&#x2705; ' + banner.slice(8)}</div>` : ''}
+
+  <div class="card">
+    <div class="card-header"><h3>&#x1F4E6; All Items</h3><span class="badge badge-green">${items.length} total</span></div>
+    <div class="card-body">
+    <table><tr><th>Preview</th><th>Type</th><th>ID</th><th>Name</th><th>Cost</th><th>Rarity</th><th>Status</th><th>Actions</th></tr>
+    ${items.map(item => {
+      const isAvatar = item.type === 'avatar';
+      return `<tr>
+      <td><div class="preview-cell">${isAvatar
+        ? (item.image_url
+          ? `<img src="${item.image_url}" class="preview-img">`
+          : `<span class="preview-emoji">${item.emoji || '&#x2753;'}</span>`)
+          : (item.image_url
+          ? `<img src="${item.image_url}" class="preview-img-border">`
+          : `<span class="preview-border" style="background:linear-gradient(135deg,${item.color1||'#2E7D32'},${item.color2||'#2E7D32'})"></span>`)
+       }</div></td>
+      <td><span class="badge ${item.type==='avatar'?'badge-blue':'badge-purple'}">${item.type}</span></td>
+      <td class="mono">${item.id}</td>
+      <td><b>${item.name}</b></td>
+      <td><strong>${item.cost}</strong> <span style="color:var(--amber);font-size:11px">&#x2B50;</span></td>
+      <td><span class="rarity-dot" style="background:${item.rarity==='Common'?'#9E9E9E':item.rarity==='Uncommon'?'#4CAF50':item.rarity==='Rare'?'#2196F3':item.rarity==='Epic'?'#9C27B0':item.rarity==='Legendary'?'#FF6F00':item.rarity==='Mythic'?'#D32F2F':'#2E7D32'}"></span>${item.rarity}</td>
+      <td><span class="badge ${item.is_active ? 'badge-green' : 'badge-gray'}">${item.is_active ? 'Active' : 'Inactive'}</span></td>
+      <td><div class="actions-cell">
+        <a href="#edit-${item.id}" class="btn btn-secondary btn-xs">&#x270F;</a>
+        <a href="#upload-${item.id}" class="btn btn-amber btn-xs">&#x1F4F7;</a>
+        <form method="post" action="/admin/shop/delete/${item.id}" onsubmit="return confirm('Delete ${item.name}?')">
+          <button type="submit" class="btn btn-danger btn-xs">&#x1F5D1;</button>
+        </form>
+      </div></td>
+    </tr>`;
+    }).join('')}
+    </table></div>
+  </div>
+</div>
+
+<!-- Add modal -->
+<div id="add-modal" class="modal-overlay">
+<div class="modal">
+<a href="#" class="close">&times;</a>
+<h2>&#x2795; Add New Item</h2>
+<form method="post" action="/admin/shop/create" enctype="multipart/form-data">
+  <div class="form-row">
+    <div><label for="type">Type</label><select id="type" name="type" required><option value="">Select...</option><option value="avatar">Avatar</option><option value="border">Border</option></select></div>
+    <div><label for="name">Name</label><input type="text" id="name" name="name" placeholder="e.g. Dragon" required></div>
+  </div>
+  <div class="form-row">
+    <div><label for="cost">Cost (&#x2B50;)</label><input type="number" id="cost" name="cost" min="0" value="10" required></div>
+    <div><label for="rarity">Rarity</label><select id="rarity" name="rarity">${['Common','Uncommon','Rare','Epic','Legendary','Mythic','Special'].map(r=>`<option value="${r}">${r}</option>`).join('')}</select></div>
+  </div>
+  <label for="emoji">Emoji (for avatars)</label>
+  <input type="text" id="emoji" name="emoji" placeholder="e.g. 🐉" maxlength="4">
+  <label for="image">Image file (for avatars, optional)</label>
+  <input type="file" id="image" name="image" accept=".png,.jpg,.jpeg,.gif,.webp">
+  <button type="submit" class="btn btn-primary">&#x2795; Add Item</button>
+</form>
+</div>
+</div>
+
+<!-- Edit modals -->
+${items.map(item => {
+  const isAvatar = item.type === 'avatar';
+  return `<div id="edit-${item.id}" class="modal-overlay">
+<div class="modal">
+<a href="#" class="close">&times;</a>
+<h2>&#x270F; ${item.name}</h2>
+<form method="post" action="/admin/shop/update/${item.id}">
+  <div class="form-row">
+    <div><label for="ename_${item.id}">Name</label><input type="text" id="ename_${item.id}" name="name" value="${item.name}" required></div>
+    <div><label for="ecost_${item.id}">Cost</label><input type="number" id="ecost_${item.id}" name="cost" min="0" value="${item.cost}"></div>
+  </div>
+  <div class="form-row">
+    <div><label for="erarity_${item.id}">Rarity</label><select id="erarity_${item.id}" name="rarity">${['Common','Uncommon','Rare','Epic','Legendary','Mythic','Special'].map(r=>`<option value="${r}"${r===item.rarity?' selected':''}>${r}</option>`).join('')}</select></div>
+    <div><label for="eactive_${item.id}">Status</label><select id="eactive_${item.id}" name="is_active"><option value="1"${item.is_active?' selected':''}>Active</option><option value="0"${!item.is_active?' selected':''}>Inactive</option></select></div>
+  </div>
+  ${item.image_url ? `<p style="margin-bottom:12px">Current image: <img src="${item.image_url}" style="width:48px;height:48px;border-radius:${isAvatar?'50%':'8px'};object-fit:${isAvatar?'cover':'contain'};background:#f1f5f9;vertical-align:middle"></p>` : ''}
+  ${isAvatar ? `<label for="eemoji_${item.id}">Emoji</label><input type="text" id="eemoji_${item.id}" name="emoji" value="${item.emoji||''}" maxlength="4">` : `<div class="form-row"><div><label for="ecolor1_${item.id}">Color 1</label><input type="color" id="ecolor1_${item.id}" name="color1" value="${item.color1}"></div><div><label for="ecolor2_${item.id}">Color 2</label><input type="color" id="ecolor2_${item.id}" name="color2" value="${item.color2}"></div></div>`}
+  <button type="submit" class="btn btn-primary">&#x1F4BE; Save</button>
+</form>
+</div>
+</div>`;
+}).join('')}
+
+<!-- Upload modals -->
+${items.map(item => `<div id="upload-${item.id}" class="modal-overlay">
+<div class="modal">
+<a href="#" class="close">&times;</a>
+<h2>&#x1F4F7; ${item.name}</h2>
+${item.image_url ? `<p style="margin-bottom:12px">Current: <img src="${item.image_url}" style="width:48px;height:48px;border-radius:${item.type==='avatar'?'50%':'8px'};object-fit:${item.type==='avatar'?'cover':'contain'};background:#f1f5f9;vertical-align:middle"></p>` : ''}
+<form method="post" action="/admin/shop/upload/${item.id}" enctype="multipart/form-data">
+  <label for="uimage_${item.id}">Image (png, jpg, webp)</label>
+  <input type="file" id="uimage_${item.id}" name="image" accept=".png,.jpg,.jpeg,.gif,.webp" required>
+  <button type="submit" class="btn btn-amber">&#x1F4F7; Upload</button>
+</form>
+</div>
+</div>`).join('')}
+
+<script>
+const toast = document.querySelector('.toast');
+if (toast) setTimeout(()=>{toast.style.opacity='0';toast.style.transition='opacity 0.5s';setTimeout(()=>toast.remove(),500)},3500);
+document.querySelectorAll('.sidebar-nav a').forEach(a=>{if(a.href===location.href||a.href===location.href.split('?')[0])a.classList.add('active')});
+</script>
+</body>
+</html>`;
+
+  res.type('html').send(html);
+});
+
+const shopUpload = require('multer')({
+  dest: require('path').join(__dirname, '..', 'uploads', 'shop'),
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
+
+router.post('/shop/create', requireSession, shopUpload.single('image'), (req, res) => {
+  try {
+    const db = getDb();
+    const { name, type, cost, rarity, emoji } = req.body;
+    if (!name || !type) return res.redirect('/admin/shop?error=Name+and+type+required');
+    const id = `shop_${require('crypto').randomBytes(4).toString('hex')}`;
+    db.prepare(`
+      INSERT INTO shop_items (id, name, type, cost, emoji, rarity, color1, color2, image_url, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+    `).run(id, name.trim(), type, Number(cost) || 0, emoji || '', rarity || 'Common', '#2E7D32', '#2E7D32', '');
+    const { v4: uuidv4 } = require('uuid');
+    if (req.file) {
+      const ext = require('path').extname(req.file.originalname).toLowerCase();
+      const filename = `${Date.now()}-${uuidv4().slice(0, 8)}${ext}`;
+      const dest = require('path').join(__dirname, '..', 'uploads', 'shop', filename);
+      require('fs').renameSync(req.file.path, dest);
+      const imageUrl = '/uploads/shop/' + filename;
+      db.prepare("UPDATE shop_items SET image_url=? WHERE id=?").run(imageUrl, id);
+    }
+    res.redirect('/admin/shop?added=ok');
+  } catch (err) {
+    res.redirect(`/admin/shop?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/shop/update/:id', requireSession, (req, res) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM shop_items WHERE id = ?').get(req.params.id);
+    if (!existing) return res.redirect('/admin/shop?error=Item+not+found');
+    const { name, cost, rarity, emoji, color1, color2, is_active } = req.body;
+    db.prepare(`
+      UPDATE shop_items SET name=?, cost=?, emoji=?, rarity=?, color1=?, color2=?, is_active=?, updated_at=datetime('now')
+      WHERE id=?
+    `).run(
+      name ?? existing.name, Number(cost ?? existing.cost),
+      emoji ?? existing.emoji, rarity ?? existing.rarity,
+      color1 ?? existing.color1, color2 ?? existing.color2,
+      is_active !== undefined ? (is_active === '1' ? 1 : 0) : existing.is_active,
+      req.params.id
+    );
+    res.redirect('/admin/shop?updated=ok');
+  } catch (err) {
+    res.redirect(`/admin/shop?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/shop/delete/:id', requireSession, (req, res) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM shop_items WHERE id = ?').get(req.params.id);
+    if (!existing) return res.redirect('/admin/shop?error=Item+not+found');
+    if (existing.image_url && existing.image_url.startsWith('/uploads/')) {
+      const filePath = require('path').join(__dirname, '..', existing.image_url);
+      if (require('fs').existsSync(filePath)) require('fs').unlinkSync(filePath);
+    }
+    db.prepare('DELETE FROM shop_items WHERE id = ?').run(req.params.id);
+    res.redirect('/admin/shop?deleted=ok');
+  } catch (err) {
+    res.redirect(`/admin/shop?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/shop/upload/:id', requireSession, shopUpload.single('image'), (req, res) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM shop_items WHERE id = ?').get(req.params.id);
+    if (!existing) return res.redirect('/admin/shop?error=Item+not+found');
+    if (!req.file) return res.redirect('/admin/shop?error=No+file');
+    const ext = require('path').extname(req.file.originalname).toLowerCase();
+    if (!'.png.jpg.jpeg.gif.webp'.includes(ext)) {
+      require('fs').unlinkSync(req.file.path);
+      return res.redirect('/admin/shop?error=Invalid+file+type');
+    }
+    const { v4: uuidv4 } = require('uuid');
+    const filename = `${Date.now()}-${uuidv4().slice(0, 8)}${ext}`;
+    const dest = require('path').join(__dirname, '..', 'uploads', 'shop', filename);
+    require('fs').renameSync(req.file.path, dest);
+    const imageUrl = '/uploads/shop/' + filename;
+    if (existing.image_url && existing.image_url.startsWith('/uploads/')) {
+      const oldFile = require('path').join(__dirname, '..', existing.image_url);
+      if (require('fs').existsSync(oldFile)) require('fs').unlinkSync(oldFile);
+    }
+    db.prepare("UPDATE shop_items SET image_url=?, updated_at=datetime('now') WHERE id=?").run(imageUrl, req.params.id);
+    res.redirect('/admin/shop?uploaded=ok');
+  } catch (err) {
+    res.redirect(`/admin/shop?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// ── Accounts Management ──
+
+router.get('/accounts', requireSession, (req, res) => {
+  const db = getDb();
+  const accounts = db.prepare('SELECT * FROM accounts ORDER BY child_name ASC').all();
+  const q = req.query;
+  const toast = q.added ? 'success:Account created.'
+    : q.updated ? 'success:Account updated.'
+    : q.deleted ? 'success:Account deleted.'
+    : q.deposited ? 'success:Deposit added.'
+    : q.error ? `error:${q.error}`
+    : '';
+
+  const content = `
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-icon">&#x1F464;</div><div class="stat-value">${accounts.length}</div><div class="stat-label">Total Accounts</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x20B1;</div><div class="stat-value">${accounts.reduce((s,a)=>s+Number(a.actual_balance),0).toFixed(0)}</div><div class="stat-label">Combined Balance</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x2728;</div><div class="stat-value">${accounts.reduce((s,a)=>s+Number(a.current_xp),0)}</div><div class="stat-label">Total XP</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3>&#x1F464; All Accounts</h3>
+      <div><a href="#add-account" class="btn btn-primary btn-sm">&#x2795; New Account</a></div>
+    </div>
+    <div class="card-body">
+    <table><tr><th>Name</th><th>Member ID</th><th>Balance</th><th>Unallocated</th><th>XP</th><th>Password</th><th>Phone</th><th>Created</th><th>Actions</th></tr>
+    ${accounts.map(a => `<tr>
+      <td><b>${a.child_name}</b></td>
+      <td class="mono">${a.member_id || '-'}</td>
+      <td class="num">&#x20B1;${Number(a.actual_balance).toFixed(2)}</td>
+      <td class="num">&#x20B1;${Number(a.unallocated_balance).toFixed(2)}</td>
+      <td class="num">${a.current_xp}</td>
+      <td><span class="badge ${a.password_changed ? 'badge-green' : 'badge-red'}">${a.password_changed ? 'Changed' : 'Default'}</span></td>
+      <td>${a.parent_phone || '-'}</td>
+      <td class="mono">${(a.created_at || '').slice(0, 10)}</td>
+      <td><div style="display:flex;gap:4px">
+        <a href="#edit-${a.account_id}" class="btn btn-secondary btn-xs">&#x270F;</a>
+        <a href="#deposit-${a.account_id}" class="btn btn-amber btn-xs">&#x1F4B5;</a>
+        <form class="inline" method="post" action="/admin/accounts/delete/${a.account_id}" onsubmit="return confirm('Delete ${a.child_name}?')">
+          <button type="submit" class="btn btn-danger btn-xs">&#x1F5D1;</button>
+        </form>
+      </div></td>
+    </tr>`).join('')}
+    </table></div>
+  </div>
+
+  <div id="add-account" class="modal-overlay">
+  <div class="modal">
+  <a href="#" class="close">&times;</a>
+  <h2>&#x2795; New Account</h2>
+  <form method="post" action="/admin/accounts/create">
+    <label for="aname">Child Name</label>
+    <input type="text" id="aname" name="child_name" placeholder="e.g. Juan" required>
+    <label for="abalance">Initial Balance (&#x20B1;)</label>
+    <input type="number" id="abalance" name="actual_balance" min="0" value="0">
+    <label for="axp">Initial XP</label>
+    <input type="number" id="axp" name="current_xp" min="0" value="0">
+    <label for="aphone">Parent Phone</label>
+    <input type="text" id="aphone" name="parent_phone" placeholder="Optional">
+    <button type="submit" class="btn btn-primary">&#x2795; Create Account</button>
+  </form>
+  </div>
+  </div>
+
+  ${accounts.map(a => `
+  <div id="edit-${a.account_id}" class="modal-overlay">
+  <div class="modal">
+  <a href="#" class="close">&times;</a>
+  <h2>&#x270F; ${a.child_name}</h2>
+  <form method="post" action="/admin/accounts/update/${a.account_id}">
+    <label for="en_${a.account_id}">Child Name</label>
+    <input type="text" id="en_${a.account_id}" name="child_name" value="${a.child_name}" required>
+    <div class="form-row">
+      <div><label for="eb_${a.account_id}">Balance (&#x20B1;)</label><input type="number" id="eb_${a.account_id}" name="actual_balance" min="0" step="0.01" value="${a.actual_balance}"></div>
+      <div><label for="eu_${a.account_id}">Unallocated (&#x20B1;)</label><input type="number" id="eu_${a.account_id}" name="unallocated_balance" min="0" step="0.01" value="${a.unallocated_balance}"></div>
+    </div>
+    <label for="exp_${a.account_id}">XP</label>
+    <input type="number" id="exp_${a.account_id}" name="current_xp" min="0" value="${a.current_xp}">
+    <label for="ephone_${a.account_id}">Parent Phone</label>
+    <input type="text" id="ephone_${a.account_id}" name="parent_phone" value="${a.parent_phone || ''}">
+    <button type="submit" class="btn btn-primary">&#x1F4BE; Save Changes</button>
+  </form>
+  </div>
+  </div>
+
+  <div id="deposit-${a.account_id}" class="modal-overlay">
+  <div class="modal">
+  <a href="#" class="close">&times;</a>
+  <h2>&#x1F4B5; Deposit to ${a.child_name}</h2>
+  <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Current balance: &#x20B1;${Number(a.actual_balance).toFixed(2)}</p>
+  <form method="post" action="/admin/accounts/deposit/${a.account_id}">
+    <label for="damount_${a.account_id}">Amount (&#x20B1;)</label>
+    <input type="number" id="damount_${a.account_id}" name="amount" min="1" step="0.01" placeholder="e.g. 100" required>
+    <label for="ddesc_${a.account_id}">Description</label>
+    <input type="text" id="ddesc_${a.account_id}" name="description" placeholder="e.g. Allowance" value="Admin deposit">
+    <button type="submit" class="btn btn-amber">&#x1F4B5; Deposit</button>
+  </form>
+  </div>
+  </div>`).join('')}
+  `;
+
+  res.type('html').send(layout('Accounts', 'accounts', content, {
+    toast,
+    subtitle: `${accounts.length} accounts registered`,
+  }));
+});
+
+router.post('/accounts/create', requireSession, (req, res) => {
+  try {
+    const { child_name, actual_balance, current_xp, parent_phone } = req.body;
+    if (!child_name) return res.redirect('/admin/accounts?error=Name+required');
+    const db = getDb();
+    const maxMember = db.prepare("SELECT MAX(CAST(member_id AS INTEGER)) as m FROM accounts").get().m || 0;
+    const account = store.createAccount({
+      child_name: child_name.trim(),
+      actual_balance: Number(actual_balance) || 0,
+      unallocated_balance: Number(actual_balance) || 0,
+      current_xp: Number(current_xp) || 0,
+      parent_phone: parent_phone || '',
+      password: bcrypt.hashSync('0000', 10),
+    });
+    db.prepare('UPDATE accounts SET member_id=? WHERE account_id=?').run(String(maxMember + 1).padStart(6, '0'), account.account_id);
+    res.redirect('/admin/accounts?added=ok');
+  } catch (err) {
+    res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/accounts/update/:id', requireSession, (req, res) => {
+  try {
+    const { child_name, actual_balance, unallocated_balance, current_xp, parent_phone } = req.body;
+    store.updateAccount(req.params.id, {
+      child_name: child_name?.trim(),
+      actual_balance: Number(actual_balance),
+      unallocated_balance: Number(unallocated_balance),
+      current_xp: Number(current_xp),
+      parent_phone: parent_phone || '',
+    });
+    res.redirect('/admin/accounts?updated=ok');
+  } catch (err) {
+    res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/accounts/deposit/:id', requireSession, (req, res) => {
+  try {
+    const { amount, description } = req.body;
+    const val = Number(amount);
+    if (!val || val <= 0) return res.redirect('/admin/accounts?error=Invalid+amount');
+    const db = getDb();
+    const account = db.prepare('SELECT * FROM accounts WHERE account_id = ?').get(req.params.id);
+    if (!account) return res.redirect('/admin/accounts?error=Account+not+found');
+    const newBalance = Number(account.actual_balance) + val;
+    db.prepare('UPDATE accounts SET actual_balance=?, unallocated_balance=unallocated_balance+?, updated_at=datetime(\'now\') WHERE account_id=?').run(newBalance, val, req.params.id);
+    store.addTransaction({
+      account_id: req.params.id,
+      type: 'deposit',
+      amount: val,
+      description: description || 'Admin deposit',
+    });
+    res.redirect('/admin/accounts?deposited=ok');
+  } catch (err) {
+    res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/accounts/delete/:id', requireSession, (req, res) => {
+  try {
+    const db = getDb();
+    const account = db.prepare('SELECT * FROM accounts WHERE account_id = ?').get(req.params.id);
+    if (!account) return res.redirect('/admin/accounts?error=Account+not+found');
+    db.prepare('DELETE FROM accounts WHERE account_id = ?').run(req.params.id);
+    res.redirect('/admin/accounts?deleted=ok');
+  } catch (err) {
+    res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// ── Goals Management ──
+
+router.get('/goals', requireSession, (req, res) => {
+  const db = getDb();
+  const goals = db.prepare('SELECT g.*, a.child_name FROM goal_jars g LEFT JOIN accounts a ON g.account_id = a.account_id ORDER BY g.created_at ASC').all();
+  const accounts = db.prepare('SELECT account_id, child_name FROM accounts ORDER BY child_name ASC').all();
+  const q = req.query;
+  const toast = q.added ? 'success:Goal created.'
+    : q.updated ? 'success:Goal updated.'
+    : q.deleted ? 'success:Goal deleted.'
+    : q.toggled ? 'success:Goal status toggled.'
+    : q.error ? `error:${q.error}`
+    : '';
+
+  const filterAccount = q.account || '';
+  const filterStatus = q.status || '';
+  const filtered = goals.filter(g => {
+    if (filterAccount && g.account_id !== filterAccount) return false;
+    if (filterStatus === 'done' && !g.is_completed) return false;
+    if (filterStatus === 'active' && g.is_completed) return false;
+    return true;
+  });
+
+  const completedCount = filtered.filter(g => g.is_completed).length;
+  const totalAllocated = filtered.reduce((s, g) => s + Number(g.current_allocated), 0);
+  const totalTarget = filtered.reduce((s, g) => s + Number(g.target_amount), 0);
+
+  const content = `
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-icon">&#x1F3AF;</div><div class="stat-value" data-count="${filtered.length}">0</div><div class="stat-label">Goals Shown</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x2705;</div><div class="stat-value" data-count="${completedCount}">0</div><div class="stat-label">Completed</div><div class="stat-bar"><div class="stat-bar-fill" style="width:${filtered.length > 0 ? (completedCount/filtered.length*100).toFixed(0) : 0}%;background:var(--accent)"></div></div></div>
+    <div class="stat-card"><div class="stat-icon">&#x20B1;</div><div class="stat-value">${Number(totalAllocated).toFixed(0)}</div><div class="stat-label">Allocated</div><div class="stat-sub">of &#x20B1;${Number(totalTarget).toFixed(0)} target</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3>&#x1F3AF; Goal Jars</h3>
+      <div><a href="#add-goal" class="btn btn-primary btn-sm">&#x2795; New Goal</a></div>
+    </div>
+    <div class="card-body">
+    <div style="padding:10px 14px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--border);background:#fafcfa">
+      <form method="get" action="/admin/goals" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <select name="account" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" onchange="this.form.submit()">
+          <option value="">All Accounts</option>
+          ${accounts.map(a => `<option value="${a.account_id}"${a.account_id===filterAccount?' selected':''}>${a.child_name}</option>`).join('')}
+        </select>
+        <select name="status" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" onchange="this.form.submit()">
+          <option value="">All Status</option>
+          <option value="active"${filterStatus==='active'?' selected':''}>Active</option>
+          <option value="done"${filterStatus==='done'?' selected':''}>Completed</option>
+        </select>
+        ${filterAccount || filterStatus ? `<a href="/admin/goals" class="btn btn-outline btn-xs">&#x2716; Clear</a>` : ''}
+      </form>
+    </div>
+    <table><tr><th>Child</th><th>Title</th><th>Target</th><th>Allocated</th><th>Progress</th><th>Icon</th><th>Status</th><th>Actions</th></tr>
+    ${filtered.length === 0 ? '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-muted)">No goals found.</td></tr>' : filtered.map(g => {
+      const pct = g.target_amount > 0 ? Math.min((g.current_allocated / g.target_amount) * 100, 100) : 0;
+      return `<tr>
+      <td><b>${g.child_name || '-'}</b></td>
+      <td>${g.title}</td>
+      <td class="num">&#x20B1;${Number(g.target_amount).toFixed(2)}</td>
+      <td class="num">&#x20B1;${Number(g.current_allocated).toFixed(2)}</td>
+      <td><span class="bar"><span class="bar-track"><span class="bar-fill ${g.is_completed ? 'green' : 'blue'}" style="width:${pct}%"></span></span>${pct.toFixed(0)}%</span></td>
+      <td style="font-size:18px;text-align:center">${g.category_icon}</td>
+      <td><span class="badge ${g.is_completed ? 'badge-green' : 'badge-blue'}">${g.is_completed ? 'Done' : 'Active'}</span></td>
+      <td><div style="display:flex;gap:4px">
+        <a href="#edit-${g.goal_id}" class="btn btn-secondary btn-xs">&#x270F;</a>
+        <form class="inline" method="post" action="/admin/goals/toggle/${g.goal_id}">
+          <button type="submit" class="btn btn-${g.is_completed ? 'amber' : 'green'} btn-xs">${g.is_completed ? '&#x21A9;' : '&#x2705;'}</button>
+        </form>
+        <form class="inline" method="post" action="/admin/goals/delete/${g.goal_id}" onsubmit="return confirm('Delete goal ${g.title}?')">
+          <button type="submit" class="btn btn-danger btn-xs">&#x1F5D1;</button>
+        </form>
+      </div></td>
+    </tr>`;}).join('')}
+    </table></div>
+  </div>
+
+  <div id="add-goal" class="modal-overlay">
+  <div class="modal">
+  <a href="#" class="close">&times;</a>
+  <h2>&#x2795; New Goal</h2>
+  <form method="post" action="/admin/goals/create">
+    <label for="gaccount">Account</label>
+    <select id="gaccount" name="account_id" required>
+      <option value="">Select account...</option>
+      ${accounts.map(a => `<option value="${a.account_id}">${a.child_name}</option>`).join('')}
+    </select>
+    <div class="form-row">
+      <div><label for="gtitle">Title</label><input type="text" id="gtitle" name="title" placeholder="e.g. New Bike" required></div>
+      <div><label for="gtarget">Target (&#x20B1;)</label><input type="number" id="gtarget" name="target_amount" min="1" value="100" required></div>
+    </div>
+    <div class="form-row">
+      <div><label for="galloc">Allocated (&#x20B1;)</label><input type="number" id="galloc" name="current_allocated" min="0" value="0"></div>
+      <div><label for="gicon">Icon</label><input type="text" id="gicon" name="category_icon" placeholder="e.g. 🚲" value="&#x1F3AF;" maxlength="4"></div>
+    </div>
+    <button type="submit" class="btn btn-primary">&#x2795; Create Goal</button>
+  </form>
+  </div>
+  </div>
+
+  ${filtered.map(g => `
+  <div id="edit-${g.goal_id}" class="modal-overlay">
+  <div class="modal">
+  <a href="#" class="close">&times;</a>
+  <h2>&#x270F; ${g.title}</h2>
+  <form method="post" action="/admin/goals/update/${g.goal_id}">
+    <label for="etitle_${g.goal_id}">Title</label>
+    <input type="text" id="etitle_${g.goal_id}" name="title" value="${g.title}" required>
+    <div class="form-row">
+      <div><label for="etarget_${g.goal_id}">Target (&#x20B1;)</label><input type="number" id="etarget_${g.goal_id}" name="target_amount" min="1" value="${g.target_amount}"></div>
+      <div><label for="ealloc_${g.goal_id}">Allocated (&#x20B1;)</label><input type="number" id="ealloc_${g.goal_id}" name="current_allocated" min="0" value="${g.current_allocated}"></div>
+    </div>
+    <label for="eicon_${g.goal_id}">Icon</label>
+    <input type="text" id="eicon_${g.goal_id}" name="category_icon" value="${g.category_icon}" maxlength="4">
+    <button type="submit" class="btn btn-primary">&#x1F4BE; Save</button>
+  </form>
+  </div>
+  </div>`).join('')}
+  `;
+
+  res.type('html').send(layout('Goals', 'goals', content, {
+    toast, subtitle: `${filtered.length} goals shown`,
+    counts: { goals: goals.length },
+  }));
+});
+
+router.post('/goals/create', requireSession, (req, res) => {
+  try {
+    const { account_id, title, target_amount, current_allocated, category_icon } = req.body;
+    if (!account_id || !title) return res.redirect('/admin/goals?error=Account+and+title+required');
+    const db = getDb();
+    const account = db.prepare('SELECT * FROM accounts WHERE account_id = ?').get(account_id);
+    if (!account) return res.redirect('/admin/goals?error=Account+not+found');
+    store.createGoal({
+      account_id,
+      title: title.trim(),
+      target_amount: Number(target_amount) || 0,
+      current_allocated: Number(current_allocated) || 0,
+      category_icon: category_icon || '🎯',
+    });
+    res.redirect('/admin/goals?added=ok');
+  } catch (err) {
+    res.redirect(`/admin/goals?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/goals/update/:id', requireSession, (req, res) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM goal_jars WHERE goal_id = ?').get(req.params.id);
+    if (!existing) return res.redirect('/admin/goals?error=Goal+not+found');
+    const { title, target_amount, current_allocated, category_icon } = req.body;
+    store.updateGoal(req.params.id, {
+      title: title?.trim(),
+      target_amount: Number(target_amount),
+      current_allocated: Number(current_allocated),
+      category_icon: category_icon || existing.category_icon,
+    });
+    res.redirect('/admin/goals?updated=ok');
+  } catch (err) {
+    res.redirect(`/admin/goals?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/goals/toggle/:id', requireSession, (req, res) => {
+  try {
+    const db = getDb();
+    const goal = db.prepare('SELECT * FROM goal_jars WHERE goal_id = ?').get(req.params.id);
+    if (!goal) return res.redirect('/admin/goals?error=Goal+not+found');
+    const newStatus = goal.is_completed ? 0 : 1;
+    db.prepare('UPDATE goal_jars SET is_completed=?, updated_at=datetime(\'now\') WHERE goal_id=?').run(newStatus, req.params.id);
+    res.redirect('/admin/goals?toggled=ok');
+  } catch (err) {
+    res.redirect(`/admin/goals?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/goals/delete/:id', requireSession, (req, res) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM goal_jars WHERE goal_id = ?').get(req.params.id);
+    if (!existing) return res.redirect('/admin/goals?error=Goal+not+found');
+    store.deleteGoal(req.params.id);
+    res.redirect('/admin/goals?deleted=ok');
+  } catch (err) {
+    res.redirect(`/admin/goals?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// ── Badges Management ──
+
+router.get('/badges', requireSession, (req, res) => {
+  const db = getDb();
+  const badges = db.prepare('SELECT b.*, a.child_name FROM badges b LEFT JOIN accounts a ON b.account_id = a.account_id ORDER BY b.created_at ASC').all();
+  const accounts = db.prepare('SELECT account_id, child_name FROM accounts ORDER BY child_name ASC').all();
+  const q = req.query;
+  const toast = q.added ? 'success:Badge created.'
+    : q.updated ? 'success:Badge updated.'
+    : q.deleted ? 'success:Badge deleted.'
+    : q.toggled ? 'success:Badge status toggled.'
+    : q.error ? `error:${q.error}`
+    : '';
+
+  const filterAccount = q.account || '';
+  const filterStatus = q.status || '';
+  const filtered = badges.filter(b => {
+    if (filterAccount && b.account_id !== filterAccount) return false;
+    if (filterStatus === 'unlocked' && !b.is_unlocked) return false;
+    if (filterStatus === 'locked' && b.is_unlocked) return false;
+    return true;
+  });
+
+  const unlockedCount = filtered.filter(b => b.is_unlocked).length;
+
+  const content = `
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-icon">&#x1F3C6;</div><div class="stat-value" data-count="${filtered.length}">0</div><div class="stat-label">Badges Shown</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F513;</div><div class="stat-value" data-count="${unlockedCount}">0</div><div class="stat-label">Unlocked</div><div class="stat-bar"><div class="stat-bar-fill" style="width:${filtered.length > 0 ? (unlockedCount/filtered.length*100).toFixed(0) : 0}%;background:var(--accent)"></div></div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F512;</div><div class="stat-value" data-count="${filtered.length - unlockedCount}">0</div><div class="stat-label">Locked</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3>&#x1F3C6; Badges</h3>
+      <div><a href="#add-badge" class="btn btn-primary btn-sm">&#x2795; New Badge</a></div>
+    </div>
+    <div class="card-body">
+    <div style="padding:10px 14px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--border);background:#fafcfa">
+      <form method="get" action="/admin/badges" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <select name="account" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" onchange="this.form.submit()">
+          <option value="">All Accounts</option>
+          ${accounts.map(a => `<option value="${a.account_id}"${a.account_id===filterAccount?' selected':''}>${a.child_name}</option>`).join('')}
+        </select>
+        <select name="status" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" onchange="this.form.submit()">
+          <option value="">All Status</option>
+          <option value="unlocked"${filterStatus==='unlocked'?' selected':''}>Unlocked</option>
+          <option value="locked"${filterStatus==='locked'?' selected':''}>Locked</option>
+        </select>
+        ${filterAccount || filterStatus ? `<a href="/admin/badges" class="btn btn-outline btn-xs">&#x2716; Clear</a>` : ''}
+      </form>
+    </div>
+    <table><tr><th>Child</th><th>Name</th><th>Description</th><th>Required XP</th><th>Status</th><th>Unlocked At</th><th>Actions</th></tr>
+    ${filtered.length === 0 ? '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">No badges found.</td></tr>' : filtered.map(b => `<tr>
+      <td><b>${b.child_name || '-'}</b></td>
+      <td>${b.name}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${b.description || '-'}</td>
+      <td class="num">${b.required_xp} <span class="badge badge-purple">XP</span></td>
+      <td><span class="badge ${b.is_unlocked ? 'badge-green' : 'badge-red'}">${b.is_unlocked ? 'Unlocked' : 'Locked'}</span></td>
+      <td class="mono">${b.unlocked_at ? b.unlocked_at.slice(0, 19).replace('T', ' ') : '-'}</td>
+      <td><div style="display:flex;gap:4px">
+        <a href="#edit-${b.badge_id}" class="btn btn-secondary btn-xs">&#x270F;</a>
+        <form class="inline" method="post" action="/admin/badges/toggle/${b.badge_id}">
+          <button type="submit" class="btn btn-${b.is_unlocked ? 'amber' : 'green'} btn-xs">${b.is_unlocked ? '&#x1F512;' : '&#x1F513;'}</button>
+        </form>
+        <form class="inline" method="post" action="/admin/badges/delete/${b.badge_id}" onsubmit="return confirm('Delete badge ${b.name}?')">
+          <button type="submit" class="btn btn-danger btn-xs">&#x1F5D1;</button>
+        </form>
+      </div></td>
+    </tr>`).join('')}
+    </table></div>
+  </div>
+
+  <div id="add-badge" class="modal-overlay">
+  <div class="modal">
+  <a href="#" class="close">&times;</a>
+  <h2>&#x2795; New Badge</h2>
+  <form method="post" action="/admin/badges/create">
+    <label for="baccount">Account</label>
+    <select id="baccount" name="account_id" required>
+      <option value="">Select account...</option>
+      ${accounts.map(a => `<option value="${a.account_id}">${a.child_name}</option>`).join('')}
+    </select>
+    <div class="form-row">
+      <div><label for="bname">Name</label><input type="text" id="bname" name="name" placeholder="e.g. Super Saver" required></div>
+      <div><label for="bxp">Required XP</label><input type="number" id="bxp" name="required_xp" min="0" value="100"></div>
+    </div>
+    <label for="bdesc">Description</label>
+    <input type="text" id="bdesc" name="description" placeholder="e.g. Saved over ₱500">
+    <label for="bunlock">Status</label>
+    <select id="bunlock" name="is_unlocked">
+      <option value="0">Locked</option>
+      <option value="1">Unlocked</option>
+    </select>
+    <button type="submit" class="btn btn-primary">&#x2795; Create Badge</button>
+  </form>
+  </div>
+  </div>
+
+  ${filtered.map(b => `
+  <div id="edit-${b.badge_id}" class="modal-overlay">
+  <div class="modal">
+  <a href="#" class="close">&times;</a>
+  <h2>&#x270F; ${b.name}</h2>
+  <form method="post" action="/admin/badges/update/${b.badge_id}">
+    <label for="enb_${b.badge_id}">Name</label>
+    <input type="text" id="enb_${b.badge_id}" name="name" value="${b.name}" required>
+    <div class="form-row">
+      <div><label for="exp_${b.badge_id}">Required XP</label><input type="number" id="exp_${b.badge_id}" name="required_xp" min="0" value="${b.required_xp}"></div>
+      <div><label for="eunlock_${b.badge_id}">Status</label><select id="eunlock_${b.badge_id}" name="is_unlocked"><option value="0"${!b.is_unlocked?' selected':''}>Locked</option><option value="1"${b.is_unlocked?' selected':''}>Unlocked</option></select></div>
+    </div>
+    <label for="edesc_${b.badge_id}">Description</label>
+    <input type="text" id="edesc_${b.badge_id}" name="description" value="${b.description || ''}">
+    <button type="submit" class="btn btn-primary">&#x1F4BE; Save</button>
+  </form>
+  </div>
+  </div>`).join('')}
+  `;
+
+  res.type('html').send(layout('Badges', 'badges', content, {
+    toast, subtitle: `${filtered.length} badges shown`,
+    counts: { badges: badges.length },
+  }));
+});
+
+router.post('/badges/create', requireSession, (req, res) => {
+  try {
+    const db = getDb();
+    const { account_id, name, description, required_xp, is_unlocked } = req.body;
+    if (!account_id || !name) return res.redirect('/admin/badges?error=Account+and+name+required');
+    const account = db.prepare('SELECT * FROM accounts WHERE account_id = ?').get(account_id);
+    if (!account) return res.redirect('/admin/badges?error=Account+not+found');
+    store.createBadge({
+      account_id,
+      name: name.trim(),
+      description: description || '',
+      required_xp: Number(required_xp) || 0,
+      is_unlocked: is_unlocked === '1',
+    });
+    res.redirect('/admin/badges?added=ok');
+  } catch (err) {
+    res.redirect(`/admin/badges?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/badges/update/:id', requireSession, (req, res) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM badges WHERE badge_id = ?').get(req.params.id);
+    if (!existing) return res.redirect('/admin/badges?error=Badge+not+found');
+    const { name, description, required_xp, is_unlocked } = req.body;
+    store.updateBadge(req.params.id, {
+      name: name?.trim(),
+      description: description || '',
+      required_xp: Number(required_xp),
+      is_unlocked: is_unlocked !== undefined ? (is_unlocked === '1' ? 1 : 0) : undefined,
+    });
+    res.redirect('/admin/badges?updated=ok');
+  } catch (err) {
+    res.redirect(`/admin/badges?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/badges/toggle/:id', requireSession, (req, res) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM badges WHERE badge_id = ?').get(req.params.id);
+    if (!existing) return res.redirect('/admin/badges?error=Badge+not+found');
+    const newStatus = existing.is_unlocked ? 0 : 1;
+    store.updateBadge(req.params.id, { is_unlocked: newStatus });
+    res.redirect('/admin/badges?toggled=ok');
+  } catch (err) {
+    res.redirect(`/admin/badges?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/badges/delete/:id', requireSession, (req, res) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM badges WHERE badge_id = ?').get(req.params.id);
+    if (!existing) return res.redirect('/admin/badges?error=Badge+not+found');
+    store.deleteBadge(req.params.id);
+    res.redirect('/admin/badges?deleted=ok');
+  } catch (err) {
+    res.redirect(`/admin/badges?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// ── Transactions Viewer ──
+
+router.get('/transactions', requireSession, (req, res) => {
+  const db = getDb();
+  const accounts = db.prepare('SELECT account_id, child_name FROM accounts ORDER BY child_name ASC').all();
+  const q = req.query;
+
+  const filterAccount = q.account || '';
+  const filterType = q.type || '';
+  const filterSearch = q.search || '';
+  const page = Math.max(1, Number(q.page) || 1);
+  const perPage = 50;
+  const offset = (page - 1) * perPage;
+
+  let where = [];
+  let params = [];
+
+  if (filterAccount) {
+    where.push('t.account_id = ?');
+    params.push(filterAccount);
+  }
+  if (filterType) {
+    where.push('t.type = ?');
+    params.push(filterType);
+  }
+  if (filterSearch) {
+    where.push('(t.description LIKE ? OR t.transaction_id LIKE ?)');
+    params.push(`%${filterSearch}%`, `%${filterSearch}%`);
+  }
+
+  const whereClause = where.length > 0 ? 'WHERE ' + where.join(' AND ') : '';
+  const total = db.prepare(`SELECT COUNT(*) as c FROM transactions t ${whereClause}`).get(...params).c;
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+
+  const transactions = db.prepare(`
+    SELECT t.*, a.child_name FROM transactions t
+    LEFT JOIN accounts a ON t.account_id = a.account_id
+    ${whereClause}
+    ORDER BY t.created_at DESC LIMIT ? OFFSET ?
+  `).all(...params, perPage, offset);
+
+  const typedCounts = db.prepare('SELECT type, COUNT(*) as c FROM transactions GROUP BY type').all();
+  const typeSummary = typedCounts.map(t => `${t.type}: ${t.c}`).join(' &middot; ');
+
+  const toast = q.error ? `error:${q.error}` : '';
+
+  const content = `
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-icon">&#x1F4B3;</div><div class="stat-value" data-count="${total}">0</div><div class="stat-label">Total Transactions</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F504;</div><div class="stat-value">${page}<span style="font-size:14px;color:var(--text-muted)">/${totalPages}</span></div><div class="stat-label">Current Page</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4C4;</div><div class="stat-value">${perPage}</div><div class="stat-label">Per Page</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3>&#x1F4B3; Transactions</h3><span class="count">${total} total</span></div>
+    <div class="card-body">
+    <div style="padding:10px 14px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--border);background:#fafcfa;align-items:center">
+      <form method="get" action="/admin/transactions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex:1">
+        <select name="account" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+          <option value="">All Accounts</option>
+          ${accounts.map(a => `<option value="${a.account_id}"${a.account_id===filterAccount?' selected':''}>${a.child_name}</option>`).join('')}
+        </select>
+        <select name="type" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+          <option value="">All Types</option>
+          ${['deposit','allocation','withdrawal','purchase','reward','transfer'].map(t => `<option value="${t}"${t===filterType?' selected':''}>${t}</option>`).join('')}
+        </select>
+        <input type="text" name="search" placeholder="Search description..." value="${filterSearch}" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;min-width:160px;flex:1">
+        <button type="submit" class="btn btn-secondary btn-xs">&#x1F50D; Filter</button>
+        ${filterAccount || filterType || filterSearch ? `<a href="/admin/transactions" class="btn btn-outline btn-xs">&#x2716; Clear</a>` : ''}
+      </form>
+    </div>
+    ${transactions.length === 0 ? '<div style="padding:24px;text-align:center;color:var(--text-muted)">No transactions found.</div>' : `
+    <table><tr><th>Child</th><th>Type</th><th>Amount</th><th>Description</th><th>Date</th></tr>
+    ${transactions.map(t => `<tr>
+      <td><b>${t.child_name || '-'}</b></td>
+      <td><span class="badge ${t.type === 'deposit' ? 'badge-green' : t.type === 'allocation' ? 'badge-purple' : t.type === 'withdrawal' ? 'badge-red' : t.type === 'purchase' ? 'badge-amber' : t.type === 'reward' ? 'badge-blue' : 'badge-gray'}">${t.type}</span></td>
+      <td class="num">&#x20B1;${Number(t.amount).toFixed(2)}</td>
+      <td>${t.description || '-'}</td>
+      <td class="mono">${(t.created_at || '').slice(0, 19).replace('T', ' ')}</td>
+    </tr>`).join('')}
+    </table>
+    ${totalPages > 1 ? `
+    <div style="padding:12px 14px;display:flex;justify-content:center;gap:6px;border-top:1px solid var(--border)">
+      ${page > 1 ? `<a href="/admin/transactions?page=${page-1}${filterAccount?'&account='+filterAccount:''}${filterType?'&type='+filterType:''}${filterSearch?'&search='+encodeURIComponent(filterSearch):''}" class="btn btn-outline btn-xs">&#x25C0; Prev</a>` : ''}
+      ${Array.from({length: Math.min(totalPages, 7)}, (_, i) => {
+        let p;
+        if (totalPages <= 7) { p = i + 1; }
+        else if (page <= 4) { p = i + 1; }
+        else if (page >= totalPages - 3) { p = totalPages - 6 + i; }
+        else { p = page - 3 + i; }
+        const url = `/admin/transactions?page=${p}${filterAccount?'&account='+filterAccount:''}${filterType?'&type='+filterType:''}${filterSearch?'&search='+encodeURIComponent(filterSearch):''}`;
+        return `<a href="${url}" class="btn ${p === page ? 'btn-primary' : 'btn-outline'} btn-xs">${p}</a>`;
+      }).join('')}
+      ${page < totalPages ? `<a href="/admin/transactions?page=${page+1}${filterAccount?'&account='+filterAccount:''}${filterType?'&type='+filterType:''}${filterSearch?'&search='+encodeURIComponent(filterSearch):''}" class="btn btn-outline btn-xs">Next &#x25B6;</a>` : ''}
+    </div>` : ''}
+    `}
+    <div style="padding:8px 14px;font-size:11px;color:var(--text-muted);border-top:1px solid var(--border)">
+      ${typeSummary || 'No transaction data'}
+    </div>
+    </div>
+  </div>
+  `;
+
+  res.type('html').send(layout('Transactions', 'transactions', content, {
+    toast: toast || undefined,
+    subtitle: `Page ${page} of ${totalPages} — ${total} total`,
+    counts: { transactions: total },
+  }));
+});
+
+// ── Settings ──
+
+router.get('/settings', requireSession, (req, res) => {
+  const db = getDb();
+  const dbPath = path.join(__dirname, '..', 'labcoop.db');
+  const dbSize = fs.existsSync(dbPath) ? fs.statSync(dbPath).size : 0;
+
+  const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all();
+  const tableInfo = tables.map(t => {
+    const cnt = db.prepare(`SELECT COUNT(*) as c FROM "${t.name}"`).get();
+    return { name: t.name, rows: cnt.c };
+  });
+
+  const envVars = [
+    { key: 'PORT', val: process.env.PORT || '3000' },
+    { key: 'NODE_ENV', val: process.env.NODE_ENV || 'development' },
+    { key: 'JWT_SECRET', val: process.env.JWT_SECRET ? '*****' : '(not set)' },
+    { key: 'ADMIN_TOKEN', val: process.env.ADMIN_TOKEN ? '(configured)' : '(not set)' },
+    { key: 'MAIL_HOST', val: process.env.MAIL_HOST || '(not set)' },
+    { key: 'DB_TYPE', val: 'SQLite (better-sqlite3)' },
+  ];
+
+  const content = `
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-icon">&#x1F4BE;</div><div class="stat-value">${(dbSize / 1024).toFixed(1)} KB</div><div class="stat-label">Database Size</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4CA;</div><div class="stat-value">${tableInfo.length}</div><div class="stat-label">Tables</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F504;</div><div class="stat-value">${tableInfo.reduce((s,t)=>s+t.rows,0)}</div><div class="stat-label">Total Rows</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4C5;</div><div class="stat-value">Node ${process.version}</div><div class="stat-label">Runtime</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3>&#x1F4CA; Database Tables</h3></div>
+    <div class="card-body">
+    <table><tr><th>Table Name</th><th>Rows</th><th>Type</th></tr>
+    ${tableInfo.map(t => `<tr>
+      <td><b>${t.name}</b></td>
+      <td>${t.rows}</td>
+      <td><span class="badge badge-blue">${t.name.endsWith('s') ? 'Data' : 'Lookup'}</span></td>
+    </tr>`).join('')}
+    </table></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3>&#x2699; Environment</h3></div>
+    <div class="card-body">
+    <table><tr><th>Key</th><th>Value</th></tr>
+    ${envVars.map(e => `<tr><td class="mono">${e.key}</td><td class="mono">${e.val}</td></tr>`).join('')}
+    </table></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3>&#x1F527; Quick Links</h3></div>
+    <div class="card-body-padded" style="display:flex;gap:12px;flex-wrap:wrap">
+      <a href="/api/excel/export/all" class="btn btn-secondary">&#x1F4E5; Export All Data</a>
+      <a href="/api/excel/template" class="btn btn-outline">&#x1F4C4; Download Template</a>
+      <a href="/api/health" target="_blank" class="btn btn-outline">&#x1F4C8; Health Check</a>
+      <a href="/" target="_blank" class="btn btn-outline">&#x1F310; API Root</a>
+    </div>
+  </div>
+  `;
+
+  res.type('html').send(layout('Settings', 'settings', content, {
+    subtitle: 'System information and configuration',
+  }));
+});
+
+// ── Update login page ──
+
+module.exports = router;

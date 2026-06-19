@@ -1,0 +1,33 @@
+{
+  "name": "labcoop-backend",
+  "version": "1.0.0",
+  "description": "LabCoop Gamified Cooperative Passbook API",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "migrate": "node db/migrate-sqlite.js",
+    "seed": "node db/seed-sqlite.js",
+    "migrate:pg": "node db/migrate.js",
+    "seed:pg": "node db/seed.js"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.10.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2",
+    "express-rate-limit": "^8.5.2",
+    "express-session": "^1.19.0",
+    "express-validator": "^7.3.2",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.11.0",
+    "multer": "^2.1.1",
+    "nodemailer": "^9.0.1",
+    "pg": "^8.11.3",
+    "uuid": "^9.0.0",
+    "xlsx": "^0.18.5"
+  }
+}

@@ -217,6 +217,63 @@ function close() {
   }
 }
 
+// ── Quiz Questions ──
+
+function getQuizQuestions(difficulty) {
+  const db = getDb();
+  if (difficulty) {
+    return db.prepare('SELECT * FROM quiz_questions WHERE difficulty_level = ? AND is_active = 1 ORDER BY category').all(difficulty);
+  }
+  return db.prepare('SELECT * FROM quiz_questions WHERE is_active = 1 ORDER BY difficulty_level, category').all();
+}
+
+function getQuizQuestion(id) {
+  return getDb().prepare('SELECT * FROM quiz_questions WHERE id = ?').get(id) || null;
+}
+
+function createQuizQuestion(fields) {
+  const { v4: uuidv4 } = require('uuid');
+  const q = {
+    id: uuidv4(),
+    question: fields.question,
+    options: JSON.stringify(fields.options),
+    correct_index: Number(fields.correct_index),
+    explanation: fields.explanation || '',
+    category: fields.category || 'General',
+    difficulty_level: fields.difficulty_level || 'easy',
+    xp_reward: Number(fields.xp_reward) || 10,
+    coin_reward: Number(fields.coin_reward) || 5,
+  };
+  getDb().prepare(`
+    INSERT INTO quiz_questions (id, question, options, correct_index, explanation, category, difficulty_level, xp_reward, coin_reward, is_active)
+    VALUES (@id, @question, @options, @correct_index, @explanation, @category, @difficulty_level, @xp_reward, @coin_reward, 1)
+  `).run(q);
+  return getQuizQuestion(q.id);
+}
+
+function updateQuizQuestion(id, fields) {
+  const allowed = ['question', 'options', 'correct_index', 'explanation', 'category', 'difficulty_level', 'xp_reward', 'coin_reward', 'is_active'];
+  const setClauses = [];
+  const values = [];
+  for (const key of allowed) {
+    if (fields[key] !== undefined) {
+      let val = fields[key];
+      if (key === 'options' && Array.isArray(val)) val = JSON.stringify(val);
+      setClauses.push(`${key} = ?`);
+      values.push(val);
+    }
+  }
+  if (setClauses.length === 0) return getQuizQuestion(id);
+  setClauses.push("updated_at = datetime('now')");
+  values.push(id);
+  getDb().prepare(`UPDATE quiz_questions SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
+  return getQuizQuestion(id);
+}
+
+function deleteQuizQuestion(id) {
+  getDb().prepare('DELETE FROM quiz_questions WHERE id = ?').run(id);
+}
+
 module.exports = {
   getDb,
   getAccount,
@@ -235,5 +292,10 @@ module.exports = {
   unlockBadges,
   addTransaction,
   getTransactions,
+  getQuizQuestions,
+  getQuizQuestion,
+  createQuizQuestion,
+  updateQuizQuestion,
+  deleteQuizQuestion,
   close,
 };

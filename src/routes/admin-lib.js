@@ -7,6 +7,7 @@ function layout(title, active, content, opts = {}) {
     { href: '/admin/badges', icon: '&#x1F3C6;', label: 'Badges', key: 'badges' },
     { href: '/admin/transactions', icon: '&#x1F4B3;', label: 'Transactions', key: 'transactions' },
     { href: '/admin/shop', icon: '&#x1F6D2;', label: 'Shop', key: 'shop' },
+    { href: '/admin/quiz', icon: '&#x1F4DD;', label: 'Quiz', key: 'quiz' },
     { href: '/admin/settings', icon: '&#x2699;', label: 'Settings', key: 'settings' },
   ];
 

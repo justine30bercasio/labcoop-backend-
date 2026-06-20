@@ -841,6 +841,186 @@ router.post('/shop/upload/:id', requireSession, shopUpload.single('image'), (req
   }
 });
 
+// ── Quiz Management ──
+
+router.get('/quiz', requireSession, (req, res) => {
+  const db = getDb();
+  const questions = db.prepare('SELECT * FROM quiz_questions ORDER BY difficulty_level, category, question').all();
+  const q = req.query;
+  const toast = q.added ? 'success:Question created.'
+    : q.updated ? 'success:Question updated.'
+    : q.deleted ? 'success:Question deleted.'
+    : q.error ? `error:${q.error}`
+    : '';
+
+  const difficultyColors = { easy: 'badge-green', medium: 'badge-amber', hard: 'badge-red', expert: 'badge-purple' };
+
+  const content = `
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-icon">&#x1F4DD;</div><div class="stat-value">${questions.length}</div><div class="stat-label">Total Questions</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F331;</div><div class="stat-value">${questions.filter(x => x.difficulty_level === 'easy').length}</div><div class="stat-label">Easy</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x26A1;</div><div class="stat-value">${questions.filter(x => x.difficulty_level === 'medium').length}</div><div class="stat-label">Medium</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F525;</div><div class="stat-value">${questions.filter(x => x.difficulty_level === 'hard').length}</div><div class="stat-label">Hard</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4A1;</div><div class="stat-value">${questions.filter(x => x.difficulty_level === 'expert').length}</div><div class="stat-label">Expert</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3>&#x1F4DD; Quiz Questions</h3>
+      <div><a href="#add-question" class="btn btn-primary btn-sm">&#x2795; New Question</a></div>
+    </div>
+    <div class="card-body">
+    <table><tr><th>Question</th><th>Category</th><th>Level</th><th>Options</th><th>Answer</th><th>XP</th><th>Coins</th><th>Active</th><th>Actions</th></tr>
+    ${questions.map(qu => {
+      const opts = JSON.parse(qu.options || '[]');
+      return `<tr>
+        <td><b>${qu.question}</b></td>
+        <td><span class="badge badge-blue">${qu.category}</span></td>
+        <td><span class="badge ${difficultyColors[qu.difficulty_level] || 'badge-gray'}">${qu.difficulty_level}</span></td>
+        <td style="font-size:12px">${opts.map((o, i) => `${i === qu.correct_index ? '<b>' : ''}${i+1}. ${o}${i === qu.correct_index ? ' ✓</b>' : ''}`).join('<br>')}</td>
+        <td class="num">${qu.correct_index + 1}</td>
+        <td class="num">${qu.xp_reward}</td>
+        <td class="num">${qu.coin_reward}</td>
+        <td>${qu.is_active ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Inactive</span>'}</td>
+        <td><div style="display:flex;gap:4px">
+          <a href="#edit-${qu.id}" class="btn btn-secondary btn-xs">&#x270F;</a>
+          <form class="inline" method="post" action="/admin/quiz/delete/${qu.id}" onsubmit="return confirm('Delete this question?')">
+            <button type="submit" class="btn btn-danger btn-xs">&#x1F5D1;</button>
+          </form>
+        </div></td>
+      </tr>`;
+    }).join('')}
+    </table></div>
+  </div>
+
+  <!-- Add Question Modal -->
+  <div id="add-question" class="modal-overlay">
+  <div class="modal" style="max-width:600px">
+  <a href="#" class="close">&times;</a>
+  <h2>&#x2795; New Question</h2>
+  <form method="post" action="/admin/quiz/create">
+    <label for="qquestion">Question</label>
+    <textarea id="qquestion" name="question" rows="2" required style="width:100%;padding:9px 12px;border:2px solid var(--border);border-radius:8px;font-size:14px;font-family:var(--font)"></textarea>
+    <div class="form-row">
+      <div><label for="qcat">Category</label>
+        <select id="qcat" name="category">
+          <option value="Savings">Savings</option><option value="Budgeting">Budgeting</option>
+          <option value="Banking">Banking</option><option value="Investing">Investing</option><option value="Math">Math</option>
+        </select></div>
+      <div><label for="qdiff">Difficulty</label>
+        <select id="qdiff" name="difficulty_level">
+          <option value="easy">Easy</option><option value="medium">Medium</option>
+          <option value="hard">Hard</option><option value="expert">Expert</option>
+        </select></div>
+    </div>
+    <label>Options (4 choices)</label>
+    <div class="form-row"><div><input type="text" name="opt0" placeholder="Option 1" required></div><div><input type="text" name="opt1" placeholder="Option 2" required></div></div>
+    <div class="form-row"><div><input type="text" name="opt2" placeholder="Option 3" required></div><div><input type="text" name="opt3" placeholder="Option 4" required></div></div>
+    <div class="form-row">
+      <div><label for="qcorrect">Correct Answer (1-4)</label><input type="number" id="qcorrect" name="correct_index" min="0" max="3" value="0" required></div>
+      <div><label for="qxp">XP Reward</label><input type="number" id="qxp" name="xp_reward" min="1" value="10"></div>
+      <div><label for="qcoin">Coin Reward</label><input type="number" id="qcoin" name="coin_reward" min="1" value="5"></div>
+    </div>
+    <label for="qexp">Explanation</label>
+    <textarea id="qexp" name="explanation" rows="2" style="width:100%;padding:9px 12px;border:2px solid var(--border);border-radius:8px;font-size:14px;font-family:var(--font)"></textarea>
+    <button type="submit" class="btn btn-primary">&#x2795; Create Question</button>
+  </form>
+  </div>
+  </div>
+
+  ${questions.map(qu => {
+    const opts = JSON.parse(qu.options || '[]');
+    return `
+  <div id="edit-${qu.id}" class="modal-overlay">
+  <div class="modal" style="max-width:600px">
+  <a href="#" class="close">&times;</a>
+  <h2>&#x270F; Edit Question</h2>
+  <form method="post" action="/admin/quiz/update/${qu.id}">
+    <label for="eqq_${qu.id}">Question</label>
+    <textarea id="eqq_${qu.id}" name="question" rows="2" required style="width:100%;padding:9px 12px;border:2px solid var(--border);border-radius:8px;font-size:14px;font-family:var(--font)">${qu.question}</textarea>
+    <div class="form-row">
+      <div><label for="eqc_${qu.id}">Category</label>
+        <select id="eqc_${qu.id}" name="category">
+          ${['Savings','Budgeting','Banking','Investing','Math'].map(c => `<option value="${c}"${c === qu.category ? ' selected' : ''}>${c}</option>`).join('')}
+        </select></div>
+      <div><label for="eqd_${qu.id}">Difficulty</label>
+        <select id="eqd_${qu.id}" name="difficulty_level">
+          ${['easy','medium','hard','expert'].map(d => `<option value="${d}"${d === qu.difficulty_level ? ' selected' : ''}>${d.charAt(0).toUpperCase() + d.slice(1)}</option>`).join('')}
+        </select></div>
+    </div>
+    <label>Options</label>
+    <div class="form-row"><div><input type="text" name="opt0" value="${opts[0] || ''}" required></div><div><input type="text" name="opt1" value="${opts[1] || ''}" required></div></div>
+    <div class="form-row"><div><input type="text" name="opt2" value="${opts[2] || ''}" required></div><div><input type="text" name="opt3" value="${opts[3] || ''}" required></div></div>
+    <div class="form-row">
+      <div><label for="eqi_${qu.id}">Correct Answer (1-4)</label><input type="number" id="eqi_${qu.id}" name="correct_index" min="0" max="3" value="${qu.correct_index}"></div>
+      <div><label for="eqx_${qu.id}">XP</label><input type="number" id="eqx_${qu.id}" name="xp_reward" min="1" value="${qu.xp_reward}"></div>
+      <div><label for="eqc2_${qu.id}">Coins</label><input type="number" id="eqc2_${qu.id}" name="coin_reward" min="1" value="${qu.coin_reward}"></div>
+    </div>
+    <div><label><input type="checkbox" name="is_active" value="1" ${qu.is_active ? 'checked' : ''}> Active</label></div>
+    <label for="eqe_${qu.id}">Explanation</label>
+    <textarea id="eqe_${qu.id}" name="explanation" rows="2" style="width:100%;padding:9px 12px;border:2px solid var(--border);border-radius:8px;font-size:14px;font-family:var(--font)">${qu.explanation || ''}</textarea>
+    <button type="submit" class="btn btn-primary">&#x270F; Update</button>
+  </form>
+  </div>
+  </div>`;
+  }).join('')}
+  `;
+
+  res.type('html').send(layout('Quiz Questions', 'quiz', content, { toast: toast || undefined }));
+});
+
+router.post('/quiz/create', requireSession, (req, res) => {
+  try {
+    const db = getDb();
+    const { question, category, difficulty_level, opt0, opt1, opt2, opt3, correct_index, xp_reward, coin_reward, explanation } = req.body;
+    if (!question || !opt0 || !opt1) return res.redirect('/admin/quiz?error=Question+and+at+least+2+options+required');
+    const options = JSON.stringify([opt0, opt1, opt2 || '', opt3 || '']);
+    const { v4: uuidv4 } = require('uuid');
+    const id = uuidv4();
+    db.prepare(`
+      INSERT INTO quiz_questions (id, question, options, correct_index, explanation, category, difficulty_level, xp_reward, coin_reward, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+    `).run(id, question.trim(), options, Number(correct_index) || 0, explanation || '', category || 'General', difficulty_level || 'easy', Number(xp_reward) || 10, Number(coin_reward) || 5);
+    res.redirect('/admin/quiz?added=ok');
+  } catch (err) {
+    res.redirect(`/admin/quiz?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/quiz/update/:id', requireSession, (req, res) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM quiz_questions WHERE id = ?').get(req.params.id);
+    if (!existing) return res.redirect('/admin/quiz?error=Question+not+found');
+    const { question, category, difficulty_level, opt0, opt1, opt2, opt3, correct_index, xp_reward, coin_reward, explanation, is_active } = req.body;
+    const options = opt0 || opt1 ? JSON.stringify([opt0 || existing.options[0], opt1 || '', opt2 || '', opt3 || '']) : existing.options;
+    db.prepare(`
+      UPDATE quiz_questions SET question=?, options=?, correct_index=?, explanation=?, category=?, difficulty_level=?, xp_reward=?, coin_reward=?, is_active=?, updated_at=datetime('now')
+      WHERE id=?
+    `).run(
+      question ?? existing.question, options, Number(correct_index ?? existing.correct_index),
+      explanation ?? existing.explanation, category ?? existing.category,
+      difficulty_level ?? existing.difficulty_level, Number(xp_reward ?? existing.xp_reward),
+      Number(coin_reward ?? existing.coin_reward), is_active === '1' ? 1 : 0,
+      req.params.id
+    );
+    res.redirect('/admin/quiz?updated=ok');
+  } catch (err) {
+    res.redirect(`/admin/quiz?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/quiz/delete/:id', requireSession, (req, res) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM quiz_questions WHERE id = ?').get(req.params.id);
+    if (!existing) return res.redirect('/admin/quiz?error=Question+not+found');
+    db.prepare('DELETE FROM quiz_questions WHERE id = ?').run(req.params.id);
+    res.redirect('/admin/quiz?deleted=ok');
+  } catch (err) {
+    res.redirect(`/admin/quiz?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
 // ── Accounts Management ──
 
 router.get('/accounts', requireSession, (req, res) => {

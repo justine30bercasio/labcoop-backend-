@@ -13,13 +13,6 @@ const bcrypt = require('bcryptjs');
 const DB_PATH = path.join(__dirname, '..', 'labcoop.db');
 
 function ensureDb() {
-  // Force fresh database to avoid stale schema issues
-  if (fs.existsSync(DB_PATH)) {
-    try { fs.unlinkSync(DB_PATH); } catch(e) { console.error('Could not delete old DB:', e.message); }
-    try { fs.unlinkSync(DB_PATH + '-wal'); } catch(e) {}
-    try { fs.unlinkSync(DB_PATH + '-shm'); } catch(e) {}
-    console.log('Deleted old database.');
-  }
   const db = new Database(DB_PATH);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');

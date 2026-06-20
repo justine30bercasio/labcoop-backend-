@@ -2378,7 +2378,7 @@ router.get('/teller', requireSession, (req, res) => {
 
   const receipt = q.receipt ? db.prepare("SELECT t.*, a.child_name, a.member_id FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id WHERE t.transaction_id = ?").get(q.receipt) : null;
 
-  const bankStyle = `
+  const bankStyle = `<style>
   .teller-bar { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 24px; margin-bottom:20px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
   .teller-bar label { font-size:12px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap; }
   .teller-bar select { flex:1; min-width:260px; padding:10px 14px; border:2px solid var(--border); border-radius:8px; font-size:14px; background:#fff; outline:none; transition:border-color 0.2s; }
@@ -2435,7 +2435,7 @@ router.get('/teller', requireSession, (req, res) => {
   .empty-state2 h3 { font-size:18px; font-weight:600; color:var(--text); margin-bottom:4px; }
   .empty-state2 p { font-size:13px; }
   @keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
-  `;
+  </style>`;
 
   const bankContent = `
   <!-- Account Search Bar -->

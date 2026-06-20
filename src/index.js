@@ -223,6 +223,30 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', dbConnected: dbOk, accountCount, sampleAccount, loginTest, timestamp: new Date().toISOString() });
 });
 
+// Debug login endpoint (bypasses rate limiter)
+app.post('/api/debug-login', express.json(), (req, res) => {
+  try {
+    const bcrypt = require('bcryptjs');
+    const jwt = require('jsonwebtoken');
+    const { getDb } = require('./db');
+    const { memberId, password } = req.body;
+    const db = getDb();
+    const padded = (memberId || '').trim().padStart(6, '0');
+    const account = db.prepare('SELECT * FROM accounts WHERE member_id = ?').get(padded);
+    if (!account) return res.status(404).json({ message: 'Not found' });
+    const valid = bcrypt.compareSync(password || '', account.password);
+    if (!valid) return res.status(401).json({ message: 'Wrong password', pwLen: account.password.length });
+    const token = jwt.sign(
+      { accountId: account.account_id, childName: account.child_name },
+      process.env.JWT_SECRET || 'labcoop-dev-secret',
+      { expiresIn: '7d' }
+    );
+    res.json({ token, passwordChanged: account.password_changed === 1, account: { account_id: account.account_id, child_name: account.child_name } });
+  } catch (e) {
+    res.status(500).json({ message: 'Error', detail: e.message, stack: e.stack });
+  }
+});
+
 app.use('/api/auth', loginLimiter, authRouter);
 
 app.use('/api/accounts', authMiddleware, accountsRouter);

@@ -2387,10 +2387,16 @@ router.get('/teller', requireSession, (req, res) => {
   const receipt = qry.receipt ? db.prepare("SELECT t.*, a.child_name, a.member_id FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id WHERE t.transaction_id = ?").get(qry.receipt) : null;
 
   const bankStyle = `<style>
-  .teller-bar { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 24px; margin-bottom:20px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
-  .teller-bar label { font-size:12px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap; }
-  .teller-bar select { flex:1; min-width:260px; padding:10px 14px; border:2px solid var(--border); border-radius:8px; font-size:14px; background:var(--card); outline:none; transition:border-color 0.2s; }
-  .teller-bar select:focus { border-color:var(--accent); }
+  .teller-bar { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 24px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
+  .teller-search { display:flex; gap:12px; }
+  .teller-search input { flex:1; padding:12px 16px; border:2px solid var(--border); border-radius:10px; font-size:15px; outline:none; background:var(--card); transition:border-color 0.2s; }
+  .teller-search input:focus { border-color:var(--accent); }
+  .search-results { margin:-8px 0 16px 0; }
+  .search-result-item { display:flex; align-items:center; gap:12px; padding:10px 16px; border-radius:8px; cursor:pointer; transition:background 0.15s; text-decoration:none; color:var(--text); }
+  .search-result-item:hover { background:var(--bg-alt); }
+  .search-result-item .sra { width:36px; height:36px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; flex-shrink:0; }
+  .search-result-item .srn { font-weight:600; font-size:14px; }
+  .search-result-item .srm { font-size:11px; color:var(--text-muted); font-family:var(--mono); }
   .teller-grid { display:grid; grid-template-columns: 1fr 1fr; gap:20px; }
   .teller-card { background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
   .teller-card-header { padding:14px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; background:#fafbfc; }
@@ -2453,11 +2459,7 @@ router.get('/teller', requireSession, (req, res) => {
   .receipt-inline .ri-divider { border-top:1px dashed #e0e0e0; margin:5px 0; }
   .receipt-inline .ri-footer { text-align:center; padding:8px; border-top:1px dashed #ccc; font-size:10px; color:#999; }
   .badge-pill { display:inline-block; padding:0 8px; border-radius:10px; font-size:10px; font-weight:600; line-height:20px; }
-  .search-box { flex:1; min-width:200px; padding:9px 14px; border:2px solid var(--border); border-radius:8px; font-size:14px; outline:none; transition:border-color 0.2s; background:var(--card); }
-  .search-box:focus { border-color:var(--accent); }
-  .btn-small { background:var(--accent); color:#fff; border:none; padding:9px 18px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; }
-  .btn-small:hover { background:var(--accent-hover); }
-  @media print { body * { visibility:hidden; } #rinline, #rinline * { visibility:visible; } #rinline { position:absolute; left:0; top:0; width:320px; margin:0; padding:20px; background:#fff; } #rinline .ri-footer button:first-child { display:none; } }
+  @media print { body * { visibility:hidden; } #rinline,#rinline * { visibility:visible; } #rinline { position:absolute; left:0; top:0; width:340px; margin:0; padding:24px; background:#fff; border:2px solid #000; } #rinline .ri-footer button:last-child { display:none; } }
   @keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
   </style>`;
 
@@ -2467,21 +2469,22 @@ router.get('/teller', requireSession, (req, res) => {
     return '<div class="receipt-inline" id="rinline"><div class="ri-header"><strong>LABCOOP PASSBOOK</strong><br><span style="font-size:10px;color:#999">Official Transaction Receipt</span></div><div class="ri-body"><div class="ri-row"><span class="ri-label">Receipt No.</span><span class="ri-value">RCP-' + (r.transaction_id || '').slice(0,8).toUpperCase() + '</span></div><div class="ri-row"><span class="ri-label">Date</span><span class="ri-value">' + (r.created_at || '').slice(0,19).replace('T',' ') + '</span></div><div class="ri-row"><span class="ri-label">Member</span><span class="ri-value">' + (r.child_name||'N/A') + ' (' + (r.member_id||'---') + ')</span></div><div class="ri-divider"></div><div class="ri-row"><span class="ri-label">Transaction</span><span class="ri-value" style="text-transform:uppercase">' + r.type.replace(/_/g,' ') + '</span></div><div class="ri-row"><span class="ri-label">Amount</span><span class="ri-value ' + (isCredit ? 'ri-credit' : 'ri-debit') + '">' + (isCredit ? '+' : '-') + ' \u20B1' + Number(r.amount).toFixed(2) + '</span></div><div class="ri-row"><span class="ri-label">Description</span><span class="ri-value">' + (r.description||'-') + '</span></div><div class="ri-divider"></div><div class="ri-row"><span class="ri-label">Balance Before</span><span class="ri-value">\u20B1' + Number(r.balance_before || 0).toFixed(2) + '</span></div><div class="ri-row"><span class="ri-label">Balance After</span><span class="ri-value">\u20B1' + Number(r.balance_after || 0).toFixed(2) + '</span></div></div><div class="ri-footer"><button onclick="window.print()" class="btn btn-outline btn-xs">\uD83D\uDDA8 Print</button> &nbsp; <button onclick="document.getElementById(\'rinline\').remove()" class="btn btn-outline btn-xs">\u2716 Close</button></div></div>';
   }
 
+  function searchResultItem(a) {
+    var initial = (a.child_name || '?')[0].toUpperCase();
+    return '<a href="/admin/teller?account=' + a.account_id + (searchQ ? '&q=' + encodeURIComponent(searchQ) : '') + '" class="search-result-item"><div class="sra">' + initial + '</div><div><div class="srn">' + a.child_name + '</div><div class="srm">' + (a.member_id || '---') + '</div></div></a>';
+  }
+
   const bankContent = bankStyle + `
   <!-- Teller Top Bar -->
   <div class="teller-bar">
-    <label>&#x1F50D; Customer</label>
-    <form method="get" action="/admin/teller" style="display:contents;flex:1">
-      <input type="text" name="q" class="search-box" placeholder="Search by name or member ID..." value="${searchQ}" oninput="if(this.value.length>0||this.value!=''){var f=this.closest('form');var sel=f.querySelector('select');if(sel)sel.selectedIndex=0;}" style="flex:1">
-      <button type="submit" class="btn-small">&#x1F50D; Search</button>
-      <select name="account" onchange="this.form.submit()" style="flex:0.8">
-        <option value="">-- Select --</option>
-        ${accounts.map(a => '<option value="' + a.account_id + '"' + (a.account_id === selectedId ? ' selected' : '') + '>' + a.child_name + ' (' + (a.member_id || '-') + ')</option>').join('')}
-      </select>
+    <form method="get" action="/admin/teller" class="teller-search">
+      <input type="text" name="q" placeholder="&#x1F50D; Search member by name or ID..." value="${searchQ}" autocomplete="off">
+      <button type="submit" style="padding:12px 24px;border:none;border-radius:10px;background:var(--accent);color:#fff;font-weight:600;cursor:pointer">Search</button>
     </form>
-    ${selectedAccount ? '<span class="badge-pill" style="background:#dcfce7;color:#166534">&#x2705; ' + selectedAccount.child_name + '</span>' : ''}
+    ${selectedAccount ? '<div style="margin-top:8px"><span class="badge-pill" style="background:#dcfce7;color:#166534">&#x2705; ' + selectedAccount.child_name + ' (' + selectedAccount.member_id + ')</span></div>' : ''}
   </div>
-  ${searchQ && !selectedAccount ? '<div style="margin:-12px 0 16px 0;font-size:12px;color:var(--text-muted)">Found ' + accounts.length + ' result(s) for "' + searchQ + '"</div>' : ''}
+  ${searchQ && !selectedId && accounts.length > 0 ? '<div class="search-results">' + accounts.map(searchResultItem).join('') + '</div>' : ''}
+  ${searchQ && !selectedId && accounts.length === 0 ? '<div class="search-results" style="padding:16px;text-align:center;color:var(--text-muted)">No members found for "' + searchQ + '"</div>' : ''}
 
   ${!selectedAccount ? `
   <div class="teller-card">

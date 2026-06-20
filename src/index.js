@@ -25,7 +25,7 @@ function ensureDb() {
   db.pragma('foreign_keys = ON');
   try {
     const migrationsDir = path.join(__dirname, '..', 'db', 'migrations');
-    const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
+    const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql') && f !== '001_init.sql' && f !== '002_add_password.sql').sort();
     for (const file of files) {
       const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
       db.exec(sql);

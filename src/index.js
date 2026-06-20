@@ -204,12 +204,16 @@ app.get('/', (req, res) => {
 app.get('/api/health', (req, res) => {
   const { getDb } = require('./db');
   let dbOk = false;
+  let accountCount = 0;
+  let sampleAccount = null;
   try {
     const db = getDb();
     db.prepare('SELECT 1').get();
     dbOk = true;
-  } catch (_) {}
-  res.json({ status: 'ok', dbConnected: dbOk, timestamp: new Date().toISOString() });
+    accountCount = db.prepare('SELECT COUNT(*) as c FROM accounts').get().c;
+    sampleAccount = db.prepare('SELECT account_id, child_name, member_id, password_changed FROM accounts LIMIT 1').get();
+  } catch (e) { console.error('health err:', e); }
+  res.json({ status: 'ok', dbConnected: dbOk, accountCount, sampleAccount, timestamp: new Date().toISOString() });
 });
 
 app.use('/api/auth', loginLimiter, authRouter);

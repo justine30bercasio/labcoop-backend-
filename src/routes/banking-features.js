@@ -1,0 +1,324 @@
+const express = require('express');
+const { body, param, query, validationResult } = require('express-validator');
+const { v4: uuidv4 } = require('uuid');
+const { store, getDb } = require('../db');
+const { generateAmortizationSchedule } = require('../services/interest');
+
+const router = express.Router();
+
+// ── Loan Amortization Schedule ──
+
+router.get('/loans/:loanId/schedule',
+  param('loanId').isString().notEmpty().trim(),
+  (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const loan = store.getLoan(req.params.loanId);
+    if (!loan) return res.status(404).json({ message: 'Loan not found' });
+
+    const schedule = generateAmortizationSchedule(
+      loan.principal, loan.interest_rate, loan.term_months, loan.interest_type
+    );
+    const payments = store.getLoanPayments(req.params.loanId);
+
+    res.json({
+      loan_id: loan.loan_id,
+      principal: loan.principal,
+      interest_rate: loan.interest_rate,
+      interest_type: loan.interest_type,
+      term_months: loan.term_months,
+      monthly_amortization: loan.monthly_amortization,
+      total_payable: loan.total_payable,
+      amount_paid: loan.amount_paid,
+      remaining_balance: loan.remaining_balance,
+      status: loan.status,
+      schedule,
+      payments_made: payments,
+    });
+  }
+);
+
+// ── Savings Account Application ──
+
+router.post('/savings/apply',
+  body('account_id').isString().notEmpty().trim(),
+  body('product_id').isString().notEmpty().trim(),
+  (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const { account_id, product_id } = req.body;
+    const account = store.getAccount(account_id);
+    if (!account) return res.status(404).json({ message: 'Account not found' });
+
+    const product = store.getSavingsProduct(product_id);
+    if (!product) return res.status(404).json({ message: 'Savings product not found' });
+
+    // Check if already has a savings product or pending application
+    if (account.savings_product_id) {
+      return res.status(400).json({ message: 'Account already has a savings product assigned' });
+    }
+    const existingApps = store.getSavingsApplications(account_id);
+    if (existingApps.some(a => a.status === 'pending')) {
+      return res.status(400).json({ message: 'You already have a pending application' });
+    }
+
+    const app = store.createSavingsApplication({ account_id, product_id });
+    res.status(201).json(app);
+  }
+);
+
+router.get('/savings/applications/:accountId',
+  param('accountId').isString().notEmpty().trim(),
+  (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const apps = store.getSavingsApplications(req.params.accountId);
+    res.json(apps);
+  }
+);
+
+// ── Account Savings Info (linked product + interest) ──
+
+router.get('/accounts/:accountId/savings',
+  param('accountId').isString().notEmpty().trim(),
+  (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const account = store.getAccount(req.params.accountId);
+    if (!account) return res.status(404).json({ message: 'Account not found' });
+
+    const interestSummary = store.getInterestSummary(req.params.accountId);
+    res.json(interestSummary);
+  }
+);
+
+// ── Standing Orders (Auto-Save) ──
+
+router.get('/standing-orders/:accountId',
+  param('accountId').isString().notEmpty().trim(),
+  (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const orders = store.getStandingOrders(req.params.accountId);
+    res.json(orders);
+  }
+);
+
+router.post('/standing-orders',
+  body('account_id').isString().notEmpty().trim(),
+  body('amount').isFloat({ min: 1 }),
+  body('frequency').isIn(['daily', 'weekly', 'monthly']),
+  body('target_goal_id').optional().isString(),
+  body('description').optional().isString().trim(),
+  (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const { account_id, amount, frequency, target_goal_id, description } = req.body;
+    const account = store.getAccount(account_id);
+    if (!account) return res.status(404).json({ message: 'Account not found' });
+
+    // Calculate next run date
+    const nextRun = new Date();
+    switch (frequency) {
+      case 'daily': nextRun.setDate(nextRun.getDate() + 1); break;
+      case 'weekly': nextRun.setDate(nextRun.getDate() + 7); break;
+      case 'monthly': nextRun.setMonth(nextRun.getMonth() + 1); break;
+    }
+
+    const order = store.createStandingOrder({
+      account_id,
+      type: 'transfer',
+      target_goal_id: target_goal_id || null,
+      amount: Number(amount),
+      frequency,
+      next_run: nextRun.toISOString(),
+      description: description || `Auto-save ${frequency}`,
+    });
+    res.status(201).json(order);
+  }
+);
+
+router.put('/standing-orders/:orderId',
+  param('orderId').isString().notEmpty().trim(),
+  body('amount').optional().isFloat({ min: 1 }),
+  body('frequency').optional().isIn(['daily', 'weekly', 'monthly']),
+  body('is_active').optional().isIn(['0', '1']),
+  body('description').optional().isString().trim(),
+  (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const existing = store.getStandingOrder(req.params.orderId);
+    if (!existing) return res.status(404).json({ message: 'Standing order not found' });
+
+    const updates = {};
+    if (req.body.amount) updates.amount = Number(req.body.amount);
+    if (req.body.frequency) {
+      updates.frequency = req.body.frequency;
+      const nextRun = new Date();
+      switch (req.body.frequency) {
+        case 'daily': nextRun.setDate(nextRun.getDate() + 1); break;
+        case 'weekly': nextRun.setDate(nextRun.getDate() + 7); break;
+        case 'monthly': nextRun.setMonth(nextRun.getMonth() + 1); break;
+      }
+      updates.next_run = nextRun.toISOString();
+    }
+    if (req.body.is_active !== undefined) updates.is_active = req.body.is_active === '1' ? 1 : 0;
+    if (req.body.description !== undefined) updates.description = req.body.description;
+
+    const updated = store.updateStandingOrder(req.params.orderId, updates);
+    res.json(updated);
+  }
+);
+
+router.delete('/standing-orders/:orderId',
+  param('orderId').isString().notEmpty().trim(),
+  (req, res) => {
+    const existing = store.getStandingOrder(req.params.orderId);
+    if (!existing) return res.status(404).json({ message: 'Standing order not found' });
+
+    store.deleteStandingOrder(req.params.orderId);
+    res.json({ message: 'Standing order deactivated' });
+  }
+);
+
+// ── Withdrawal Requests ──
+
+router.post('/withdrawals/request',
+  body('account_id').isString().notEmpty().trim(),
+  body('amount').isFloat({ min: 1 }),
+  body('reason').optional().isString().trim(),
+  (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const { account_id, amount, reason } = req.body;
+    const account = store.getAccount(account_id);
+    if (!account) return res.status(404).json({ message: 'Account not found' });
+    if (Number(account.actual_balance) < Number(amount)) {
+      return res.status(400).json({ message: 'Insufficient balance' });
+    }
+
+    const request = store.createWithdrawalRequest({
+      account_id,
+      amount: Number(amount),
+      reason: reason || '',
+    });
+    res.status(201).json(request);
+  }
+);
+
+router.get('/withdrawals/:accountId',
+  param('accountId').isString().notEmpty().trim(),
+  (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const requests = store.getWithdrawalRequests(req.params.accountId);
+    res.json(requests);
+  }
+);
+
+// ── Account Statement (formatted) ──
+
+router.get('/accounts/:accountId/statement',
+  param('accountId').isString().notEmpty().trim(),
+  (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const account = store.getAccount(req.params.accountId);
+    if (!account) return res.status(404).json({ message: 'Account not found' });
+
+    const transactions = store.getTransactions(req.params.accountId, 100, 0);
+    const goals = store.getGoals(req.params.accountId);
+    const loans = store.getLoans(req.params.accountId);
+    const interest = store.getInterestSummary(req.params.accountId);
+
+    res.json({
+      account: {
+        child_name: account.child_name,
+        member_id: account.member_id,
+        balance: account.actual_balance,
+        unallocated: account.unallocated_balance,
+        xp: account.current_xp,
+        savings_product: interest?.savings_product?.name || null,
+        interest_earned: interest?.interest_earned || 0,
+      },
+      transactions,
+      goals: goals.map(g => ({
+        title: g.title,
+        target: g.target_amount,
+        allocated: g.current_allocated,
+        progress: g.target_amount > 0 ? Math.min(g.current_allocated / g.target_amount, 1) : 0,
+        completed: !!g.is_completed,
+      })),
+      loans: loans.map(l => ({
+        loan_id: l.loan_id,
+        purpose: l.purpose,
+        principal: l.principal,
+        remaining: l.remaining_balance,
+        status: l.status,
+        monthly: l.monthly_amortization,
+      })),
+      generated_at: new Date().toISOString(),
+    });
+  }
+);
+
+// ── Interest Earned ──
+
+router.get('/accounts/:accountId/interest',
+  param('accountId').isString().notEmpty().trim(),
+  (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const summary = store.getInterestSummary(req.params.accountId);
+    if (!summary) return res.status(404).json({ message: 'Account not found' });
+
+    // Get recent interest transactions
+    const db = getDb();
+    const interestTxs = db.prepare(
+      "SELECT * FROM transactions WHERE account_id = ? AND type = 'interest' ORDER BY created_at DESC LIMIT 20"
+    ).all(req.params.accountId);
+
+    res.json({ ...summary, recent_interest: interestTxs });
+  }
+);
+
+// ── Transaction Receipt ──
+
+router.get('/transactions/:txId/receipt',
+  param('txId').isString().notEmpty().trim(),
+  (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const db = getDb();
+    const tx = db.prepare('SELECT t.*, a.child_name, a.member_id FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id WHERE t.rowid = ? OR t.id = ?').get(req.params.txId, req.params.txId);
+    if (!tx) return res.status(404).json({ message: 'Transaction not found' });
+
+    res.json({
+      receipt_id: `RCP-${String(tx.rowid || tx.id).padStart(6, '0')}`,
+      date: tx.created_at,
+      type: tx.type,
+      amount: tx.amount,
+      description: tx.description,
+      child_name: tx.child_name,
+      member_id: tx.member_id,
+      balance_before: tx.balance_before,
+      balance_after: tx.balance_after,
+      reference_type: tx.reference_type,
+      reference_id: tx.reference_id,
+    });
+  }
+);
+
+module.exports = router;

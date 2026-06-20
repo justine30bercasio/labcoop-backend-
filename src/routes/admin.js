@@ -132,196 +132,63 @@ router.get('/', requireSession, (req, res) => {
       ? `error:${q.error}`
       : '';
 
-  const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LabCoop — Dashboard</title>
-<style>
-:root {
-  --sidebar: #0d2818; --sidebar-hover: #1a3d2a; --sidebar-active: #2E7D32;
-  --sidebar-text: #94a3b8; --sidebar-text-active: #ffffff;
-  --bg: #f0f4f8; --card: #ffffff; --border: #e2e8f0;
-  --text: #1e293b; --text-muted: #64748b;
-  --accent: #2E7D32; --accent-hover: #1B5E20;
-  --green: #22c55e; --blue: #3b82f6; --amber: #f59e0b; --purple: #8b5cf6; --red: #ef4444;
-  --radius: 12px; --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-  --shadow-lg: 0 4px 24px rgba(0,0,0,0.08);
-  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
-}
-* { margin:0; padding:0; box-sizing:border-box; }
-html { font-size: 14px; }
-body { font-family: var(--font); background: var(--bg); color: var(--text); display:flex; min-height:100vh; }
+  const pendingLoans = db.prepare("SELECT COUNT(*) as c FROM loans WHERE status='pending'").get().c;
+  const pendingWithdrawals = db.prepare("SELECT COUNT(*) as c FROM withdrawal_requests WHERE status='pending'").get().c;
+  const pendingSavingsApps = db.prepare("SELECT COUNT(*) as c FROM savings_applications WHERE status='pending'").get().c;
 
-/* ── Sidebar ── */
-.sidebar { width:240px; background:var(--sidebar); display:flex; flex-direction:column; position:fixed; top:0; left:0; bottom:0; z-index:50; }
-.sidebar-brand { padding:20px 20px 16px; border-bottom:1px solid rgba(255,255,255,0.06); }
-.sidebar-brand h1 { font-size:18px; color:#fff; font-weight:700; letter-spacing:-0.3px; }
-.sidebar-brand span { font-size:11px; color:var(--sidebar-text); display:block; margin-top:2px; }
-.sidebar-nav { flex:1; padding:12px 10px; display:flex; flex-direction:column; gap:2px; }
-.sidebar-nav a { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:8px; color:var(--sidebar-text); text-decoration:none; font-size:13px; font-weight:500; transition:all 0.15s; }
-.sidebar-nav a:hover { background:var(--sidebar-hover); color:#fff; }
-.sidebar-nav a.active { background:var(--sidebar-active); color:#fff; font-weight:600; }
-.sidebar-nav a .icon { font-size:16px; width:20px; text-align:center; }
-.sidebar-nav a .badge-count { margin-left:auto; background:rgba(255,255,255,0.1); padding:1px 8px; border-radius:10px; font-size:11px; }
-.sidebar-footer { padding:12px 10px; border-top:1px solid rgba(255,255,255,0.06); }
-.sidebar-footer a { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:8px; color:var(--sidebar-text); text-decoration:none; font-size:13px; transition:all 0.15s; }
-.sidebar-footer a:hover { background:var(--sidebar-hover); color:#fff; }
-
-/* ── Main Content ── */
-.main { margin-left:240px; flex:1; padding:24px 28px; max-width:100%; }
-.page-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:12px; }
-.page-header h2 { font-size:22px; font-weight:700; color:var(--text); letter-spacing:-0.3px; }
-.page-header .meta { font-size:12px; color:var(--text-muted); }
-.header-actions { display:flex; gap:8px; flex-wrap:wrap; }
-
-.toast { position:fixed; top:20px; right:20px; padding:12px 20px; border-radius:10px; font-size:13px; font-weight:500; z-index:999; box-shadow:var(--shadow-lg); animation:slideIn 0.3s ease; max-width:400px; }
-.toast.success { background:#e8f5e9; color:#1B5E20; border:1px solid #a5d6a7; }
-.toast.error { background:#fce4ec; color:#b71c1c; border:1px solid #ef9a9a; }
-@keyframes slideIn { from { transform:translateX(100%); opacity:0; } to { transform:translateX(0); opacity:1; } }
-
-/* ── Stats Grid ── */
-.stats-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:14px; margin-bottom:24px; }
-.stat-card { background:var(--card); border-radius:var(--radius); padding:16px 18px; box-shadow:var(--shadow); border:1px solid var(--border); transition:transform 0.15s, box-shadow 0.15s; cursor:default; }
-.stat-card:hover { transform:translateY(-2px); box-shadow:var(--shadow-lg); }
-.stat-card .stat-icon { font-size:20px; margin-bottom:6px; }
-.stat-card .stat-value { font-size:24px; font-weight:700; letter-spacing:-0.5px; color:var(--text); }
-.stat-card .stat-label { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px; }
-.stat-card .stat-sub { font-size:11px; color:var(--text-muted); margin-top:4px; }
-.stat-card .stat-bar { margin-top:8px; height:3px; background:#e2e8f0; border-radius:2px; overflow:hidden; }
-.stat-card .stat-bar-fill { height:100%; border-radius:2px; transition:width 0.6s ease; }
-
-/* ── Upload Card ── */
-.upload-card { background:var(--card); border-radius:var(--radius); padding:20px; margin-bottom:24px; border:2px dashed #a5d6a7; box-shadow:var(--shadow); }
-.upload-card h3 { font-size:15px; color:var(--accent); margin-bottom:12px; display:flex; align-items:center; gap:8px; }
-.upload-card form { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
-.upload-card input[type=file] { font-size:13px; flex:1; min-width:200px; padding:6px 0; }
-
-/* ── Buttons ── */
-.btn { display:inline-flex; align-items:center; gap:6px; padding:8px 18px; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; text-decoration:none; transition:all 0.15s; white-space:nowrap; }
-.btn-primary { background:var(--accent); color:#fff; }
-.btn-primary:hover { background:var(--accent-hover); }
-.btn-secondary { background:#e8f5e9; color:var(--accent); }
-.btn-secondary:hover { background:#c8e6c9; }
-.btn-outline { background:transparent; color:var(--text); border:1px solid var(--border); }
-.btn-outline:hover { background:var(--bg); }
-.btn-danger { background:var(--red); color:#fff; }
-.btn-danger:hover { background:#dc2626; }
-.btn-amber { background:var(--amber); color:#fff; }
-.btn-amber:hover { background:#d97706; }
-.btn-xs { padding:4px 10px; font-size:11px; }
-
-/* ── Cards ── */
-.card { background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); border:1px solid var(--border); margin-bottom:20px; overflow:hidden; }
-.card-header { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid var(--border); }
-.card-header h3 { font-size:15px; font-weight:600; display:flex; align-items:center; gap:8px; }
-.card-header .count { font-size:12px; font-weight:400; color:var(--text-muted); }
-.card-body { overflow-x:auto; }
-
-/* ── Tables ── */
-table { width:100%; border-collapse:collapse; }
-th { background:#f8fafc; color:var(--text-muted); padding:10px 14px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; font-weight:600; white-space:nowrap; border-bottom:1px solid var(--border); }
-td { padding:9px 14px; border-bottom:1px solid #f1f5f9; font-size:13px; }
-tr:last-child td { border-bottom:none; }
-tr:hover td { background:#f8fafc; }
-td.mono { font-family:var(--mono); font-size:12px; }
-td.num { text-align:right; font-variant-numeric:tabular-nums; }
-
-.badge { display:inline-flex; align-items:center; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:600; }
-.badge-green { background:#e8f5e9; color:var(--accent); }
-.badge-red { background:#fce4ec; color:var(--red); }
-.badge-purple { background:#f3e5f5; color:var(--purple); }
-.badge-amber { background:#fff8e1; color:#F57F17; }
-.badge-blue { background:#e3f2fd; color:var(--blue); }
-.badge-gray { background:#f1f5f9; color:var(--text-muted); }
-
-.bar { display:inline-flex; align-items:center; gap:8px; }
-.bar-track { background:#e2e8f0; border-radius:4px; width:90px; height:10px; overflow:hidden; display:inline-block; }
-.bar-fill { height:100%; border-radius:4px; transition:width 0.4s ease; }
-.bar-fill.green { background:var(--accent); }
-.bar-fill.blue { background:var(--blue); }
-.bar-fill.amber { background:var(--amber); }
-
-details.scroll-table { margin-bottom:0; }
-details.scroll-table summary { cursor:pointer; padding:12px 18px; font-weight:600; font-size:13px; color:var(--accent); user-select:none; border-bottom:1px solid var(--border); transition:background 0.15s; }
-details.scroll-table summary:hover { background:#f8fafc; }
-details.scroll-table .scroll-wrap { max-height:350px; overflow-y:auto; }
-details.scroll-table[open] .scroll-wrap { max-height:none; }
-
-/* ── Animations ── */
-@keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
-.stat-card { animation:fadeUp 0.4s ease both; }
-.stat-card:nth-child(1) { animation-delay:0.02s; }
-.stat-card:nth-child(2) { animation-delay:0.06s; }
-.stat-card:nth-child(3) { animation-delay:0.10s; }
-.stat-card:nth-child(4) { animation-delay:0.14s; }
-.stat-card:nth-child(5) { animation-delay:0.18s; }
-.stat-card:nth-child(6) { animation-delay:0.22s; }
-.stat-card:nth-child(7) { animation-delay:0.26s; }
-.stat-card:nth-child(8) { animation-delay:0.30s; }
-
-/* ── Responsive ── */
-@media(max-width:768px) {
-  .sidebar { width:60px; }
-  .sidebar-brand h1, .sidebar-brand span, .sidebar-nav a span, .sidebar-footer a span { display:none; }
-  .sidebar-nav a { justify-content:center; padding:10px; }
-  .sidebar-footer a { justify-content:center; padding:10px; }
-  .sidebar-nav a .badge-count { display:none; }
-  .main { margin-left:60px; padding:16px; }
-  .stats-grid { grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:10px; }
-  .stat-card .stat-value { font-size:20px; }
-}
-</style>
-</head>
-<body>
-
-<!-- Sidebar -->
-<div class="sidebar">
-  <div class="sidebar-brand">
-    <h1>&#x1F3E6; LabCoop</h1>
-    <span>Admin Dashboard</span>
-  </div>
-  <div class="sidebar-nav">
-    <a href="/admin" class="active"><span class="icon">&#x1F4CA;</span> <span>Dashboard</span><span class="badge-count">${accounts.length}</span></a>
-    <a href="/admin/accounts"><span class="icon">&#x1F465;</span> <span>Accounts</span></a>
-    <a href="/admin/goals"><span class="icon">&#x1F3AF;</span> <span>Goals</span><span class="badge-count">${goals.length}</span></a>
-    <a href="/admin/badges"><span class="icon">&#x1F3C6;</span> <span>Badges</span><span class="badge-count">${badges.length}</span></a>
-    <a href="/admin/transactions"><span class="icon">&#x1F4B3;</span> <span>Transactions</span><span class="badge-count">${transactions.length}</span></a>
-    <a href="/admin/shop"><span class="icon">&#x1F6D2;</span> <span>Shop</span><span class="badge-count">${itemsCount}</span></a>
-    <a href="/admin/settings"><span class="icon">&#x2699;</span> <span>Settings</span></a>
-  </div>
-  <div class="sidebar-footer">
-    <a href="/admin/logout"><span class="icon">&#x1F6AA;</span> <span>Logout</span></a>
-  </div>
-</div>
-
-<!-- Main -->
-<div class="main">
-  <div class="page-header">
-    <div>
-      <h2>&#x1F4CA; Dashboard Overview</h2>
-      <div class="meta">labcoop.db &middot; ${(dbSize / 1024).toFixed(1)} KB &middot; ${db.pragma('journal_mode')[0]?.journal_mode || 'N/A'} mode &middot; <span id="liveTime"></span></div>
-    </div>
-    <div class="header-actions">
-      <a href="/api/excel/export/all" class="btn btn-secondary">&#x1F4E5; Export All</a>
-      <a href="/api/excel/template" class="btn btn-outline">&#x1F4C4; Template</a>
-    </div>
-  </div>
+  const content = `
+  <style>
+  .dash-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; }
+  .dash-grid-full { grid-column:1/-1; }
+  .section-title { font-size:13px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.8px; margin-bottom:12px; display:flex; align-items:center; gap:6px; }
+  .quick-actions { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:8px; margin-bottom:20px; }
+  .quick-action-btn { display:flex; flex-direction:column; align-items:center; gap:6px; padding:14px 8px; background:var(--card); border:1px solid var(--border); border-radius:var(--radius); text-decoration:none; color:var(--text); font-size:11px; font-weight:500; transition:all 0.15s; }
+  .quick-action-btn:hover { border-color:var(--accent); transform:translateY(-2px); box-shadow:var(--shadow-lg); }
+  .quick-action-btn .qa-icon { font-size:22px; }
+  .quick-action-btn .qa-label { text-align:center; }
+  .quick-action-btn .qa-badge { background:var(--red); color:#fff; font-size:10px; padding:1px 6px; border-radius:10px; margin-top:-4px; }
+  .pending-alert { background:#fff8e1; border:1px solid #ffe082; border-radius:var(--radius); padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .pending-alert .pa-icon { font-size:18px; }
+  .pending-alert .pa-text { font-size:13px; color:#F57F17; flex:1; }
+  .pending-alert .pa-link { font-size:12px; }
+  </style>
 
   ${banner ? `<div class="toast ${banner.startsWith('error:') ? 'error' : 'success'}">${banner.startsWith('error:') ? '&#x274C; ' + banner.slice(6) : '&#x2705; ' + banner.slice(8)}</div>` : ''}
 
+  <!-- Pending Actions Alert -->
+  ${(pendingLoans + pendingWithdrawals + pendingSavingsApps) > 0 ? `
+  <div class="pending-alert">
+    <span class="pa-icon">&#x26A0;</span>
+    <span class="pa-text">${pendingLoans} pending loan${pendingLoans !== 1 ? 's' : ''}, ${pendingWithdrawals} withdrawal request${pendingWithdrawals !== 1 ? 's' : ''}, ${pendingSavingsApps} savings application${pendingSavingsApps !== 1 ? 's' : ''}</span>
+    ${pendingLoans > 0 ? `<a href="/admin/loans?status=pending" class="btn btn-amber btn-xs">Review Loans</a>` : ''}
+    ${pendingWithdrawals > 0 ? `<a href="/admin/withdrawal-requests?status=pending" class="btn btn-amber btn-xs">Review Withdrawals</a>` : ''}
+    ${pendingSavingsApps > 0 ? `<a href="/admin/savings-applications?status=pending" class="btn btn-amber btn-xs">Review Apps</a>` : ''}
+  </div>` : ''}
+
+  <!-- Quick Actions -->
+  <div class="section-title">&#x26A1; Quick Actions</div>
+  <div class="quick-actions">
+    <a href="/admin/teller" class="quick-action-btn"><span class="qa-icon">&#x1F3E6;</span><span class="qa-label">Teller Counter</span></a>
+    <a href="/admin/accounts" class="quick-action-btn"><span class="qa-icon">&#x2795;</span><span class="qa-label">New Account</span></a>
+    <a href="/admin/loans" class="quick-action-btn"><span class="qa-icon">&#x1F4B0;</span><span class="qa-label">Loans ${pendingLoans > 0 ? `<span class="qa-badge">${pendingLoans}</span>` : ''}</span></a>
+    <a href="/admin/withdrawal-requests" class="quick-action-btn"><span class="qa-icon">&#x1F4B8;</span><span class="qa-label">Withdrawals ${pendingWithdrawals > 0 ? `<span class="qa-badge">${pendingWithdrawals}</span>` : ''}</span></a>
+    <a href="/admin/savings-applications" class="quick-action-btn"><span class="qa-icon">&#x1F4B1;</span><span class="qa-label">Savings Apps ${pendingSavingsApps > 0 ? `<span class="qa-badge">${pendingSavingsApps}</span>` : ''}</span></a>
+    <a href="/admin/loan-products" class="quick-action-btn"><span class="qa-icon">&#x1F3ED;</span><span class="qa-label">Loan Products</span></a>
+    <a href="/admin/shop" class="quick-action-btn"><span class="qa-icon">&#x1F6D2;</span><span class="qa-label">Shop</span></a>
+    <a href="/api/excel/export/all" class="quick-action-btn"><span class="qa-icon">&#x1F4E5;</span><span class="qa-label">Export Data</span></a>
+  </div>
+
   <!-- Stats -->
+  <div class="section-title">&#x1F4CA; Overview</div>
   <div class="stats-grid">
     <div class="stat-card"><div class="stat-icon">&#x1F464;</div><div class="stat-value" data-count="${accounts.length}">0</div><div class="stat-label">Accounts</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F4B0;</div><div class="stat-value" data-count="${Number(totalBalance).toFixed(0)}">0</div><div class="stat-label">Total Balance</div><div class="stat-sub">&#x20B1; PHP</div></div>
+    <div class="stat-card" style="border-left:3px solid var(--accent)"><div class="stat-icon">&#x1F4B0;</div><div class="stat-value">&#x20B1;${Number(totalBalance).toFixed(0)}</div><div class="stat-label">Total Balance</div><div class="stat-sub">&#x20B1;${(Number(totalBalance) / (accounts.length || 1)).toFixed(0)} avg</div></div>
     <div class="stat-card"><div class="stat-icon">&#x2728;</div><div class="stat-value" data-count="${totalXp}">0</div><div class="stat-label">Total XP</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F3AF;</div><div class="stat-value" data-count="${goals.length}">0</div><div class="stat-label">Goal Jars</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x2705;</div><div class="stat-value">${completedGoals}<span style="font-size:14px;color:var(--text-muted)">/${goals.length}</span></div><div class="stat-label">Goals Done</div><div class="stat-bar"><div class="stat-bar-fill" style="width:${goalRate}%;background:var(--accent)"></div></div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F3C6;</div><div class="stat-value">${unlockedBadges}<span style="font-size:14px;color:var(--text-muted)">/${totalBadges}</span></div><div class="stat-label">Badges Unlocked</div><div class="stat-bar"><div class="stat-bar-fill" style="width:${totalBadges > 0 ? (unlockedBadges/totalBadges*100).toFixed(0) : 0}%;background:var(--purple)"></div></div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F4B3;</div><div class="stat-value" data-count="${transactions.length}">0</div><div class="stat-label">Transactions</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F3AF;</div><div class="stat-value" data-count="${goals.length}">0</div><div class="stat-label">Goal Jars</div><div class="stat-sub">${completedGoals} completed</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F3C6;</div><div class="stat-value">${unlockedBadges}<span style="font-size:14px;color:var(--text-muted)">/${totalBadges}</span></div><div class="stat-label">Badges</div><div class="stat-bar"><div class="stat-bar-fill" style="width:${totalBadges > 0 ? (unlockedBadges/totalBadges*100).toFixed(0) : 0}%;background:var(--purple)"></div></div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4B3;</div><div class="stat-value" data-count="${transactions.length}">0</div><div class="stat-label">Transactions Today</div></div>
     <div class="stat-card"><div class="stat-icon">&#x1F91D;</div><div class="stat-value" data-count="${coopGoals.length}">0</div><div class="stat-label">Co-op Goals</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4CA;</div><div class="stat-value">${(dbSize / 1024).toFixed(1)}<span style="font-size:14px;color:var(--text-muted)">KB</span></div><div class="stat-label">Database Size</div></div>
   </div>
 
   <!-- Excel Import -->
@@ -329,153 +196,93 @@ details.scroll-table[open] .scroll-wrap { max-height:none; }
     <h3>&#x1F4C4; Excel Import</h3>
     <form method="post" enctype="multipart/form-data">
       <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
-      <button type="submit" formaction="/admin/upload" class="btn btn-secondary">&#x1F4C3; Parse Only</button>
-      <button type="submit" formaction="/admin/upload-and-seed" class="btn btn-primary">&#x1F4E5; Parse &amp; Seed</button>
+      <button type="submit" formaction="/admin/upload" class="btn btn-secondary btn-sm">&#x1F4C3; Parse Only</button>
+      <button type="submit" formaction="/admin/upload-and-seed" class="btn btn-primary btn-sm">&#x1F4E5; Parse &amp; Seed</button>
     </form>
   </div>
 
-  <!-- Accounts -->
-  <div class="card">
-    <div class="card-header"><h3>&#x1F464; Accounts</h3><span class="count">${accounts.length} total</span></div>
-    <div class="card-body">
-    <table><tr><th>Member ID</th><th>Name</th><th>Balance</th><th>Unallocated</th><th>XP</th><th>Password</th><th>Phone</th><th>Created</th></tr>
-    ${accounts.map(a => `<tr>
-      <td class="mono">${a.member_id || '-'}</td>
-      <td><b>${a.child_name}</b></td>
-      <td class="num">&#x20B1;${Number(a.actual_balance).toFixed(2)}</td>
-      <td class="num">&#x20B1;${Number(a.unallocated_balance).toFixed(2)}</td>
-      <td class="num">${a.current_xp} <span class="badge badge-purple">XP</span></td>
-      <td><span class="badge ${a.password_changed ? 'badge-green' : 'badge-red'}">${a.password_changed ? 'Changed' : 'Default'}</span></td>
-      <td>${a.parent_phone || '-'}</td>
-      <td class="mono">${(a.created_at || '').slice(0, 10)}</td>
-    </tr>`).join('')}
-    </table></div>
-  </div>
+  <!-- Two-column layout for tables -->
+  <div class="dash-grid">
+    <!-- Accounts -->
+    <div class="card">
+      <div class="card-header"><h3>&#x1F464; Accounts</h3><span class="count">${accounts.length} total</span><a href="/admin/accounts" class="btn btn-outline btn-xs">Manage</a></div>
+      <div class="card-body" style="max-height:280px;overflow-y:auto">
+      <table><tr><th>Name</th><th>Balance</th><th>XP</th></tr>
+      ${accounts.length === 0 ? '<tr><td colspan="3" style="text-align:center;padding:16px;color:var(--text-muted)">No accounts</td></tr>' : accounts.map(a => `<tr>
+        <td><b>${a.child_name}</b></td>
+        <td class="num">&#x20B1;${Number(a.actual_balance).toFixed(2)}</td>
+        <td class="num">${a.current_xp}</td>
+      </tr>`).join('')}
+      </table></div>
+    </div>
 
-  <!-- Goals -->
-  <div class="card">
-    <div class="card-header"><h3>&#x1F3AF; Goal Jars</h3><span class="count">${goals.length} total</span></div>
-    <div class="card-body">
-    <table><tr><th>Child</th><th>Title</th><th>Target</th><th>Allocated</th><th>Progress</th><th>Icon</th><th>Status</th></tr>
-    ${goals.map(g => {
-      const pct = g.target_amount > 0 ? Math.min((g.current_allocated / g.target_amount) * 100, 100) : 0;
-      return `<tr>
-      <td>${g.child_name || '-'}</td>
-      <td>${g.title}</td>
-      <td class="num">&#x20B1;${Number(g.target_amount).toFixed(2)}</td>
-      <td class="num">&#x20B1;${Number(g.current_allocated).toFixed(2)}</td>
-      <td><span class="bar"><span class="bar-track"><span class="bar-fill green" style="width:${pct}%"></span></span>${pct.toFixed(0)}%</span></td>
-      <td>${g.category_icon}</td>
-      <td><span class="badge ${g.is_completed ? 'badge-green' : pct > 0 ? 'badge-blue' : 'badge-gray'}">${g.is_completed ? 'Done' : pct > 0 ? 'In Progress' : 'Not Started'}</span></td>
-    </tr>`;}).join('')}
-    </table></div>
-  </div>
+    <!-- Recent Transactions -->
+    <div class="card">
+      <div class="card-header"><h3>&#x1F4B3; Recent Transactions</h3><span class="count">last ${Math.min(transactions.length, 10)}</span><a href="/admin/transactions" class="btn btn-outline btn-xs">View All</a></div>
+      <div class="card-body" style="max-height:280px;overflow-y:auto">
+      ${transactions.length === 0 ? '<div style="padding:24px;text-align:center;color:var(--text-muted)">No transactions</div>' : `<table><tr><th>Child</th><th>Type</th><th>Amount</th></tr>
+      ${transactions.slice(0, 10).map(t => `<tr>
+        <td>${t.child_name || '-'}</td>
+        <td><span class="badge ${t.type === 'deposit' ? 'badge-green' : t.type === 'withdrawal' ? 'badge-red' : t.type === 'loan_disbursement' ? 'badge-amber' : t.type === 'loan_payment' ? 'badge-blue' : t.type === 'interest_credit' || t.type === 'interest' ? 'badge-purple' : t.type === 'allocation' ? 'badge-purple' : 'badge-gray'}">${t.type}</span></td>
+        <td class="num" style="color:${t.type === 'deposit' ? 'var(--accent)' : t.type === 'withdrawal' ? 'var(--red)' : 'var(--text)'}">${['deposit','loan_disbursement','interest_credit','interest'].includes(t.type) ? '+' : '-'}&#x20B1;${Number(t.amount).toFixed(2)}</td>
+      </tr>`).join('')}
+      </table>`}
+      </div>
+    </div>
 
-  <!-- Badges -->
-  <div class="card">
-    <div class="card-header"><h3>&#x1F3C6; Badges</h3><span class="count">${unlockedBadges}/${totalBadges} unlocked</span></div>
-    <div class="card-body">
-    <table><tr><th>Child</th><th>Name</th><th>Required XP</th><th>Status</th><th>Unlocked At</th></tr>
-    ${badges.map(b => `<tr>
-      <td>${b.child_name || '-'}</td>
-      <td>${b.name}</td>
-      <td class="num">${b.required_xp} <span class="badge badge-purple">XP</span></td>
-      <td><span class="badge ${b.is_unlocked ? 'badge-green' : 'badge-red'}">${b.is_unlocked ? 'Unlocked' : 'Locked'}</span></td>
-      <td class="mono">${b.unlocked_at ? b.unlocked_at.slice(0, 19).replace('T', ' ') : '-'}</td>
-    </tr>`).join('')}
-    </table></div>
-  </div>
+    <!-- Goals -->
+    <div class="card">
+      <div class="card-header"><h3>&#x1F3AF; Goals</h3><span class="count">${completedGoals}/${goals.length} done</span><a href="/admin/goals" class="btn btn-outline btn-xs">Manage</a></div>
+      <div class="card-body" style="max-height:280px;overflow-y:auto">
+      ${goals.length === 0 ? '<div style="padding:24px;text-align:center;color:var(--text-muted)">No goals</div>' : `<table><tr><th>Child</th><th>Goal</th><th>Progress</th></tr>
+      ${goals.map(g => {
+        const pct = g.target_amount > 0 ? Math.min((g.current_allocated / g.target_amount) * 100, 100) : 0;
+        return `<tr>
+        <td>${g.child_name || '-'}</td>
+        <td>${g.title}</td>
+        <td><span class="bar"><span class="bar-track"><span class="bar-fill green" style="width:${pct}%"></span></span>${pct.toFixed(0)}%</span></td>
+      </tr>`;}).join('')}
+      </table>`}
+      </div>
+    </div>
 
-  <!-- Co-op Goals -->
-  <div class="card">
-    <div class="card-header"><h3>&#x1F91D; Co-op Goals</h3><span class="count">${completedCoopGoals}/${coopGoals.length} completed</span></div>
-    <div class="card-body">
-    ${coopGoals.length === 0 ? '<div style="padding:24px;text-align:center;color:var(--text-muted)">No co-op goals yet.</div>' : `<table><tr><th>Title</th><th>Target</th><th>Raised</th><th>Progress</th><th>Icon</th><th>Status</th></tr>
-    ${coopGoals.map(g => {
-      const raised = Number(g.contributed || 0);
-      const pct = g.target_amount > 0 ? Math.min((raised / g.target_amount) * 100, 100) : 0;
-      return `<tr>
-      <td><b>${g.title}</b></td>
-      <td class="num">&#x20B1;${Number(g.target_amount).toFixed(2)}</td>
-      <td class="num">&#x20B1;${raised.toFixed(2)}</td>
-      <td><span class="bar"><span class="bar-track"><span class="bar-fill blue" style="width:${pct}%"></span></span>${pct.toFixed(0)}%</span></td>
-      <td>${g.category_icon}</td>
-      <td><span class="badge ${g.is_completed ? 'badge-green' : pct > 0 ? 'badge-blue' : 'badge-gray'}">${g.is_completed ? 'Done' : pct > 0 ? 'Active' : 'New'}</span></td>
-    </tr>`;}).join('')}
-    </table>`}
+    <!-- Badges -->
+    <div class="card">
+      <div class="card-header"><h3>&#x1F3C6; Badges</h3><span class="count">${unlockedBadges}/${totalBadges} unlocked</span><a href="/admin/badges" class="btn btn-outline btn-xs">Manage</a></div>
+      <div class="card-body" style="max-height:280px;overflow-y:auto">
+      ${badges.length === 0 ? '<div style="padding:24px;text-align:center;color:var(--text-muted)">No badges</div>' : `<table><tr><th>Child</th><th>Badge</th><th>Status</th></tr>
+      ${badges.map(b => `<tr>
+        <td>${b.child_name || '-'}</td>
+        <td>${b.name}</td>
+        <td><span class="badge ${b.is_unlocked ? 'badge-green' : 'badge-red'}">${b.is_unlocked ? 'Unlocked' : 'Locked'}</span></td>
+      </tr>`).join('')}
+      </table>`}
+      </div>
     </div>
   </div>
 
-  <!-- Co-op Contributions -->
-  <div class="card">
-    <div class="card-header"><h3>&#x1F91D; Co-op Contributions</h3><span class="count">last 50</span></div>
-    <div class="card-body">
-    ${coopContribs.length === 0 ? '<div style="padding:24px;text-align:center;color:var(--text-muted)">No contributions yet.</div>' : `<table><tr><th>Child</th><th>Goal ID</th><th>Amount</th><th>Date</th></tr>
-    ${coopContribs.map(c => `<tr>
-      <td>${c.child_name || '-'}</td>
-      <td class="mono">${(c.goal_id || '').slice(0, 12)}...</td>
-      <td class="num">&#x20B1;${Number(c.amount).toFixed(2)}</td>
-      <td class="mono">${(c.created_at || '').slice(0, 19).replace('T', ' ')}</td>
-    </tr>`).join('')}
-    </table>`}
+  <div class="dash-grid-full">
+    <!-- Co-op Goals -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-header"><h3>&#x1F91D; Co-op Goals</h3><span class="count">${completedCoopGoals}/${coopGoals.length} completed</span></div>
+      <div class="card-body">
+      ${coopGoals.length === 0 ? '<div style="padding:24px;text-align:center;color:var(--text-muted)">No co-op goals yet.</div>' : `<table><tr><th>Title</th><th>Target</th><th>Raised</th><th>Progress</th><th>Status</th></tr>
+      ${coopGoals.map(g => {
+        const raised = Number(g.contributed || 0);
+        const pct = g.target_amount > 0 ? Math.min((raised / g.target_amount) * 100, 100) : 0;
+        return `<tr><td><b>${g.title}</b></td><td class="num">&#x20B1;${Number(g.target_amount).toFixed(2)}</td><td class="num">&#x20B1;${raised.toFixed(2)}</td><td><span class="bar"><span class="bar-track"><span class="bar-fill blue" style="width:${pct}%"></span></span>${pct.toFixed(0)}%</span></td><td><span class="badge ${g.is_completed ? 'badge-green' : pct > 0 ? 'badge-blue' : 'badge-gray'}">${g.is_completed ? 'Done' : pct > 0 ? 'Active' : 'New'}</span></td></tr>`;
+      }).join('')}
+      </table>`}
+      </div>
     </div>
   </div>
+  `;
 
-  <!-- Transactions -->
-  <div class="card">
-    <details class="scroll-table">
-    <summary>&#x1F4B3; Transactions &mdash; last ${transactions.length}</summary>
-    <div class="scroll-wrap">
-    <table><tr><th>Child</th><th>Type</th><th>Amount</th><th>Description</th><th>Date</th></tr>
-    ${transactions.length === 0 ? '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">No transactions</td></tr>' : transactions.map(t => `<tr>
-      <td>${t.child_name || '-'}</td>
-      <td><span class="badge ${t.type === 'deposit' ? 'badge-green' : t.type === 'allocation' ? 'badge-purple' : 'badge-amber'}">${t.type}</span></td>
-      <td class="num">&#x20B1;${Number(t.amount).toFixed(2)}</td>
-      <td>${t.description || '-'}</td>
-      <td class="mono">${(t.created_at || '').slice(0, 19).replace('T', ' ')}</td>
-    </tr>`).join('')}
-    </table>
-    </div>
-    </details>
-  </div>
-</div>
-
-<script>
-// Animated counters
-document.querySelectorAll('[data-count]').forEach(el => {
-  const target = parseInt(el.dataset.count, 10);
-  if (isNaN(target)) return;
-  const duration = 800;
-  const start = performance.now();
-  function update(now) {
-    const progress = Math.min((now - start) / duration, 1);
-    const eased = 1 - Math.pow(1 - progress, 3);
-    el.textContent = Math.round(eased * target);
-    if (progress < 1) requestAnimationFrame(update);
-  }
-  requestAnimationFrame(update);
-});
-
-// Live clock
-(function clock() {
-  const now = new Date();
-  document.getElementById('liveTime').textContent = now.toLocaleString();
-  setTimeout(clock, 1000);
-})();
-
-// Auto-dismiss toast
-const toast = document.querySelector('.toast');
-if (toast) setTimeout(() => { toast.style.opacity='0'; toast.style.transition='opacity 0.5s'; setTimeout(()=>toast.remove(),500); }, 4000);
-
-// Sidebar active state
-document.querySelectorAll('.sidebar-nav a').forEach(a => {
-  if (a.href === location.href || a.href === location.href.split('?')[0]) a.classList.add('active');
-});
-</script>
-</body>
-</html>`;
-
-  res.type('html').send(html);
+  res.type('html').send(layout('Dashboard', 'dashboard', content, {
+    subtitle: `${(dbSize / 1024).toFixed(1)} KB &middot; ${new Date().toLocaleString()}`,
+    counts: { dashboard: accounts.length },
+    headerActions: '<a href="/api/excel/export/all" class="btn btn-secondary btn-sm">&#x1F4E5; Export All</a><a href="/api/excel/template" class="btn btn-outline btn-sm">&#x1F4C4; Template</a>',
+  }));
 });
 
 router.get('/shop', requireSession, (req, res) => {
@@ -614,11 +421,18 @@ td.mono { font-family:var(--mono); font-size:12px; }
   </div>
   <div class="sidebar-nav">
     <a href="/admin"><span class="icon">&#x1F4CA;</span> <span>Dashboard</span></a>
+    <a href="/admin/teller"><span class="icon">&#x1F3E6;</span> <span>Teller</span></a>
     <a href="/admin/accounts"><span class="icon">&#x1F465;</span> <span>Accounts</span></a>
+    <a href="/admin/loans"><span class="icon">&#x1F4B0;</span> <span>Loans</span></a>
+    <a href="/admin/withdrawal-requests"><span class="icon">&#x1F4B8;</span> <span>Withdrawals</span></a>
+    <a href="/admin/savings-applications"><span class="icon">&#x1F4B1;</span> <span>Savings Apps</span></a>
+    <a href="/admin/loan-products"><span class="icon">&#x1F3ED;</span> <span>Loan Products</span></a>
+    <a href="/admin/savings-products"><span class="icon">&#x1F4E6;</span> <span>Savings Products</span></a>
     <a href="/admin/goals"><span class="icon">&#x1F3AF;</span> <span>Goals</span></a>
     <a href="/admin/badges"><span class="icon">&#x1F3C6;</span> <span>Badges</span></a>
     <a href="/admin/transactions"><span class="icon">&#x1F4B3;</span> <span>Transactions</span></a>
     <a href="/admin/shop" class="active"><span class="icon">&#x1F6D2;</span> <span>Shop</span><span class="badge-count">${items.length}</span></a>
+    <a href="/admin/quiz"><span class="icon">&#x1F4DD;</span> <span>Quiz</span></a>
     <a href="/admin/settings"><span class="icon">&#x2699;</span> <span>Settings</span></a>
   </div>
   <div class="sidebar-footer">
@@ -1031,6 +845,7 @@ router.get('/accounts', requireSession, (req, res) => {
     : q.updated ? 'success:Account updated.'
     : q.deleted ? 'success:Account deleted.'
     : q.deposited ? 'success:Deposit added.'
+    : q.withdrawn ? 'success:Withdrawal completed.'
     : q.error ? `error:${q.error}`
     : '';
 
@@ -1059,6 +874,7 @@ router.get('/accounts', requireSession, (req, res) => {
       <td><div style="display:flex;gap:4px">
         <a href="#edit-${a.account_id}" class="btn btn-secondary btn-xs">&#x270F;</a>
         <a href="#deposit-${a.account_id}" class="btn btn-amber btn-xs">&#x1F4B5;</a>
+        <a href="#withdraw-${a.account_id}" class="btn btn-outline btn-xs">&#x1F4B8;</a>
         <form class="inline" method="post" action="/admin/accounts/delete/${a.account_id}" onsubmit="return confirm('Delete ${a.child_name}?')">
           <button type="submit" class="btn btn-danger btn-xs">&#x1F5D1;</button>
         </form>
@@ -1117,6 +933,21 @@ router.get('/accounts', requireSession, (req, res) => {
     <label for="ddesc_${a.account_id}">Description</label>
     <input type="text" id="ddesc_${a.account_id}" name="description" placeholder="e.g. Allowance" value="Admin deposit">
     <button type="submit" class="btn btn-amber">&#x1F4B5; Deposit</button>
+  </form>
+  </div>
+  </div>
+
+  <div id="withdraw-${a.account_id}" class="modal-overlay">
+  <div class="modal">
+  <a href="#" class="close">&times;</a>
+  <h2>&#x1F4B8; Withdraw from ${a.child_name}</h2>
+  <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Current balance: &#x20B1;${Number(a.actual_balance).toFixed(2)} &middot; Available: &#x20B1;${Number(a.unallocated_balance).toFixed(2)}</p>
+  <form method="post" action="/admin/accounts/withdraw/${a.account_id}">
+    <label for="wamount_${a.account_id}">Amount (&#x20B1;)</label>
+    <input type="number" id="wamount_${a.account_id}" name="amount" min="1" step="0.01" placeholder="e.g. 50" required>
+    <label for="wdesc_${a.account_id}">Description</label>
+    <input type="text" id="wdesc_${a.account_id}" name="description" placeholder="e.g. Cash withdrawal" value="Admin withdrawal">
+    <button type="submit" class="btn btn-danger">&#x1F4B8; Withdraw</button>
   </form>
   </div>
   </div>`).join('')}
@@ -1182,6 +1013,32 @@ router.post('/accounts/deposit/:id', requireSession, (req, res) => {
       description: description || 'Admin deposit',
     });
     res.redirect('/admin/accounts?deposited=ok');
+  } catch (err) {
+    res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/accounts/withdraw/:id', requireSession, (req, res) => {
+  try {
+    const { amount, description } = req.body;
+    const val = Number(amount);
+    if (!val || val <= 0) return res.redirect('/admin/accounts?error=Invalid+amount');
+    const db = getDb();
+    const account = db.prepare('SELECT * FROM accounts WHERE account_id = ?').get(req.params.id);
+    if (!account) return res.redirect('/admin/accounts?error=Account+not+found');
+    if (Number(account.actual_balance) < val) return res.redirect('/admin/accounts?error=Insufficient+balance');
+    const newBalance = Math.round((Number(account.actual_balance) - val) * 100) / 100;
+    const newUnallocated = Math.round((Number(account.unallocated_balance) - val) * 100) / 100;
+    db.prepare('UPDATE accounts SET actual_balance=?, unallocated_balance=?, updated_at=datetime(\'now\') WHERE account_id=?').run(newBalance, Math.max(0, newUnallocated), req.params.id);
+    store.addTransaction({
+      account_id: req.params.id,
+      type: 'withdrawal',
+      amount: val,
+      description: description || 'Admin withdrawal',
+      balance_before: Number(account.actual_balance),
+      balance_after: newBalance,
+    });
+    res.redirect('/admin/accounts?withdrawn=ok');
   } catch (err) {
     res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
   }
@@ -1575,6 +1432,188 @@ router.post('/badges/delete/:id', requireSession, (req, res) => {
   }
 });
 
+// ── Loans Management ──
+
+router.get('/loans', requireSession, (req, res) => {
+  const db = getDb();
+  const accounts = db.prepare('SELECT account_id, child_name FROM accounts ORDER BY child_name ASC').all();
+  const loans = db.prepare(`
+    SELECT l.*, a.child_name, a.member_id
+    FROM loans l
+    LEFT JOIN accounts a ON l.account_id = a.account_id
+    ORDER BY l.created_at DESC
+  `).all();
+  const q = req.query;
+
+  const filterAccount = q.account || '';
+  const filterStatus = q.status || '';
+  const filtered = loans.filter(l => {
+    if (filterAccount && l.account_id !== filterAccount) return false;
+    if (filterStatus && l.status !== filterStatus) return false;
+    return true;
+  });
+
+  const pendingCount = loans.filter(l => l.status === 'pending').length;
+  const activeCount = loans.filter(l => l.status === 'active').length;
+
+  const toast = q.approved ? 'success:Loan approved.'
+    : q.disbursed ? 'success:Loan disbursed (account credited).'
+    : q.rejected ? 'success:Loan rejected.'
+    : q.error ? `error:${q.error}`
+    : '';
+
+  const content = `
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-icon">&#x1F4B0;</div><div class="stat-value">${loans.length}</div><div class="stat-label">Total Loans</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x23F3;</div><div class="stat-value">${pendingCount}</div><div class="stat-label">Pending</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4B3;</div><div class="stat-value">${activeCount}</div><div class="stat-label">Active</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x20B1;</div><div class="stat-value">${loans.reduce((s, l) => s + Number(l.remaining_balance), 0).toFixed(0)}</div><div class="stat-label">Outstanding</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h3>&#x1F4B0; Loan Applications</h3>
+      <div style="display:flex;gap:8px;align-items:center">
+        <form method="get" action="/admin/loans" style="display:flex;gap:6px;align-items:center">
+          <select name="account" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" onchange="this.form.submit()">
+            <option value="">All Accounts</option>
+            ${accounts.map(a => `<option value="${a.account_id}"${a.account_id === filterAccount ? ' selected' : ''}>${a.child_name}</option>`).join('')}
+          </select>
+          <select name="status" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" onchange="this.form.submit()">
+            <option value="">All Status</option>
+            <option value="pending"${filterStatus === 'pending' ? ' selected' : ''}>Pending</option>
+            <option value="approved"${filterStatus === 'approved' ? ' selected' : ''}>Approved</option>
+            <option value="active"${filterStatus === 'active' ? ' selected' : ''}>Active</option>
+            <option value="paid"${filterStatus === 'paid' ? ' selected' : ''}>Paid</option>
+            <option value="rejected"${filterStatus === 'rejected' ? ' selected' : ''}>Rejected</option>
+            <option value="defaulted"${filterStatus === 'defaulted' ? ' selected' : ''}>Defaulted</option>
+          </select>
+        </form>
+      </div>
+    </div>
+    <div class="card-body">
+    ${filtered.length === 0 ? '<div style="padding:32px;text-align:center;color:var(--text-muted)">No loan applications found.</div>' : `
+    <table><tr>
+      <th>Child</th><th>Amount</th><th>Interest</th><th>Term</th><th>Monthly</th><th>Paid</th><th>Balance</th><th>Status</th><th>Applied</th><th>Actions</th>
+    </tr>
+    ${filtered.map(l => {
+      const statusColors = { pending: 'badge-amber', approved: 'badge-blue', active: 'badge-green', paid: 'badge-gray', rejected: 'badge-red', defaulted: 'badge-red' };
+      const statusLabels = { pending: 'Pending', approved: 'Approved', active: 'Active', paid: 'Paid', rejected: 'Rejected', defaulted: 'Defaulted' };
+      return `<tr>
+        <td><b>${l.child_name || 'Unknown'}</b><br><span class="mono" style="font-size:11px;color:var(--text-muted)">${l.member_id || ''}</span></td>
+        <td class="num">&#x20B1;${Number(l.principal).toFixed(2)}</td>
+        <td class="num">${(Number(l.interest_rate) * 100).toFixed(1)}% ${l.interest_type === 'flat' ? 'F' : 'D'}</td>
+        <td class="num">${l.term_months}mo</td>
+        <td class="num">&#x20B1;${Number(l.monthly_amortization).toFixed(2)}</td>
+        <td class="num">&#x20B1;${Number(l.amount_paid).toFixed(2)}</td>
+        <td class="num">&#x20B1;${Number(l.remaining_balance).toFixed(2)}</td>
+        <td><span class="badge ${statusColors[l.status] || 'badge-gray'}">${statusLabels[l.status] || l.status}</span></td>
+        <td class="mono">${(l.created_at || '').slice(0, 10)}</td>
+        <td><div class="actions-cell">
+          ${l.status === 'pending' ? `
+            <form method="post" action="/admin/loans/approve/${l.loan_id}" style="display:inline">
+              <button type="submit" class="btn btn-primary btn-xs">&#x2705; Approve</button>
+            </form>
+            <form method="post" action="/admin/loans/reject/${l.loan_id}" style="display:inline" onsubmit="return confirm('Reject this loan?')">
+              <button type="submit" class="btn btn-danger btn-xs">&#x274C; Reject</button>
+            </form>
+          ` : l.status === 'approved' ? `
+            <form method="post" action="/admin/loans/disburse/${l.loan_id}" style="display:inline" onsubmit="return confirm('Disburse &#x20B1;${Number(l.principal).toFixed(2)} to ${l.child_name}?')">
+              <button type="submit" class="btn btn-amber btn-xs">&#x1F4B5; Disburse</button>
+            </form>
+          ` : '<span style="font-size:11px;color:var(--text-muted)">—</span>'}
+        </div></td>
+      </tr>`;
+    }).join('')}
+    </table>`}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3>&#x1F4CB; Loan Products</h3></div>
+    <div class="card-body">
+    ${(() => {
+      const products = store.getLoanProducts();
+      return products.length === 0 ? '<div style="padding:24px;text-align:center;color:var(--text-muted)">No loan products configured.</div>' : `
+      <table><tr><th>Name</th><th>Rate</th><th>Type</th><th>Min</th><th>Max</th><th>Min Term</th><th>Max Term</th><th>Status</th></tr>
+      ${products.map(p => `<tr>
+        <td><b>${p.name}</b></td>
+        <td>${(Number(p.interest_rate) * 100).toFixed(1)}%</td>
+        <td><span class="badge badge-blue">${p.interest_type === 'flat' ? 'Flat' : 'Diminishing'}</span></td>
+        <td class="num">&#x20B1;${Number(p.min_amount).toFixed(0)}</td>
+        <td class="num">&#x20B1;${Number(p.max_amount).toFixed(0)}</td>
+        <td class="num">${p.min_term}mo</td>
+        <td class="num">${p.max_term}mo</td>
+        <td><span class="badge ${p.is_active ? 'badge-green' : 'badge-gray'}">${p.is_active ? 'Active' : 'Inactive'}</span></td>
+      </tr>`).join('')}
+      </table>`;
+    })()}
+    </div>
+  </div>
+  `;
+
+  res.type('html').send(layout('Loans', 'loans', content, {
+    toast,
+    subtitle: `${filtered.length} loans shown`,
+    counts: { loans: pendingCount },
+  }));
+});
+
+router.post('/loans/approve/:id', requireSession, (req, res) => {
+  try {
+    const loan = store.getLoan(req.params.id);
+    if (!loan) return res.redirect('/admin/loans?error=Loan+not+found');
+    if (loan.status !== 'pending') return res.redirect('/admin/loans?error=Loan+is+not+pending');
+    store.updateLoan(req.params.id, { status: 'approved', approved_by: 'admin', approved_at: new Date().toISOString() });
+    res.redirect('/admin/loans?approved=ok');
+  } catch (err) {
+    res.redirect(`/admin/loans?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/loans/reject/:id', requireSession, (req, res) => {
+  try {
+    const loan = store.getLoan(req.params.id);
+    if (!loan) return res.redirect('/admin/loans?error=Loan+not+found');
+    if (loan.status !== 'pending') return res.redirect('/admin/loans?error=Loan+is+not+pending');
+    store.updateLoan(req.params.id, { status: 'rejected' });
+    res.redirect('/admin/loans?rejected=ok');
+  } catch (err) {
+    res.redirect(`/admin/loans?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/loans/disburse/:id', requireSession, (req, res) => {
+  try {
+    const db = getDb();
+    const loan = store.getLoan(req.params.id);
+    if (!loan) return res.redirect('/admin/loans?error=Loan+not+found');
+    if (loan.status !== 'approved') return res.redirect('/admin/loans?error=Loan+must+be+approved+first');
+
+    const account = store.getAccount(loan.account_id);
+    if (!account) return res.redirect('/admin/loans?error=Account+not+found');
+
+    const newBalance = Math.round((Number(account.actual_balance) + Number(loan.principal)) * 100) / 100;
+    const newUnallocated = Math.round((Number(account.unallocated_balance) + Number(loan.principal)) * 100) / 100;
+
+    db.prepare('UPDATE accounts SET actual_balance=?, unallocated_balance=?, updated_at=datetime(\'now\') WHERE account_id=?').run(newBalance, newUnallocated, loan.account_id);
+    store.addTransaction({
+      account_id: loan.account_id,
+      type: 'loan_disbursement',
+      amount: Number(loan.principal),
+      description: `Loan disbursement: ${loan.purpose || 'Loan'}`,
+      reference_type: 'loan',
+      reference_id: loan.loan_id,
+      balance_before: Number(account.actual_balance),
+      balance_after: newBalance,
+    });
+    store.updateLoan(req.params.id, { status: 'active', disbursed_at: new Date().toISOString() });
+    res.redirect('/admin/loans?disbursed=ok');
+  } catch (err) {
+    res.redirect(`/admin/loans?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
 // ── Transactions Viewer ──
 
 router.get('/transactions', requireSession, (req, res) => {
@@ -1751,6 +1790,779 @@ router.get('/settings', requireSession, (req, res) => {
   }));
 });
 
-// ── Update login page ──
+// ── Loan Products Management ──
+
+router.get('/loan-products', requireSession, (req, res) => {
+  const db = getDb();
+  const products = db.prepare('SELECT * FROM loan_products ORDER BY min_amount ASC').all();
+  const q = req.query;
+  const toast = q.created ? 'success:Loan product created.'
+    : q.updated ? 'success:Loan product updated.'
+    : q.toggled ? 'success:Loan product status toggled.'
+    : q.error ? `error:${q.error}`
+    : '';
+
+  const activeCount = products.filter(p => p.is_active).length;
+
+  const content = `
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-icon">&#x1F3ED;</div><div class="stat-value">${products.length}</div><div class="stat-label">Total Products</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x2705;</div><div class="stat-value">${activeCount}</div><div class="stat-label">Active</div><div class="stat-bar"><div class="stat-bar-fill" style="width:${products.length > 0 ? (activeCount/products.length*100).toFixed(0) : 0}%;background:var(--accent)"></div></div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3>&#x1F3ED; Loan Products</h3>
+      <div><a href="#add-product" class="btn btn-primary btn-sm">&#x2795; New Product</a></div>
+    </div>
+    <div class="card-body">
+    <table><tr>
+      <th>Name</th><th>Rate</th><th>Type</th><th>Min Amount</th><th>Max Amount</th><th>Min Term</th><th>Max Term</th><th>Status</th><th>Actions</th>
+    </tr>
+    ${products.length === 0 ? '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text-muted)">No loan products yet.</td></tr>' : products.map(p => `
+    <tr>
+      <td><b>${p.name}</b><br><span style="font-size:11px;color:var(--text-muted)">${p.description || ''}</span></td>
+      <td class="num">${(Number(p.interest_rate) * 100).toFixed(1)}%</td>
+      <td><span class="badge badge-blue">${p.interest_type === 'flat' ? 'Flat' : 'Diminishing'}</span></td>
+      <td class="num">&#x20B1;${Number(p.min_amount).toFixed(0)}</td>
+      <td class="num">&#x20B1;${Number(p.max_amount).toFixed(0)}</td>
+      <td class="num">${p.min_term}mo</td>
+      <td class="num">${p.max_term}mo</td>
+      <td><span class="badge ${p.is_active ? 'badge-green' : 'badge-gray'}">${p.is_active ? 'Active' : 'Inactive'}</span></td>
+      <td><div class="actions-cell">
+        <a href="#edit-${p.product_id}" class="btn btn-secondary btn-xs">&#x270F;</a>
+        <form method="post" action="/admin/loan-products/toggle/${p.product_id}" style="display:inline" onsubmit="return confirm('${p.is_active ? 'Deactivate' : 'Activate'} ${p.name}?')">
+          <button type="submit" class="btn btn-${p.is_active ? 'danger' : 'primary'} btn-xs">${p.is_active ? '&#x1F4A4;' : '&#x2705;'}</button>
+        </form>
+      </div></td>
+    </tr>`).join('')}
+    </table></div>
+  </div>
+
+  <!-- Add Modal -->
+  <div id="add-product" class="modal-overlay">
+  <div class="modal">
+  <a href="#" class="close">&times;</a>
+  <h2>&#x2795; New Loan Product</h2>
+  <form method="post" action="/admin/loan-products/create">
+    <label for="lpname">Name</label>
+    <input type="text" id="lpname" name="name" placeholder="e.g. Education Loan" required>
+    <label for="lpdesc">Description</label>
+    <input type="text" id="lpdesc" name="description" placeholder="Brief description">
+    <div class="form-row">
+      <div><label for="lprate">Interest Rate (%)</label><input type="number" id="lprate" name="interest_rate" min="0" max="1" step="0.01" value="0.05" required></div>
+      <div><label for="lptype">Interest Type</label><select id="lptype" name="interest_type"><option value="flat">Flat</option><option value="diminishing">Diminishing</option></select></div>
+    </div>
+    <div class="form-row">
+      <div><label for="lpminamt">Min Amount (&#x20B1;)</label><input type="number" id="lpminamt" name="min_amount" min="1" value="100"></div>
+      <div><label for="lpmaxamt">Max Amount (&#x20B1;)</label><input type="number" id="lpmaxamt" name="max_amount" min="1" value="10000"></div>
+    </div>
+    <div class="form-row">
+      <div><label for="lpmint">Min Term (months)</label><input type="number" id="lpmint" name="min_term" min="1" value="1"></div>
+      <div><label for="lpmaxt">Max Term (months)</label><input type="number" id="lpmaxt" name="max_term" min="1" value="12"></div>
+    </div>
+    <button type="submit" class="btn btn-primary">&#x2795; Create Product</button>
+  </form>
+  </div>
+  </div>
+
+  <!-- Edit Modals -->
+  ${products.map(p => `
+  <div id="edit-${p.product_id}" class="modal-overlay">
+  <div class="modal">
+  <a href="#" class="close">&times;</a>
+  <h2>&#x270F; ${p.name}</h2>
+  <form method="post" action="/admin/loan-products/update/${p.product_id}">
+    <label for="en_${p.product_id}">Name</label>
+    <input type="text" id="en_${p.product_id}" name="name" value="${p.name}" required>
+    <label for="ed_${p.product_id}">Description</label>
+    <input type="text" id="ed_${p.product_id}" name="description" value="${p.description || ''}">
+    <div class="form-row">
+      <div><label for="er_${p.product_id}">Interest Rate (%)</label><input type="number" id="er_${p.product_id}" name="interest_rate" min="0" max="1" step="0.01" value="${p.interest_rate}"></div>
+      <div><label for="et_${p.product_id}">Type</label><select id="et_${p.product_id}" name="interest_type"><option value="flat"${p.interest_type==='flat'?' selected':''}>Flat</option><option value="diminishing"${p.interest_type==='diminishing'?' selected':''}>Diminishing</option></select></div>
+    </div>
+    <div class="form-row">
+      <div><label for="emina_${p.product_id}">Min Amount</label><input type="number" id="emina_${p.product_id}" name="min_amount" min="1" value="${p.min_amount}"></div>
+      <div><label for="emaxa_${p.product_id}">Max Amount</label><input type="number" id="emaxa_${p.product_id}" name="max_amount" min="1" value="${p.max_amount}"></div>
+    </div>
+    <div class="form-row">
+      <div><label for="emint_${p.product_id}">Min Term</label><input type="number" id="emint_${p.product_id}" name="min_term" min="1" value="${p.min_term}"></div>
+      <div><label for="emaxt_${p.product_id}">Max Term</label><input type="number" id="emaxt_${p.product_id}" name="max_term" min="1" value="${p.max_term}"></div>
+    </div>
+    <button type="submit" class="btn btn-primary">&#x1F4BE; Save</button>
+  </form>
+  </div>
+  </div>`).join('')}
+  `;
+
+  res.type('html').send(layout('Loan Products', 'loan-products', content, {
+    toast,
+    subtitle: `${activeCount} active of ${products.length} total`,
+  }));
+});
+
+router.post('/loan-products/create', requireSession, (req, res) => {
+  try {
+    const { name, description, interest_rate, interest_type, min_amount, max_amount, min_term, max_term } = req.body;
+    if (!name) return res.redirect('/admin/loan-products?error=Name+required');
+    store.createLoanProduct({
+      name: name.trim(),
+      description: description || '',
+      interest_rate: Number(interest_rate) || 0,
+      interest_type: interest_type || 'flat',
+      min_amount: Number(min_amount) || 100,
+      max_amount: Number(max_amount) || 10000,
+      min_term: Number(min_term) || 1,
+      max_term: Number(max_term) || 12,
+    });
+    res.redirect('/admin/loan-products?created=ok');
+  } catch (err) {
+    res.redirect(`/admin/loan-products?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/loan-products/update/:id', requireSession, (req, res) => {
+  try {
+    const { name, description, interest_rate, interest_type, min_amount, max_amount, min_term, max_term } = req.body;
+    store.updateLoanProduct(req.params.id, {
+      name: name?.trim(),
+      description,
+      interest_rate: interest_rate !== undefined ? Number(interest_rate) : undefined,
+      interest_type,
+      min_amount: min_amount !== undefined ? Number(min_amount) : undefined,
+      max_amount: max_amount !== undefined ? Number(max_amount) : undefined,
+      min_term: min_term !== undefined ? Number(min_term) : undefined,
+      max_term: max_term !== undefined ? Number(max_term) : undefined,
+    });
+    res.redirect('/admin/loan-products?updated=ok');
+  } catch (err) {
+    res.redirect(`/admin/loan-products?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/loan-products/toggle/:id', requireSession, (req, res) => {
+  try {
+    const product = store.getLoanProduct(req.params.id);
+    if (!product) return res.redirect('/admin/loan-products?error=Product+not+found');
+    store.updateLoanProduct(req.params.id, { is_active: product.is_active ? 0 : 1 });
+    res.redirect('/admin/loan-products?toggled=ok');
+  } catch (err) {
+    res.redirect(`/admin/loan-products?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// ── Savings Products Management ──
+
+router.get('/savings-products', requireSession, (req, res) => {
+  const db = getDb();
+  const products = db.prepare('SELECT * FROM savings_products ORDER BY name ASC').all();
+  const q = req.query;
+  const toast = q.created ? 'success:Savings product created.'
+    : q.updated ? 'success:Savings product updated.'
+    : q.toggled ? 'success:Savings product status toggled.'
+    : q.error ? `error:${q.error}`
+    : '';
+
+  const activeCount = products.filter(p => p.is_active).length;
+
+  const content = `
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-icon">&#x1F4B1;</div><div class="stat-value">${products.length}</div><div class="stat-label">Total Products</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x2705;</div><div class="stat-value">${activeCount}</div><div class="stat-label">Active</div><div class="stat-bar"><div class="stat-bar-fill" style="width:${products.length > 0 ? (activeCount/products.length*100).toFixed(0) : 0}%;background:var(--accent)"></div></div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3>&#x1F4B1; Savings Products</h3>
+      <div><a href="#add-product" class="btn btn-primary btn-sm">&#x2795; New Product</a></div>
+    </div>
+    <div class="card-body">
+    <table><tr>
+      <th>Name</th><th>Rate</th><th>Frequency</th><th>Min Balance</th><th>Withdrawal Limit</th><th>Status</th><th>Actions</th>
+    </tr>
+    ${products.length === 0 ? '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">No savings products yet.</td></tr>' : products.map(p => `
+    <tr>
+      <td><b>${p.name}</b><br><span style="font-size:11px;color:var(--text-muted)">${p.description || ''}</span></td>
+      <td class="num">${(Number(p.interest_rate) * 100).toFixed(1)}%</td>
+      <td><span class="badge badge-purple">${p.interest_frequency}</span></td>
+      <td class="num">&#x20B1;${Number(p.min_balance).toFixed(0)}</td>
+      <td class="num">${p.withdrawal_limit !== null ? '&#x20B1;' + Number(p.withdrawal_limit).toFixed(0) : '<span style="color:var(--text-muted)">No limit</span>'}</td>
+      <td><span class="badge ${p.is_active ? 'badge-green' : 'badge-gray'}">${p.is_active ? 'Active' : 'Inactive'}</span></td>
+      <td><div class="actions-cell">
+        <a href="#edit-${p.product_id}" class="btn btn-secondary btn-xs">&#x270F;</a>
+        <form method="post" action="/admin/savings-products/toggle/${p.product_id}" style="display:inline" onsubmit="return confirm('${p.is_active ? 'Deactivate' : 'Activate'} ${p.name}?')">
+          <button type="submit" class="btn btn-${p.is_active ? 'danger' : 'primary'} btn-xs">${p.is_active ? '&#x1F4A4;' : '&#x2705;'}</button>
+        </form>
+      </div></td>
+    </tr>`).join('')}
+    </table></div>
+  </div>
+
+  <!-- Add Modal -->
+  <div id="add-product" class="modal-overlay">
+  <div class="modal">
+  <a href="#" class="close">&times;</a>
+  <h2>&#x2795; New Savings Product</h2>
+  <form method="post" action="/admin/savings-products/create">
+    <label for="spname">Name</label>
+    <input type="text" id="spname" name="name" placeholder="e.g. Premium Savings" required>
+    <label for="spdesc">Description</label>
+    <input type="text" id="spdesc" name="description" placeholder="Brief description">
+    <div class="form-row">
+      <div><label for="sprate">Interest Rate (%)</label><input type="number" id="sprate" name="interest_rate" min="0" max="1" step="0.01" value="0.02" required></div>
+      <div><label for="spfreq">Frequency</label><select id="spfreq" name="interest_frequency"><option value="daily">Daily</option><option value="monthly" selected>Monthly</option><option value="yearly">Yearly</option></select></div>
+    </div>
+    <div class="form-row">
+      <div><label for="spminbal">Min Balance (&#x20B1;)</label><input type="number" id="spminbal" name="min_balance" min="0" value="0"></div>
+      <div><label for="spwlimit">Withdrawal Limit (&#x20B1;)</label><input type="number" id="spwlimit" name="withdrawal_limit" min="0" placeholder="No limit" value=""></div>
+    </div>
+    <button type="submit" class="btn btn-primary">&#x2795; Create Product</button>
+  </form>
+  </div>
+  </div>
+
+  <!-- Edit Modals -->
+  ${products.map(p => `
+  <div id="edit-${p.product_id}" class="modal-overlay">
+  <div class="modal">
+  <a href="#" class="close">&times;</a>
+  <h2>&#x270F; ${p.name}</h2>
+  <form method="post" action="/admin/savings-products/update/${p.product_id}">
+    <label for="en_${p.product_id}">Name</label>
+    <input type="text" id="en_${p.product_id}" name="name" value="${p.name}" required>
+    <label for="ed_${p.product_id}">Description</label>
+    <input type="text" id="ed_${p.product_id}" name="description" value="${p.description || ''}">
+    <div class="form-row">
+      <div><label for="er_${p.product_id}">Interest Rate (%)</label><input type="number" id="er_${p.product_id}" name="interest_rate" min="0" max="1" step="0.01" value="${p.interest_rate}"></div>
+      <div><label for="ef_${p.product_id}">Frequency</label><select id="ef_${p.product_id}" name="interest_frequency"><option value="daily"${p.interest_frequency==='daily'?' selected':''}>Daily</option><option value="monthly"${p.interest_frequency==='monthly'?' selected':''}>Monthly</option><option value="yearly"${p.interest_frequency==='yearly'?' selected':''}>Yearly</option></select></div>
+    </div>
+    <div class="form-row">
+      <div><label for="emb_${p.product_id}">Min Balance</label><input type="number" id="emb_${p.product_id}" name="min_balance" min="0" value="${p.min_balance}"></div>
+      <div><label for="ewl_${p.product_id}">Withdrawal Limit</label><input type="number" id="ewl_${p.product_id}" name="withdrawal_limit" min="0" placeholder="No limit" value="${p.withdrawal_limit !== null ? p.withdrawal_limit : ''}"></div>
+    </div>
+    <button type="submit" class="btn btn-primary">&#x1F4BE; Save</button>
+  </form>
+  </div>
+  </div>`).join('')}
+  `;
+
+  res.type('html').send(layout('Savings Products', 'savings-products', content, {
+    toast,
+    subtitle: `${activeCount} active of ${products.length} total`,
+  }));
+});
+
+router.post('/savings-products/create', requireSession, (req, res) => {
+  try {
+    const { name, description, interest_rate, interest_frequency, min_balance, withdrawal_limit } = req.body;
+    if (!name) return res.redirect('/admin/savings-products?error=Name+required');
+    store.createSavingsProduct({
+      name: name.trim(),
+      description: description || '',
+      interest_rate: Number(interest_rate) || 0,
+      interest_frequency: interest_frequency || 'monthly',
+      min_balance: Number(min_balance) || 0,
+      withdrawal_limit: withdrawal_limit !== '' ? Number(withdrawal_limit) : undefined,
+    });
+    res.redirect('/admin/savings-products?created=ok');
+  } catch (err) {
+    res.redirect(`/admin/savings-products?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/savings-products/update/:id', requireSession, (req, res) => {
+  try {
+    const { name, description, interest_rate, interest_frequency, min_balance, withdrawal_limit } = req.body;
+    store.updateSavingsProduct(req.params.id, {
+      name: name?.trim(),
+      description,
+      interest_rate: interest_rate !== undefined ? Number(interest_rate) : undefined,
+      interest_frequency,
+      min_balance: min_balance !== undefined ? Number(min_balance) : undefined,
+      withdrawal_limit: withdrawal_limit !== '' && withdrawal_limit !== undefined ? Number(withdrawal_limit) : null,
+    });
+    res.redirect('/admin/savings-products?updated=ok');
+  } catch (err) {
+    res.redirect(`/admin/savings-products?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/savings-products/toggle/:id', requireSession, (req, res) => {
+  try {
+    const product = store.getSavingsProduct(req.params.id);
+    if (!product) return res.redirect('/admin/savings-products?error=Product+not+found');
+    store.updateSavingsProduct(req.params.id, { is_active: product.is_active ? 0 : 1 });
+    res.redirect('/admin/savings-products?toggled=ok');
+  } catch (err) {
+    res.redirect(`/admin/savings-products?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// ── Withdrawal Requests Management ──
+
+router.get('/withdrawal-requests', requireSession, (req, res) => {
+  const db = getDb();
+  const requests = db.prepare('SELECT w.*, a.child_name, a.member_id FROM withdrawal_requests w LEFT JOIN accounts a ON w.account_id = a.account_id ORDER BY w.created_at DESC').all();
+  const q = req.query;
+
+  const filterStatus = q.status || '';
+  const filtered = filterStatus ? requests.filter(r => r.status === filterStatus) : requests;
+
+  const toast = q.approved ? 'success:Withdrawal approved.'
+    : q.rejected ? 'success:Withdrawal rejected.'
+    : q.paid ? 'success:Withdrawal marked as paid.'
+    : q.error ? `error:${q.error}`
+    : '';
+
+  const pendingCount = requests.filter(r => r.status === 'pending').length;
+
+  const statusColors = { pending: 'badge-amber', approved: 'badge-blue', rejected: 'badge-red', paid: 'badge-gray' };
+  const statusLabels = { pending: 'Pending', approved: 'Approved', rejected: 'Rejected', paid: 'Paid' };
+
+  const content = `
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-icon">&#x1F4B8;</div><div class="stat-value">${requests.length}</div><div class="stat-label">Total Requests</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x23F3;</div><div class="stat-value">${pendingCount}</div><div class="stat-label">Pending</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x20B1;</div><div class="stat-value">${requests.filter(r => r.status === 'pending').reduce((s, r) => s + Number(r.amount), 0).toFixed(0)}</div><div class="stat-label">Pending Amount</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3>&#x1F4B8; Withdrawal Requests</h3>
+      <div style="display:flex;gap:8px;align-items-center">
+        <form method="get" action="/admin/withdrawal-requests" style="display:flex;gap:6px;align-items:center">
+          <select name="status" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" onchange="this.form.submit()">
+            <option value="">All Status</option>
+            <option value="pending"${filterStatus === 'pending' ? ' selected' : ''}>Pending</option>
+            <option value="approved"${filterStatus === 'approved' ? ' selected' : ''}>Approved</option>
+            <option value="rejected"${filterStatus === 'rejected' ? ' selected' : ''}>Rejected</option>
+            <option value="paid"${filterStatus === 'paid' ? ' selected' : ''}>Paid</option>
+          </select>
+          ${filterStatus ? `<a href="/admin/withdrawal-requests" class="btn btn-outline btn-xs">&#x2716; Clear</a>` : ''}
+        </form>
+      </div>
+    </div>
+    <div class="card-body">
+    ${filtered.length === 0 ? '<div style="padding:32px;text-align:center;color:var(--text-muted)">No withdrawal requests found.</div>' : `
+    <table><tr>
+      <th>Child</th><th>Member ID</th><th>Amount</th><th>Reason</th><th>Status</th><th>Requested</th><th>Actions</th>
+    </tr>
+    ${filtered.map(r => `
+    <tr>
+      <td><b>${r.child_name || 'Unknown'}</b></td>
+      <td class="mono">${r.member_id || '-'}</td>
+      <td class="num">&#x20B1;${Number(r.amount).toFixed(2)}</td>
+      <td>${r.reason || '-'}</td>
+      <td><span class="badge ${statusColors[r.status] || 'badge-gray'}">${statusLabels[r.status] || r.status}</span></td>
+      <td class="mono">${(r.created_at || '').slice(0, 10)}</td>
+      <td><div class="actions-cell">
+        ${r.status === 'pending' ? `
+          <form method="post" action="/admin/withdrawal-requests/approve/${r.request_id}" style="display:inline" onsubmit="return confirm('Approve withdrawal of &#x20B1;${Number(r.amount).toFixed(2)}?')">
+            <button type="submit" class="btn btn-primary btn-xs">&#x2705; Approve</button>
+          </form>
+          <form method="post" action="/admin/withdrawal-requests/reject/${r.request_id}" style="display:inline" onsubmit="return confirm('Reject this request?')">
+            <button type="submit" class="btn btn-danger btn-xs">&#x274C; Reject</button>
+          </form>
+        ` : r.status === 'approved' ? `
+          <form method="post" action="/admin/withdrawal-requests/pay/${r.request_id}" style="display:inline" onsubmit="return confirm('Process payment of &#x20B1;${Number(r.amount).toFixed(2)} to ${r.child_name}? This will deduct from their balance.')">
+            <button type="submit" class="btn btn-amber btn-xs">&#x1F4B5; Pay Out</button>
+          </form>
+        ` : '<span style="font-size:11px;color:var(--text-muted)">—</span>'}
+      </div></td>
+    </tr>`).join('')}
+    </table>`}
+    </div>
+  </div>
+  `;
+
+  res.type('html').send(layout('Withdrawal Requests', 'withdrawal-requests', content, {
+    toast,
+    subtitle: `${pendingCount} pending`,
+    counts: { 'withdrawal-requests': pendingCount },
+  }));
+});
+
+router.post('/withdrawal-requests/approve/:id', requireSession, (req, res) => {
+  try {
+    const reqData = store.getWithdrawalRequest(req.params.id);
+    if (!reqData) return res.redirect('/admin/withdrawal-requests?error=Request+not+found');
+    if (reqData.status !== 'pending') return res.redirect('/admin/withdrawal-requests?error=Request+is+not+pending');
+    store.updateWithdrawalRequest(req.params.id, { status: 'approved', resolved_at: new Date().toISOString() });
+    res.redirect('/admin/withdrawal-requests?approved=ok');
+  } catch (err) {
+    res.redirect(`/admin/withdrawal-requests?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/withdrawal-requests/reject/:id', requireSession, (req, res) => {
+  try {
+    const reqData = store.getWithdrawalRequest(req.params.id);
+    if (!reqData) return res.redirect('/admin/withdrawal-requests?error=Request+not+found');
+    if (reqData.status !== 'pending') return res.redirect('/admin/withdrawal-requests?error=Request+is+not+pending');
+    store.updateWithdrawalRequest(req.params.id, { status: 'rejected', resolved_at: new Date().toISOString() });
+    res.redirect('/admin/withdrawal-requests?rejected=ok');
+  } catch (err) {
+    res.redirect(`/admin/withdrawal-requests?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/withdrawal-requests/pay/:id', requireSession, (req, res) => {
+  try {
+    const db = getDb();
+    const reqData = store.getWithdrawalRequest(req.params.id);
+    if (!reqData) return res.redirect('/admin/withdrawal-requests?error=Request+not+found');
+    if (reqData.status !== 'approved') return res.redirect('/admin/withdrawal-requests?error=Request+must+be+approved+first');
+
+    const account = store.getAccount(reqData.account_id);
+    if (!account) return res.redirect('/admin/withdrawal-requests?error=Account+not+found');
+    if (Number(account.actual_balance) < Number(reqData.amount)) {
+      return res.redirect('/admin/withdrawal-requests?error=Insufficient+balance');
+    }
+
+    const val = Number(reqData.amount);
+    const newBalance = Math.round((Number(account.actual_balance) - val) * 100) / 100;
+    const newUnallocated = Math.round((Number(account.unallocated_balance) - val) * 100) / 100;
+
+    db.prepare("UPDATE accounts SET actual_balance=?, unallocated_balance=?, updated_at=datetime('now') WHERE account_id=?").run(newBalance, Math.max(0, newUnallocated), reqData.account_id);
+    store.addTransaction({
+      account_id: reqData.account_id,
+      type: 'withdrawal',
+      amount: val,
+      description: `Withdrawal request: ${reqData.reason || 'Cash withdrawal'}`,
+      balance_before: Number(account.actual_balance),
+      balance_after: newBalance,
+    });
+    store.updateWithdrawalRequest(req.params.id, { status: 'paid', resolved_at: new Date().toISOString() });
+    res.redirect('/admin/withdrawal-requests?paid=ok');
+  } catch (err) {
+    res.redirect(`/admin/withdrawal-requests?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// ── Savings Applications Management ──
+
+router.get('/savings-applications', requireSession, (req, res) => {
+  const db = getDb();
+  const apps = db.prepare(`
+    SELECT sa.*, a.child_name, a.member_id, sp.name as product_name, sp.interest_rate, sp.interest_frequency
+    FROM savings_applications sa
+    LEFT JOIN accounts a ON sa.account_id = a.account_id
+    LEFT JOIN savings_products sp ON sa.product_id = sp.product_id
+    ORDER BY sa.created_at DESC
+  `).all();
+  const q = req.query;
+
+  const filterStatus = q.status || '';
+  const filtered = filterStatus ? apps.filter(a => a.status === filterStatus) : apps;
+
+  const toast = q.approved ? 'success:Savings application approved.'
+    : q.rejected ? 'success:Savings application rejected.'
+    : q.error ? `error:${q.error}`
+    : '';
+
+  const pendingCount = apps.filter(a => a.status === 'pending').length;
+
+  const statusColors = { pending: 'badge-amber', approved: 'badge-green', rejected: 'badge-red' };
+  const statusLabels = { pending: 'Pending', approved: 'Approved', rejected: 'Rejected' };
+
+  const content = `
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-icon">&#x1F4B1;</div><div class="stat-value">${apps.length}</div><div class="stat-label">Total Applications</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x23F3;</div><div class="stat-value">${pendingCount}</div><div class="stat-label">Pending</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x2705;</div><div class="stat-value">${apps.filter(a => a.status === 'approved').length}</div><div class="stat-label">Approved</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3>&#x1F4B1; Savings Account Applications</h3>
+      <div style="display:flex;gap:8px;align-items:center">
+        <form method="get" action="/admin/savings-applications" style="display:flex;gap:6px;align-items:center">
+          <select name="status" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" onchange="this.form.submit()">
+            <option value="">All Status</option>
+            <option value="pending"${filterStatus === 'pending' ? ' selected' : ''}>Pending</option>
+            <option value="approved"${filterStatus === 'approved' ? ' selected' : ''}>Approved</option>
+            <option value="rejected"${filterStatus === 'rejected' ? ' selected' : ''}>Rejected</option>
+          </select>
+          ${filterStatus ? `<a href="/admin/savings-applications" class="btn btn-outline btn-xs">&#x2716; Clear</a>` : ''}
+        </form>
+      </div>
+    </div>
+    <div class="card-body">
+    ${filtered.length === 0 ? '<div style="padding:32px;text-align:center;color:var(--text-muted)">No applications found.</div>' : `
+    <table><tr>
+      <th>Child</th><th>Member ID</th><th>Product</th><th>Rate</th><th>Frequency</th><th>Status</th><th>Applied</th><th>Actions</th>
+    </tr>
+    ${filtered.map(a => `
+    <tr>
+      <td><b>${a.child_name || 'Unknown'}</b></td>
+      <td class="mono">${a.member_id || '-'}</td>
+      <td><b>${a.product_name || 'Unknown'}</b></td>
+      <td class="num">${a.interest_rate ? (Number(a.interest_rate) * 100).toFixed(1) + '%' : '-'}</td>
+      <td><span class="badge badge-purple">${a.interest_frequency || '-'}</span></td>
+      <td><span class="badge ${statusColors[a.status] || 'badge-gray'}">${statusLabels[a.status] || a.status}</span></td>
+      <td class="mono">${(a.created_at || '').slice(0, 10)}</td>
+      <td><div class="actions-cell">
+        ${a.status === 'pending' ? `
+          <form method="post" action="/admin/savings-applications/approve/${a.application_id}" style="display:inline" onsubmit="return confirm('Approve ${a.child_name}\'s application for ${a.product_name}?')">
+            <button type="submit" class="btn btn-primary btn-xs">&#x2705; Approve</button>
+          </form>
+          <form method="post" action="/admin/savings-applications/reject/${a.application_id}" style="display:inline" onsubmit="return confirm('Reject this application?')">
+            <button type="submit" class="btn btn-danger btn-xs">&#x274C; Reject</button>
+          </form>
+        ` : '<span style="font-size:11px;color:var(--text-muted)">—</span>'}
+      </div></td>
+    </tr>`).join('')}
+    </table>`}
+    </div>
+  </div>
+  `;
+
+  res.type('html').send(layout('Savings Applications', 'savings-applications', content, {
+    toast,
+    subtitle: `${pendingCount} pending`,
+    counts: { 'savings-applications': pendingCount },
+  }));
+});
+
+router.post('/savings-applications/approve/:id', requireSession, (req, res) => {
+  try {
+    const db = getDb();
+    const app = db.prepare('SELECT * FROM savings_applications WHERE application_id = ?').get(req.params.id);
+    if (!app) return res.redirect('/admin/savings-applications?error=Application+not+found');
+    if (app.status !== 'pending') return res.redirect('/admin/savings-applications?error=Application+is+not+pending');
+
+    // Assign the savings product to the account
+    db.prepare("UPDATE accounts SET savings_product_id = ?, updated_at = datetime('now') WHERE account_id = ?").run(app.product_id, app.account_id);
+    store.updateSavingsApplication(req.params.id, { status: 'approved', resolved_at: new Date().toISOString() });
+    res.redirect('/admin/savings-applications?approved=ok');
+  } catch (err) {
+    res.redirect(`/admin/savings-applications?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/savings-applications/reject/:id', requireSession, (req, res) => {
+  try {
+    const app = getDb().prepare('SELECT * FROM savings_applications WHERE application_id = ?').get(req.params.id);
+    if (!app) return res.redirect('/admin/savings-applications?error=Application+not+found');
+    if (app.status !== 'pending') return res.redirect('/admin/savings-applications?error=Application+is+not+pending');
+    store.updateSavingsApplication(req.params.id, { status: 'rejected', resolved_at: new Date().toISOString() });
+    res.redirect('/admin/savings-applications?rejected=ok');
+  } catch (err) {
+    res.redirect(`/admin/savings-applications?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// ── Teller Counter ──
+
+router.get('/teller', requireSession, (req, res) => {
+  const db = getDb();
+  const accounts = db.prepare('SELECT * FROM accounts ORDER BY child_name ASC').all();
+  const q = req.query;
+  const selectedId = q.account || '';
+
+  let selectedAccount = null;
+  let recentTxs = [];
+  if (selectedId) {
+    selectedAccount = db.prepare('SELECT * FROM accounts WHERE account_id = ?').get(selectedId);
+    if (selectedAccount) {
+      recentTxs = db.prepare('SELECT * FROM transactions WHERE account_id = ? ORDER BY created_at DESC LIMIT 20').all(selectedId);
+    }
+  }
+
+  const toast = q.deposited ? 'success:Deposit completed. Receipt #' + (q.receipt || '')
+    : q.withdrawn ? 'success:Withdrawal completed. Receipt #' + (q.receipt || '')
+    : q.error ? `error:${q.error}`
+    : '';
+
+  const receipt = q.receipt ? db.prepare("SELECT t.*, a.child_name, a.member_id FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id WHERE t.rowid = ? OR t.id = ?").get(q.receipt, q.receipt) : null;
+
+  const content = `
+  <style>
+  .teller-layout { display:grid; grid-template-columns: 380px 1fr; gap:20px; align-items:start; }
+  .teller-sidebar-card { background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); border:1px solid var(--border); padding:20px; }
+  .teller-sidebar-card h3 { font-size:15px; font-weight:600; margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+  .teller-main-card { background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); border:1px solid var(--border); overflow:hidden; }
+  .teller-main-card .card-header { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+  .teller-main-card .card-header h3 { font-size:15px; font-weight:600; }
+  .teller-main-card .card-body { padding:20px; }
+  .account-info { display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:16px; }
+  .account-info-item { padding:12px; background:var(--bg); border-radius:8px; }
+  .account-info-item .label { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; }
+  .account-info-item .value { font-size:18px; font-weight:700; margin-top:2px; }
+  .account-info-item .value.green { color:var(--accent); }
+  .tx-form { display:grid; grid-template-columns: 1fr 2fr auto; gap:10px; align-items:end; }
+  .tx-form label { display:block; font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:4px; }
+  .tx-form input { width:100%; padding:9px 12px; border:2px solid var(--border); border-radius:8px; font-size:14px; outline:none; }
+  .tx-form input:focus { border-color:var(--accent); }
+  .teller-tx-row { display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); }
+  .teller-tx-row:last-child { border-bottom:none; }
+  .teller-tx-type { width:70px; }
+  .teller-tx-amount { font-weight:600; font-family:var(--mono); min-width:80px; text-align:right; }
+  .teller-tx-desc { flex:1; color:var(--text-muted); font-size:13px; }
+  .teller-tx-date { font-size:11px; color:var(--text-muted); font-family:var(--mono); white-space:nowrap; }
+  .receipt-banner { background:#e8f5e9; border:1px solid #a5d6a7; border-radius:var(--radius); padding:16px 20px; margin-bottom:16px; display:flex; align-items:center; gap:16px; animation:fadeUp 0.3s ease; }
+  .receipt-banner .rcp-icon { font-size:32px; }
+  .receipt-banner .rcp-details { flex:1; }
+  .receipt-banner .rcp-title { font-weight:700; font-size:15px; color:#1B5E20; }
+  .receipt-banner .rcp-meta { font-size:12px; color:var(--text-muted); margin-top:2px; }
+  .receipt-banner .rcp-amount { font-size:20px; font-weight:700; color:var(--accent); font-family:var(--mono); }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+  .empty-state { text-align:center; padding:48px 20px; color:var(--text-muted); }
+  .empty-state .icon { font-size:48px; margin-bottom:12px; }
+  .empty-state h3 { font-size:18px; font-weight:600; color:var(--text); margin-bottom:4px; }
+  .empty-state p { font-size:13px; }
+  </style>
+
+  ${receipt ? `
+  <div class="receipt-banner">
+    <div class="rcp-icon">${receipt.type === 'deposit' ? '&#x1F4B5;' : '&#x1F4B8;'}</div>
+    <div class="rcp-details">
+      <div class="rcp-title">${receipt.type === 'deposit' ? 'Deposit' : 'Withdrawal'} Successful</div>
+      <div class="rcp-meta">Receipt: RCP-${String(receipt.rowid || receipt.id).padStart(6, '0')} &middot; ${receipt.child_name} &middot; ${(receipt.created_at || '').slice(0, 19).replace('T', ' ')}</div>
+    </div>
+    <div class="rcp-amount">${receipt.type === 'deposit' ? '+' : '-'}&#x20B1;${Number(receipt.amount).toFixed(2)}</div>
+  </div>
+  ` : toast ? `<div class="toast ${toast.startsWith('error:') ? 'error' : 'success'}">${toast.startsWith('error:') ? '&#x274C; ' + toast.slice(6) : '&#x2705; ' + toast.slice(8)}</div>` : ''}
+
+  <div class="teller-layout">
+    <!-- Left: Account Search & Info -->
+    <div class="teller-sidebar-card">
+      <h3>&#x1F50D; Select Account</h3>
+      <form method="get" action="/admin/teller" style="margin-bottom:16px">
+        <select name="account" style="width:100%;padding:10px 12px;border:2px solid var(--border);border-radius:8px;font-size:14px;outline:none" onchange="this.form.submit()">
+          <option value="">-- Choose an account --</option>
+          ${accounts.map(a => `<option value="${a.account_id}"${a.account_id === selectedId ? ' selected' : ''}>${a.child_name} (${a.member_id || '-'})</option>`).join('')}
+        </select>
+      </form>
+
+      ${selectedAccount ? `
+      <div class="account-info">
+        <div class="account-info-item">
+          <div class="label">Account Holder</div>
+          <div class="value">${selectedAccount.child_name}</div>
+        </div>
+        <div class="account-info-item">
+          <div class="label">Member ID</div>
+          <div class="value" style="font-size:14px;font-family:var(--mono)">${selectedAccount.member_id || '-'}</div>
+        </div>
+        <div class="account-info-item">
+          <div class="label">Balance</div>
+          <div class="value green">&#x20B1;${Number(selectedAccount.actual_balance).toFixed(2)}</div>
+        </div>
+        <div class="account-info-item">
+          <div class="label">Available</div>
+          <div class="value">&#x20B1;${Number(selectedAccount.unallocated_balance).toFixed(2)}</div>
+        </div>
+      </div>
+
+      <h3 style="margin-top:8px">&#x1F4B0; New Transaction</h3>
+
+      <!-- Deposit Form -->
+      <form method="post" action="/admin/teller/deposit/${selectedAccount.account_id}" style="margin-bottom:10px;padding:14px;background:#e8f5e9;border-radius:8px;border:1px solid #a5d6a7">
+        <div style="font-weight:600;font-size:13px;color:var(--accent);margin-bottom:8px">&#x1F4B5; Deposit</div>
+        <div class="tx-form" style="grid-template-columns:1fr auto">
+          <div>
+            <label>Amount (&#x20B1;)</label>
+            <input type="number" name="amount" min="1" step="0.01" placeholder="0.00" required style="padding:9px 12px;border:2px solid #a5d6a7;border-radius:8px;font-size:14px;width:100%">
+          </div>
+          <button type="submit" class="btn btn-primary" style="padding:9px 20px;margin-top:18px">&#x2795; Deposit</button>
+        </div>
+        <label style="display:block;font-size:11px;color:var(--text-muted);margin-top:6px">Description (optional)</label>
+        <input type="text" name="description" placeholder="e.g. Over-the-counter deposit" value="Counter deposit" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-top:2px">
+      </form>
+
+      <!-- Withdrawal Form -->
+      <form method="post" action="/admin/teller/withdraw/${selectedAccount.account_id}" style="padding:14px;background:#fff8e1;border-radius:8px;border:1px solid #ffe082">
+        <div style="font-weight:600;font-size:13px;color:#F57F17;margin-bottom:8px">&#x1F4B8; Withdrawal</div>
+        <div class="tx-form" style="grid-template-columns:1fr auto">
+          <div>
+            <label>Amount (&#x20B1;)</label>
+            <input type="number" name="amount" min="1" step="0.01" placeholder="0.00" required style="padding:9px 12px;border:2px solid #ffe082;border-radius:8px;font-size:14px;width:100%">
+          </div>
+          <button type="submit" class="btn btn-amber" style="padding:9px 20px;margin-top:18px">&#x1F4B8; Withdraw</button>
+        </div>
+        <label style="display:block;font-size:11px;color:var(--text-muted);margin-top:6px">Description (optional)</label>
+        <input type="text" name="description" placeholder="e.g. Cash withdrawal" value="Counter withdrawal" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-top:2px">
+      </form>
+      ` : ''}
+    </div>
+
+    <!-- Right: Transactions -->
+    <div class="teller-main-card">
+      <div class="card-header">
+        <h3>${selectedAccount ? `&#x1F4CB; ${selectedAccount.child_name} - Recent Transactions` : '&#x1F4CB; Transaction Log'}</h3>
+        ${selectedAccount ? `<span class="count">${recentTxs.length} entries</span>` : ''}
+      </div>
+      <div class="card-body">
+        ${!selectedAccount ? `
+        <div class="empty-state">
+          <div class="icon">&#x1F3E6;</div>
+          <h3>Welcome to Teller Counter</h3>
+          <p>Select an account from the left panel to process deposits and withdrawals.</p>
+        </div>
+        ` : recentTxs.length === 0 ? `
+        <div style="text-align:center;padding:32px;color:var(--text-muted)">No transactions yet for this account.</div>
+        ` : recentTxs.map(tx => `
+        <div class="teller-tx-row">
+          <span class="teller-tx-type"><span class="badge ${tx.type === 'deposit' ? 'badge-green' : tx.type === 'withdrawal' ? 'badge-red' : tx.type === 'interest_credit' || tx.type === 'interest' ? 'badge-purple' : 'badge-amber'}">${tx.type}</span></span>
+          <span class="teller-tx-amount ${tx.type === 'deposit' ? '' : ''}" style="color:${tx.type === 'deposit' ? 'var(--accent)' : tx.type === 'withdrawal' ? 'var(--red)' : 'var(--text)'}">${tx.type === 'deposit' ? '+' : '-'}&#x20B1;${Number(tx.amount).toFixed(2)}</span>
+          <span class="teller-tx-desc">${tx.description || '-'}</span>
+          <span class="teller-tx-date">${(tx.created_at || '').slice(0, 16).replace('T', ' ')}</span>
+        </div>`).join('')}
+      </div>
+    </div>
+  </div>
+  `;
+
+  res.type('html').send(layout('Teller Counter', 'teller', content, { toast: toast || undefined }));
+});
+
+router.post('/teller/deposit/:id', requireSession, (req, res) => {
+  try {
+    const { amount, description } = req.body;
+    const val = Number(amount);
+    if (!val || val <= 0) return res.redirect('/admin/teller?error=Invalid+amount');
+    const db = getDb();
+    const account = db.prepare('SELECT * FROM accounts WHERE account_id = ?').get(req.params.id);
+    if (!account) return res.redirect('/admin/teller?error=Account+not+found');
+    const newBalance = Number(account.actual_balance) + val;
+    db.prepare("UPDATE accounts SET actual_balance=?, unallocated_balance=unallocated_balance+?, updated_at=datetime('now') WHERE account_id=?").run(newBalance, val, req.params.id);
+    const result = store.addTransaction({
+      account_id: req.params.id,
+      type: 'deposit',
+      amount: val,
+      description: description || 'Counter deposit',
+      balance_before: Number(account.actual_balance),
+      balance_after: newBalance,
+    });
+    const txId = result?.rowid || result?.id || '';
+    res.redirect(`/admin/teller?deposited=ok&receipt=${txId}&account=${req.params.id}`);
+  } catch (err) {
+    res.redirect(`/admin/teller?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/teller/withdraw/:id', requireSession, (req, res) => {
+  try {
+    const { amount, description } = req.body;
+    const val = Number(amount);
+    if (!val || val <= 0) return res.redirect('/admin/teller?error=Invalid+amount');
+    const db = getDb();
+    const account = db.prepare('SELECT * FROM accounts WHERE account_id = ?').get(req.params.id);
+    if (!account) return res.redirect('/admin/teller?error=Account+not+found');
+    if (Number(account.actual_balance) < val) return res.redirect('/admin/teller?error=Insufficient+balance');
+    const newBalance = Math.round((Number(account.actual_balance) - val) * 100) / 100;
+    const newUnallocated = Math.round((Number(account.unallocated_balance) - val) * 100) / 100;
+    db.prepare("UPDATE accounts SET actual_balance=?, unallocated_balance=?, updated_at=datetime('now') WHERE account_id=?").run(newBalance, Math.max(0, newUnallocated), req.params.id);
+    const result = store.addTransaction({
+      account_id: req.params.id,
+      type: 'withdrawal',
+      amount: val,
+      description: description || 'Counter withdrawal',
+      balance_before: Number(account.actual_balance),
+      balance_after: newBalance,
+    });
+    const txId = result?.rowid || result?.id || '';
+    res.redirect(`/admin/teller?withdrawn=ok&receipt=${txId}&account=${req.params.id}`);
+  } catch (err) {
+    res.redirect(`/admin/teller?error=${encodeURIComponent(err.message)}`);
+  }
+});
 
 module.exports = router;

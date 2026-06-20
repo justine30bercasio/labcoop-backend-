@@ -2,7 +2,13 @@ function layout(title, active, content, opts = {}) {
   const { toast, counts, subtitle, headerActions } = opts;
   const navItems = [
     { href: '/admin', icon: '&#x1F4CA;', label: 'Dashboard', key: 'dashboard' },
+    { href: '/admin/teller', icon: '&#x1F3E6;', label: 'Teller Counter', key: 'teller' },
     { href: '/admin/accounts', icon: '&#x1F465;', label: 'Accounts', key: 'accounts' },
+    { href: '/admin/loans', icon: '&#x1F4B0;', label: 'Loans', key: 'loans' },
+    { href: '/admin/withdrawal-requests', icon: '&#x1F4B8;', label: 'Withdrawals', key: 'withdrawal-requests' },
+    { href: '/admin/savings-applications', icon: '&#x1F4B1;', label: 'Savings Apps', key: 'savings-applications' },
+    { href: '/admin/loan-products', icon: '&#x1F3ED;', label: 'Loan Products', key: 'loan-products' },
+    { href: '/admin/savings-products', icon: '&#x1F4E6;', label: 'Savings Products', key: 'savings-products' },
     { href: '/admin/goals', icon: '&#x1F3AF;', label: 'Goals', key: 'goals' },
     { href: '/admin/badges', icon: '&#x1F3C6;', label: 'Badges', key: 'badges' },
     { href: '/admin/transactions', icon: '&#x1F4B3;', label: 'Transactions', key: 'transactions' },

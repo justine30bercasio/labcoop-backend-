@@ -16,12 +16,31 @@ function ensureDb() {
   const db = new Database(DB_PATH);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
+
+  // Create migration tracking table
+  db.exec(`CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY, applied_at TEXT DEFAULT (datetime('now')))`);
+
   try {
     const migrationsDir = path.join(__dirname, '..', 'db', 'migrations');
     const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql') && f !== '001_init.sql' && f !== '002_add_password.sql').sort();
+    const applied = new Set(db.prepare('SELECT name FROM _migrations').all().map(r => r.name));
+
     for (const file of files) {
+      if (applied.has(file)) {
+        console.log('Migration already applied:', file);
+        continue;
+      }
       const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
-      db.exec(sql);
+      // Run each statement separately so ALTER TABLE failures don't block CREATE TABLE
+      const statements = sql.split(';').map(s => s.trim()).filter(s => s.length > 0);
+      for (const stmt of statements) {
+        try {
+          db.exec(stmt + ';');
+        } catch (err) {
+          console.warn(`Migration ${file} statement warning: ${err.message}`);
+        }
+      }
+      db.prepare('INSERT OR IGNORE INTO _migrations (name) VALUES (?)').run(file);
       console.log('Migration applied:', file);
     }
   } catch (err) {
@@ -204,6 +223,9 @@ const gamesRouter = require('./routes/games');
 const shopRouter = require('./routes/shop');
 const quizRouter = require('./routes/quiz');
 const adminAuthRouter = require('./routes/admin-auth');
+const loansRouter = require('./routes/loans');
+const bankingFeaturesRouter = require('./routes/banking-features');
+const { startScheduler } = require('./services/scheduler');
 const { authMiddleware } = require('./middleware/auth');
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -265,6 +287,19 @@ app.get('/', (req, res) => {
       transactions: {
         list: 'GET /api/accounts/:accountId/transactions',
         create: 'POST /api/transactions',
+        statement: 'GET /api/accounts/:accountId/statement',
+      },
+      microbanking: {
+        loanProducts: 'GET /api/loan-products',
+        savingsProducts: 'GET /api/savings-products',
+        loans: 'GET /api/loans?account_id=xxx',
+        apply: 'POST /api/loans/apply',
+        approve: 'PUT /api/loans/:loanId/approve',
+        disburse: 'PUT /api/loans/:loanId/disburse',
+        pay: 'POST /api/loans/:loanId/pay',
+        payments: 'GET /api/loans/:loanId/payments',
+        preview: 'POST /api/loans/preview',
+        summary: 'GET /api/accounts/:accountId/summary',
       },
       excel: {
         upload: 'POST /api/excel/upload',
@@ -363,6 +398,10 @@ app.get('/api/accounts/:accountId/transactions', authMiddleware, (req, res, next
   req.url = `/account/${req.params.accountId}`;
   next();
 }, transactionsRouter);
+app.get('/api/accounts/:accountId/statement', authMiddleware, (req, res, next) => {
+  req.url = `/statement/${req.params.accountId}`;
+  next();
+}, transactionsRouter);
 app.use('/api/transactions', authMiddleware, transactionsRouter);
 app.use('/api/excel', authMiddleware, excelRouter);
 app.use('/api/coop', authMiddleware, coopRouter);
@@ -370,6 +409,8 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/shop', shopRouter);
 app.use('/api/quiz', quizRouter);
 app.use('/api/games', gamesRouter);
+app.use('/api', authMiddleware, loansRouter);
+app.use('/api', authMiddleware, bankingFeaturesRouter);
 app.use('/admin', adminAuthRouter);
 app.use('/admin', adminRouter);
 
@@ -380,6 +421,7 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`LabCoop API server running on port ${PORT}`);
+  startScheduler();
 });
 
 module.exports = app;

@@ -2381,7 +2381,7 @@ router.get('/teller', requireSession, (req, res) => {
   const bankStyle = `<style>
   .teller-bar { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 24px; margin-bottom:20px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
   .teller-bar label { font-size:12px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap; }
-  .teller-bar select { flex:1; min-width:260px; padding:10px 14px; border:2px solid var(--border); border-radius:8px; font-size:14px; background:#fff; outline:none; transition:border-color 0.2s; }
+  .teller-bar select { flex:1; min-width:260px; padding:10px 14px; border:2px solid var(--border); border-radius:8px; font-size:14px; background:var(--card); outline:none; transition:border-color 0.2s; }
   .teller-bar select:focus { border-color:var(--accent); }
   .teller-grid { display:grid; grid-template-columns: 1fr 1fr; gap:20px; }
   .teller-card { background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
@@ -2401,21 +2401,18 @@ router.get('/teller', requireSession, (req, res) => {
   .tx-tabs { display:flex; gap:4px; margin-bottom:0; background:#f1f5f9; border-radius:10px; padding:4px; }
   .tx-tab { flex:1; text-align:center; padding:10px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; border:none; background:transparent; color:var(--text-muted); transition:all 0.2s; }
   .tx-tab:hover { color:var(--text); }
-  .tx-tab.active { background:#fff; color:var(--text); box-shadow:0 1px 3px rgba(0,0,0,0.1); }
+  .tx-tab.active { background:var(--card); color:var(--text); box-shadow:0 1px 3px rgba(0,0,0,0.1); }
   .tx-panel { display:none; margin-top:16px; }
   .tx-panel.active { display:block; }
-  .tx-panel form { }
   .tx-panel .field { margin-bottom:12px; }
   .tx-panel .field label { display:block; font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.3px; }
-  .tx-panel .field input, .tx-panel .field select { width:100%; padding:10px 14px; border:2px solid var(--border); border-radius:8px; font-size:14px; outline:none; transition:border-color 0.2s; box-sizing:border-box; }
+  .tx-panel .field input, .tx-panel .field select { width:100%; padding:10px 14px; border:2px solid var(--border); border-radius:8px; font-size:14px; outline:none; transition:border-color 0.2s; box-sizing:border-box; background:var(--card); }
   .tx-panel .field input:focus, .tx-panel .field select:focus { border-color:var(--accent); }
   .tx-panel .field .hint { font-size:11px; color:var(--text-muted); margin-top:2px; }
-  .btn-deposit { background:#16a34a; color:#fff; border:none; padding:12px 24px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; width:100%; transition:background 0.2s; }
-  .btn-deposit:hover { background:#15803d; }
-  .btn-withdraw { background:#ea580c; color:#fff; border:none; padding:12px 24px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; width:100%; transition:background 0.2s; }
-  .btn-withdraw:hover { background:#c2410c; }
-  .btn-loan { background:#2563eb; color:#fff; border:none; padding:12px 24px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; width:100%; transition:background 0.2s; }
-  .btn-loan:hover { background:#1d4ed8; }
+  .btn-action { color:#fff; border:none; padding:12px 24px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; width:100%; transition:background 0.2s; }
+  .btn-green { background:#16a34a; } .btn-green:hover { background:#15803d; }
+  .btn-orange { background:#ea580c; } .btn-orange:hover { background:#c2410c; }
+  .btn-blue { background:#2563eb; } .btn-blue:hover { background:#1d4ed8; }
   .tx-table { width:100%; border-collapse:collapse; }
   .tx-table th { text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); font-weight:600; padding:8px 12px; border-bottom:2px solid var(--border); }
   .tx-table td { padding:10px 12px; font-size:13px; border-bottom:1px solid var(--border); }
@@ -2430,15 +2427,35 @@ router.get('/teller', requireSession, (req, res) => {
   .tx-type-badge.loan_disbursement { background:#fef3c7; color:#92400e; }
   .tx-type-badge.interest { background:#f3e8ff; color:#6b21a8; }
   .tx-type-badge.allocation { background:#e0f2fe; color:#075985; }
-  .empty-state2 { text-align:center; padding:48px 20px; color:var(--text-muted); }
-  .empty-state2 .icon { font-size:48px; margin-bottom:12px; }
-  .empty-state2 h3 { font-size:18px; font-weight:600; color:var(--text); margin-bottom:4px; }
-  .empty-state2 p { font-size:13px; }
+  .empty2 { text-align:center; padding:48px 20px; color:var(--text-muted); }
+  .empty2 .icon { font-size:48px; margin-bottom:12px; }
+  .empty2 h3 { font-size:18px; font-weight:600; color:var(--text); margin-bottom:4px; }
+  .empty2 p { font-size:13px; }
+  .rcpt-link { cursor:pointer; font-size:13px; color:var(--accent); text-decoration:none; opacity:0.6; transition:opacity 0.2s; }
+  .rcpt-link:hover { opacity:1; text-decoration:underline; }
+  .receipt-inline { background:#fff; border:1px solid #d0d0d0; border-radius:8px; margin-bottom:12px; font-family:'Courier New',monospace; font-size:12px; }
+  .receipt-inline .ri-header { text-align:center; padding:10px; border-bottom:1px dashed #ccc; }
+  .receipt-inline .ri-header strong { font-size:14px; }
+  .receipt-inline .ri-body { padding:10px 14px; }
+  .receipt-inline .ri-row { display:flex; justify-content:space-between; padding:3px 0; }
+  .receipt-inline .ri-label { color:#888; }
+  .receipt-inline .ri-value { font-weight:700; }
+  .receipt-inline .ri-credit { color:#16a34a; }
+  .receipt-inline .ri-debit { color:#dc2626; }
+  .receipt-inline .ri-divider { border-top:1px dashed #e0e0e0; margin:5px 0; }
+  .receipt-inline .ri-footer { text-align:center; padding:8px; border-top:1px dashed #ccc; font-size:10px; color:#999; }
+  .badge-pill { display:inline-block; padding:0 8px; border-radius:10px; font-size:10px; font-weight:600; line-height:20px; }
   @keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
   </style>`;
 
-  const bankContent = `
-  <!-- Account Search Bar -->
+  function receiptHtml(r) {
+    if (!r) return '';
+    var isCredit = r.type === 'deposit' || r.type === 'loan_disbursement';
+    return '<div class="receipt-inline" id="rinline"><div class="ri-header"><strong>LABCOOP PASSBOOK</strong><br><span style="font-size:10px;color:#999">Official Transaction Receipt</span></div><div class="ri-body"><div class="ri-row"><span class="ri-label">Receipt No.</span><span class="ri-value">RCP-' + (r.transaction_id || '').slice(0,8).toUpperCase() + '</span></div><div class="ri-row"><span class="ri-label">Date</span><span class="ri-value">' + (r.created_at || '').slice(0,19).replace('T',' ') + '</span></div><div class="ri-row"><span class="ri-label">Member</span><span class="ri-value">' + (r.child_name||'N/A') + ' (' + (r.member_id||'---') + ')</span></div><div class="ri-divider"></div><div class="ri-row"><span class="ri-label">Transaction</span><span class="ri-value" style="text-transform:uppercase">' + r.type.replace(/_/g,' ') + '</span></div><div class="ri-row"><span class="ri-label">Amount</span><span class="ri-value ' + (isCredit ? 'ri-credit' : 'ri-debit') + '">' + (isCredit ? '+' : '-') + ' \u20B1' + Number(r.amount).toFixed(2) + '</span></div><div class="ri-row"><span class="ri-label">Description</span><span class="ri-value">' + (r.description||'-') + '</span></div><div class="ri-divider"></div><div class="ri-row"><span class="ri-label">Balance Before</span><span class="ri-value">\u20B1' + Number(r.balance_before || 0).toFixed(2) + '</span></div><div class="ri-row"><span class="ri-label">Balance After</span><span class="ri-value">\u20B1' + Number(r.balance_after || 0).toFixed(2) + '</span></div></div><div class="ri-footer"><button onclick="window.print()" class="btn btn-outline btn-xs">\uD83D\uDDA8 Print</button> &nbsp; <button onclick="document.getElementById(\'rinline\').remove()" class="btn btn-outline btn-xs">\u2716 Close</button></div></div>';
+  }
+
+  const bankContent = bankStyle + `
+  <!-- Teller Top Bar -->
   <div class="teller-bar">
     <label>&#x1F50D; Customer</label>
     <form method="get" action="/admin/teller" style="display:contents">
@@ -2447,35 +2464,34 @@ router.get('/teller', requireSession, (req, res) => {
         ${accounts.map(a => '<option value="' + a.account_id + '"' + (a.account_id === selectedId ? ' selected' : '') + '>' + a.child_name + ' (' + (a.member_id || '-') + ')</option>').join('')}
       </select>
     </form>
-    ${selectedAccount ? '<span style="font-size:12px;color:var(--accent);font-weight:600">&#x2705; Account selected</span>' : ''}
+    ${selectedAccount ? '<span class="badge-pill" style="background:#dcfce7;color:#166534">&#x2705; ' + selectedAccount.child_name + '</span>' : ''}
   </div>
 
   ${!selectedAccount ? `
   <div class="teller-card">
-    <div class="empty-state2">
+    <div class="empty2">
       <div class="icon">&#x1F3E6;</div>
       <h3>Welcome to Teller Counter</h3>
       <p>Select a customer above to process deposits, withdrawals, and loan payments.</p>
     </div>
   </div>
   ` : `
-  <!-- Customer Info + Actions -->
   <div class="teller-grid">
 
-    <!-- Left Column: Customer Info & Transaction Form -->
+    <!-- Left: Customer + Actions -->
     <div class="teller-card">
       <div class="teller-card-body">
         <div class="customer-header">
           <div class="customer-avatar">${(selectedAccount.child_name || '?')[0].toUpperCase()}</div>
           <div class="customer-info">
             <h2>${selectedAccount.child_name}</h2>
-            <span class="member">Member ID: ${selectedAccount.member_id || '---'}</span>
+            <span class="member">ID: ${selectedAccount.member_id || '---'}</span>
           </div>
         </div>
 
         <div class="balance-grid">
           <div class="balance-item">
-            <div class="blabel">Current Balance</div>
+            <div class="blabel">Balance</div>
             <div class="bvalue green">&#x20B1;${Number(selectedAccount.actual_balance).toFixed(2)}</div>
           </div>
           <div class="balance-item">
@@ -2484,14 +2500,12 @@ router.get('/teller', requireSession, (req, res) => {
           </div>
         </div>
 
-        <!-- Tabbed Transaction Actions -->
         <div class="tx-tabs">
           <button class="tx-tab active" onclick="switchTxTab('deposit')" id="tab-deposit">&#x1F4B5; Deposit</button>
           <button class="tx-tab" onclick="switchTxTab('withdraw')" id="tab-withdraw">&#x1F4B8; Withdraw</button>
           <button class="tx-tab" onclick="switchTxTab('loan')" id="tab-loan">&#x1F3E6; Loan Pay</button>
         </div>
 
-        <!-- Deposit Panel -->
         <div class="tx-panel active" id="panel-deposit">
           <form method="post" action="/admin/teller/deposit/${selectedAccount.account_id}">
             <div class="field">
@@ -2500,14 +2514,12 @@ router.get('/teller', requireSession, (req, res) => {
             </div>
             <div class="field">
               <label>Description</label>
-              <input type="text" name="description" placeholder="e.g. Over-the-counter deposit" value="Counter deposit">
-              <div class="hint">Optional reference for this transaction</div>
+              <input type="text" name="description" placeholder="e.g. OTC deposit" value="Counter deposit">
             </div>
-            <button type="submit" class="btn-deposit">&#x2795; Process Deposit</button>
+            <button type="submit" class="btn-action btn-green">&#x2795; Process Deposit</button>
           </form>
         </div>
 
-        <!-- Withdrawal Panel -->
         <div class="tx-panel" id="panel-withdraw">
           <form method="post" action="/admin/teller/withdraw/${selectedAccount.account_id}">
             <div class="field">
@@ -2517,13 +2529,11 @@ router.get('/teller', requireSession, (req, res) => {
             <div class="field">
               <label>Description</label>
               <input type="text" name="description" placeholder="e.g. Cash withdrawal" value="Counter withdrawal">
-              <div class="hint">Optional reference for this transaction</div>
             </div>
-            <button type="submit" class="btn-withdraw">&#x1F4B8; Process Withdrawal</button>
+            <button type="submit" class="btn-action btn-orange">&#x1F4B8; Process Withdrawal</button>
           </form>
         </div>
 
-        <!-- Loan Payment Panel -->
         <div class="tx-panel" id="panel-loan">
           <form method="post" action="/admin/teller/loan-pay/${selectedAccount.account_id}">
             <div class="field">
@@ -2532,33 +2542,33 @@ router.get('/teller', requireSession, (req, res) => {
                 <option value="">-- Choose active loan --</option>
                 ${loanOptionsHtml}
               </select>
-              <div class="hint">Only active loans are shown</div>
             </div>
             <div class="field">
               <label>Payment Amount (&#x20B1;)</label>
               <input type="number" name="amount" min="1" step="0.01" placeholder="0.00" required>
             </div>
-            <button type="submit" class="btn-loan">&#x1F4B3; Process Payment</button>
+            <button type="submit" class="btn-action btn-blue">&#x1F4B3; Process Payment</button>
           </form>
         </div>
       </div>
     </div>
 
-    <!-- Right Column: Transaction History -->
+    <!-- Right: Transaction History -->
     <div class="teller-card">
       <div class="teller-card-header">
-        <h3>&#x1F4CB; Transaction History</h3>
+        <h3>&#x1F4CB; History</h3>
         <span style="font-size:11px;color:var(--text-muted)">${recentTxs.length} entries</span>
       </div>
       <div class="teller-card-body" style="padding:0">
-        ${recentTxs.length === 0 ? '<div style="text-align:center;padding:32px;color:var(--text-muted)">No transactions yet for this account.</div>' : `
+        ${receipt ? receiptHtml(receipt) : ''}
+        ${recentTxs.length === 0 ? '<div style="text-align:center;padding:32px;color:var(--text-muted)">No transactions yet.</div>' : `
         <table class="tx-table">
-          <tr><th>Type</th><th>Amount</th><th>Description</th><th>Date</th></tr>
+          <tr><th>Type</th><th>Amount</th><th>Description</th><th>Date</th><th></th></tr>
           ${recentTxs.map(tx => {
-            const typeClass = ({deposit:'deposit',withdrawal:'withdrawal',loan_payment:'loan_payment',loan_disbursement:'loan_disbursement',interest:'interest',interest_credit:'interest',allocation:'allocation'})[tx.type] || 'deposit';
-            const sign = tx.type === 'deposit' || tx.type === 'loan_disbursement' ? '+' : '-';
-            const color = tx.type === 'deposit' || tx.type === 'loan_disbursement' ? '#16a34a' : tx.type === 'withdrawal' ? '#dc2626' : 'var(--text)';
-            return '<tr><td><span class="tx-type-badge ' + typeClass + '">' + tx.type.replace(/_/g, ' ') + '</span></td><td class="tx-amt" style="color:' + color + '">' + sign + '&#x20B1;' + Number(tx.amount).toFixed(2) + '</td><td class="tx-desc">' + (tx.description || '-') + '</td><td class="tx-date">' + (tx.created_at || '').slice(0, 16).replace('T', ' ') + '</td></tr>';
+            var tc = ({deposit:'deposit',withdrawal:'withdrawal',loan_payment:'loan_payment',loan_disbursement:'loan_disbursement',interest:'interest',interest_credit:'interest',allocation:'allocation'})[tx.type] || 'deposit';
+            var sign = tx.type === 'deposit' || tx.type === 'loan_disbursement' ? '+' : '-';
+            var col = tx.type === 'deposit' || tx.type === 'loan_disbursement' ? '#16a34a' : tx.type === 'withdrawal' ? '#dc2626' : 'var(--text)';
+            return '<tr><td><span class="tx-type-badge ' + tc + '">' + tx.type.replace(/_/g,' ') + '</span></td><td class="tx-amt" style="color:' + col + '">' + sign + '&#x20B1;' + Number(tx.amount).toFixed(2) + '</td><td class="tx-desc">' + (tx.description||'-') + '</td><td class="tx-date">' + (tx.created_at||'').slice(0,16).replace('T',' ') + '</td><td><a class="rcpt-link" href="?account=' + selectedId + '&receipt=' + tx.transaction_id + '" title="View receipt">&#x1F5A8;</a></td></tr>';
           }).join('')}
         </table>`}
       </div>
@@ -2569,58 +2579,16 @@ router.get('/teller', requireSession, (req, res) => {
 
   <script>
   function switchTxTab(tab) {
-    document.querySelectorAll('.tx-tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.tx-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tx-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.tx-panel').forEach(function(p) { p.classList.remove('active'); });
     document.getElementById('tab-' + tab).classList.add('active');
     document.getElementById('panel-' + tab).classList.add('active');
   }
   </script>
   `;
 
-  const tellerContent = receipt ? `
-  ${bankStyle}
-  <div class="passbook-receipt" id="passbookReceipt">
-    <div class="pb-header">
-      <div class="pb-title">LabCoop Passbook</div>
-      <div class="pb-sub">Official Transaction Receipt</div>
-    </div>
-    <div class="pb-body">
-      <div class="pb-row"><span class="pb-label">Receipt No.</span><span class="pb-value">RCP-${(receipt.transaction_id || '').slice(0, 8).toUpperCase()}</span></div>
-      <div class="pb-row"><span class="pb-label">Date &amp; Time</span><span class="pb-value">${(receipt.created_at || '').slice(0, 19).replace('T', ' ')}</span></div>
-      <div class="pb-row"><span class="pb-label">Member</span><span class="pb-value">${receipt.child_name || 'N/A'} (${receipt.member_id || '---'})</span></div>
-      <div class="pb-divider"></div>
-      <div class="pb-row"><span class="pb-label">Transaction</span><span class="pb-value" style="text-transform:uppercase;font-weight:700">${receipt.type.replace(/_/g, ' ')}</span></div>
-      <div class="pb-row"><span class="pb-label">Amount</span><span class="pb-value pb-amount ${receipt.type === 'deposit' || receipt.type === 'loan_disbursement' ? 'pb-credit' : 'pb-debit'}">${receipt.type === 'deposit' || receipt.type === 'loan_disbursement' ? '+' : '-'}&#x20B1;${Number(receipt.amount).toFixed(2)}</span></div>
-      <div class="pb-row"><span class="pb-label">Description</span><span class="pb-value">${receipt.description || '-'}</span></div>
-      <div class="pb-divider"></div>
-      <div class="pb-row"><span class="pb-label">Balance Before</span><span class="pb-value">&#x20B1;${Number(receipt.balance_before || 0).toFixed(2)}</span></div>
-      <div class="pb-row"><span class="pb-label">Balance After</span><span class="pb-value">&#x20B1;${Number(receipt.balance_after || 0).toFixed(2)}</span></div>
-      ${receipt.reference_type ? '<div class="pb-row"><span class="pb-label">Reference</span><span class="pb-value">' + (receipt.reference_type || '').toUpperCase() + ': ' + (receipt.reference_id || '').slice(0, 8) + '</span></div>' : ''}
-    </div>
-    <div class="pb-footer">
-      <button onclick="window.print()" class="btn btn-outline btn-xs" style="margin-right:8px">&#x1F5A8; Print Receipt</button>
-      <span style="font-size:10px;color:var(--text-muted)">This is a computer-generated receipt.</span>
-    </div>
-  </div>
-  <style>
-  @media print { body * { visibility:hidden; } #passbookReceipt, #passbookReceipt * { visibility:visible; } #passbookReceipt { position:absolute; left:0; top:0; width:320px; margin:0; padding:20px; border:none; box-shadow:none; background:#fff; } #passbookReceipt .pb-footer button { display:none; } }
-  .passbook-receipt { background:#fff; border:2px solid #333; border-radius:8px; padding:20px; margin-bottom:16px; max-width:420px; font-family:'Courier New',Courier,monospace; animation:fadeUp 0.3s ease; }
-  .passbook-receipt .pb-header { text-align:center; border-bottom:2px dashed #333; padding-bottom:12px; margin-bottom:12px; }
-  .passbook-receipt .pb-title { font-size:18px; font-weight:900; letter-spacing:2px; text-transform:uppercase; }
-  .passbook-receipt .pb-sub { font-size:11px; color:#666; margin-top:2px; }
-  .passbook-receipt .pb-body { margin-bottom:12px; }
-  .passbook-receipt .pb-row { display:flex; justify-content:space-between; padding:4px 0; font-size:12px; }
-  .passbook-receipt .pb-label { color:#666; font-weight:600; }
-  .passbook-receipt .pb-value { font-weight:700; text-align:right; }
-  .passbook-receipt .pb-amount { font-size:16px; }
-  .passbook-receipt .pb-credit { color:#2e7d32; }
-  .passbook-receipt .pb-debit { color:#c62828; }
-  .passbook-receipt .pb-divider { border-top:1px dashed #ccc; margin:6px 0; }
-  .passbook-receipt .pb-footer { text-align:center; border-top:2px dashed #333; padding-top:10px; }
-  </style>
-  ${toast ? '<div class="toast ' + (toast.startsWith('error:') ? 'error' : 'success') + '">' + (toast.startsWith('error:') ? '&#x274C; ' + toast.slice(6) : '&#x2705; ' + toast.slice(8)) + '</div>' : ''}
-  ${bankContent}
-  ` : (toast ? '<div class="toast ' + (toast.startsWith('error:') ? 'error' : 'success') + '">' + (toast.startsWith('error:') ? '&#x274C; ' + toast.slice(6) : '&#x2705; ' + toast.slice(8)) + '</div>' : '') + bankStyle + bankContent;
+  var toastHtml = toast ? '<div class="toast ' + (toast.startsWith('error:') ? 'error' : 'success') + '">' + (toast.startsWith('error:') ? '&#x274C; ' + toast.slice(6) : '&#x2705; ' + toast.slice(8)) + '</div>' : '';
+  const tellerContent = toastHtml + bankContent;
 
   res.type('html').send(layout('Teller Counter', 'teller', tellerContent, { toast: toast || undefined }));
 });

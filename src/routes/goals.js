@@ -44,18 +44,7 @@ router.put('/:goalId',
 
     const diff = current_allocated !== undefined ? Number(current_allocated) - oldGoal.current_allocated : 0;
 
-    // Check balance BEFORE updating goal
-    if (diff > 0) {
-      const account = store.getAccount(oldGoal.account_id);
-      if (account) {
-        const newUnallocated = account.unallocated_balance - diff;
-        if (newUnallocated < 0) {
-          return res.status(400).json({ message: 'Insufficient unallocated balance for this allocation' });
-        }
-      }
-    }
-
-    // Use a transaction to keep goal + account + tx atomic
+    // Use a transaction to keep goal + tx atomic
     const db = require('../db').getDb();
     const transaction = db.transaction(() => {
       const updated = store.updateGoal(req.params.goalId, {
@@ -67,12 +56,6 @@ router.put('/:goalId',
       if (!updated) throw new Error('Goal not found');
 
       if (diff !== 0) {
-        const acct = store.getAccount(oldGoal.account_id);
-        if (acct) {
-          store.updateAccount(oldGoal.account_id, {
-            unallocated_balance: Math.round((acct.unallocated_balance - diff) * 100) / 100,
-          });
-        }
         store.addTransaction({
           account_id: oldGoal.account_id,
           goal_id: req.params.goalId,

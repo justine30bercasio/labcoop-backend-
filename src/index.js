@@ -206,14 +206,28 @@ app.get('/api/health', (req, res) => {
   let dbOk = false;
   let accountCount = 0;
   let sampleAccount = null;
+  let loginTest = null;
   try {
     const db = getDb();
     db.prepare('SELECT 1').get();
     dbOk = true;
     accountCount = db.prepare('SELECT COUNT(*) as c FROM accounts').get().c;
     sampleAccount = db.prepare('SELECT account_id, child_name, member_id, password_changed FROM accounts LIMIT 1').get();
-  } catch (e) { console.error('health err:', e); }
-  res.json({ status: 'ok', dbConnected: dbOk, accountCount, sampleAccount, timestamp: new Date().toISOString() });
+    // Test the exact login query
+    const testAccount = db.prepare('SELECT * FROM accounts WHERE member_id = ?').get('000001');
+    if (testAccount) {
+      const bcrypt = require('bcryptjs');
+      loginTest = {
+        found: true,
+        childName: testAccount.child_name,
+        passwordHashLength: testAccount.password ? testAccount.password.length : 0,
+        bcryptResult: bcrypt.compareSync('0000', testAccount.password),
+      };
+    } else {
+      loginTest = { found: false };
+    }
+  } catch (e) { loginTest = { error: e.message }; }
+  res.json({ status: 'ok', dbConnected: dbOk, accountCount, sampleAccount, loginTest, timestamp: new Date().toISOString() });
 });
 
 app.use('/api/auth', loginLimiter, authRouter);

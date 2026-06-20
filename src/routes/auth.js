@@ -73,7 +73,7 @@ router.post('/login', (req, res) => {
     });
   } catch (err) {
     console.error('Login error:', err.message, err.stack);
-    return res.status(500).json({ message: 'Internal server error' });
+    return res.status(500).json({ message: 'Internal server error', detail: err.message });
   }
 });
 

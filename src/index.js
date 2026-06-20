@@ -224,7 +224,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Debug login endpoint (bypasses rate limiter)
-app.post('/api/debug-login', express.json(), (req, res) => {
+app.post('/api/debug-login', (req, res) => {
   try {
     const bcrypt = require('bcryptjs');
     const jwt = require('jsonwebtoken');
@@ -275,7 +275,7 @@ app.use('/admin', adminRouter);
 
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
-  res.status(500).json({ message: 'Internal server error' });
+  res.status(500).json({ message: 'Internal server error', error: err.message, type: err.type });
 });
 
 app.listen(PORT, () => {

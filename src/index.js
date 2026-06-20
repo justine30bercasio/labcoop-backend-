@@ -8,6 +8,7 @@ const morgan = require('morgan');
 const session = require('express-session');
 const rateLimit = require('express-rate-limit');
 const Database = require('better-sqlite3');
+const bcrypt = require('bcryptjs');
 
 const DB_PATH = path.join(__dirname, '..', 'labcoop.db');
 
@@ -23,13 +24,30 @@ function ensureDb() {
     console.error('Migration failed:', err.message);
     process.exit(1);
   }
+  // Add missing columns for existing databases
+  const cols = db.prepare("PRAGMA table_info('accounts')").all().map(c => c.name);
+  if (!cols.includes('member_id')) {
+    db.exec("ALTER TABLE accounts ADD COLUMN member_id TEXT UNIQUE");
+    console.log('Added member_id column.');
+  }
+  if (!cols.includes('password')) {
+    db.exec("ALTER TABLE accounts ADD COLUMN password TEXT NOT NULL DEFAULT ''");
+    console.log('Added password column.');
+  }
+  if (!cols.includes('password_changed')) {
+    db.exec("ALTER TABLE accounts ADD COLUMN password_changed INTEGER NOT NULL DEFAULT 0");
+    console.log('Added password_changed column.');
+  }
   try {
     const insertAccount = db.prepare(`
-      INSERT OR IGNORE INTO accounts (account_id, child_name, actual_balance, unallocated_balance, current_xp, parent_phone, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR IGNORE INTO accounts (account_id, child_name, member_id, password, password_changed, actual_balance, unallocated_balance, current_xp, parent_phone, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    insertAccount.run('00000000-0000-0000-0000-000000000001', 'Juan', 1500.00, 200.00, 45, '09171234567', '2025-01-15T08:00:00.000Z', '2025-06-10T10:30:00.000Z');
-    insertAccount.run('00000000-0000-0000-0000-000000000002', 'Maria', 2500.00, 500.00, 120, '09179876543', '2025-02-01T09:00:00.000Z', '2025-06-10T11:00:00.000Z');
+    const defaultHash = bcrypt.hashSync('0000', 10);
+    insertAccount.run('00000000-0000-0000-0000-000000000001', 'Juan', '000001', defaultHash, 0, 1500.00, 200.00, 45, '09171234567', '2025-01-15T08:00:00.000Z', '2025-06-10T10:30:00.000Z');
+    insertAccount.run('00000000-0000-0000-0000-000000000002', 'Maria', '000002', defaultHash, 0, 2500.00, 500.00, 120, '09179876543', '2025-02-01T09:00:00.000Z', '2025-06-10T11:00:00.000Z');
+    // Set default password for any existing accounts with empty password
+    db.prepare("UPDATE accounts SET password = ?, password_changed = 0 WHERE password = '' OR password IS NULL").run(defaultHash);
 
     const insertGoal = db.prepare(`
       INSERT OR IGNORE INTO goal_jars (goal_id, account_id, title, target_amount, current_allocated, category_icon, is_completed, created_at, updated_at)

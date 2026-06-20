@@ -29,17 +29,19 @@ function createAccount(fields) {
   const account = {
     account_id: uuidv4(),
     child_name: fields.child_name,
+    member_id: fields.member_id || null,
+    password: fields.password || '',
+    password_changed: fields.password_changed ?? 0,
     actual_balance: fields.actual_balance || 0,
     unallocated_balance: fields.unallocated_balance || 0,
     current_xp: fields.current_xp || 0,
     parent_phone: fields.parent_phone || '',
-    password: fields.password || '',
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
   getDb().prepare(`
-    INSERT INTO accounts (account_id, child_name, actual_balance, unallocated_balance, current_xp, parent_phone, password, created_at, updated_at)
-    VALUES (@account_id, @child_name, @actual_balance, @unallocated_balance, @current_xp, @parent_phone, @password, @created_at, @updated_at)
+    INSERT INTO accounts (account_id, child_name, member_id, password, password_changed, actual_balance, unallocated_balance, current_xp, parent_phone, created_at, updated_at)
+    VALUES (@account_id, @child_name, @member_id, @password, @password_changed, @actual_balance, @unallocated_balance, @current_xp, @parent_phone, @created_at, @updated_at)
   `).run(account);
   return account;
 }

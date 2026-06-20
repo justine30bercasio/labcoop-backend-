@@ -2352,9 +2352,17 @@ router.post('/savings-applications/reject/:id', requireSession, (req, res) => {
 
 router.get('/teller', requireSession, (req, res) => {
   const db = getDb();
-  const accounts = db.prepare('SELECT * FROM accounts ORDER BY child_name ASC').all();
-  const q = req.query;
-  const selectedId = q.account || '';
+  const qry = req.query;
+  const selectedId = qry.account || '';
+  const searchQ = (qry.q || '').trim().toLowerCase();
+
+  let accounts = db.prepare('SELECT * FROM accounts ORDER BY child_name ASC').all();
+  if (searchQ) {
+    accounts = accounts.filter(function(a) {
+      return (a.child_name || '').toLowerCase().indexOf(searchQ) !== -1
+        || (a.member_id || '').toLowerCase().indexOf(searchQ) !== -1;
+    });
+  }
 
   let selectedAccount = null;
   let recentTxs = [];
@@ -2370,13 +2378,13 @@ router.get('/teller', requireSession, (req, res) => {
     }
   }
 
-  const toast = q.deposited ? 'success:Deposit completed. Receipt #' + (q.receipt || '')
-    : q.withdrawn ? 'success:Withdrawal completed. Receipt #' + (q.receipt || '')
-    : q.loanpaid ? 'success:Loan payment collected. Receipt #' + (q.receipt || '')
-    : q.error ? `error:${q.error}`
+  const toast = qry.deposited ? 'success:Deposit completed. Receipt #' + (qry.receipt || '')
+    : qry.withdrawn ? 'success:Withdrawal completed. Receipt #' + (qry.receipt || '')
+    : qry.loanpaid ? 'success:Loan payment collected. Receipt #' + (qry.receipt || '')
+    : qry.error ? `error:${qry.error}`
     : '';
 
-  const receipt = q.receipt ? db.prepare("SELECT t.*, a.child_name, a.member_id FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id WHERE t.transaction_id = ?").get(q.receipt) : null;
+  const receipt = qry.receipt ? db.prepare("SELECT t.*, a.child_name, a.member_id FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id WHERE t.transaction_id = ?").get(qry.receipt) : null;
 
   const bankStyle = `<style>
   .teller-bar { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 24px; margin-bottom:20px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
@@ -2445,6 +2453,11 @@ router.get('/teller', requireSession, (req, res) => {
   .receipt-inline .ri-divider { border-top:1px dashed #e0e0e0; margin:5px 0; }
   .receipt-inline .ri-footer { text-align:center; padding:8px; border-top:1px dashed #ccc; font-size:10px; color:#999; }
   .badge-pill { display:inline-block; padding:0 8px; border-radius:10px; font-size:10px; font-weight:600; line-height:20px; }
+  .search-box { flex:1; min-width:200px; padding:9px 14px; border:2px solid var(--border); border-radius:8px; font-size:14px; outline:none; transition:border-color 0.2s; background:var(--card); }
+  .search-box:focus { border-color:var(--accent); }
+  .btn-small { background:var(--accent); color:#fff; border:none; padding:9px 18px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; }
+  .btn-small:hover { background:var(--accent-hover); }
+  @media print { body * { visibility:hidden; } #rinline, #rinline * { visibility:visible; } #rinline { position:absolute; left:0; top:0; width:320px; margin:0; padding:20px; background:#fff; } #rinline .ri-footer button:first-child { display:none; } }
   @keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
   </style>`;
 
@@ -2458,14 +2471,17 @@ router.get('/teller', requireSession, (req, res) => {
   <!-- Teller Top Bar -->
   <div class="teller-bar">
     <label>&#x1F50D; Customer</label>
-    <form method="get" action="/admin/teller" style="display:contents">
-      <select name="account" onchange="this.form.submit()">
-        <option value="">-- Select a customer --</option>
+    <form method="get" action="/admin/teller" style="display:contents;flex:1">
+      <input type="text" name="q" class="search-box" placeholder="Search by name or member ID..." value="${searchQ}" oninput="if(this.value.length>0||this.value!=''){var f=this.closest('form');var sel=f.querySelector('select');if(sel)sel.selectedIndex=0;}" style="flex:1">
+      <button type="submit" class="btn-small">&#x1F50D; Search</button>
+      <select name="account" onchange="this.form.submit()" style="flex:0.8">
+        <option value="">-- Select --</option>
         ${accounts.map(a => '<option value="' + a.account_id + '"' + (a.account_id === selectedId ? ' selected' : '') + '>' + a.child_name + ' (' + (a.member_id || '-') + ')</option>').join('')}
       </select>
     </form>
     ${selectedAccount ? '<span class="badge-pill" style="background:#dcfce7;color:#166534">&#x2705; ' + selectedAccount.child_name + '</span>' : ''}
   </div>
+  ${searchQ && !selectedAccount ? '<div style="margin:-12px 0 16px 0;font-size:12px;color:var(--text-muted)">Found ' + accounts.length + ' result(s) for "' + searchQ + '"</div>' : ''}
 
   ${!selectedAccount ? `
   <div class="teller-card">
@@ -2508,6 +2524,7 @@ router.get('/teller', requireSession, (req, res) => {
 
         <div class="tx-panel active" id="panel-deposit">
           <form method="post" action="/admin/teller/deposit/${selectedAccount.account_id}">
+            <input type="hidden" name="q" value="${searchQ}">
             <div class="field">
               <label>Amount (&#x20B1;)</label>
               <input type="number" name="amount" min="1" step="0.01" placeholder="0.00" required>
@@ -2522,6 +2539,7 @@ router.get('/teller', requireSession, (req, res) => {
 
         <div class="tx-panel" id="panel-withdraw">
           <form method="post" action="/admin/teller/withdraw/${selectedAccount.account_id}">
+            <input type="hidden" name="q" value="${searchQ}">
             <div class="field">
               <label>Amount (&#x20B1;)</label>
               <input type="number" name="amount" min="1" step="0.01" placeholder="0.00" required>
@@ -2536,6 +2554,7 @@ router.get('/teller', requireSession, (req, res) => {
 
         <div class="tx-panel" id="panel-loan">
           <form method="post" action="/admin/teller/loan-pay/${selectedAccount.account_id}">
+            <input type="hidden" name="q" value="${searchQ}">
             <div class="field">
               <label>Select Loan</label>
               <select name="loan_id" required>
@@ -2568,7 +2587,7 @@ router.get('/teller', requireSession, (req, res) => {
             var tc = ({deposit:'deposit',withdrawal:'withdrawal',loan_payment:'loan_payment',loan_disbursement:'loan_disbursement',interest:'interest',interest_credit:'interest',allocation:'allocation'})[tx.type] || 'deposit';
             var sign = tx.type === 'deposit' || tx.type === 'loan_disbursement' ? '+' : '-';
             var col = tx.type === 'deposit' || tx.type === 'loan_disbursement' ? '#16a34a' : tx.type === 'withdrawal' ? '#dc2626' : 'var(--text)';
-            return '<tr><td><span class="tx-type-badge ' + tc + '">' + tx.type.replace(/_/g,' ') + '</span></td><td class="tx-amt" style="color:' + col + '">' + sign + '&#x20B1;' + Number(tx.amount).toFixed(2) + '</td><td class="tx-desc">' + (tx.description||'-') + '</td><td class="tx-date">' + (tx.created_at||'').slice(0,16).replace('T',' ') + '</td><td><a class="rcpt-link" href="?account=' + selectedId + '&receipt=' + tx.transaction_id + '" title="View receipt">&#x1F5A8;</a></td></tr>';
+            return '<tr><td><span class="tx-type-badge ' + tc + '">' + tx.type.replace(/_/g,' ') + '</span></td><td class="tx-amt" style="color:' + col + '">' + sign + '&#x20B1;' + Number(tx.amount).toFixed(2) + '</td><td class="tx-desc">' + (tx.description||'-') + '</td><td class="tx-date">' + (tx.created_at||'').slice(0,16).replace('T',' ') + '</td><td><a class="rcpt-link" href="?account=' + selectedId + '&receipt=' + tx.transaction_id + (searchQ ? '&q=' + encodeURIComponent(searchQ) : '') + '" title="View receipt">&#x1F5A8;</a></td></tr>';
           }).join('')}
         </table>`}
       </div>
@@ -2612,7 +2631,8 @@ router.post('/teller/deposit/:id', requireSession, (req, res) => {
       balance_after: newBalance,
     });
     const txId = result?.transaction_id || '';
-    res.redirect(`/admin/teller?deposited=ok&receipt=${txId}&account=${req.params.id}`);
+    const sq = req.body.q ? '&q=' + encodeURIComponent(req.body.q) : '';
+    res.redirect(`/admin/teller?deposited=ok&receipt=${txId}&account=${req.params.id}${sq}`);
   } catch (err) {
     res.redirect(`/admin/teller?error=${encodeURIComponent(err.message)}`);
   }
@@ -2639,7 +2659,8 @@ router.post('/teller/withdraw/:id', requireSession, (req, res) => {
       balance_after: newBalance,
     });
     const txId = result?.transaction_id || '';
-    res.redirect(`/admin/teller?withdrawn=ok&receipt=${txId}&account=${req.params.id}`);
+    const sq = req.body.q ? '&q=' + encodeURIComponent(req.body.q) : '';
+    res.redirect(`/admin/teller?withdrawn=ok&receipt=${txId}&account=${req.params.id}${sq}`);
   } catch (err) {
     res.redirect(`/admin/teller?error=${encodeURIComponent(err.message)}`);
   }
@@ -2701,8 +2722,8 @@ router.post('/teller/loan-pay/:id', requireSession, (req, res) => {
       balance_after: Number(account.actual_balance),
     });
     const txId = txResult?.transaction_id || '';
-
-    res.redirect(`/admin/teller?loanpaid=ok&receipt=${txId}&account=${accountId}`);
+    const sq = req.body.q ? '&q=' + encodeURIComponent(req.body.q) : '';
+    res.redirect(`/admin/teller?loanpaid=ok&receipt=${txId}&account=${accountId}${sq}`);
   } catch (err) {
     res.redirect(`/admin/teller?error=${encodeURIComponent(err.message)}`);
   }

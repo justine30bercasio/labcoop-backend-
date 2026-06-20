@@ -44,34 +44,46 @@ router.put('/:goalId',
 
     const diff = current_allocated !== undefined ? Number(current_allocated) - oldGoal.current_allocated : 0;
 
-    const updated = store.updateGoal(req.params.goalId, {
-      current_allocated: current_allocated !== undefined ? Number(current_allocated) : undefined,
-      title,
-      target_amount: target_amount !== undefined ? Number(target_amount) : undefined,
-      category_icon,
-    });
-    if (!updated) return res.status(404).json({ message: 'Goal not found' });
-
-    if (diff !== 0) {
+    // Check balance BEFORE updating goal
+    if (diff > 0) {
       const account = store.getAccount(oldGoal.account_id);
       if (account) {
         const newUnallocated = account.unallocated_balance - diff;
         if (newUnallocated < 0) {
           return res.status(400).json({ message: 'Insufficient unallocated balance for this allocation' });
         }
-        store.updateAccount(oldGoal.account_id, {
-          unallocated_balance: Math.round(newUnallocated * 100) / 100,
-        });
       }
-      store.addTransaction({
-        account_id: oldGoal.account_id,
-        goal_id: req.params.goalId,
-        type: diff > 0 ? 'allocation' : 'deallocation',
-        amount: Math.abs(diff),
-        description: diff > 0 ? 'Allocated to goal' : 'Withdrawn from goal',
-      });
     }
 
+    // Use a transaction to keep goal + account + tx atomic
+    const db = require('../db').getDb();
+    const transaction = db.transaction(() => {
+      const updated = store.updateGoal(req.params.goalId, {
+        current_allocated: current_allocated !== undefined ? Number(current_allocated) : undefined,
+        title,
+        target_amount: target_amount !== undefined ? Number(target_amount) : undefined,
+        category_icon,
+      });
+      if (!updated) throw new Error('Goal not found');
+
+      if (diff !== 0) {
+        const acct = store.getAccount(oldGoal.account_id);
+        if (acct) {
+          store.updateAccount(oldGoal.account_id, {
+            unallocated_balance: Math.round((acct.unallocated_balance - diff) * 100) / 100,
+          });
+        }
+        store.addTransaction({
+          account_id: oldGoal.account_id,
+          goal_id: req.params.goalId,
+          type: diff > 0 ? 'allocation' : 'deallocation',
+          amount: Math.abs(diff),
+          description: diff > 0 ? 'Allocated to goal' : 'Withdrawn from goal',
+        });
+      }
+      return store.getGoal(req.params.goalId);
+    });
+    const updated = transaction();
     res.json(updated);
   }
 );

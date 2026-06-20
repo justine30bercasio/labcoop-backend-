@@ -48,22 +48,32 @@ router.put('/:accountId/deposit',
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     const { amount } = req.body;
-    const account = store.getAccount(req.params.accountId);
-    if (!account) return res.status(404).json({ message: 'Account not found' });
+    const db = require('../db').getDb();
+    const transaction = db.transaction(() => {
+      const account = store.getAccount(req.params.accountId);
+      if (!account) throw new Error('Account not found');
 
-    const updated = store.updateAccount(req.params.accountId, {
-      actual_balance: Math.round((account.actual_balance + Number(amount)) * 100) / 100,
-      unallocated_balance: Math.round((account.unallocated_balance + Number(amount)) * 100) / 100,
+      const updated = store.updateAccount(req.params.accountId, {
+        actual_balance: Math.round((account.actual_balance + Number(amount)) * 100) / 100,
+        unallocated_balance: Math.round((account.unallocated_balance + Number(amount)) * 100) / 100,
+      });
+
+      store.addTransaction({
+        account_id: req.params.accountId,
+        type: 'deposit',
+        amount: Number(amount),
+        description: 'Teller cash deposit',
+      });
+
+      return updated;
     });
 
-    store.addTransaction({
-      account_id: req.params.accountId,
-      type: 'deposit',
-      amount: Number(amount),
-      description: 'Teller cash deposit',
-    });
-
-    res.json(updated);
+    try {
+      const updated = transaction();
+      res.json(updated);
+    } catch (e) {
+      res.status(404).json({ message: e.message });
+    }
   }
 );
 

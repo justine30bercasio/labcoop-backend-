@@ -84,6 +84,26 @@ router.post('/loans/apply',
     const account = store.getAccount(account_id);
     if (!account) return res.status(404).json({ message: 'Account not found' });
 
+    // Validate against product if provided
+    if (product_id) {
+      const product = store.getLoanProduct(product_id);
+      if (!product) return res.status(400).json({ message: 'Loan product not found' });
+      if (!product.is_active) return res.status(400).json({ message: 'Loan product is not active' });
+      if (Number(principal) < Number(product.min_amount)) {
+        return res.status(400).json({ message: `Minimum loan amount is PHP ${Number(product.min_amount).toFixed(2)}` });
+      }
+      if (Number(product.max_amount) > 0 && Number(principal) > Number(product.max_amount)) {
+        return res.status(400).json({ message: `Maximum loan amount is PHP ${Number(product.max_amount).toFixed(2)}` });
+      }
+    }
+
+    // Check for existing active loans
+    const existingLoans = store.getLoans(account_id);
+    const activeLoan = existingLoans.find(l => l.status === 'active' || l.status === 'approved');
+    if (activeLoan) {
+      return res.status(400).json({ message: 'You already have an active or approved loan. Settle it first before applying for a new one.' });
+    }
+
     const summary = calculateLoanSummary(principal, interest_rate, term_months, interest_type);
 
     const loan = store.createLoan({

@@ -2358,19 +2358,25 @@ router.get('/teller', requireSession, (req, res) => {
 
   let selectedAccount = null;
   let recentTxs = [];
+  let loanOptionsHtml = '';
   if (selectedId) {
     selectedAccount = db.prepare('SELECT * FROM accounts WHERE account_id = ?').get(selectedId);
     if (selectedAccount) {
       recentTxs = db.prepare('SELECT * FROM transactions WHERE account_id = ? ORDER BY created_at DESC LIMIT 20').all(selectedId);
+      const activeLoans = db.prepare("SELECT * FROM loans WHERE account_id = ? AND status = 'active' ORDER BY created_at DESC").all(selectedId);
+      loanOptionsHtml = activeLoans.map(function(l) {
+        return '<option value="' + l.loan_id + '">' + (l.purpose || 'Loan') + ' - \u20B1' + Number(l.remaining_balance).toFixed(2) + ' remaining</option>';
+      }).join('');
     }
   }
 
   const toast = q.deposited ? 'success:Deposit completed. Receipt #' + (q.receipt || '')
     : q.withdrawn ? 'success:Withdrawal completed. Receipt #' + (q.receipt || '')
+    : q.loanpaid ? 'success:Loan payment collected. Receipt #' + (q.receipt || '')
     : q.error ? `error:${q.error}`
     : '';
 
-  const receipt = q.receipt ? db.prepare("SELECT t.*, a.child_name, a.member_id FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id WHERE t.rowid = ? OR t.id = ?").get(q.receipt, q.receipt) : null;
+  const receipt = q.receipt ? db.prepare("SELECT t.*, a.child_name, a.member_id FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id WHERE t.transaction_id = ?").get(q.receipt) : null;
 
   const content = `
   <style>
@@ -2396,12 +2402,6 @@ router.get('/teller', requireSession, (req, res) => {
   .teller-tx-amount { font-weight:600; font-family:var(--mono); min-width:80px; text-align:right; }
   .teller-tx-desc { flex:1; color:var(--text-muted); font-size:13px; }
   .teller-tx-date { font-size:11px; color:var(--text-muted); font-family:var(--mono); white-space:nowrap; }
-  .receipt-banner { background:#e8f5e9; border:1px solid #a5d6a7; border-radius:var(--radius); padding:16px 20px; margin-bottom:16px; display:flex; align-items:center; gap:16px; animation:fadeUp 0.3s ease; }
-  .receipt-banner .rcp-icon { font-size:32px; }
-  .receipt-banner .rcp-details { flex:1; }
-  .receipt-banner .rcp-title { font-weight:700; font-size:15px; color:#1B5E20; }
-  .receipt-banner .rcp-meta { font-size:12px; color:var(--text-muted); margin-top:2px; }
-  .receipt-banner .rcp-amount { font-size:20px; font-weight:700; color:var(--accent); font-family:var(--mono); }
   @keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
   .empty-state { text-align:center; padding:48px 20px; color:var(--text-muted); }
   .empty-state .icon { font-size:48px; margin-bottom:12px; }
@@ -2410,14 +2410,50 @@ router.get('/teller', requireSession, (req, res) => {
   </style>
 
   ${receipt ? `
-  <div class="receipt-banner">
-    <div class="rcp-icon">${receipt.type === 'deposit' ? '&#x1F4B5;' : '&#x1F4B8;'}</div>
-    <div class="rcp-details">
-      <div class="rcp-title">${receipt.type === 'deposit' ? 'Deposit' : 'Withdrawal'} Successful</div>
-      <div class="rcp-meta">Receipt: RCP-${String(receipt.rowid || receipt.id).padStart(6, '0')} &middot; ${receipt.child_name} &middot; ${(receipt.created_at || '').slice(0, 19).replace('T', ' ')}</div>
+  <div class="passbook-receipt" id="passbookReceipt">
+    <div class="pb-header">
+      <div class="pb-title">LabCoop Passbook</div>
+      <div class="pb-sub">Official Transaction Receipt</div>
     </div>
-    <div class="rcp-amount">${receipt.type === 'deposit' ? '+' : '-'}&#x20B1;${Number(receipt.amount).toFixed(2)}</div>
+    <div class="pb-body">
+      <div class="pb-row"><span class="pb-label">Receipt No.</span><span class="pb-value">RCP-${(receipt.transaction_id || '').slice(0, 8).toUpperCase()}</span></div>
+      <div class="pb-row"><span class="pb-label">Date &amp; Time</span><span class="pb-value">${(receipt.created_at || '').slice(0, 19).replace('T', ' ')}</span></div>
+      <div class="pb-row"><span class="pb-label">Member</span><span class="pb-value">${receipt.child_name || 'N/A'} (${receipt.member_id || '---'})</span></div>
+      <div class="pb-divider"></div>
+      <div class="pb-row"><span class="pb-label">Transaction</span><span class="pb-value" style="text-transform:uppercase;font-weight:700">${receipt.type.replace(/_/g, ' ')}</span></div>
+      <div class="pb-row"><span class="pb-label">Amount</span><span class="pb-value pb-amount ${receipt.type === 'deposit' || receipt.type === 'loan_disbursement' ? 'pb-credit' : 'pb-debit'}">${receipt.type === 'deposit' || receipt.type === 'loan_disbursement' ? '+' : '-'}&#x20B1;${Number(receipt.amount).toFixed(2)}</span></div>
+      <div class="pb-row"><span class="pb-label">Description</span><span class="pb-value">${receipt.description || '-'}</span></div>
+      <div class="pb-divider"></div>
+      <div class="pb-row"><span class="pb-label">Balance Before</span><span class="pb-value">&#x20B1;${Number(receipt.balance_before || 0).toFixed(2)}</span></div>
+      <div class="pb-row"><span class="pb-label">Balance After</span><span class="pb-value">&#x20B1;${Number(receipt.balance_after || 0).toFixed(2)}</span></div>
+      ${receipt.reference_type ? `<div class="pb-row"><span class="pb-label">Reference</span><span class="pb-value">${(receipt.reference_type || '').toUpperCase()}: ${(receipt.reference_id || '').slice(0, 8)}</span></div>` : ''}
+    </div>
+    <div class="pb-footer">
+      <button onclick="window.print()" class="btn btn-outline btn-xs" style="margin-right:8px">&#x1F5A8; Print Receipt</button>
+      <span style="font-size:10px;color:var(--text-muted)">This is a computer-generated receipt.</span>
+    </div>
   </div>
+  <style>
+  @media print {
+    body * { visibility:hidden; }
+    #passbookReceipt, #passbookReceipt * { visibility:visible; }
+    #passbookReceipt { position:absolute; left:0; top:0; width:320px; margin:0; padding:20px; border:none; box-shadow:none; background:#fff; }
+    #passbookReceipt .pb-footer button { display:none; }
+  }
+  .passbook-receipt { background:#fff; border:2px solid #333; border-radius:8px; padding:20px; margin-bottom:16px; max-width:420px; font-family:'Courier New',Courier,monospace; animation:fadeUp 0.3s ease; }
+  .passbook-receipt .pb-header { text-align:center; border-bottom:2px dashed #333; padding-bottom:12px; margin-bottom:12px; }
+  .passbook-receipt .pb-title { font-size:18px; font-weight:900; letter-spacing:2px; text-transform:uppercase; }
+  .passbook-receipt .pb-sub { font-size:11px; color:#666; margin-top:2px; }
+  .passbook-receipt .pb-body { margin-bottom:12px; }
+  .passbook-receipt .pb-row { display:flex; justify-content:space-between; padding:4px 0; font-size:12px; }
+  .passbook-receipt .pb-label { color:#666; font-weight:600; }
+  .passbook-receipt .pb-value { font-weight:700; text-align:right; }
+  .passbook-receipt .pb-amount { font-size:16px; }
+  .passbook-receipt .pb-credit { color:#2e7d32; }
+  .passbook-receipt .pb-debit { color:#c62828; }
+  .passbook-receipt .pb-divider { border-top:1px dashed #ccc; margin:6px 0; }
+  .passbook-receipt .pb-footer { text-align:center; border-top:2px dashed #333; padding-top:10px; }
+  </style>
   ` : toast ? `<div class="toast ${toast.startsWith('error:') ? 'error' : 'success'}">${toast.startsWith('error:') ? '&#x274C; ' + toast.slice(6) : '&#x2705; ' + toast.slice(8)}</div>` : ''}
 
   <div class="teller-layout">
@@ -2468,7 +2504,7 @@ router.get('/teller', requireSession, (req, res) => {
       </form>
 
       <!-- Withdrawal Form -->
-      <form method="post" action="/admin/teller/withdraw/${selectedAccount.account_id}" style="padding:14px;background:#fff8e1;border-radius:8px;border:1px solid #ffe082">
+      <form method="post" action="/admin/teller/withdraw/${selectedAccount.account_id}" style="margin-bottom:10px;padding:14px;background:#fff8e1;border-radius:8px;border:1px solid #ffe082">
         <div style="font-weight:600;font-size:13px;color:#F57F17;margin-bottom:8px">&#x1F4B8; Withdrawal</div>
         <div class="tx-form" style="grid-template-columns:1fr auto">
           <div>
@@ -2479,6 +2515,25 @@ router.get('/teller', requireSession, (req, res) => {
         </div>
         <label style="display:block;font-size:11px;color:var(--text-muted);margin-top:6px">Description (optional)</label>
         <input type="text" name="description" placeholder="e.g. Cash withdrawal" value="Counter withdrawal" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-top:2px">
+      </form>
+
+      <!-- Loan Payment Form -->
+      <form method="post" action="/admin/teller/loan-pay/${selectedAccount.account_id}" style="padding:14px;background:#e3f2fd;border-radius:8px;border:1px solid #90caf9">
+        <div style="font-weight:600;font-size:13px;color:#1565C0;margin-bottom:8px">&#x1F3E6; Loan Payment</div>
+        <div style="margin-bottom:8px">
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:4px">Select Loan</label>
+          <select name="loan_id" required style="width:100%;padding:9px 12px;border:2px solid #90caf9;border-radius:8px;font-size:13px;outline:none">
+            <option value="">-- Choose active loan --</option>
+            ${loanOptionsHtml}
+          </select>
+        </div>
+        <div class="tx-form" style="grid-template-columns:1fr auto">
+          <div>
+            <label>Amount (&#x20B1;)</label>
+            <input type="number" name="amount" min="1" step="0.01" placeholder="0.00" required style="padding:9px 12px;border:2px solid #90caf9;border-radius:8px;font-size:14px;width:100%">
+          </div>
+          <button type="submit" class="btn btn-primary" style="padding:9px 20px;margin-top:18px;background:#1565C0">&#x1F4B3; Pay</button>
+        </div>
       </form>
       ` : ''}
     </div>
@@ -2531,7 +2586,7 @@ router.post('/teller/deposit/:id', requireSession, (req, res) => {
       balance_before: Number(account.actual_balance),
       balance_after: newBalance,
     });
-    const txId = result?.rowid || result?.id || '';
+    const txId = result?.transaction_id || '';
     res.redirect(`/admin/teller?deposited=ok&receipt=${txId}&account=${req.params.id}`);
   } catch (err) {
     res.redirect(`/admin/teller?error=${encodeURIComponent(err.message)}`);
@@ -2558,8 +2613,71 @@ router.post('/teller/withdraw/:id', requireSession, (req, res) => {
       balance_before: Number(account.actual_balance),
       balance_after: newBalance,
     });
-    const txId = result?.rowid || result?.id || '';
+    const txId = result?.transaction_id || '';
     res.redirect(`/admin/teller?withdrawn=ok&receipt=${txId}&account=${req.params.id}`);
+  } catch (err) {
+    res.redirect(`/admin/teller?error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/teller/loan-pay/:id', requireSession, (req, res) => {
+  try {
+    const { loan_id, amount } = req.body;
+    const val = Number(amount);
+    if (!val || val <= 0) return res.redirect('/admin/teller?error=Invalid+amount');
+    const accountId = req.params.id;
+
+    const db = getDb();
+    const loan = db.prepare('SELECT * FROM loans WHERE loan_id = ?').get(loan_id);
+    if (!loan) return res.redirect(`/admin/teller?error=Loan+not+found&account=${accountId}`);
+    if (loan.status !== 'active') return res.redirect(`/admin/teller?error=Loan+is+not+active&account=${accountId}`);
+
+    const account = db.prepare('SELECT * FROM accounts WHERE account_id = ?').get(accountId);
+    if (!account) return res.redirect(`/admin/teller?error=Account+not+found&account=${accountId}`);
+
+    // Calculate interest portion
+    const interestService = require('../services/interest');
+    const schedule = interestService.generateAmortizationSchedule(
+      loan.principal, loan.interest_rate, loan.term_months, loan.interest_type
+    );
+    const paymentsMade = db.prepare('SELECT COUNT(*) as cnt FROM loan_payments WHERE loan_id = ?').get(loan_id);
+    const paymentNum = (paymentsMade?.cnt || 0) + 1;
+    const scheduleEntry = schedule[paymentNum - 1] || schedule[schedule.length - 1];
+
+    const interestPortion = Math.min(scheduleEntry?.interestPortion || 0, val);
+    const principalPortion = val - interestPortion;
+    const newAmountPaid = Math.round((loan.amount_paid + val) * 100) / 100;
+    const newRemainingBalance = Math.max(0, Math.round((loan.remaining_balance - val) * 100) / 100);
+    const newStatus = newRemainingBalance <= 0 ? 'paid' : 'active';
+
+    // Record loan payment
+    store.addLoanPayment({
+      loan_id: loan.loan_id,
+      amount: val,
+      principal_paid: principalPortion,
+      interest_paid: interestPortion,
+      balance_before: loan.remaining_balance,
+      balance_after: newRemainingBalance,
+      due_date: null,
+    });
+
+    // Update loan
+    db.prepare("UPDATE loans SET amount_paid = ?, remaining_balance = ?, status = ?, updated_at = datetime('now') WHERE loan_id = ?").run(newAmountPaid, newRemainingBalance, newStatus, loan_id);
+
+    // Record transaction (no balance change since it's over-the-counter collection)
+    const txResult = store.addTransaction({
+      account_id: accountId,
+      type: 'loan_payment',
+      amount: val,
+      description: 'Loan payment (counter): ' + (loan.purpose || 'Loan'),
+      reference_type: 'loan',
+      reference_id: loan.loan_id,
+      balance_before: Number(account.actual_balance),
+      balance_after: Number(account.actual_balance),
+    });
+    const txId = txResult?.transaction_id || '';
+
+    res.redirect(`/admin/teller?loanpaid=ok&receipt=${txId}&account=${accountId}`);
   } catch (err) {
     res.redirect(`/admin/teller?error=${encodeURIComponent(err.message)}`);
   }

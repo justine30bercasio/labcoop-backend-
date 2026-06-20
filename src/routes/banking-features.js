@@ -205,6 +205,12 @@ router.post('/withdrawals/request',
       return res.status(400).json({ message: 'Insufficient balance' });
     }
 
+    // Check for existing pending withdrawal request
+    const existing = store.getWithdrawalRequests(account_id);
+    if (existing.some(r => r.status === 'pending')) {
+      return res.status(400).json({ message: 'You already have a pending withdrawal request. Wait for it to be resolved first.' });
+    }
+
     const request = store.createWithdrawalRequest({
       account_id,
       amount: Number(amount),
@@ -302,11 +308,11 @@ router.get('/transactions/:txId/receipt',
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     const db = getDb();
-    const tx = db.prepare('SELECT t.*, a.child_name, a.member_id FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id WHERE t.rowid = ? OR t.id = ?').get(req.params.txId, req.params.txId);
+    const tx = db.prepare('SELECT t.*, a.child_name, a.member_id FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id WHERE t.transaction_id = ?').get(req.params.txId);
     if (!tx) return res.status(404).json({ message: 'Transaction not found' });
 
     res.json({
-      receipt_id: `RCP-${String(tx.rowid || tx.id).padStart(6, '0')}`,
+      receipt_id: 'RCP-' + (tx.transaction_id || '').slice(0, 8).toUpperCase(),
       date: tx.created_at,
       type: tx.type,
       amount: tx.amount,

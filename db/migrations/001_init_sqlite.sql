@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS accounts (
     account_id TEXT PRIMARY KEY,
     child_name TEXT NOT NULL,
-    member_id TEXT UNIQUE,
+    member_id TEXT,
     password TEXT NOT NULL DEFAULT '',
     password_changed INTEGER NOT NULL DEFAULT 0,
     actual_balance REAL NOT NULL DEFAULT 0.00,
@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_accounts_member_id ON accounts(member_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_member_id_unique ON accounts(member_id);
 
 CREATE TABLE IF NOT EXISTS goal_jars (
     goal_id TEXT PRIMARY KEY,

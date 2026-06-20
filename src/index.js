@@ -13,6 +13,13 @@ const bcrypt = require('bcryptjs');
 const DB_PATH = path.join(__dirname, '..', 'labcoop.db');
 
 function ensureDb() {
+  // Force fresh database to avoid stale schema issues
+  if (fs.existsSync(DB_PATH)) {
+    try { fs.unlinkSync(DB_PATH); } catch(e) { console.error('Could not delete old DB:', e.message); }
+    try { fs.unlinkSync(DB_PATH + '-wal'); } catch(e) {}
+    try { fs.unlinkSync(DB_PATH + '-shm'); } catch(e) {}
+    console.log('Deleted old database.');
+  }
   const db = new Database(DB_PATH);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
@@ -23,20 +30,6 @@ function ensureDb() {
   } catch (err) {
     console.error('Migration failed:', err.message);
     process.exit(1);
-  }
-  // Add missing columns for existing databases
-  const cols = db.prepare("PRAGMA table_info('accounts')").all().map(c => c.name);
-  if (!cols.includes('member_id')) {
-    db.exec("ALTER TABLE accounts ADD COLUMN member_id TEXT UNIQUE");
-    console.log('Added member_id column.');
-  }
-  if (!cols.includes('password')) {
-    db.exec("ALTER TABLE accounts ADD COLUMN password TEXT NOT NULL DEFAULT ''");
-    console.log('Added password column.');
-  }
-  if (!cols.includes('password_changed')) {
-    db.exec("ALTER TABLE accounts ADD COLUMN password_changed INTEGER NOT NULL DEFAULT 0");
-    console.log('Added password_changed column.');
   }
   try {
     const insertAccount = db.prepare(`

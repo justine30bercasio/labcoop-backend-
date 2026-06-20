@@ -46,8 +46,15 @@ function ensureDb() {
     const defaultHash = bcrypt.hashSync('0000', 10);
     insertAccount.run('00000000-0000-0000-0000-000000000001', 'Juan', '000001', defaultHash, 0, 1500.00, 200.00, 45, '09171234567', '2025-01-15T08:00:00.000Z', '2025-06-10T10:30:00.000Z');
     insertAccount.run('00000000-0000-0000-0000-000000000002', 'Maria', '000002', defaultHash, 0, 2500.00, 500.00, 120, '09179876543', '2025-02-01T09:00:00.000Z', '2025-06-10T11:00:00.000Z');
-    // Set default password for any existing accounts with empty password
+    // Set default password and member_id for any existing accounts
     db.prepare("UPDATE accounts SET password = ?, password_changed = 0 WHERE password = '' OR password IS NULL").run(defaultHash);
+    // Set member_id for existing accounts that don't have one
+    const nullMember = db.prepare("SELECT account_id, child_name FROM accounts WHERE member_id IS NULL").all();
+    for (const a of nullMember) {
+      const maxMember = db.prepare("SELECT MAX(CAST(member_id AS INTEGER)) as m FROM accounts").get().m || 0;
+      const newId = String(maxMember + 1).padStart(6, '0');
+      db.prepare("UPDATE accounts SET member_id = ? WHERE account_id = ?").run(newId, a.account_id);
+    }
 
     const insertGoal = db.prepare(`
       INSERT OR IGNORE INTO goal_jars (goal_id, account_id, title, target_amount, current_allocated, category_icon, is_completed, created_at, updated_at)

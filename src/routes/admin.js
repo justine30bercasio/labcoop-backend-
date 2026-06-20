@@ -2732,4 +2732,146 @@ router.post('/teller/loan-pay/:id', requireSession, (req, res) => {
   }
 });
 
+// ── Audit Reports ──
+
+router.get('/audit', requireSession, (req, res) => {
+  const db = getDb();
+  const q = req.query;
+  const fromDate = q.from || '';
+  const toDate = q.to || '';
+  const filterAccount = q.account || '';
+  const filterType = q.type || '';
+  const accounts = db.prepare('SELECT account_id, child_name, member_id FROM accounts ORDER BY child_name ASC').all();
+
+  let where = [];
+  let params = [];
+  if (fromDate) { where.push("t.created_at >= ?"); params.push(fromDate + ' 00:00:00'); }
+  if (toDate) { where.push("t.created_at <= ?"); params.push(toDate + ' 23:59:59'); }
+  if (filterAccount) { where.push('t.account_id = ?'); params.push(filterAccount); }
+  if (filterType) { where.push('t.type = ?'); params.push(filterType); }
+  const wc = where.length ? 'WHERE ' + where.join(' AND ') : '';
+
+  // Stats
+  const stats = db.prepare(`
+    SELECT COUNT(*) as total,
+      SUM(CASE WHEN t.type IN ('deposit','loan_disbursement','interest_credit') THEN t.amount ELSE 0 END) as credits,
+      SUM(CASE WHEN t.type IN ('withdrawal','loan_payment') THEN t.amount ELSE 0 END) as debits,
+      SUM(CASE WHEN t.type='deposit' THEN t.amount ELSE 0 END) as total_deposits,
+      SUM(CASE WHEN t.type='withdrawal' THEN t.amount ELSE 0 END) as total_withdrawals,
+      SUM(CASE WHEN t.type='loan_disbursement' THEN t.amount ELSE 0 END) as total_loans,
+      SUM(CASE WHEN t.type='loan_payment' THEN t.amount ELSE 0 END) as total_loan_payments,
+      SUM(CASE WHEN t.type LIKE 'interest%' THEN t.amount ELSE 0 END) as total_interest
+    FROM transactions t ${wc}
+  `).get(...params);
+
+  const txns = db.prepare(`
+    SELECT t.*, a.child_name, a.member_id FROM transactions t
+    LEFT JOIN accounts a ON t.account_id = a.account_id
+    ${wc} ORDER BY t.created_at DESC LIMIT 500
+  `).all(...params);
+
+  var csvParams = Object.keys(q).filter(function(k) { return k !== 'export'; }).map(function(k) { return k + '=' + encodeURIComponent(q[k]); }).join('&');
+  var csvLink = '/admin/audit/csv?' + csvParams;
+
+  var typeOpts = ['deposit','withdrawal','loan_disbursement','loan_payment','interest_credit','interest','allocation','transfer'];
+  var typeSummary = txns.reduce(function(acc, t) { acc[t.type] = (acc[t.type]||0) + 1; return acc; }, {});
+  var summaryStr = Object.keys(typeSummary).map(function(k) { return k + ': ' + typeSummary[k]; }).join(' &middot; ');
+
+  var content = `
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-icon">&#x1F4CA;</div><div class="stat-value">${stats.total||0}</div><div class="stat-label">Total Transactions</div></div>
+    <div class="stat-card"><div class="stat-icon" style="color:#16a34a">&#x2B06;</div><div class="stat-value" style="color:#16a34a">&#x20B1;${Number(stats.credits||0).toFixed(2)}</div><div class="stat-label">Total Credits (In)</div></div>
+    <div class="stat-card"><div class="stat-icon" style="color:#dc2626">&#x2B07;</div><div class="stat-value" style="color:#dc2626">&#x20B1;${Number(stats.debits||0).toFixed(2)}</div><div class="stat-label">Total Debits (Out)</div></div>
+    <div class="stat-card"><div class="stat-icon" style="color:#2563eb">&#x1F4B0;</div><div class="stat-value" style="color:#2563eb">&#x20B1;${Number((stats.credits||0)-(stats.debits||0)).toFixed(2)}</div><div class="stat-label">Net Cash Flow</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4B5;</div><div class="stat-value">&#x20B1;${Number(stats.total_deposits||0).toFixed(2)}</div><div class="stat-label">Deposits</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4B8;</div><div class="stat-value">&#x20B1;${Number(stats.total_withdrawals||0).toFixed(2)}</div><div class="stat-label">Withdrawals</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F3E6;</div><div class="stat-value">&#x20B1;${Number(stats.total_loans||0).toFixed(2)}</div><div class="stat-label">Loans Disbursed</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4B3;</div><div class="stat-value">&#x20B1;${Number(stats.total_loan_payments||0).toFixed(2)}</div><div class="stat-label">Loan Payments</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h3>&#x1F50D; Filter Transactions</h3>
+    </div>
+    <div class="card-body-padded">
+      <form method="get" action="/admin/audit" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+        <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:3px">From</label><input type="date" name="from" value="${fromDate}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px"></div>
+        <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:3px">To</label><input type="date" name="to" value="${toDate}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px"></div>
+        <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:3px">Account</label>
+          <select name="account" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+            <option value="">All</option>
+            ${accounts.map(function(a) { return '<option value="' + a.account_id + '"' + (a.account_id===filterAccount?' selected':'') + '>' + a.child_name + ' (' + (a.member_id||'') + ')</option>'; }).join('')}
+          </select>
+        </div>
+        <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:3px">Type</label>
+          <select name="type" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+            <option value="">All</option>
+            ${typeOpts.map(function(t) { return '<option value="' + t + '"' + (t===filterType?' selected':'') + '>' + t.replace(/_/g,' ') + '</option>'; }).join('')}
+          </select>
+        </div>
+        <div><button type="submit" class="btn btn-primary btn-sm">&#x1F50D; Filter</button> <a href="/admin/audit" class="btn btn-outline btn-sm">&#x1F504; Reset</a> <a href="${csvLink}" class="btn btn-outline btn-sm">&#x1F4E5; Export CSV</a></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h3>&#x1F4CB; Transaction Register</h3>
+      <span class="count">${txns.length} entries ${summaryStr ? '&middot; ' + summaryStr : ''}</span>
+    </div>
+    <div class="card-body">
+      ${txns.length === 0 ? '<div style="text-align:center;padding:48px;color:var(--text-muted)">No transactions found for the selected filters.</div>' : '<table><tr><th>Receipt #</th><th>Date &amp; Time</th><th>Member</th><th>ID</th><th>Type</th><th>Amount</th><th>Balance Delta</th><th>Description</th><th>Ref</th></tr>' + txns.map(function(t) {
+        var sign = (t.type==='deposit'||t.type==='loan_disbursement'||t.type==='interest_credit') ? '+' : '-';
+        var col = (t.type==='deposit'||t.type==='loan_disbursement'||t.type==='interest_credit') ? '#16a34a' : '#dc2626';
+        var delta = t.balance_before != null ? '<span style="color:' + col + '">' + sign + '&#x20B1;' + Number(t.amount).toFixed(2) + '</span>' : '-';
+        var bg = ({deposit:'badge-green',withdrawal:'badge-red',loan_disbursement:'badge-amber',loan_payment:'badge-blue',interest_credit:'badge-purple',interest:'badge-purple',allocation:'badge-gray'})[t.type] || 'badge-gray';
+        return '<tr><td class="mono"><a href="/admin/teller?account=' + t.account_id + '&receipt=' + t.transaction_id + '" style="color:var(--accent);text-decoration:none">' + (t.transaction_id||'').slice(0,8).toUpperCase() + '</a></td><td class="mono" style="font-size:11px">' + (t.created_at||'').slice(0,19).replace('T',' ') + '</td><td>' + (t.child_name||'') + '</td><td class="mono" style="font-size:11px;color:var(--text-muted)">' + (t.member_id||'-') + '</td><td><span class="badge ' + bg + '">' + t.type.replace(/_/g,' ') + '</span></td><td class="num mono" style="color:' + col + '">' + sign + '&#x20B1;' + Number(t.amount).toFixed(2) + '</td><td class="num mono">' + delta + '</td><td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted)">' + (t.description||'-') + '</td><td class="mono" style="font-size:11px;color:var(--text-muted)">' + (t.reference_id ? (t.reference_type||'') + ':' + (t.reference_id||'').slice(0,8) : '-') + '</td></tr>';
+      }).join('') + '</table>'}
+    </div>
+  </div>`;
+
+  res.type('html').send(layout('Audit Reports', 'audit', content, { subtitle: 'Compliance-ready transaction register with date range filtering' }));
+});
+
+// ── Audit CSV Export ──
+
+router.get('/audit/csv', requireSession, (req, res) => {
+  const db = getDb();
+  const q = req.query;
+  let where = [];
+  let params = [];
+  if (q.from) { where.push("t.created_at >= ?"); params.push(q.from + ' 00:00:00'); }
+  if (q.to) { where.push("t.created_at <= ?"); params.push(q.to + ' 23:59:59'); }
+  if (q.account) { where.push('t.account_id = ?'); params.push(q.account); }
+  if (q.type) { where.push('t.type = ?'); params.push(q.type); }
+  const wc = where.length ? 'WHERE ' + where.join(' AND ') : '';
+
+  const rows = db.prepare(`
+    SELECT t.transaction_id, t.created_at, a.child_name, a.member_id, t.type, t.amount,
+      t.balance_before, t.balance_after, t.description, t.reference_type, t.reference_id
+    FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id
+    ${wc} ORDER BY t.created_at DESC
+  `).all(...params);
+
+  var csv = 'Receipt No,Date & Time,Member Name,Member ID,Type,Amount,Balance Before,Balance After,Description,Reference\n';
+  csv += rows.map(function(r) {
+    return [
+      r.transaction_id,
+      r.created_at,
+      '"' + (r.child_name||'').replace(/"/g,'""') + '"',
+      r.member_id||'',
+      r.type,
+      r.amount,
+      r.balance_before||'',
+      r.balance_after||'',
+      '"' + (r.description||'').replace(/"/g,'""') + '"',
+      (r.reference_type||'') + ':' + (r.reference_id||'')
+    ].join(',');
+  }).join('\n');
+
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="labcoop_audit_' + new Date().toISOString().slice(0,10) + '.csv"');
+  res.send(csv);
+});
+
 module.exports = router;

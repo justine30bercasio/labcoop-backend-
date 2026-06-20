@@ -15,6 +15,7 @@ router.get('/accounts', (req, res) => {
 
 router.post('/login', (req, res) => {
   const { childName, accountId, memberId, password } = req.body;
+  console.log('Login attempt:', { childName, accountId, memberId: memberId ? memberId.slice(0,3)+'***' : null });
   let account;
   try {
     if ((!childName || typeof childName !== 'string' || childName.trim().length === 0) &&
@@ -27,9 +28,12 @@ router.post('/login', (req, res) => {
     }
 
     const db = getDb();
+    console.log('db obtained');
     if (memberId && memberId.trim()) {
       const padded = memberId.trim().padStart(6, '0');
+      console.log('querying member_id:', padded);
       account = db.prepare('SELECT * FROM accounts WHERE member_id = ?').get(padded);
+      console.log('account result:', account ? account.child_name : 'null');
       if (!account) console.warn(`Login failed: no account for member_id="${padded}"`);
     } else if (accountId && accountId.trim()) {
       account = db.prepare('SELECT * FROM accounts WHERE account_id = ?').get(accountId.trim());
@@ -41,6 +45,7 @@ router.post('/login', (req, res) => {
       return res.status(404).json({ message: `No account found for "${identifier}"` });
     }
 
+    console.log('comparing password');
     const valid = bcrypt.compareSync(password, account.password);
     if (!valid) {
       console.warn(`Login failed: wrong password for account="${account.child_name}" (member_id=${account.member_id})`);

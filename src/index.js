@@ -150,7 +150,8 @@ const loginLimiter = rateLimit({
 app.get('/', (req, res) => {
   res.json({
     name: 'LabCoop API',
-    version: '1.0.0',
+    version: '1.0.3',
+    build: Date.now(),
     endpoints: {
       health: 'GET /api/health',
       accounts: {

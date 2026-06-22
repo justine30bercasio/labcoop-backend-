@@ -12,6 +12,7 @@ const bcrypt = require('bcryptjs');
 const { store, isPostgres } = require('./db');
 
 async function ensureDb() {
+  if (isPostgres) return; // skip seed on PG — user will create accounts via admin
   try {
     const existing = await store.getAccount('00000000-0000-0000-0000-000000000001');
     if (existing) {

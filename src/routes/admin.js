@@ -955,7 +955,7 @@ router.post('/accounts/create', requireSession, asyncHandler(async (req, res) =>
 
     const maxResult = await store.query("SELECT MAX(CAST(member_id AS INTEGER)) as m FROM accounts");
     const maxMember = parseInt(maxResult.rows[0]?.m || '0', 10);
-    const account = store.createAccount({
+    const account = await store.createAccount({
       child_name: child_name.trim(),
       actual_balance: Number(actual_balance) || 0,
       unallocated_balance: Number(actual_balance) || 0,

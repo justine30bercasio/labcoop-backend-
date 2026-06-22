@@ -108,161 +108,328 @@ router.get('/', requireSession, asyncHandler(async (req, res) => {
   const sql = (s, p) => store.query(s, p || []).then(r => r.rows);
   const one = (s, p) => store.query(s, p || []).then(r => r.rows[0]);
 
-  const [accounts, goals, badges, transactions, coopGoals, coopContribs] = await Promise.all([
-    sql('SELECT * FROM accounts'),
+  const now = new Date();
+  const sevenDaysAgo = new Date(now); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+  const [accounts, goals, badges, transactions, coopGoals, coopContribs, loans, loanProducts, shopItems] = await Promise.all([
+    sql('SELECT * FROM accounts ORDER BY child_name ASC'),
     sql('SELECT g.*, a.child_name FROM goal_jars g LEFT JOIN accounts a ON g.account_id = a.account_id ORDER BY g.created_at ASC'),
     sql('SELECT b.*, a.child_name FROM badges b LEFT JOIN accounts a ON b.account_id = a.account_id ORDER BY b.created_at ASC'),
     sql('SELECT t.*, a.child_name FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id ORDER BY t.created_at DESC LIMIT 200'),
     sql('SELECT cg.*, (SELECT COALESCE(SUM(amount),0) FROM coop_contributions WHERE goal_id=cg.goal_id) as contributed FROM coop_goals cg ORDER BY cg.created_at ASC'),
     sql('SELECT cc.*, a.child_name FROM coop_contributions cc LEFT JOIN accounts a ON cc.account_id = a.account_id ORDER BY cc.created_at DESC LIMIT 50'),
+    sql('SELECT COUNT(*) as total_loans, COALESCE(SUM(principal),0) as total_principal, COALESCE(SUM(remaining_balance),0) as outstanding, COUNT(CASE WHEN status=\'active\' THEN 1 END) as active_loans, COUNT(CASE WHEN status=\'paid\' THEN 1 END) as paid_loans FROM loans'),
+    sql('SELECT COUNT(*) as c FROM loan_products WHERE is_active=1'),
+    sql('SELECT COUNT(*) as c FROM shop_items'),
   ]);
 
-  const totalBalance = (await one('SELECT COALESCE(SUM(actual_balance),0) as s FROM accounts')).s;
-  const totalXp = (await one('SELECT COALESCE(SUM(current_xp),0) as s FROM accounts')).s;
-  const completedGoals = (await one('SELECT COUNT(*) as c FROM goal_jars WHERE is_completed=1')).c;
-  const totalBadges = (await one('SELECT COUNT(*) as c FROM badges')).c;
-  const unlockedBadges = (await one('SELECT COUNT(*) as c FROM badges WHERE is_unlocked=1')).c;
+  const totalBalance = Number((await one('SELECT COALESCE(SUM(actual_balance),0) as s FROM accounts')).s);
+  const totalXp = Number((await one('SELECT COALESCE(SUM(current_xp),0) as s FROM accounts')).s);
+  const completedGoals = Number((await one('SELECT COUNT(*) as c FROM goal_jars WHERE is_completed=1')).c);
+  const totalBadges = Number((await one('SELECT COUNT(*) as c FROM badges')).c);
+  const unlockedBadges = Number((await one('SELECT COUNT(*) as c FROM badges WHERE is_unlocked=1')).c);
+  const pendingLoans = Number((await one("SELECT COUNT(*) as c FROM loans WHERE status='pending'")).c);
+  const pendingWithdrawals = Number((await one("SELECT COUNT(*) as c FROM withdrawal_requests WHERE status='pending'")).c);
+  const pendingSavingsApps = Number((await one("SELECT COUNT(*) as c FROM savings_applications WHERE status='pending'")).c);
+  const activeLoanProducts = Number(loanProducts[0]?.c || 0);
+  const shopItemsCount = Number(shopItems[0]?.c || 0);
+  const loanStats = loans[0] || {};
   const totalCoopGoals = coopGoals.length;
   const completedCoopGoals = coopGoals.filter(g => g.is_completed).length;
-  const itemsCount = (await one('SELECT COUNT(*) as c FROM shop_items')).c;
-  const pendingLoans = (await one("SELECT COUNT(*) as c FROM loans WHERE status='pending'")).c;
-  const pendingWithdrawals = (await one("SELECT COUNT(*) as c FROM withdrawal_requests WHERE status='pending'")).c;
-  const pendingSavingsApps = (await one("SELECT COUNT(*) as c FROM savings_applications WHERE status='pending'")).c;
+
+  // ── Chart data computations ──
+
+  const dayLabels = []; const dayDeposits = []; const dayWithdrawals = []; const dayCounts = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now); d.setDate(d.getDate() - i);
+    dayLabels.push(d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).replace(',',''));
+    const dayStr = d.toISOString().slice(0,10);
+    const dayTxs = transactions.filter(t => t.created_at && t.created_at.slice(0,10) === dayStr);
+    const deps = dayTxs.filter(t => t.type === 'deposit').reduce((s,t) => s + Number(t.amount), 0);
+    const wds = dayTxs.filter(t => t.type === 'withdrawal').reduce((s,t) => s + Number(t.amount), 0);
+    dayDeposits.push(deps); dayWithdrawals.push(wds); dayCounts.push(dayTxs.length);
+  }
+  const maxDaily = Math.max(...dayDeposits.concat(dayWithdrawals), 1);
+
+  const topAccounts = [...accounts].sort((a,b) => Number(b.actual_balance) - Number(a.actual_balance)).slice(0, 8);
+  const topBalances = topAccounts.map(a => Number(a.actual_balance));
+  const balanceTotal = topBalances.reduce((s,v) => s + v, 0) || 1;
+  const pieColors = ['#22c55e','#3b82f6','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#ec4899','#14b8a6'];
+
+  const xpTop = [...accounts].sort((a,b) => Number(b.current_xp) - Number(a.current_xp)).slice(0, 6);
+  const maxXp = Math.max(...xpTop.map(a => Number(a.current_xp)), 1);
+
+  const cashIn = transactions.filter(t => ['deposit','loan_disbursement','interest_credit','interest'].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
+  const cashOut = transactions.filter(t => ['withdrawal','loan_payment'].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
+  const netFlow = cashIn - cashOut;
+
+  const pendingTotal = pendingLoans + pendingWithdrawals + pendingSavingsApps;
+
+  // ── SVG chart builders ──
+
+  function barChart(data, labels, colors, opts) {
+    const h = opts?.height || 160;
+    const w = opts?.width || '100%';
+    const barW = Math.max(8, Math.min(28, Math.floor(260 / data.length)));
+    const gap = 4;
+    const max = Math.max(...data, 1);
+    const bars = data.map((v, i) => {
+      const bh = Math.max(2, (v / max) * (h - 28));
+      const x = i * (barW + gap) + 8;
+      return `<rect x="${x}" y="${h - 16 - bh}" width="${barW}" height="${bh}" fill="${colors[i % colors.length]}" rx="2"><title>${labels[i]}: &#x20B1;${v.toFixed(0)}</title></rect>`;
+    }).join('');
+    const labelsEl = labels.map((l, i) => {
+      const x = i * (barW + gap) + 8 + barW / 2;
+      return `<text x="${x}" y="${h - 2}" text-anchor="middle" font-size="8" fill="#94a3b8" transform="rotate(-20,${x},${h-2})">${l.split(' ')[0]}</text>`;
+    }).join('');
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${data.length * (barW + gap) + 16} ${h}" style="display:block;margin:0 auto">${bars}${labelsEl}</svg>`;
+  }
+
+  function pieChart(values, labels, colors, total) {
+    const cx = 60, cy = 60, r = 48, ir = 28;
+    const t = total || values.reduce((s,v) => s + v, 0) || 1;
+    let offset = 0;
+    const circ = 2 * Math.PI * r;
+    const slices = values.map((v, i) => {
+      const pct = v / t;
+      const len = circ * pct;
+      const o = offset; offset += len;
+      // Simple approach: use stroke-dasharray
+      if (pct < 0.001) return '';
+      const dash = `${len} ${circ - len}`;
+      return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${colors[i % colors.length]}" stroke-width="${r - ir}" stroke-dasharray="${dash}" stroke-dashoffset="${-o}" transform="rotate(-90,${cx},${cy})"><title>${labels[i]}: ${(pct*100).toFixed(1)}%</title></circle>`;
+    }).join('');
+    return `<svg width="180" height="120" viewBox="0 0 120 120"><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#e2e8f0" stroke-width="${r - ir}"/>${slices}<text x="${cx}" y="${cy - 4}" text-anchor="middle" font-size="16" font-weight="700" fill="var(--text)">${t.toFixed(0)}</text><text x="${cx}" y="${cy + 12}" text-anchor="middle" font-size="8" fill="#94a3b8">total</text></svg>`;
+  }
+
+  function hBar(data, labels, colors, max) {
+    const m = max || Math.max(...data, 1);
+    const h = 20;
+    const labelW = 80;
+    const barArea = 160;
+    const bars = data.map((v, i) => {
+      const bw = Math.max(4, (v / m) * (barArea - 10));
+      return `<g transform="translate(${labelW + 4}, ${i * (h + 4) + 4})">
+        <rect x="0" y="0" width="${bw}" height="16" fill="${colors[i % colors.length]}" rx="3"><title>${v}</title></rect>
+        <text x="${bw + 4}" y="12" font-size="10" font-weight="600" fill="var(--text)">${v > 999 ? (v/1000).toFixed(1) + 'k' : v}</text>
+      </g>`;
+    }).join('');
+    const lbls = labels.map((l, i) => `<text x="0" y="${i * (h + 4) + 16}" font-size="11" fill="#94a3b8" text-anchor="end">${l}</text>`).join('');
+    return `<svg width="${labelW + barArea + 40}" height="${data.length * (h + 4) + 8}" viewBox="0 0 ${labelW + barArea + 40} ${data.length * (h + 4) + 8}">${lbls}${bars}</svg>`;
+  }
+
+  // ── Build HTML ──
 
   const content = `
   <style>
   .dash-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; }
+  .dash-grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:20px; }
   .dash-grid-full { grid-column:1/-1; }
-  .section-title { font-size:13px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.8px; margin-bottom:12px; display:flex; align-items:center; gap:6px; }
-  .quick-actions { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:8px; margin-bottom:20px; }
-  .quick-action-btn { display:flex; flex-direction:column; align-items:center; gap:6px; padding:14px 8px; background:var(--card); border:1px solid var(--border); border-radius:var(--radius); text-decoration:none; color:var(--text); font-size:11px; font-weight:500; transition:all 0.15s; }
-  .quick-action-btn:hover { border-color:var(--accent); transform:translateY(-2px); box-shadow:var(--shadow-lg); }
-  .quick-action-btn .qa-icon { font-size:22px; }
-  .quick-action-btn .qa-label { text-align:center; }
-  .quick-action-btn .qa-badge { background:var(--red); color:#fff; font-size:10px; padding:1px 6px; border-radius:10px; margin-top:-4px; }
-  .pending-alert { background:#fff8e1; border:1px solid #ffe082; border-radius:var(--radius); padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .section-title { font-size:11px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.8px; margin-bottom:12px; display:flex; align-items:center; gap:6px; padding-top:8px; }
+  .section-title:after { content:''; flex:1; height:1px; background:var(--border); margin-left:8px; }
+  .quick-actions { display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:8px; margin-bottom:20px; }
+  .quick-action-btn { display:flex; flex-direction:column; align-items:center; gap:5px; padding:12px 6px; background:var(--card); border:1px solid var(--border); border-radius:var(--radius); text-decoration:none; color:var(--text); font-size:10px; font-weight:500; transition:all 0.2s; position:relative; }
+  .quick-action-btn:hover { border-color:var(--accent); transform:translateY(-3px); box-shadow:0 4px 16px rgba(46,125,50,0.15); }
+  .quick-action-btn .qa-icon { font-size:20px; }
+  .quick-action-btn .qa-badge { position:absolute; top:-4px; right:-4px; background:var(--red); color:#fff; font-size:9px; padding:1px 5px; border-radius:8px; min-width:18px; text-align:center; }
+  .pending-alert { background:linear-gradient(135deg,#fff8e1,#fff3cd); border:1px solid #ffe082; border-radius:var(--radius); padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; animation:slideDown 0.3s ease; }
+  @keyframes slideDown { from{opacity:0;transform:translateY(-12px)} to{opacity:1;transform:translateY(0)} }
   .pending-alert .pa-icon { font-size:18px; }
-  .pending-alert .pa-text { font-size:13px; color:#F57F17; flex:1; }
-  .pending-alert .pa-link { font-size:12px; }
+  .pending-alert .pa-text { font-size:13px; color:#F57F17; font-weight:500; flex:1; }
+  .chart-card { background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); border:1px solid var(--border); padding:16px; }
+  .chart-card .chart-title { font-size:12px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; }
+  .chart-card .chart-title .chart-badge { font-size:18px; font-weight:700; color:var(--text); text-transform:none; letter-spacing:0; }
+  .chart-card svg { max-width:100%; }
+  .mini-legend { display:flex; gap:12px; margin-top:6px; font-size:10px; color:var(--text-muted); flex-wrap:wrap; }
+  .mini-legend span { display:flex; align-items:center; gap:4px; }
+  .mini-legend .dot { width:8px; height:8px; border-radius:2px; display:inline-block; }
+  .insight-banner { background:linear-gradient(135deg,#e8f5e9,#c8e6c9); border:1px solid #a5d6a7; border-radius:var(--radius); padding:14px 18px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:16px; }
+  .insight-banner .ib-icon { font-size:22px; }
+  .insight-banner .ib-text { flex:1; font-size:13px; color:#1B5E20; }
+  .insight-banner .ib-stat { font-size:22px; font-weight:700; color:#1B5E20; text-align:center; }
+  .insight-banner .ib-stat small { display:block; font-size:10px; font-weight:400; opacity:0.7; }
+  .insight-red { background:linear-gradient(135deg,#fce4ec,#f8bbd0); border-color:#ef9a9a; }
+  .insight-red .ib-text, .insight-red .ib-stat { color:#b71c1c; }
+  .insight-amber { background:linear-gradient(135deg,#fff8e1,#ffecb3); border-color:#ffe082; }
+  .insight-amber .ib-text, .insight-amber .ib-stat { color:#e65100; }
+  .trend-up { color:#16a34a; }
+  .trend-down { color:#dc2626; }
+  .dash-table-wrap { max-height:260px; overflow-y:auto; }
+  .dash-table-wrap::-webkit-scrollbar { width:4px; }
+  .dash-table-wrap::-webkit-scrollbar-thumb { background:#e2e8f0; border-radius:2px; }
+  .no-data { padding:24px; text-align:center; color:var(--text-muted); font-size:13px; }
   </style>
 
-  <!-- Pending Actions Alert -->
-  ${(pendingLoans + pendingWithdrawals + pendingSavingsApps) > 0 ? `
+  ${pendingTotal > 0 ? `
   <div class="pending-alert">
-    <span class="pa-icon">&#x26A0;</span>
-    <span class="pa-text">${pendingLoans} pending loan${pendingLoans !== 1 ? 's' : ''}, ${pendingWithdrawals} withdrawal request${pendingWithdrawals !== 1 ? 's' : ''}, ${pendingSavingsApps} savings application${pendingSavingsApps !== 1 ? 's' : ''}</span>
+    <span class="pa-icon">&#x26A0;&#xFE0F;</span>
+    <span class="pa-text">${pendingLoans} pending loan${pendingLoans !== 1 ? 's' : ''} &middot; ${pendingWithdrawals} withdrawal${pendingWithdrawals !== 1 ? 's' : ''} &middot; ${pendingSavingsApps} savings app${pendingSavingsApps !== 1 ? 's' : ''}</span>
     ${pendingLoans > 0 ? `<a href="/admin/loans?status=pending" class="btn btn-amber btn-xs">Review Loans</a>` : ''}
     ${pendingWithdrawals > 0 ? `<a href="/admin/withdrawal-requests?status=pending" class="btn btn-amber btn-xs">Review Withdrawals</a>` : ''}
     ${pendingSavingsApps > 0 ? `<a href="/admin/savings-applications?status=pending" class="btn btn-amber btn-xs">Review Apps</a>` : ''}
   </div>` : ''}
 
   <!-- Quick Actions -->
-  <div class="section-title">&#x26A1; Quick Actions</div>
+  <div class="section-title">Quick Actions</div>
   <div class="quick-actions">
-    <a href="/admin/teller" class="quick-action-btn"><span class="qa-icon">&#x1F3E6;</span><span class="qa-label">Teller Counter</span></a>
+    <a href="/admin/teller" class="quick-action-btn"><span class="qa-icon">&#x1F3E6;</span><span class="qa-label">Teller</span></a>
     <a href="/admin/accounts" class="quick-action-btn"><span class="qa-icon">&#x2795;</span><span class="qa-label">New Account</span></a>
-    <a href="/admin/loans" class="quick-action-btn"><span class="qa-icon">&#x1F4B0;</span><span class="qa-label">Loans ${pendingLoans > 0 ? `<span class="qa-badge">${pendingLoans}</span>` : ''}</span></a>
-    <a href="/admin/withdrawal-requests" class="quick-action-btn"><span class="qa-icon">&#x1F4B8;</span><span class="qa-label">Withdrawals ${pendingWithdrawals > 0 ? `<span class="qa-badge">${pendingWithdrawals}</span>` : ''}</span></a>
-    <a href="/admin/savings-applications" class="quick-action-btn"><span class="qa-icon">&#x1F4B1;</span><span class="qa-label">Savings Apps ${pendingSavingsApps > 0 ? `<span class="qa-badge">${pendingSavingsApps}</span>` : ''}</span></a>
-    <a href="/admin/loan-products" class="quick-action-btn"><span class="qa-icon">&#x1F3ED;</span><span class="qa-label">Loan Products</span></a>
-    <a href="/admin/shop" class="quick-action-btn"><span class="qa-icon">&#x1F6D2;</span><span class="qa-label">Shop</span></a>
-    <a href="/api/excel/export/all" class="quick-action-btn"><span class="qa-icon">&#x1F4E5;</span><span class="qa-label">Export Data</span></a>
+    <a href="/admin/loans" class="quick-action-btn"><span class="qa-icon">&#x1F4B0;</span><span class="qa-label">Loans${pendingLoans > 0 ? `<span class="qa-badge">${pendingLoans}</span>` : ''}</span></a>
+    <a href="/admin/withdrawal-requests" class="quick-action-btn"><span class="qa-icon">&#x1F4B8;</span><span class="qa-label">Withdrawals${pendingWithdrawals > 0 ? `<span class="qa-badge">${pendingWithdrawals}</span>` : ''}</span></a>
+    <a href="/admin/savings-applications" class="quick-action-btn"><span class="qa-icon">&#x1F4B1;</span><span class="qa-label">Savings Apps${pendingSavingsApps > 0 ? `<span class="qa-badge">${pendingSavingsApps}</span>` : ''}</span></a>
+    <a href="/admin/gl/trial-balance" class="quick-action-btn"><span class="qa-icon">&#x2696;</span><span class="qa-label">GL Reports</span></a>
+    <a href="/admin/audit" class="quick-action-btn"><span class="qa-icon">&#x1F4DC;</span><span class="qa-label">Audit</span></a>
+    <a href="/api/excel/export/all" class="quick-action-btn"><span class="qa-icon">&#x1F4E5;</span><span class="qa-label">Export</span></a>
   </div>
 
-  <!-- Stats -->
-  <div class="section-title">&#x1F4CA; Overview</div>
+  <!-- Insight Banner -->
+  ${accounts.length > 0 ? `
+  <div class="insight-banner">
+    <span class="ib-icon">&#x1F4CA;</span>
+    <div class="ib-text">
+      <strong>System Summary</strong> &mdash;
+      ${accounts.length} member${accounts.length !== 1 ? 's' : ''} with &#x20B1;${totalBalance.toFixed(2)} total savings
+      ${accounts.length > 0 ? `&middot; Avg &#x20B1;${(totalBalance / accounts.length).toFixed(0)}/member` : ''}
+      &middot; ${transactions.length} recent transactions
+    </div>
+    <div class="ib-stat">${netFlow >= 0 ? '+' : ''}&#x20B1;${netFlow.toFixed(0)}<small>Net Cash Flow</small></div>
+  </div>` : ''}
+
+  <!-- Stats Row -->
   <div class="stats-grid">
-    <div class="stat-card"><div class="stat-icon">&#x1F464;</div><div class="stat-value" data-count="${accounts.length}">0</div><div class="stat-label">Accounts</div></div>
-    <div class="stat-card" style="border-left:3px solid var(--accent)"><div class="stat-icon">&#x1F4B0;</div><div class="stat-value">&#x20B1;${Number(totalBalance).toFixed(0)}</div><div class="stat-label">Total Balance</div><div class="stat-sub">&#x20B1;${(Number(totalBalance) / (accounts.length || 1)).toFixed(0)} avg</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x2728;</div><div class="stat-value" data-count="${totalXp}">0</div><div class="stat-label">Total XP</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F3AF;</div><div class="stat-value" data-count="${goals.length}">0</div><div class="stat-label">Goal Jars</div><div class="stat-sub">${completedGoals} completed</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F3C6;</div><div class="stat-value">${unlockedBadges}<span style="font-size:14px;color:var(--text-muted)">/${totalBadges}</span></div><div class="stat-label">Badges</div><div class="stat-bar"><div class="stat-bar-fill" style="width:${totalBadges > 0 ? (unlockedBadges/totalBadges*100).toFixed(0) : 0}%;background:var(--purple)"></div></div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F4B3;</div><div class="stat-value" data-count="${transactions.length}">0</div><div class="stat-label">Transactions Today</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F91D;</div><div class="stat-value" data-count="${coopGoals.length}">0</div><div class="stat-label">Co-op Goals</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F4CA;</div><div class="stat-value">PostgreSQL<span style="font-size:14px;color:var(--text-muted)"></span></div><div class="stat-label">Database</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F464;</div><div class="stat-value">${accounts.length}</div><div class="stat-label">Total Members</div><div class="stat-sub">${accounts.filter(a => Number(a.actual_balance) > 0).length} active savers</div></div>
+    <div class="stat-card" style="border-left:3px solid var(--accent)"><div class="stat-icon">&#x1F4B0;</div><div class="stat-value">&#x20B1;${totalBalance.toFixed(0)}</div><div class="stat-label">Total Deposits</div><div class="stat-sub">&#x20B1;${(totalBalance / (accounts.length || 1)).toFixed(0)} avg per member</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4B3;</div><div class="stat-value">${transactions.length}</div><div class="stat-label">Transactions</div><div class="stat-sub">${dayCounts[6] || 0} today</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F3AF;</div><div class="stat-value">${goals.length}</div><div class="stat-label">Goal Jars</div><div class="stat-sub">${completedGoals} completed (${goals.length > 0 ? (completedGoals / goals.length * 100).toFixed(0) : 0}%)</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F3C6;</div><div class="stat-value">${unlockedBadges}<span style="font-size:13px;color:var(--text-muted)">/${totalBadges}</span></div><div class="stat-label">Badges Unlocked</div><div class="stat-bar"><div class="stat-bar-fill" style="width:${totalBadges > 0 ? (unlockedBadges/totalBadges*100).toFixed(0) : 0}%;background:var(--purple)"></div></div></div>
+    <div class="stat-card"><div class="stat-icon">&#x2728;</div><div class="stat-value">${totalXp.toLocaleString()}</div><div class="stat-label">Total XP Earned</div><div class="stat-sub">${accounts.length > 0 ? (totalXp / accounts.length).toFixed(0) : 0} avg per member</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4B0;</div><div class="stat-value">${Number(loanStats.total_loans || 0)}</div><div class="stat-label">Loan Portfolio</div><div class="stat-sub">&#x20B1;${Number(loanStats.outstanding || 0).toFixed(0)} outstanding</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4CA;</div><div class="stat-value">${activeLoanProducts + shopItemsCount}</div><div class="stat-label">Active Products</div><div class="stat-sub">${activeLoanProducts} loan &middot; ${shopItemsCount} shop</div></div>
   </div>
 
-  <!-- Excel Import -->
-  <div class="upload-card">
-    <h3>&#x1F4C4; Excel Import</h3>
-    <form method="post" enctype="multipart/form-data">
-      <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
-      <button type="submit" formaction="/admin/upload" class="btn btn-secondary btn-sm">&#x1F4C3; Parse Only</button>
-      <button type="submit" formaction="/admin/upload-and-seed" class="btn btn-primary btn-sm">&#x1F4E5; Parse &amp; Seed</button>
-    </form>
-  </div>
-
-  <!-- Two-column layout for tables -->
+  <!-- Charts Row -->
+  <div class="section-title">Analytics</div>
   <div class="dash-grid">
-    <!-- Accounts -->
+    <div class="chart-card">
+      <div class="chart-title">Daily Transaction Volume <span class="chart-badge">&#x20B1;${(dayDeposits.reduce((s,v) => s+v, 0) + dayWithdrawals.reduce((s,v) => s+v, 0)).toFixed(0)}</span></div>
+      ${dayDeposits.reduce((s,v) => s+v, 0) + dayWithdrawals.reduce((s,v) => s+v, 0) > 0 ? barChart(dayDeposits, dayLabels, ['#22c55e','#3b82f6']) : '<div class="no-data">No transaction data in the last 7 days</div>'}
+      <div class="mini-legend"><span><span class="dot" style="background:#22c55e"></span> Deposits (&#x20B1;${dayDeposits.reduce((s,v) => s+v, 0).toFixed(0)})</span><span><span class="dot" style="background:#3b82f6"></span> Withdrawals (&#x20B1;${dayWithdrawals.reduce((s,v) => s+v, 0).toFixed(0)})</span></div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-title">Balance Distribution <span class="chart-badge">${topAccounts.length} members</span></div>
+      <div style="display:flex;align-items:center;gap:8px">
+        ${topAccounts.length > 0 ? pieChart(topBalances, topAccounts.map(a => a.child_name), pieColors, balanceTotal) : '<div class="no-data" style="flex:1">No accounts</div>'}
+        <div style="flex:1;min-width:0">
+          ${topAccounts.slice(0, 5).map((a, i) => `
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:11px">
+            <span style="width:10px;height:10px;border-radius:2px;background:${pieColors[i]};flex-shrink:0"></span>
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.child_name}</span>
+            <span style="font-weight:600">&#x20B1;${Number(a.actual_balance).toFixed(0)}</span>
+            <span style="color:var(--text-muted)">(${(Number(a.actual_balance) / balanceTotal * 100).toFixed(1)}%)</span>
+          </div>`).join('')}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dash-grid-3">
+    <div class="chart-card">
+      <div class="chart-title">XP Leaderboard</div>
+      ${xpTop.length > 0 ? hBar(xpTop.map(a => Number(a.current_xp)), xpTop.map(a => a.child_name), ['#f59e0b','#3b82f6','#22c55e','#8b5cf6','#ef4444','#06b6d4'], maxXp) : '<div class="no-data">No XP data</div>'}
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-title">Cash Flow <span class="chart-badge">${netFlow >= 0 ? '+' : ''}&#x20B1;${netFlow.toFixed(0)}</span></div>
+      <div style="display:flex;gap:16px;align-items:center;padding:8px 0">
+        <div style="text-align:center;flex:1"><div style="font-size:24px;font-weight:700;color:#16a34a">&#x20B1;${cashIn.toFixed(0)}</div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Cash In</div></div>
+        <div style="width:40px;height:40px;border-radius:50%;background:${netFlow >= 0 ? '#e8f5e9' : '#fce4ec'};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${netFlow >= 0 ? '&#x2191;' : '&#x2193;'}</div>
+        <div style="text-align:center;flex:1"><div style="font-size:24px;font-weight:700;color:#dc2626">&#x20B1;${cashOut.toFixed(0)}</div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Cash Out</div></div>
+      </div>
+      <div style="height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;display:flex">
+        <div style="width:${cashIn + cashOut > 0 ? (cashIn / (cashIn + cashOut) * 100).toFixed(1) : 50}%;height:100%;background:var(--accent);border-radius:3px 0 0 3px"></div>
+        <div style="flex:1;height:100%;background:#ef4444;border-radius:0 3px 3px 0"></div>
+      </div>
+      <div class="mini-legend" style="margin-top:4px"><span style="color:#16a34a">${(cashIn + cashOut > 0 ? (cashIn / (cashIn + cashOut) * 100).toFixed(0) : 0)}% deposits</span><span style="color:#dc2626">${(cashIn + cashOut > 0 ? (cashOut / (cashIn + cashOut) * 100).toFixed(0) : 0)}% withdrawals</span></div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-title">Transaction Activity</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0">
+        ${['deposit','withdrawal','loan_disbursement','loan_payment','interest_credit','allocation'].map(type => {
+          const count = transactions.filter(t => t.type === type).length;
+          const total = transactions.filter(t => t.type === type).reduce((s,t) => s + Number(t.amount), 0);
+          if (count === 0) return '';
+          const colors = {deposit:'#22c55e',withdrawal:'#ef4444',loan_disbursement:'#f59e0b',loan_payment:'#3b82f6',interest_credit:'#8b5cf6',allocation:'#06b6d4'};
+          return `<div style="flex:1;min-width:80px;background:${colors[type]}15;border:1px solid ${colors[type]}30;border-radius:8px;padding:8px 10px;text-align:center">
+            <div style="font-size:11px;font-weight:600;color:${colors[type]}">${type.replace(/_/g,' ')}</div>
+            <div style="font-size:13px;font-weight:700;color:var(--text)">${count}</div>
+            <div style="font-size:9px;color:var(--text-muted)">&#x20B1;${total.toFixed(0)}</div>
+          </div>`;
+        }).filter(Boolean).join('') || '<div class="no-data">No activity</div>'}
+      </div>
+    </div>
+  </div>
+
+  <!-- Excel Import + Tables -->
+  <div class="section-title">Data Management</div>
+  <div class="dash-grid">
     <div class="card">
-      <div class="card-header"><h3>&#x1F464; Accounts</h3><span class="count">${accounts.length} total</span><a href="/admin/accounts" class="btn btn-outline btn-xs">Manage</a></div>
-      <div class="card-body" style="max-height:280px;overflow-y:auto">
-      <table><tr><th>Name</th><th>Balance</th><th>XP</th></tr>
-      ${accounts.length === 0 ? '<tr><td colspan="3" style="text-align:center;padding:16px;color:var(--text-muted)">No accounts</td></tr>' : accounts.map(a => `<tr>
+      <div class="card-header"><h3>&#x1F4C4; Excel Import</h3></div>
+      <div class="card-body-padded">
+      <form method="post" enctype="multipart/form-data" style="display:flex;gap:8px;flex-wrap:wrap">
+        <input type="file" name="file" accept=".xlsx,.xls,.csv" required style="flex:1;min-width:140px;padding:6px;border:2px solid var(--border);border-radius:6px;font-size:12px">
+        <button type="submit" formaction="/admin/upload" class="btn btn-secondary btn-xs">Parse</button>
+        <button type="submit" formaction="/admin/upload-and-seed" class="btn btn-primary btn-xs">Parse &amp; Seed</button>
+      </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h3>&#x1F91D; Co-op Goals</h3><span class="count">${completedCoopGoals}/${totalCoopGoals}</span></div>
+      <div class="card-body dash-table-wrap">
+      ${totalCoopGoals === 0 ? '<div class="no-data">No co-op goals</div>' : `<table><tr><th>Goal</th><th>Progress</th><th>Status</th></tr>
+      ${coopGoals.slice(0, 5).map(g => {
+        const raised = Number(g.contributed || 0);
+        const pct = g.target_amount > 0 ? Math.min((raised / g.target_amount) * 100, 100) : 0;
+        return `<tr><td><b>${g.title}</b></td><td><span class="bar"><span class="bar-track"><span class="bar-fill blue" style="width:${pct}%"></span></span>${pct.toFixed(0)}%</span></td><td><span class="badge ${g.is_completed ? 'badge-green' : pct > 0 ? 'badge-blue' : 'badge-gray'}">${g.is_completed ? 'Done' : pct > 0 ? 'Active' : 'New'}</span></td></tr>`;
+      }).join('')}
+      </table>`}
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">Members & Activity</div>
+  <div class="dash-grid">
+    <div class="card">
+      <div class="card-header"><h3>&#x1F464; Members</h3><span class="count">${accounts.length} total</span><a href="/admin/accounts" class="btn btn-outline btn-xs">Manage</a></div>
+      <div class="card-body dash-table-wrap">
+      <table><tr><th>Name</th><th>Balance</th><th>XP</th><th>Goals</th></tr>
+      ${accounts.length === 0 ? '<tr><td colspan="4" class="no-data">No accounts</td></tr>' : accounts.map(a => {
+        const goalCount = goals.filter(g => g.account_id === a.account_id).length;
+        return `<tr>
         <td><b>${a.child_name}</b></td>
         <td class="num">&#x20B1;${Number(a.actual_balance).toFixed(2)}</td>
         <td class="num">${a.current_xp}</td>
-      </tr>`).join('')}
+        <td class="num">${goalCount}</td>
+      </tr>`;}).join('')}
       </table></div>
     </div>
 
-    <!-- Recent Transactions -->
     <div class="card">
-      <div class="card-header"><h3>&#x1F4B3; Recent Transactions</h3><span class="count">last ${Math.min(transactions.length, 10)}</span><a href="/admin/transactions" class="btn btn-outline btn-xs">View All</a></div>
-      <div class="card-body" style="max-height:280px;overflow-y:auto">
-      ${transactions.length === 0 ? '<div style="padding:24px;text-align:center;color:var(--text-muted)">No transactions</div>' : `<table><tr><th>Child</th><th>Type</th><th>Amount</th></tr>
-      ${transactions.slice(0, 10).map(t => `<tr>
-        <td>${t.child_name || '-'}</td>
-        <td><span class="badge ${t.type === 'deposit' ? 'badge-green' : t.type === 'withdrawal' ? 'badge-red' : t.type === 'loan_disbursement' ? 'badge-amber' : t.type === 'loan_payment' ? 'badge-blue' : t.type === 'interest_credit' || t.type === 'interest' ? 'badge-purple' : t.type === 'allocation' ? 'badge-purple' : 'badge-gray'}">${t.type}</span></td>
-        <td class="num" style="color:${t.type === 'deposit' ? 'var(--accent)' : t.type === 'withdrawal' ? 'var(--red)' : 'var(--text)'}">${['deposit','loan_disbursement','interest_credit','interest'].includes(t.type) ? '+' : '-'}&#x20B1;${Number(t.amount).toFixed(2)}</td>
-      </tr>`).join('')}
-      </table>`}
-      </div>
-    </div>
-
-    <!-- Goals -->
-    <div class="card">
-      <div class="card-header"><h3>&#x1F3AF; Goals</h3><span class="count">${completedGoals}/${goals.length} done</span><a href="/admin/goals" class="btn btn-outline btn-xs">Manage</a></div>
-      <div class="card-body" style="max-height:280px;overflow-y:auto">
-      ${goals.length === 0 ? '<div style="padding:24px;text-align:center;color:var(--text-muted)">No goals</div>' : `<table><tr><th>Child</th><th>Goal</th><th>Progress</th></tr>
-      ${goals.map(g => {
-        const pct = g.target_amount > 0 ? Math.min((g.current_allocated / g.target_amount) * 100, 100) : 0;
+      <div class="card-header"><h3>&#x1F4B3; Recent Transactions</h3><span class="count">recent ${Math.min(transactions.length, 8)}</span><a href="/admin/transactions" class="btn btn-outline btn-xs">View All</a></div>
+      <div class="card-body dash-table-wrap">
+      ${transactions.length === 0 ? '<div class="no-data">No transactions</div>' : `<table><tr><th>Child</th><th>Type</th><th>Amount</th><th>Date</th></tr>
+      ${transactions.slice(0, 8).map(t => {
+        const dateStr = t.created_at ? t.created_at.slice(0, 10) : '';
+        const badgeCls = ({deposit:'badge-green',withdrawal:'badge-red',loan_disbursement:'badge-amber',loan_payment:'badge-blue',interest_credit:'badge-purple',interest:'badge-purple',allocation:'badge-purple'})[t.type] || 'badge-gray';
+        const isInflow = ['deposit','loan_disbursement','interest_credit','interest'].includes(t.type);
         return `<tr>
-        <td>${g.child_name || '-'}</td>
-        <td>${g.title}</td>
-        <td><span class="bar"><span class="bar-track"><span class="bar-fill green" style="width:${pct}%"></span></span>${pct.toFixed(0)}%</span></td>
+        <td>${t.child_name || '-'}</td>
+        <td><span class="badge ${badgeCls}">${t.type.replace(/_/g,' ')}</span></td>
+        <td class="num" style="color:${isInflow ? 'var(--accent)' : 'var(--red)'}">${isInflow ? '+' : '-'}&#x20B1;${Number(t.amount).toFixed(2)}</td>
+        <td class="mono" style="font-size:10px">${dateStr}</td>
       </tr>`;}).join('')}
-      </table>`}
-      </div>
-    </div>
-
-    <!-- Badges -->
-    <div class="card">
-      <div class="card-header"><h3>&#x1F3C6; Badges</h3><span class="count">${unlockedBadges}/${totalBadges} unlocked</span><a href="/admin/badges" class="btn btn-outline btn-xs">Manage</a></div>
-      <div class="card-body" style="max-height:280px;overflow-y:auto">
-      ${badges.length === 0 ? '<div style="padding:24px;text-align:center;color:var(--text-muted)">No badges</div>' : `<table><tr><th>Child</th><th>Badge</th><th>Status</th></tr>
-      ${badges.map(b => `<tr>
-        <td>${b.child_name || '-'}</td>
-        <td>${b.name}</td>
-        <td><span class="badge ${b.is_unlocked ? 'badge-green' : 'badge-red'}">${b.is_unlocked ? 'Unlocked' : 'Locked'}</span></td>
-      </tr>`).join('')}
-      </table>`}
-      </div>
-    </div>
-  </div>
-
-  <div class="dash-grid-full">
-    <!-- Co-op Goals -->
-    <div class="card" style="margin-bottom:16px">
-      <div class="card-header"><h3>&#x1F91D; Co-op Goals</h3><span class="count">${completedCoopGoals}/${coopGoals.length} completed</span></div>
-      <div class="card-body">
-      ${coopGoals.length === 0 ? '<div style="padding:24px;text-align:center;color:var(--text-muted)">No co-op goals yet.</div>' : `<table><tr><th>Title</th><th>Target</th><th>Raised</th><th>Progress</th><th>Status</th></tr>
-      ${coopGoals.map(g => {
-        const raised = Number(g.contributed || 0);
-        const pct = g.target_amount > 0 ? Math.min((raised / g.target_amount) * 100, 100) : 0;
-        return `<tr><td><b>${g.title}</b></td><td class="num">&#x20B1;${Number(g.target_amount).toFixed(2)}</td><td class="num">&#x20B1;${raised.toFixed(2)}</td><td><span class="bar"><span class="bar-track"><span class="bar-fill blue" style="width:${pct}%"></span></span>${pct.toFixed(0)}%</span></td><td><span class="badge ${g.is_completed ? 'badge-green' : pct > 0 ? 'badge-blue' : 'badge-gray'}">${g.is_completed ? 'Done' : pct > 0 ? 'Active' : 'New'}</span></td></tr>`;
-      }).join('')}
       </table>`}
       </div>
     </div>
@@ -270,9 +437,8 @@ router.get('/', requireSession, asyncHandler(async (req, res) => {
   `;
 
   res.type('html').send(layout('Dashboard', 'dashboard', content, {
-    subtitle: `${new Date().toLocaleString()}`,
-    counts: { dashboard: accounts.length },
-    headerActions: '<a href="/api/excel/export/all" class="btn btn-secondary btn-sm">&#x1F4E5; Export All</a><a href="/api/excel/template" class="btn btn-outline btn-sm">&#x1F4C4; Template</a>',
+    subtitle: now.toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+    headerActions: '<a href="/admin/gl/trial-balance" class="btn btn-outline btn-sm">&#x2696; Trial Balance</a><a href="/api/excel/export/all" class="btn btn-secondary btn-sm">&#x1F4E5; Export</a>',
   }));
 }));
 

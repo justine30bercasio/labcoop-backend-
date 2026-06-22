@@ -180,11 +180,28 @@ async function ensureDb() {
   }
 }
 
+async function ensureAdmin() {
+  try {
+    const result = await store.query('SELECT COUNT(*) as c FROM admin_users');
+    if (parseInt(result.rows[0]?.c || '0', 10) === 0) {
+      const hash = bcrypt.hashSync('admin123', 10);
+      await store.query(
+        'INSERT INTO admin_users (admin_id, username, password_hash, role, display_name, is_active, created_at) VALUES ($1,$2,$3,$4,$5,1,$6)',
+        ['00000000-0000-0000-0000-000000000000', 'admin', hash, 'super_admin', 'Default Admin', new Date().toISOString()]
+      );
+      console.log('Default admin created: admin / admin123');
+    }
+  } catch (err) {
+    console.error('Admin seed failed (non-fatal):', err.message);
+  }
+}
+
 (async () => {
   if (isPostgres) {
     await store._ensureSchema();
   }
   await ensureDb();
+  await ensureAdmin();
   startServer();
 })();
 const accountsRouter = require('./routes/accounts');

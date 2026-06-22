@@ -11,6 +11,24 @@ function getDb() {
     db = new Database(DB_PATH);
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS gl_accounts (code TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL CHECK(type IN ('asset','liability','equity','income','expense')), is_active INTEGER DEFAULT 1);
+      CREATE TABLE IF NOT EXISTS gl_entries (entry_id TEXT PRIMARY KEY, transaction_id TEXT, account_code TEXT NOT NULL REFERENCES gl_accounts(code), debit DECIMAL(12,2) DEFAULT 0, credit DECIMAL(12,2) DEFAULT 0, description TEXT DEFAULT '', created_at TEXT);
+      CREATE TABLE IF NOT EXISTS audit_log (log_id TEXT PRIMARY KEY, admin_id TEXT, admin_name TEXT, action TEXT NOT NULL, entity_type TEXT, entity_id TEXT, details TEXT DEFAULT '{}', ip_address TEXT DEFAULT '', created_at TEXT);
+      CREATE TABLE IF NOT EXISTS admin_users (admin_id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role TEXT DEFAULT 'admin' CHECK(role IN ('super_admin','manager','teller','auditor')), display_name TEXT DEFAULT '', is_active INTEGER DEFAULT 1, created_at TEXT);
+    `);
+    const count = db.prepare("SELECT COUNT(*) as c FROM gl_accounts").get();
+    if (count.c === 0) {
+      const insert = db.prepare('INSERT INTO gl_accounts (code, name, type) VALUES (?,?,?)');
+      const accounts = [
+        ['1000','Cash on Hand','asset'], ['1100','Loans Receivable','asset'], ['1200','Accrued Interest','asset'],
+        ['2000','Savings Deposits','liability'], ['2100','Time Deposits','liability'], ['2200','Interest Payable','liability'],
+        ['3000','Share Capital','equity'], ['3100','Retained Earnings','equity'],
+        ['4000','Interest Income','income'], ['4100','Fee Income','income'],
+        ['5000','Interest Expense','expense'],
+      ];
+      for (const a of accounts) insert.run(...a);
+    }
   }
   return db;
 }

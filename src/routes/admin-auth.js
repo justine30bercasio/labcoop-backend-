@@ -2,11 +2,10 @@ const express = require('express');
 const bcrypt = require('bcrypt');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
+const { store } = require('../db');
+const { one } = require('./admin');
 
 const router = express.Router();
-
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@labcoop.app';
-const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || '';
 
 let transporter = null;
 function getTransporter() {
@@ -45,7 +44,7 @@ body { font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sa
 h1 { font-size:20px; font-weight:700; color:#1e293b; }
 .sub { color:#64748b; font-size:13px; margin-bottom:24px; }
 label { display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:4px; margin-top:14px; }
-input[type=email], input[type=password] { width:100%; padding:10px 14px; border:2px solid #e2e8f0; border-radius:10px; font-size:14px; outline:none; transition:border-color 0.2s; font-family:inherit; }
+input[type=text], input[type=password] { width:100%; padding:10px 14px; border:2px solid #e2e8f0; border-radius:10px; font-size:14px; outline:none; transition:border-color 0.2s; font-family:inherit; }
 input:focus { border-color:#2E7D32; }
 .btn { width:100%; padding:12px; background:#2E7D32; color:#fff; border:none; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; margin-top:20px; transition:background 0.2s; }
 .btn:hover { background:#1B5E20; }
@@ -66,8 +65,8 @@ input:focus { border-color:#2E7D32; }
   ${error && !error.startsWith('otp:') ? `<div class="error">${error}</div>` : ''}
   ${error && error.startsWith('otp:') ? `<div class="success">OTP sent to ${error.slice(4)}</div>` : ''}
   <form method="post" action="/admin/login">
-    <label for="email">Email</label>
-    <input type="email" id="email" name="email" placeholder="admin@labcoop.app" required autocomplete="email">
+    <label for="username">Username</label>
+    <input type="text" id="username" name="username" placeholder="admin" required autocomplete="username">
     <label for="password">Password</label>
     <input type="password" id="password" name="password" placeholder="Enter your password" required autocomplete="current-password">
     <button type="submit" class="btn">Sign In</button>
@@ -191,19 +190,27 @@ router.get('/login', (req, res) => {
 });
 
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.type('html').send(loginPage('Please enter both email and password.'));
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.type('html').send(loginPage('Please enter both username and password.'));
   }
-  if (email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
-    return res.type('html').send(loginPage('Invalid email or password.'));
+  let adminUser;
+  try {
+    const result = await store.query('SELECT * FROM admin_users WHERE username = $1 AND is_active = 1', [username]);
+    adminUser = result.rows[0];
+  } catch (e) {
+    return res.type('html').send(loginPage('Database error. Ensure admin_users table exists.'));
   }
-  const pwHash = ADMIN_PASSWORD_HASH || '$2b$10$vlZ0DNtvTizPQ8wkY.ucvO6u.HhtGDbM78NEx8zov3RcFi0cKov1e';
-  const match = await bcrypt.compare(password, pwHash);
+  if (!adminUser) {
+    return res.type('html').send(loginPage('Invalid username or password.'));
+  }
+  const match = await bcrypt.compare(password, adminUser.password_hash);
   if (!match) {
-    return res.type('html').send(loginPage('Invalid email or password.'));
+    return res.type('html').send(loginPage('Invalid username or password.'));
   }
-  req.session.adminId = email;
+  req.session.adminId = adminUser.admin_id;
+  req.session.adminName = adminUser.display_name || adminUser.username;
+  req.session.adminRole = adminUser.role;
   res.redirect('/admin');
 });
 

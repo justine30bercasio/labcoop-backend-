@@ -6,7 +6,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
-const { getDb, store } = require('../db');
+const { getDb, store, isPostgres } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const { layout } = require('./admin-lib');
 
@@ -965,6 +965,7 @@ router.post('/accounts/create', requireSession, asyncHandler(async (req, res) =>
       password: bcrypt.hashSync('0000', 10),
     });
     await store.query('UPDATE accounts SET member_id=$1 WHERE account_id=$2', [String(maxMember + 1).padStart(6, '0'), account.account_id]);
+    try { const audit = require('../services/audit'); await audit.log(req, 'ACCOUNT_CREATE', 'account', account.account_id, { child_name: child_name.trim(), initial_balance: Number(actual_balance) || 0 }); } catch (e) {}
     res.redirect('/admin/accounts?added=ok');
   } catch (err) {
     res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
@@ -996,13 +997,25 @@ router.post('/accounts/deposit/:id', requireSession, asyncHandler(async (req, re
     const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
     if (!account) return res.redirect('/admin/accounts?error=Account+not+found');
     const newBalance = Number(account.actual_balance) + val;
-    await store.query('UPDATE accounts SET actual_balance=$1, unallocated_balance=unallocated_balance+$2, updated_at=datetime(\'now\') WHERE account_id=$3', [newBalance, val, req.params.id]);
-    store.addTransaction({
+    await store.query('UPDATE accounts SET actual_balance=$1, unallocated_balance=unallocated_balance+$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3', [newBalance, val, req.params.id]);
+    const result = store.addTransaction({
       account_id: req.params.id,
       type: 'deposit',
       amount: val,
       description: description || 'Admin deposit',
+      balance_before: Number(account.actual_balance),
+      balance_after: newBalance,
     });
+    const txId = result?.transaction_id || '';
+    try {
+      const gl = require('../services/gl');
+      await gl.postDoubleEntry(txId, [
+        { account_code: '1000', debit: val, description: 'Admin deposit: ' + account.child_name },
+        { account_code: '2000', credit: val, description: 'Admin deposit: ' + account.child_name },
+      ]);
+      const audit = require('../services/audit');
+      await audit.log(req, 'ADMIN_DEPOSIT', 'account', req.params.id, { amount: val, txId, desc: description || 'Admin deposit' });
+    } catch (glErr) { console.error('GL post failed (non-fatal):', glErr.message); }
     res.redirect('/admin/accounts?deposited=ok');
   } catch (err) {
     res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
@@ -1020,8 +1033,8 @@ router.post('/accounts/withdraw/:id', requireSession, asyncHandler(async (req, r
     if (Number(account.actual_balance) < val) return res.redirect('/admin/accounts?error=Insufficient+balance');
     const newBalance = Math.round((Number(account.actual_balance) - val) * 100) / 100;
     const newUnallocated = Math.round((Number(account.unallocated_balance) - val) * 100) / 100;
-    await store.query('UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=datetime(\'now\') WHERE account_id=$3', [newBalance, Math.max(0, newUnallocated), req.params.id]);
-    store.addTransaction({
+    await store.query('UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3', [newBalance, Math.max(0, newUnallocated), req.params.id]);
+    const result = store.addTransaction({
       account_id: req.params.id,
       type: 'withdrawal',
       amount: val,
@@ -1029,6 +1042,16 @@ router.post('/accounts/withdraw/:id', requireSession, asyncHandler(async (req, r
       balance_before: Number(account.actual_balance),
       balance_after: newBalance,
     });
+    const txId = result?.transaction_id || '';
+    try {
+      const gl = require('../services/gl');
+      await gl.postDoubleEntry(txId, [
+        { account_code: '2000', debit: val, description: 'Admin withdrawal: ' + account.child_name },
+        { account_code: '1000', credit: val, description: 'Admin withdrawal: ' + account.child_name },
+      ]);
+      const audit = require('../services/audit');
+      await audit.log(req, 'ADMIN_WITHDRAWAL', 'account', req.params.id, { amount: val, txId, desc: description || 'Admin withdrawal' });
+    } catch (glErr) { console.error('GL post failed (non-fatal):', glErr.message); }
     res.redirect('/admin/accounts?withdrawn=ok');
   } catch (err) {
     res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
@@ -1556,6 +1579,7 @@ router.post('/loans/approve/:id', requireSession, asyncHandler(async (req, res) 
     if (!loan) return res.redirect('/admin/loans?error=Loan+not+found');
     if (loan.status !== 'pending') return res.redirect('/admin/loans?error=Loan+is+not+pending');
     store.updateLoan(req.params.id, { status: 'approved', approved_by: 'admin', approved_at: new Date().toISOString() });
+    try { const audit = require('../services/audit'); await audit.log(req, 'LOAN_APPROVE', 'loan', req.params.id, { amount: loan.principal, member: loan.account_id }); } catch (e) {}
     res.redirect('/admin/loans?approved=ok');
   } catch (err) {
     res.redirect(`/admin/loans?error=${encodeURIComponent(err.message)}`);
@@ -1568,6 +1592,7 @@ router.post('/loans/reject/:id', requireSession, asyncHandler(async (req, res) =
     if (!loan) return res.redirect('/admin/loans?error=Loan+not+found');
     if (loan.status !== 'pending') return res.redirect('/admin/loans?error=Loan+is+not+pending');
     store.updateLoan(req.params.id, { status: 'rejected' });
+    try { const audit = require('../services/audit'); await audit.log(req, 'LOAN_REJECT', 'loan', req.params.id, { amount: loan.principal, member: loan.account_id }); } catch (e) {}
     res.redirect('/admin/loans?rejected=ok');
   } catch (err) {
     res.redirect(`/admin/loans?error=${encodeURIComponent(err.message)}`);
@@ -1599,6 +1624,15 @@ router.post('/loans/disburse/:id', requireSession, asyncHandler(async (req, res)
       balance_after: newBalance,
     });
     store.updateLoan(req.params.id, { status: 'active', disbursed_at: new Date().toISOString() });
+    try {
+      const gl = require('../services/gl');
+      await gl.postDoubleEntry(loan.loan_id, [
+        { account_code: '1100', debit: Number(loan.principal), description: 'Loan disbursement: ' + (loan.purpose || 'Loan') },
+        { account_code: '1000', credit: Number(loan.principal), description: 'Loan disbursement to member' },
+      ]);
+      const audit = require('../services/audit');
+      await audit.log(req, 'LOAN_DISBURSE', 'loan', req.params.id, { principal: loan.principal, account: loan.account_id });
+    } catch (e) { console.error('GL post failed (non-fatal):', e.message); }
     res.redirect('/admin/loans?disbursed=ok');
   } catch (err) {
     res.redirect(`/admin/loans?error=${encodeURIComponent(err.message)}`);
@@ -1719,10 +1753,18 @@ router.get('/transactions', requireSession, asyncHandler(async (req, res) => {
 
 router.get('/settings', requireSession, asyncHandler(async (req, res) => {
 
-  const dbPath = path.join(__dirname, '..', 'labcoop.db');
-  const dbSize = fs.existsSync(dbPath) ? fs.statSync(dbPath).size : 0;
+  let dbSize = 0;
+  if (!isPostgres) {
+    const dbPath = path.join(__dirname, '..', 'labcoop.db');
+    dbSize = fs.existsSync(dbPath) ? fs.statSync(dbPath).size : 0;
+  }
 
-  const tables = await sql("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
+  let tables;
+  if (isPostgres) {
+    tables = await sql("SELECT table_name as name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' ORDER BY table_name");
+  } else {
+    tables = await sql("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
+  }
   const tableInfo = [];
   for (const t of tables) {
     const cnt = await one(`SELECT COUNT(*) as c FROM "${t.name}"`);
@@ -1733,28 +1775,26 @@ router.get('/settings', requireSession, asyncHandler(async (req, res) => {
     { key: 'PORT', val: process.env.PORT || '3000' },
     { key: 'NODE_ENV', val: process.env.NODE_ENV || 'development' },
     { key: 'JWT_SECRET', val: process.env.JWT_SECRET ? '*****' : '(not set)' },
-    { key: 'ADMIN_TOKEN', val: process.env.ADMIN_TOKEN ? '(configured)' : '(not set)' },
     { key: 'MAIL_HOST', val: process.env.MAIL_HOST || '(not set)' },
-    { key: 'DB_TYPE', val: 'SQLite (better-sqlite3)' },
+    { key: 'DB_TYPE', val: isPostgres ? 'PostgreSQL (Aiven)' : 'SQLite (better-sqlite3)' },
   ];
+
+  const tip = isPostgres ? '' : `<div class="card" style="margin-top:20px"><div class="card-body-padded"><b>&#x26A0; SQLite:</b> Database file is <code>${(dbSize / 1024).toFixed(1)} KB</code> on disk at <code>backend/labcoop.db</code></div></div>`;
 
   const content = `
   <div class="stats-grid">
-    <div class="stat-card"><div class="stat-icon">&#x1F4BE;</div><div class="stat-value">${(dbSize / 1024).toFixed(1)} KB</div><div class="stat-label">Database Size</div></div>
     <div class="stat-card"><div class="stat-icon">&#x1F4CA;</div><div class="stat-value">${tableInfo.length}</div><div class="stat-label">Tables</div></div>
     <div class="stat-card"><div class="stat-icon">&#x1F504;</div><div class="stat-value">${tableInfo.reduce((s,t)=>s+t.rows,0)}</div><div class="stat-label">Total Rows</div></div>
     <div class="stat-card"><div class="stat-icon">&#x1F4C5;</div><div class="stat-value">Node ${process.version}</div><div class="stat-label">Runtime</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4E1;</div><div class="stat-value">${isPostgres ? 'PostgreSQL' : 'SQLite'}</div><div class="stat-label">Database</div></div>
   </div>
+  ${tip}
 
   <div class="card">
     <div class="card-header"><h3>&#x1F4CA; Database Tables</h3></div>
     <div class="card-body">
-    <table><tr><th>Table Name</th><th>Rows</th><th>Type</th></tr>
-    ${tableInfo.map(t => `<tr>
-      <td><b>${t.name}</b></td>
-      <td>${t.rows}</td>
-      <td><span class="badge badge-blue">${t.name.endsWith('s') ? 'Data' : 'Lookup'}</span></td>
-    </tr>`).join('')}
+    <table><tr><th>Table Name</th><th>Rows</th></tr>
+    ${tableInfo.map(t => `<tr><td><b>${t.name}</b></td><td>${t.rows}</td></tr>`).join('')}
     </table></div>
   </div>
 
@@ -1767,12 +1807,12 @@ router.get('/settings', requireSession, asyncHandler(async (req, res) => {
   </div>
 
   <div class="card">
-    <div class="card-header"><h3>&#x1F527; Quick Links</h3></div>
+    <div class="card-header"><h3>&#x1F527; Tools</h3></div>
     <div class="card-body-padded" style="display:flex;gap:12px;flex-wrap:wrap">
       <a href="/api/excel/export/all" class="btn btn-secondary">&#x1F4E5; Export All Data</a>
       <a href="/api/excel/template" class="btn btn-outline">&#x1F4C4; Download Template</a>
       <a href="/api/health" target="_blank" class="btn btn-outline">&#x1F4C8; Health Check</a>
-      <a href="/" target="_blank" class="btn btn-outline">&#x1F310; API Root</a>
+      <button class="btn btn-danger" onclick="if(confirm('Reset ALL data? This cannot be undone.')){fetch('/admin/reset-data',{method:'POST'}).then(r=>r.json()).then(d=>alert(d.message)||location.reload())}">&#x26A0; Reset All Data</button>
     </div>
   </div>
   `;
@@ -1780,6 +1820,18 @@ router.get('/settings', requireSession, asyncHandler(async (req, res) => {
   res.type('html').send(layout('Settings', 'settings', content, {
     subtitle: 'System information and configuration',
   }));
+}));
+
+router.post('/reset-data', requireSession, asyncHandler(async (req, res) => {
+  const tables = isPostgres
+    ? await sql("SELECT table_name as name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' ORDER BY table_name")
+    : await sql("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
+  for (const t of tables) {
+    if (t.name === 'sqlite_sequence') continue;
+    await store.query(`DELETE FROM "${t.name}"`);
+    if (!isPostgres) await store.query(`DELETE FROM sqlite_sequence WHERE name='${t.name}'`);
+  }
+  res.json({ message: 'All data reset. Tables are empty.' });
 }));
 
 // ── Loan Products Management ──
@@ -2626,6 +2678,15 @@ router.post('/teller/deposit/:id', requireSession, asyncHandler(async (req, res)
       balance_after: newBalance,
     });
     const txId = result?.transaction_id || '';
+    try {
+      const gl = require('../services/gl');
+      await gl.postDoubleEntry(txId, [
+        { account_code: '1000', debit: val, description: 'Counter deposit: ' + account.child_name },
+        { account_code: '2000', credit: val, description: 'Counter deposit: ' + account.child_name },
+      ]);
+      const audit = require('../services/audit');
+      await audit.log(req, 'TELLER_DEPOSIT', 'account', req.params.id, { amount: val, txId, desc: description || 'Counter deposit' });
+    } catch (glErr) { console.error('GL post failed (non-fatal):', glErr.message); }
     const sq = req.body.q ? '&q=' + encodeURIComponent(req.body.q) : '';
     res.redirect(`/admin/teller?deposited=ok&receipt=${txId}&account=${req.params.id}${sq}`);
   } catch (err) {
@@ -2654,6 +2715,15 @@ router.post('/teller/withdraw/:id', requireSession, asyncHandler(async (req, res
       balance_after: newBalance,
     });
     const txId = result?.transaction_id || '';
+    try {
+      const gl = require('../services/gl');
+      await gl.postDoubleEntry(txId, [
+        { account_code: '2000', debit: val, description: 'Counter withdrawal: ' + account.child_name },
+        { account_code: '1000', credit: val, description: 'Counter withdrawal: ' + account.child_name },
+      ]);
+      const audit = require('../services/audit');
+      await audit.log(req, 'TELLER_WITHDRAWAL', 'account', req.params.id, { amount: val, txId, desc: description || 'Counter withdrawal' });
+    } catch (glErr) { console.error('GL post failed (non-fatal):', glErr.message); }
     const sq = req.body.q ? '&q=' + encodeURIComponent(req.body.q) : '';
     res.redirect(`/admin/teller?withdrawn=ok&receipt=${txId}&account=${req.params.id}${sq}`);
   } catch (err) {
@@ -2716,6 +2786,19 @@ router.post('/teller/loan-pay/:id', requireSession, asyncHandler(async (req, res
       balance_after: Number(account.actual_balance),
     });
     const txId = txResult?.transaction_id || '';
+    try {
+      const gl = require('../services/gl');
+      const entries = [
+        { account_code: '1000', debit: val, description: 'Loan payment: ' + (loan.purpose || 'Loan') },
+        { account_code: '1100', credit: principalPortion, description: 'Principal repayment' },
+      ];
+      if (interestPortion > 0) {
+        entries.push({ account_code: '4000', credit: interestPortion, description: 'Interest income' });
+      }
+      await gl.postDoubleEntry(txId, entries);
+      const audit = require('../services/audit');
+      await audit.log(req, 'TELLER_LOAN_PAYMENT', 'loan', loan_id, { amount: val, principalPortion, interestPortion, txId });
+    } catch (glErr) { console.error('GL post failed (non-fatal):', glErr.message); }
     const sq = req.body.q ? '&q=' + encodeURIComponent(req.body.q) : '';
     res.redirect(`/admin/teller?loanpaid=ok&receipt=${txId}&account=${accountId}${sq}`);
   } catch (err) {
@@ -2892,6 +2975,243 @@ router.post('/reset-database', requireSession, asyncHandler(async (req, res) => 
     return res.redirect('/admin?error=' + encodeURIComponent('Reset failed: ' + err.message));
   }
   res.redirect('/admin?msg=Database+reset+successful');
+}));
+
+// ── GL Reports ──
+
+router.get('/gl/trial-balance', requireSession, asyncHandler(async (req, res) => {
+  const { getTrialBalance } = require('../services/gl');
+  const result = await getTrialBalance(req.query.date || null);
+  const content = `
+  <div class="card">
+    <div class="card-header"><h3>&#x1F4CA; Trial Balance ${req.query.date ? 'as of ' + req.query.date : ''}</h3></div>
+    <div class="card-body" style="padding:0">
+    <table>
+      <tr><th>Code</th><th>Account</th><th>Type</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr>
+      ${result.rows.map(r => `<tr>
+        <td class="mono">${r.code}</td><td>${r.name}</td>
+        <td><span class="badge ${r.type === 'asset' || r.type === 'expense' ? 'badge-red' : r.type === 'liability' || r.type === 'equity' ? 'badge-blue' : 'badge-green'}">${r.type}</span></td>
+        <td class="num mono">${r.debit ? '&#x20B1;' + r.debit.toFixed(2) : '-'}</td>
+        <td class="num mono">${r.credit ? '&#x20B1;' + r.credit.toFixed(2) : '-'}</td>
+        <td class="num mono" style="color:${r.balance >= 0 ? '#16a34a' : '#dc2626'}">&#x20B1;${r.balance.toFixed(2)}</td>
+      </tr>`).join('')}
+      <tr style="font-weight:700;background:var(--bg2)"><td colspan="3">TOTAL</td>
+        <td class="num mono">&#x20B1;${result.totalDebit.toFixed(2)}</td>
+        <td class="num mono">&#x20B1;${result.totalCredit.toFixed(2)}</td>
+        <td></td>
+      </tr>
+    </table></div>
+  </div>
+  <div style="margin-top:12px;display:flex;gap:8px">
+    <a href="/admin/gl/balance-sheet" class="btn btn-outline">&#x1F4C8; Balance Sheet</a>
+    <a href="/admin/gl/profit-and-loss" class="btn btn-outline">&#x1F4C9; P&L</a>
+    <a href="/admin/gl/ledger" class="btn btn-outline">&#x1F4CB; Ledger</a>
+  </div>`;
+  res.type('html').send(layout('Trial Balance', 'gl', content, { subtitle: 'General Ledger trial balance' }));
+}));
+
+router.get('/gl/balance-sheet', requireSession, asyncHandler(async (req, res) => {
+  const { getBalanceSheet } = require('../services/gl');
+  const result = await getBalanceSheet(req.query.date || null);
+  const section = (title, items, total) => `
+    <div class="card" style="margin-top:16px">
+      <div class="card-header"><h4>${title}</h4></div>
+      <div class="card-body" style="padding:0">
+      <table>
+        <tr><th>Account</th><th class="num">Amount</th></tr>
+        ${items.map(r => `<tr><td>${r.name}</td><td class="num mono">&#x20B1;${r.balance.toFixed(2)}</td></tr>`).join('')}
+        <tr style="font-weight:700;background:var(--bg2)"><td>TOTAL ${title.toUpperCase()}</td><td class="num mono">&#x20B1;${total.toFixed(2)}</td></tr>
+      </table></div>
+    </div>`;
+  const diff = result.totalAssets - (result.totalLiabilities + result.totalEquity);
+  const content = `
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-icon">&#x1F4B0;</div><div class="stat-value" style="color:#16a34a">&#x20B1;${result.totalAssets.toFixed(2)}</div><div class="stat-label">Total Assets</div></div>
+      <div class="stat-card"><div class="stat-icon">&#x1F4B3;</div><div class="stat-value" style="color:#dc2626">&#x20B1;${result.totalLiabilities.toFixed(2)}</div><div class="stat-label">Total Liabilities</div></div>
+      <div class="stat-card"><div class="stat-icon">&#x1F511;</div><div class="stat-value" style="color:#2563eb">&#x20B1;${result.totalEquity.toFixed(2)}</div><div class="stat-label">Total Equity</div></div>
+      <div class="stat-card"><div class="stat-icon">&#x2696;</div><div class="stat-value" style="color:${diff === 0 ? '#16a34a' : '#dc2626'}">${diff === 0 ? '&#x2705; Balanced' : '&#x26A0; Diff: &#x20B1;' + diff.toFixed(2)}</div><div class="stat-label">A = L + E</div></div>
+    </div>
+    ${section('Assets', result.assets, result.totalAssets)}
+    ${section('Liabilities', result.liabilities, result.totalLiabilities)}
+    ${section('Equity', result.equity, result.totalEquity)}
+    <div style="margin-top:12px;display:flex;gap:8px">
+      <a href="/admin/gl/trial-balance" class="btn btn-outline">&#x1F4CA; Trial Balance</a>
+      <a href="/admin/gl/profit-and-loss" class="btn btn-outline">&#x1F4C9; P&L</a>
+    </div>`;
+  res.type('html').send(layout('Balance Sheet', 'gl', content, { subtitle: 'Assets = Liabilities + Equity' }));
+}));
+
+router.get('/gl/profit-and-loss', requireSession, asyncHandler(async (req, res) => {
+  const { getProfitAndLoss } = require('../services/gl');
+  const now = new Date();
+  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const result = await getProfitAndLoss(req.query.from || firstDay, req.query.to || now.toISOString());
+  const section = (title, items, total, color) => `
+    <div class="card" style="margin-top:16px">
+      <div class="card-header"><h4>${title}</h4></div>
+      <div class="card-body" style="padding:0">
+      <table>
+        <tr><th>Account</th><th class="num">Amount</th></tr>
+        ${items.map(r => `<tr><td>${r.name}</td><td class="num mono" style="color:${color}">&#x20B1;${r.amount.toFixed(2)}</td></tr>`).join('')}
+        <tr style="font-weight:700;background:var(--bg2)"><td>TOTAL ${title.toUpperCase()}</td><td class="num mono" style="color:${color}">&#x20B1;${total.toFixed(2)}</td></tr>
+      </table></div>
+    </div>`;
+  const content = `
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-icon">&#x1F4B5;</div><div class="stat-value" style="color:#16a34a">&#x20B1;${result.totalIncome.toFixed(2)}</div><div class="stat-label">Total Income</div></div>
+      <div class="stat-card"><div class="stat-icon">&#x1F4B8;</div><div class="stat-value" style="color:#dc2626">&#x20B1;${result.totalExpense.toFixed(2)}</div><div class="stat-label">Total Expenses</div></div>
+      <div class="stat-card"><div class="stat-icon">&#x1F3C6;</div><div class="stat-value" style="color:${result.netProfit >= 0 ? '#16a34a' : '#dc2626'}">&#x20B1;${result.netProfit.toFixed(2)}</div><div class="stat-label">Net ${result.netProfit >= 0 ? 'Profit' : 'Loss'}</div></div>
+    </div>
+    ${section('Income', result.income, result.totalIncome, '#16a34a')}
+    ${section('Expenses', result.expense, result.totalExpense, '#dc2626')}
+    <div style="margin-top:12px;display:flex;gap:8px">
+      <a href="/admin/gl/trial-balance" class="btn btn-outline">&#x1F4CA; Trial Balance</a>
+      <a href="/admin/gl/balance-sheet" class="btn btn-outline">&#x1F4C8; Balance Sheet</a>
+    </div>`;
+  res.type('html').send(layout('Profit & Loss', 'gl', content, { subtitle: 'Income - Expenses = Net Profit/Loss' }));
+}));
+
+router.get('/gl/ledger', requireSession, asyncHandler(async (req, res) => {
+  const { getAccountLedger } = require('../services/gl');
+  const accounts = await sql('SELECT * FROM gl_accounts ORDER BY code');
+  const selected = req.query.account || '';
+  let entries = [];
+  let accName = '';
+  if (selected) {
+    entries = await getAccountLedger(selected);
+    const a = accounts.find(x => x.code === selected);
+    accName = a ? a.name + ' (' + a.code + ')' : selected;
+  }
+  const content = `
+  <div class="card">
+    <div class="card-header"><h3>&#x1F4CB; General Ledger</h3></div>
+    <div class="card-body">
+      <form method="get" action="/admin/gl/ledger" style="display:flex;gap:8px;margin-bottom:16px">
+        <select name="account" style="flex:1;padding:8px 12px;border:2px solid var(--border);border-radius:8px;font-size:14px">
+          <option value="">-- Select account --</option>
+          ${accounts.map(a => `<option value="${a.code}" ${a.code === selected ? 'selected' : ''}>${a.code} — ${a.name} [${a.type}]</option>`).join('')}
+        </select>
+        <button type="submit" class="btn btn-secondary">View</button>
+      </form>
+      ${selected ? `
+      <h4 style="margin-bottom:8px">${accName}</h4>
+      <table>
+        <tr><th>Date</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th></tr>
+        ${entries.length === 0 ? '<tr><td colspan="4" style="text-align:center;color:var(--text-muted)">No entries</td></tr>' :
+          entries.map(e => `<tr>
+            <td class="mono" style="font-size:11px">${(e.created_at||'').slice(0,16).replace('T',' ')}</td>
+            <td>${e.description || '-'}</td>
+            <td class="num mono">${Number(e.debit) ? '&#x20B1;' + Number(e.debit).toFixed(2) : '-'}</td>
+            <td class="num mono">${Number(e.credit) ? '&#x20B1;' + Number(e.credit).toFixed(2) : '-'}</td>
+          </tr>`).join('')}
+      </table>` : ''}
+    </div>
+  </div>
+  <div style="margin-top:12px;display:flex;gap:8px">
+    <a href="/admin/gl/trial-balance" class="btn btn-outline">&#x1F4CA; Trial Balance</a>
+    <a href="/admin/gl/balance-sheet" class="btn btn-outline">&#x1F4C8; Balance Sheet</a>
+    <a href="/admin/gl/profit-and-loss" class="btn btn-outline">&#x1F4C9; P&L</a>
+  </div>`;
+  res.type('html').send(layout('General Ledger', 'gl', content, { subtitle: 'View individual account entries' }));
+}));
+
+// ── Audit Log ──
+
+router.get('/audit-log', requireSession, asyncHandler(async (req, res) => {
+  const { getLogs } = require('../services/audit');
+  const limit = Number(req.query.limit) || 100;
+  const offset = Number(req.query.offset) || 0;
+  const logs = await getLogs(limit, offset);
+  const content = `
+  <div class="card">
+    <div class="card-header"><h3>&#x1F4DD; Audit Log</h3></div>
+    <div class="card-body" style="padding:0">
+    <table>
+      <tr><th>Date</th><th>Admin</th><th>Action</th><th>Entity</th><th>ID</th><th>IP</th></tr>
+      ${logs.length === 0 ? '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">No audit entries yet</td></tr>' :
+        logs.map(l => {
+          const badge = ({LOAN_APPROVE:'badge-green',LOAN_REJECT:'badge-red',TELLER_DEPOSIT:'badge-blue',TELLER_WITHDRAW:'badge-orange',ACCOUNT_CREATE:'badge-green'})[l.action] || 'badge-blue';
+          return `<tr>
+            <td class="mono" style="font-size:11px">${(l.created_at||'').slice(0,19).replace('T',' ')}</td>
+            <td>${l.admin_name || l.admin_id || '-'}</td>
+            <td><span class="badge ${badge}">${l.action}</span></td>
+            <td>${l.entity_type || '-'}</td>
+            <td class="mono" style="font-size:11px">${l.entity_id ? l.entity_id.slice(0,8) : '-'}</td>
+            <td class="mono" style="font-size:11px">${l.ip_address || '-'}</td>
+          </tr>`;
+        }).join('')}
+    </table></div>
+  </div>
+  <div style="margin-top:12px;display:flex;gap:8px;justify-content:center">
+    ${offset > 0 ? `<a href="/admin/audit-log?limit=${limit}&offset=${Math.max(0, offset - limit)}" class="btn btn-outline">&#x25C0; Previous</a>` : ''}
+    ${logs.length === limit ? `<a href="/admin/audit-log?limit=${limit}&offset=${offset + limit}" class="btn btn-outline">Next &#x25B6;</a>` : ''}
+  </div>`;
+  res.type('html').send(layout('Audit Log', 'audit', content, { subtitle: 'Track all admin actions' }));
+}));
+
+// ── Admin Users ──
+
+router.get('/users', requireSession, asyncHandler(async (req, res) => {
+  const users = await sql('SELECT * FROM admin_users ORDER BY created_at ASC');
+  const q = req.query;
+  const toast = q.created ? 'success:Admin user created.'
+    : q.updated ? 'success:Admin user updated.'
+    : q.error ? `error:${q.error}`
+    : '';
+  const content = `
+  <div class="card">
+    <div class="card-header"><h3>&#x1F465; Admin Users</h3></div>
+    <div class="card-body" style="padding:0">
+    <table>
+      <tr><th>Username</th><th>Display Name</th><th>Role</th><th>Active</th><th>Created</th></tr>
+      ${users.map(u => `
+      <tr>
+        <td class="mono">${u.username}</td>
+        <td>${u.display_name || '-'}</td>
+        <td><span class="badge ${u.role === 'super_admin' ? 'badge-red' : u.role === 'manager' ? 'badge-blue' : u.role === 'teller' ? 'badge-green' : 'badge-orange'}">${u.role}</span></td>
+        <td>${u.is_active ? '<span style="color:#16a34a">&#x2705; Active</span>' : '<span style="color:#dc2626">&#x274C; Inactive</span>'}</td>
+        <td class="mono" style="font-size:11px">${(u.created_at||'').slice(0,10)}</td>
+      </tr>`).join('')}
+    </table></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h3>&#x2795; Create Admin User</h3></div>
+    <div class="card-body">
+    <form method="post" action="/admin/users/create" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="field"><label>Username</label><input type="text" name="username" required></div>
+      <div class="field"><label>Display Name</label><input type="text" name="display_name"></div>
+      <div class="field"><label>Password</label><input type="text" name="password" required minlength="4"></div>
+      <div class="field"><label>Role</label>
+        <select name="role">
+          <option value="teller">Teller</option>
+          <option value="manager">Manager</option>
+          <option value="auditor">Auditor</option>
+          <option value="super_admin">Super Admin</option>
+        </select>
+      </div>
+      <div style="grid-column:span 2"><button type="submit" class="btn btn-secondary">Create Admin</button></div>
+    </form>
+    </div>
+  </div>`;
+  res.type('html').send(layout('Admin Users', 'users', content, { subtitle: 'Manage admin accounts and roles' }));
+}));
+
+router.post('/users/create', requireSession, asyncHandler(async (req, res) => {
+  const { username, display_name, password, role } = req.body;
+  if (!username || !password) return res.redirect('/admin/users?error=Username+and+password+required');
+  const existing = await one('SELECT * FROM admin_users WHERE username = $1', [username]);
+  if (existing) return res.redirect('/admin/users?error=Username+already+exists');
+  const hash = bcrypt.hashSync(password, 10);
+  await store.query(
+    'INSERT INTO admin_users (admin_id, username, password_hash, role, display_name, created_at) VALUES ($1,$2,$3,$4,$5,$6)',
+    [uuidv4(), username, hash, role || 'teller', display_name || username, new Date().toISOString()]
+  );
+  res.redirect('/admin/users?created=ok');
+}));
+
+router.get('/users/deactivate/:id', requireSession, asyncHandler(async (req, res) => {
+  await store.query('UPDATE admin_users SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END WHERE admin_id = $1', [req.params.id]);
+  res.redirect('/admin/users?updated=ok');
 }));
 
 module.exports = router;

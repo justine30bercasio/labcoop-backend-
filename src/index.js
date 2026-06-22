@@ -392,6 +392,22 @@ app.use('/api', authMiddleware, bankingFeaturesRouter);
 app.use('/admin', adminAuthRouter);
 app.use('/admin', adminRouter);
 
+// ── Clear all user data (keep reference tables) ──
+app.post('/api/admin/reset-database', async (req, res) => {
+  const tables = ['loan_payments','transactions','badges','goal_jars','loans','withdrawal_requests','standing_orders','savings_applications','coop_contributions','coop_goals','accounts'];
+  try {
+    await store.query('BEGIN');
+    for (const t of tables) {
+      await store.query(`DELETE FROM ${t}`);
+    }
+    await store.query('COMMIT');
+    res.json({ success: true, message: 'Database reset successful' });
+  } catch (err) {
+    await store.query('ROLLBACK');
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ message: 'Internal server error', error: err.message, type: err.type });

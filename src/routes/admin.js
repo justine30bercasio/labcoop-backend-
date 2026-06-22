@@ -10,8 +10,9 @@ const { getDb, store } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const { layout } = require('./admin-lib');
 
-const sql = (q, ...p) => store.query(q, p).then(r => r.rows);
-const one = (q, ...p) => store.query(q, p).then(r => r.rows[0]);
+const _p = (...p) => p.length === 1 && Array.isArray(p[0]) ? p[0] : p;
+const sql = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows);
+const one = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows[0]);
 
 const router = express.Router();
 
@@ -587,7 +588,7 @@ router.post('/shop/update/:id', requireSession, asyncHandler(async (req, res) =>
     if (!existing) return res.redirect('/admin/shop?error=Item+not+found');
     const { name, cost, rarity, emoji, color1, color2, is_active } = req.body;
     await store.query(`
-      UPDATE shop_items SET name=$1, cost=$2, emoji=$3, rarity=$4, color1=$5, color2=$6, is_active=$7, updated_at=datetime('now')
+      UPDATE shop_items SET name=$1, cost=$2, emoji=$3, rarity=$4, color1=$5, color2=$6, is_active=$7, updated_at=CURRENT_TIMESTAMP
       WHERE id=$8
     `, [
       name ?? existing.name, Number(cost ?? existing.cost),
@@ -638,7 +639,7 @@ router.post('/shop/upload/:id', requireSession, shopUpload.single('image'), asyn
       const oldFile = require('path').join(__dirname, '..', existing.image_url);
       if (require('fs').existsSync(oldFile)) require('fs').unlinkSync(oldFile);
     }
-    await store.query("UPDATE shop_items SET image_url=$1, updated_at=datetime('now') WHERE id=$2", [imageUrl, req.params.id]);
+    await store.query("UPDATE shop_items SET image_url=$1, updated_at=CURRENT_TIMESTAMP WHERE id=$2", [imageUrl, req.params.id]);
     res.redirect('/admin/shop?uploaded=ok');
   } catch (err) {
     res.redirect(`/admin/shop?error=${encodeURIComponent(err.message)}`);
@@ -797,7 +798,7 @@ router.post('/quiz/update/:id', requireSession, asyncHandler(async (req, res) =>
     const { question, category, difficulty_level, opt0, opt1, opt2, opt3, correct_index, xp_reward, coin_reward, explanation, is_active } = req.body;
     const options = opt0 || opt1 ? JSON.stringify([opt0 || existing.options[0], opt1 || '', opt2 || '', opt3 || '']) : existing.options;
     await store.query(`
-      UPDATE quiz_questions SET question=$1, options=$2, correct_index=$3, explanation=$4, category=$5, difficulty_level=$6, xp_reward=$7, coin_reward=$8, is_active=$9, updated_at=datetime('now')
+      UPDATE quiz_questions SET question=$1, options=$2, correct_index=$3, explanation=$4, category=$5, difficulty_level=$6, xp_reward=$7, coin_reward=$8, is_active=$9, updated_at=CURRENT_TIMESTAMP
       WHERE id=$10
     `, [
       question ?? existing.question, options, Number(correct_index ?? existing.correct_index),
@@ -2211,7 +2212,7 @@ router.post('/withdrawal-requests/pay/:id', requireSession, asyncHandler(async (
     const newBalance = Math.round((Number(account.actual_balance) - val) * 100) / 100;
     const newUnallocated = Math.round((Number(account.unallocated_balance) - val) * 100) / 100;
 
-    await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=datetime('now') WHERE account_id=$3", [newBalance, Math.max(0, newUnallocated), reqData.account_id]);
+    await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3", [newBalance, Math.max(0, newUnallocated), reqData.account_id]);
     store.addTransaction({
       account_id: reqData.account_id,
       type: 'withdrawal',
@@ -2319,7 +2320,7 @@ router.post('/savings-applications/approve/:id', requireSession, asyncHandler(as
     if (app.status !== 'pending') return res.redirect('/admin/savings-applications?error=Application+is+not+pending');
 
     // Assign the savings product to the account
-    await store.query("UPDATE accounts SET savings_product_id = $1, updated_at = datetime('now') WHERE account_id = $2", [app.product_id, app.account_id]);
+    await store.query("UPDATE accounts SET savings_product_id = $1, updated_at = CURRENT_TIMESTAMP WHERE account_id = $2", [app.product_id, app.account_id]);
     store.updateSavingsApplication(req.params.id, { status: 'approved', resolved_at: new Date().toISOString() });
     res.redirect('/admin/savings-applications?approved=ok');
   } catch (err) {
@@ -2615,7 +2616,7 @@ router.post('/teller/deposit/:id', requireSession, asyncHandler(async (req, res)
     const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
     if (!account) return res.redirect('/admin/teller?error=Account+not+found');
     const newBalance = Number(account.actual_balance) + val;
-    await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=unallocated_balance+$2, updated_at=datetime('now') WHERE account_id=$3", [newBalance, val, req.params.id]);
+    await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=unallocated_balance+$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3", [newBalance, val, req.params.id]);
     const result = store.addTransaction({
       account_id: req.params.id,
       type: 'deposit',
@@ -2643,7 +2644,7 @@ router.post('/teller/withdraw/:id', requireSession, asyncHandler(async (req, res
     if (Number(account.actual_balance) < val) return res.redirect('/admin/teller?error=Insufficient+balance');
     const newBalance = Math.round((Number(account.actual_balance) - val) * 100) / 100;
     const newUnallocated = Math.round((Number(account.unallocated_balance) - val) * 100) / 100;
-    await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=datetime('now') WHERE account_id=$3", [newBalance, Math.max(0, newUnallocated), req.params.id]);
+    await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3", [newBalance, Math.max(0, newUnallocated), req.params.id]);
     const result = store.addTransaction({
       account_id: req.params.id,
       type: 'withdrawal',
@@ -2701,7 +2702,7 @@ router.post('/teller/loan-pay/:id', requireSession, asyncHandler(async (req, res
     });
 
     // Update loan
-    await store.query("UPDATE loans SET amount_paid = $1, remaining_balance = $2, status = $3, updated_at = datetime('now') WHERE loan_id = $4", [newAmountPaid, newRemainingBalance, newStatus, loan_id]);
+    await store.query("UPDATE loans SET amount_paid = $1, remaining_balance = $2, status = $3, updated_at = CURRENT_TIMESTAMP WHERE loan_id = $4", [newAmountPaid, newRemainingBalance, newStatus, loan_id]);
 
     // Record transaction (no balance change since it's over-the-counter collection)
     const txResult = store.addTransaction({

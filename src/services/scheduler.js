@@ -62,7 +62,7 @@ function startScheduler() {
 
       // ── Standing Orders Processing ──
       const dueOrders = await sql(
-        "SELECT so.*, a.child_name, a.actual_balance, a.unallocated_balance FROM standing_orders so LEFT JOIN accounts a ON so.account_id = a.account_id WHERE so.is_active = 1 AND so.next_run <= datetime('now')"
+        "SELECT so.*, a.child_name, a.actual_balance, a.unallocated_balance FROM standing_orders so LEFT JOIN accounts a ON so.account_id = a.account_id WHERE so.is_active = 1 AND so.next_run <= CURRENT_TIMESTAMP"
       );
 
       for (const order of dueOrders) {
@@ -78,14 +78,14 @@ function startScheduler() {
             const goal = await one('SELECT * FROM goal_jars WHERE goal_id = $1', [order.target_goal_id]);
             if (goal) {
               const newAllocated = Math.round((Number(goal.current_allocated) + amount) * 100) / 100;
-              await store.query("UPDATE goal_jars SET current_allocated = $1, updated_at = datetime('now') WHERE goal_id = $2", [newAllocated, order.target_goal_id]);
+              await store.query("UPDATE goal_jars SET current_allocated = $1, updated_at = CURRENT_TIMESTAMP WHERE goal_id = $2", [newAllocated, order.target_goal_id]);
             }
           }
 
           // Deduct from account balance
           const newBalance = Math.round((Number(order.actual_balance) - amount) * 100) / 100;
           const newUnallocated = Math.round((Number(order.unallocated_balance) - amount) * 100) / 100;
-          await store.query("UPDATE accounts SET actual_balance = $1, unallocated_balance = $2, updated_at = datetime('now') WHERE account_id = $3", [newBalance, Math.max(0, newUnallocated), order.account_id]);
+          await store.query("UPDATE accounts SET actual_balance = $1, unallocated_balance = $2, updated_at = CURRENT_TIMESTAMP WHERE account_id = $3", [newBalance, Math.max(0, newUnallocated), order.account_id]);
 
           store.addTransaction({
             account_id: order.account_id,
@@ -103,7 +103,7 @@ function startScheduler() {
             case 'weekly': nextRun.setDate(nextRun.getDate() + 7); break;
             case 'monthly': nextRun.setMonth(nextRun.getMonth() + 1); break;
           }
-          await store.query("UPDATE standing_orders SET next_run = $1, updated_at = datetime('now') WHERE order_id = $2", [nextRun.toISOString(), order.order_id]);
+          await store.query("UPDATE standing_orders SET next_run = $1, updated_at = CURRENT_TIMESTAMP WHERE order_id = $2", [nextRun.toISOString(), order.order_id]);
 
           console.log(`[Scheduler] Auto-save PHP ${amount} for ${order.child_name} (${order.frequency})`);
         } catch (err) {

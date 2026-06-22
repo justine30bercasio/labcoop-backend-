@@ -309,6 +309,7 @@ app.get('/api/health', async (req, res) => {
   let accountCount = 0;
   let sampleAccount = null;
   let loginTest = null;
+  const dbUrl = (process.env.DATABASE_URL || '(not set)').slice(0, 50);
   try {
     if (isPostgres) {
       const result = await store.query('SELECT COUNT(*) as c FROM accounts');
@@ -327,7 +328,7 @@ app.get('/api/health', async (req, res) => {
       loginTest = { found: false };
     }
   } catch (e) { loginTest = { error: e.message }; }
-  res.json({ status: 'ok', dbConnected: dbOk, accountCount, sampleAccount, loginTest, timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', dbConnected: dbOk, dbUrl, accountCount, sampleAccount, loginTest, timestamp: new Date().toISOString() });
 });
 
 // Debug login endpoint (bypasses rate limiter)

@@ -387,10 +387,6 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/shop', shopRouter);
 app.use('/api/quiz', quizRouter);
 app.use('/api/games', gamesRouter);
-app.use('/api', authMiddleware, loansRouter);
-app.use('/api', authMiddleware, bankingFeaturesRouter);
-app.use('/admin', adminAuthRouter);
-app.use('/admin', adminRouter);
 
 // ── Clear all user data (keep reference tables) ──
 app.post('/api/admin/reset-database', async (req, res) => {
@@ -407,6 +403,11 @@ app.post('/api/admin/reset-database', async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
+app.use('/api', authMiddleware, loansRouter);
+app.use('/api', authMiddleware, bankingFeaturesRouter);
+app.use('/admin', adminAuthRouter);
+app.use('/admin', adminRouter);
 
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);

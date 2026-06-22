@@ -3214,4 +3214,18 @@ router.get('/users/deactivate/:id', requireSession, asyncHandler(async (req, res
   res.redirect('/admin/users?updated=ok');
 }));
 
+// ── First-run setup (no session required) ──
+router.get('/setup', asyncHandler(async (req, res) => {
+  const result = await store.query('SELECT COUNT(*) as c FROM admin_users');
+  if (parseInt(result.rows[0]?.c || '0', 10) > 0) {
+    return res.type('html').send('<h2>Admin already exists. <a href="/admin/login">Login</a></h2>');
+  }
+  const hash = require('bcryptjs').hashSync('admin123', 10);
+  await store.query(
+    'INSERT INTO admin_users (admin_id, username, password_hash, role, display_name, is_active, created_at) VALUES ($1,$2,$3,$4,$5,1,$6)',
+    [require('uuid').v4(), 'admin', hash, 'super_admin', 'Default Admin', new Date().toISOString()]
+  );
+  res.type('html').send('<h2 style="color:#16a34a">&#x2705; Admin created! <a href="/admin/login">Login</a> with <b>admin</b> / <b>admin123</b></h2>');
+}));
+
 module.exports = router;

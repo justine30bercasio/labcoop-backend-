@@ -3,7 +3,6 @@ const bcrypt = require('bcrypt');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const { store } = require('../db');
-const { one } = require('./admin');
 
 const router = express.Router();
 
@@ -225,9 +224,6 @@ router.post('/login/forgot', async (req, res) => {
   otpStore.set(email, { otp, expires: Date.now() + 600000 });
   const sent = sendOtpEmail(email, otp);
   if (!sent) {
-    if (email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
-      return res.type('html').send(forgotPage('err:Email not found.'));
-    }
     otpStore.set(email, { otp: '123456', expires: Date.now() + 600000 });
     return res.type('html').send(forgotPage('SMTP not configured. Development OTP: 123456'));
   }

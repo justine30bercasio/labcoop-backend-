@@ -600,6 +600,14 @@ function deleteBadge(badgeId) {
   getDb().prepare('DELETE FROM badges WHERE badge_id = ?').run(badgeId);
 }
 
+function query(sql, params) {
+  const db = getDb();
+  const adaptedSql = sql.replace(/\$(\d+)/g, '?');
+  const stmt = db.prepare(adaptedSql);
+  const rows = stmt.all(...(params || []));
+  return { rows };
+}
+
 function close() {
   if (db) {
     db.close();
@@ -712,6 +720,7 @@ module.exports = {
   updateSavingsApplication,
   getInterestSummary,
   creditInterest,
+  query,
   getQuizQuestions,
   getQuizQuestion,
   createQuizQuestion,

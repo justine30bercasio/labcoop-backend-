@@ -7,97 +7,61 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const session = require('express-session');
 const rateLimit = require('express-rate-limit');
-const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 
-const DB_PATH = path.join(__dirname, '..', 'labcoop.db');
+const { store, isPostgres } = require('./db');
 
-function ensureDb() {
-  const db = new Database(DB_PATH);
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
-
-  // Create migration tracking table
-  db.exec(`CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY, applied_at TEXT DEFAULT (datetime('now')))`);
-
+async function ensureDb() {
   try {
-    const migrationsDir = path.join(__dirname, '..', 'db', 'migrations');
-    const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql') && f !== '001_init.sql' && f !== '002_add_password.sql').sort();
-    const applied = new Set(db.prepare('SELECT name FROM _migrations').all().map(r => r.name));
-
-    for (const file of files) {
-      if (applied.has(file)) {
-        console.log('Migration already applied:', file);
-        continue;
-      }
-      const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
-      // Run each statement separately so ALTER TABLE failures don't block CREATE TABLE
-      const statements = sql.split(';').map(s => s.trim()).filter(s => s.length > 0);
-      for (const stmt of statements) {
-        try {
-          db.exec(stmt + ';');
-        } catch (err) {
-          console.warn(`Migration ${file} statement warning: ${err.message}`);
-        }
-      }
-      db.prepare('INSERT OR IGNORE INTO _migrations (name) VALUES (?)').run(file);
-      console.log('Migration applied:', file);
+    const existing = await store.getAccount('00000000-0000-0000-0000-000000000001');
+    if (existing) {
+      console.log('Seed data already exists.');
+      return;
     }
-  } catch (err) {
-    console.error('Migration failed:', err.message);
-    process.exit(1);
-  }
-  try {
-    const insertAccount = db.prepare(`
-      INSERT OR IGNORE INTO accounts (account_id, child_name, member_id, password, password_changed, actual_balance, unallocated_balance, current_xp, parent_phone, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+
     const defaultHash = bcrypt.hashSync('0000', 10);
-    insertAccount.run('00000000-0000-0000-0000-000000000001', 'Juan', '000001', defaultHash, 0, 1500.00, 200.00, 45, '09171234567', '2025-01-15T08:00:00.000Z', '2025-06-10T10:30:00.000Z');
-    insertAccount.run('00000000-0000-0000-0000-000000000002', 'Maria', '000002', defaultHash, 0, 2500.00, 500.00, 120, '09179876543', '2025-02-01T09:00:00.000Z', '2025-06-10T11:00:00.000Z');
-    // Set default password and member_id for any existing accounts
-    db.prepare("UPDATE accounts SET password = ?, password_changed = 0 WHERE password = '' OR password IS NULL").run(defaultHash);
-    // Set member_id for existing accounts that don't have one
-    const nullMember = db.prepare("SELECT account_id, child_name FROM accounts WHERE member_id IS NULL").all();
-    for (const a of nullMember) {
-      const maxMember = db.prepare("SELECT MAX(CAST(member_id AS INTEGER)) as m FROM accounts").get().m || 0;
-      const newId = String(maxMember + 1).padStart(6, '0');
-      db.prepare("UPDATE accounts SET member_id = ? WHERE account_id = ?").run(newId, a.account_id);
+    await store.createAccount({
+      child_name: 'Juan', member_id: '000001', password: defaultHash,
+      password_changed: 0, actual_balance: 1500, unallocated_balance: 200, current_xp: 45,
+      parent_phone: '09171234567',
+    });
+    await store.createAccount({
+      child_name: 'Maria', member_id: '000002', password: defaultHash,
+      password_changed: 0, actual_balance: 2500, unallocated_balance: 500, current_xp: 120,
+      parent_phone: '09179876543',
+    });
+
+    await store.createGoal({ account_id: '00000000-0000-0000-0000-000000000001', title: 'New School Shoes', target_amount: 1000, current_allocated: 650, category_icon: 'shoes' });
+    await store.createGoal({ account_id: '00000000-0000-0000-0000-000000000001', title: 'Bicycle', target_amount: 3000, current_allocated: 450, category_icon: 'bike' });
+    await store.createGoal({ account_id: '00000000-0000-0000-0000-000000000001', title: 'Video Game', target_amount: 500, current_allocated: 200, category_icon: 'game' });
+    await store.createGoal({ account_id: '00000000-0000-0000-0000-000000000002', title: 'Art Set', target_amount: 800, current_allocated: 600, category_icon: 'toy' });
+    await store.createGoal({ account_id: '00000000-0000-0000-0000-000000000002', title: 'Birthday Gift for Mama', target_amount: 2000, current_allocated: 1400, category_icon: 'savings' });
+
+    const shopItems = [
+      ['av_cat', 'Kitty', 'avatar', 0, '\u{1F431}', 'Common', '#2E7D32', '#2E7D32', ''],
+      ['av_dog', 'Puppy', 'avatar', 5, '\u{1F436}', 'Common', '#2E7D32', '#2E7D32', ''],
+      ['av_lion', 'Lion', 'avatar', 10, '\u{1F981}', 'Uncommon', '#FFA000', '#FFA000', ''],
+      ['av_tiger', 'Tiger', 'avatar', 10, '\u{1F42F}', 'Uncommon', '#FFA000', '#FFA000', ''],
+      ['av_bear', 'Bear', 'avatar', 15, '\u{1F43B}', 'Uncommon', '#FFA000', '#FFA000', ''],
+      ['av_panda', 'Panda', 'avatar', 15, '\u{1F43C}', 'Uncommon', '#FFA000', '#FFA000', ''],
+      ['av_fox', 'Fox', 'avatar', 20, '\u{1F98A}', 'Rare', '#9C27B0', '#9C27B0', ''],
+      ['av_unicorn', 'Unicorn', 'avatar', 30, '\u{1F984}', 'Rare', '#9C27B0', '#9C27B0', ''],
+      ['av_monkey', 'Monkey', 'avatar', 20, '\u{1F435}', 'Rare', '#9C27B0', '#9C27B0', ''],
+      ['av_frog', 'Frog', 'avatar', 25, '\u{1F438}', 'Epic', '#D32F2F', '#D32F2F', ''],
+      ['av_owl', 'Owl', 'avatar', 25, '\u{1F989}', 'Epic', '#D32F2F', '#D32F2F', ''],
+      ['av_dino', 'Dino', 'avatar', 40, '\u{1F996}', 'Legendary', '#00BCD4', '#00BCD4', ''],
+      ['av_robot', 'Robot', 'avatar', 50, '\u{1F916}', 'Legendary', '#00BCD4', '#00BCD4', ''],
+      ['av_ghost', 'Ghost', 'avatar', 45, '\u{1F47B}', 'Legendary', '#00BCD4', '#00BCD4', ''],
+      ['av_alien', 'Alien', 'avatar', 55, '\u{1F47D}', 'Mythic', '#E91E63', '#E91E63', ''],
+      ['av_dragon', 'Dragon', 'avatar', 80, '\u{1F409}', 'Mythic', '#E91E63', '#E91E63', ''],
+    ];
+    for (const a of shopItems) {
+      await store.query(
+        'INSERT INTO shop_items (id, name, type, cost, emoji, rarity, color1, color2, image_url, is_active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,1) ON CONFLICT (id) DO NOTHING',
+        a
+      );
     }
-
-    const insertGoal = db.prepare(`
-      INSERT OR IGNORE INTO goal_jars (goal_id, account_id, title, target_amount, current_allocated, category_icon, is_completed, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    insertGoal.run('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'New School Shoes', 1000.00, 650.00, 'shoes', 0, '2025-01-20T08:00:00.000Z', '2025-06-01T10:00:00.000Z');
-    insertGoal.run('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'Bicycle', 3000.00, 450.00, 'bike', 0, '2025-02-10T08:00:00.000Z', '2025-06-05T14:00:00.000Z');
-    insertGoal.run('10000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000001', 'Video Game', 500.00, 200.00, 'game', 0, '2025-03-01T08:00:00.000Z', '2025-06-08T16:00:00.000Z');
-    insertGoal.run('10000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000002', 'Art Set', 800.00, 600.00, 'toy', 0, '2025-02-15T09:00:00.000Z', '2025-06-07T12:00:00.000Z');
-    insertGoal.run('10000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000002', 'Birthday Gift for Mama', 2000.00, 1400.00, 'savings', 0, '2025-03-10T09:00:00.000Z', '2025-06-09T15:00:00.000Z');
-
-    const insertShopItem = db.prepare(`
-      INSERT OR IGNORE INTO shop_items (id, name, type, cost, emoji, rarity, color1, color2, image_url, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-    `);
-    for (const a of [
-      ['av_cat', 'Kitty', 'avatar', 0, '🐱', 'Common', '#2E7D32', '#2E7D32', ''],
-      ['av_dog', 'Puppy', 'avatar', 5, '🐶', 'Common', '#2E7D32', '#2E7D32', ''],
-      ['av_lion', 'Lion', 'avatar', 10, '🦁', 'Uncommon', '#FFA000', '#FFA000', ''],
-      ['av_tiger', 'Tiger', 'avatar', 10, '🐯', 'Uncommon', '#FFA000', '#FFA000', ''],
-      ['av_bear', 'Bear', 'avatar', 15, '🐻', 'Uncommon', '#FFA000', '#FFA000', ''],
-      ['av_panda', 'Panda', 'avatar', 15, '🐼', 'Uncommon', '#FFA000', '#FFA000', ''],
-      ['av_fox', 'Fox', 'avatar', 20, '🦊', 'Rare', '#9C27B0', '#9C27B0', ''],
-      ['av_unicorn', 'Unicorn', 'avatar', 30, '🦄', 'Rare', '#9C27B0', '#9C27B0', ''],
-      ['av_monkey', 'Monkey', 'avatar', 20, '🐵', 'Rare', '#9C27B0', '#9C27B0', ''],
-      ['av_frog', 'Frog', 'avatar', 25, '🐸', 'Epic', '#D32F2F', '#D32F2F', ''],
-      ['av_owl', 'Owl', 'avatar', 25, '🦉', 'Epic', '#D32F2F', '#D32F2F', ''],
-      ['av_dino', 'Dino', 'avatar', 40, '🦖', 'Legendary', '#00BCD4', '#00BCD4', ''],
-      ['av_robot', 'Robot', 'avatar', 50, '🤖', 'Legendary', '#00BCD4', '#00BCD4', ''],
-      ['av_ghost', 'Ghost', 'avatar', 45, '👻', 'Legendary', '#00BCD4', '#00BCD4', ''],
-      ['av_alien', 'Alien', 'avatar', 55, '👽', 'Mythic', '#E91E63', '#E91E63', ''],
-      ['av_dragon', 'Dragon', 'avatar', 80, '🐉', 'Mythic', '#E91E63', '#E91E63', ''],
-    ]) insertShopItem.run(...a);
-    for (const b of [
+    const borderItems = [
       ['b_default', 'Basic', 'border', 0, '', 'Common', '#2E7D32', '#2E7D32', ''],
       ['b_silver', 'Silver', 'border', 10, '', 'Uncommon', '#C0C0C0', '#9E9E9E', ''],
       ['b_gold', 'Gold', 'border', 25, '', 'Rare', '#FFD700', '#FFA000', ''],
@@ -105,12 +69,14 @@ function ensureDb() {
       ['b_legendary', 'Legendary', 'border', 60, '', 'Legendary', '#D32F2F', '#FF6F00', ''],
       ['b_rainbow', 'Rainbow', 'border', 85, '', 'Special', '#E91E63', '#2196F3', ''],
       ['b_mythic', 'Mythic', 'border', 120, '', 'Mythic', '#00BCD4', '#304FFE', ''],
-    ]) insertShopItem.run(...b);
+    ];
+    for (const b of borderItems) {
+      await store.query(
+        'INSERT INTO shop_items (id, name, type, cost, emoji, rarity, color1, color2, image_url, is_active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,1) ON CONFLICT (id) DO NOTHING',
+        b
+      );
+    }
 
-    const insertQuiz = db.prepare(`
-      INSERT OR IGNORE INTO quiz_questions (id, question, options, correct_index, explanation, category, difficulty_level, xp_reward, coin_reward, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-    `);
     const quizSeed = [
       // ── EASY (20) ──
       ['q_e01','What is saving money?','["Spending all you have","Keeping money for later","Giving it away","Losing it"]',1,'Saving means setting aside money for future use instead of spending it all now.','Savings','easy',10,5],
@@ -200,17 +166,26 @@ function ensureDb() {
       ['q_x19','What is "fractional reserve banking"?','["Banks keeping all deposits","Banks lending most deposited money while keeping a fraction as reserves","A type of investment","Government regulation"]',1,'Banks are required to keep only a fraction of deposits as reserves, lending the rest to create money.','Banking','expert',30,15],
       ['q_x20','What is the "Sharpe ratio"?','["Risk-free return","Risk-adjusted return measure","Market return","Portfolio size"]',1,'The Sharpe ratio measures how much excess return you get per unit of risk — higher is better.','Investing','expert',30,15],
     ];
-    for (const q of quizSeed) insertQuiz.run(...q.map(v => typeof v === 'string' ? v : JSON.stringify(v)));
+    for (const q of quizSeed) {
+      await store.query(
+        'INSERT INTO quiz_questions (id, question, options, correct_index, explanation, category, difficulty_level, xp_reward, coin_reward, is_active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,1) ON CONFLICT (id) DO NOTHING',
+        q.map(v => typeof v === 'string' ? v : JSON.stringify(v))
+      );
+    }
     console.log('Seed data ensured.');
   } catch (err) {
     console.error('Seed failed:', err.message);
     process.exit(1);
-  } finally {
-    db.close();
   }
 }
 
-ensureDb();
+(async () => {
+  if (isPostgres) {
+    await store._ensureSchema();
+  }
+  await ensureDb();
+  startServer();
+})();
 const accountsRouter = require('./routes/accounts');
 const goalsRouter = require('./routes/goals');
 const badgesRouter = require('./routes/badges');
@@ -238,6 +213,7 @@ if (!process.env.PORT) {
   console.warn('PORT not set, defaulting to 3000');
 }
 
+function startServer() {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -328,28 +304,25 @@ app.get('/', (req, res) => {
   });
 });
 
-app.get('/api/health', (req, res) => {
-  const { getDb } = require('./db');
+app.get('/api/health', async (req, res) => {
   let dbOk = false;
   let accountCount = 0;
   let sampleAccount = null;
   let loginTest = null;
   try {
-    const db = getDb();
-    db.prepare('SELECT 1').get();
+    if (isPostgres) {
+      const result = await store.query('SELECT COUNT(*) as c FROM accounts');
+      accountCount = parseInt(result.rows[0]?.c || '0', 10);
+    } else {
+      const db = require('./db').getDb();
+      accountCount = db.prepare('SELECT COUNT(*) as c FROM accounts').get().c;
+    }
     dbOk = true;
-    accountCount = db.prepare('SELECT COUNT(*) as c FROM accounts').get().c;
-    sampleAccount = db.prepare('SELECT account_id, child_name, member_id, password_changed FROM accounts LIMIT 1').get();
-    // Test the exact login query
-    const testAccount = db.prepare('SELECT * FROM accounts WHERE member_id = ?').get('000001');
-    if (testAccount) {
-      const bcrypt = require('bcryptjs');
-      loginTest = {
-        found: true,
-        childName: testAccount.child_name,
-        passwordHashLength: testAccount.password ? testAccount.password.length : 0,
-        bcryptResult: bcrypt.compareSync('0000', testAccount.password),
-      };
+    const account = await store.getAccount('00000000-0000-0000-0000-000000000001');
+    const member = await store.getAccountByName('Juan');
+    sampleAccount = account ? { account_id: account.account_id, child_name: account.child_name, member_id: account.member_id, password_changed: account.password_changed } : null;
+    if (member) {
+      loginTest = { found: true, childName: member.child_name, passwordHashLength: member.password ? member.password.length : 0, bcryptResult: bcrypt.compareSync('0000', member.password) };
     } else {
       loginTest = { found: false };
     }
@@ -358,16 +331,21 @@ app.get('/api/health', (req, res) => {
 });
 
 // Debug login endpoint (bypasses rate limiter)
-app.post('/api/debug-login', (req, res) => {
+app.post('/api/debug-login', async (req, res) => {
   try {
     const bcrypt = require('bcryptjs');
     const jwt = require('jsonwebtoken');
-    const { getDb } = require('./db');
     const { memberId, password } = req.body;
-    const db = getDb();
     const padded = (memberId || '').trim().padStart(6, '0');
-    const account = db.prepare('SELECT * FROM accounts WHERE member_id = ?').get(padded);
-    if (!account) return res.status(404).json({ message: 'Not found' });
+    const account = await store.getAccountByName(padded);
+    if (!account) {
+      const byMember = await store.query('SELECT * FROM accounts WHERE member_id = $1', [padded]);
+      if (byMember.rows.length === 0) return res.status(404).json({ message: 'Not found' });
+      account.account_id = byMember.rows[0].account_id;
+      account.child_name = byMember.rows[0].child_name;
+      account.password = byMember.rows[0].password;
+      account.password_changed = byMember.rows[0].password_changed;
+    }
     const valid = bcrypt.compareSync(password || '', account.password);
     if (!valid) return res.status(401).json({ message: 'Wrong password', pwLen: account.password.length });
     const token = jwt.sign(
@@ -425,3 +403,4 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
+}

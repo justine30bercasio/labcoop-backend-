@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 const { getDb, store } = require('../db');
+const { asyncHandler } = require('../async-handler');
 const { layout } = require('./admin-lib');
 
 const router = express.Router();
@@ -2873,5 +2874,34 @@ router.get('/audit/csv', requireSession, (req, res) => {
   res.setHeader('Content-Disposition', 'attachment; filename="labcoop_audit_' + new Date().toISOString().slice(0,10) + '.csv"');
   res.send(csv);
 });
+
+// ── Clear All User Data (keep reference tables) ──
+router.post('/reset-database', requireSession, asyncHandler(async (req, res) => {
+  // Order respects FK dependencies: children before parents
+  const tables = [
+    'loan_payments',
+    'transactions',
+    'badges',
+    'goal_jars',
+    'loans',
+    'withdrawal_requests',
+    'standing_orders',
+    'savings_applications',
+    'coop_contributions',
+    'coop_goals',
+    'accounts',
+  ];
+  try {
+    await store.query('BEGIN');
+    for (const t of tables) {
+      await store.query(`DELETE FROM ${t}`);
+    }
+    await store.query('COMMIT');
+  } catch (err) {
+    await store.query('ROLLBACK');
+    return res.redirect('/admin?error=' + encodeURIComponent('Reset failed: ' + err.message));
+  }
+  res.redirect('/admin?msg=Database+reset+successful');
+}));
 
 module.exports = router;

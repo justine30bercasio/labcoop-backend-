@@ -1,6 +1,7 @@
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const { store } = require('../db');
+const { store, isPostgres } = require('../db');
+const { asyncHandler } = require('../async-handler');
 
 const router = express.Router();
 
@@ -43,22 +44,21 @@ router.put('/:accountId',
 router.put('/:accountId/deposit',
   param('accountId').isString().notEmpty().trim(),
   body('amount').isFloat({ min: 0.01 }).withMessage('amount must be > 0'),
-  (req, res) => {
+  asyncHandler(async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     const { amount } = req.body;
-    const db = require('../db').getDb();
-    const transaction = db.transaction(() => {
-      const account = store.getAccount(req.params.accountId);
+    const runDeposit = async (tx) => {
+      const account = await store.getAccount(req.params.accountId);
       if (!account) throw new Error('Account not found');
 
-      const updated = store.updateAccount(req.params.accountId, {
-        actual_balance: Math.round((account.actual_balance + Number(amount)) * 100) / 100,
-        unallocated_balance: Math.round((account.unallocated_balance + Number(amount)) * 100) / 100,
+      const updated = await store.updateAccount(req.params.accountId, {
+        actual_balance: Math.round((Number(account.actual_balance) + Number(amount)) * 100) / 100,
+        unallocated_balance: Math.round((Number(account.unallocated_balance) + Number(amount)) * 100) / 100,
       });
 
-      store.addTransaction({
+      await store.addTransaction({
         account_id: req.params.accountId,
         type: 'deposit',
         amount: Number(amount),
@@ -66,15 +66,18 @@ router.put('/:accountId/deposit',
       });
 
       return updated;
-    });
+    };
 
     try {
-      const updated = transaction();
+      const updated = isPostgres ? await store.transaction(async () => {
+        const result = await runDeposit();
+        return result;
+      }) : await runDeposit();
       res.json(updated);
     } catch (e) {
       res.status(404).json({ message: e.message });
     }
-  }
+  })
 );
 
 module.exports = router;

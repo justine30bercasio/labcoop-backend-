@@ -1,0 +1,21 @@
+# Flutter
+.dart_tool/
+.packages
+build/
+*.iml
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Node.js Backend
+backend/node_modules/
+backend/.env
+
+# Flutter pub
+.pub-cache/
+.pub/
+
+# IDE
+*.code-workspace

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LabCoop — Admin Login</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0d2818; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+.bg-pattern { position:fixed; top:0; left:0; right:0; bottom:0; background:radial-gradient(ellipse at 20% 50%, rgba(46,125,50,0.15) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(46,125,50,0.08) 0%, transparent 50%); pointer-events:none; z-index:0; }
+.card { position:relative; z-index:1; background:#fff; border-radius:20px; padding:40px; width:100%; max-width:400px; box-shadow:0 8px 40px rgba(0,0,0,0.3); animation:fadeUp 0.5s ease; }
+@keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+.logo { width:52px; height:52px; background:linear-gradient(135deg,#2E7D32,#1B5E20); border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:26px; margin-bottom:16px; }
+h1 { font-size:20px; font-weight:700; color:#1e293b; }
+.sub { color:#64748b; font-size:13px; margin-bottom:24px; }
+label { display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:4px; margin-top:14px; }
+input[type=email], input[type=password] { width:100%; padding:10px 14px; border:2px solid #e2e8f0; border-radius:10px; font-size:14px; outline:none; transition:border-color 0.2s; font-family:inherit; }
+input:focus { border-color:#2E7D32; }
+.btn { width:100%; padding:12px; background:#2E7D32; color:#fff; border:none; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; margin-top:20px; transition:background 0.2s; }
+.btn:hover { background:#1B5E20; }
+.error { background:#fce4ec; color:#b71c1c; padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:16px; }
+.success { background:#e8f5e9; color:#1B5E20; padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:16px; }
+.alt-link { text-align:center; margin-top:16px; font-size:13px; }
+.alt-link a { color:#2E7D32; text-decoration:none; font-weight:500; }
+.alt-link a:hover { text-decoration:underline; }
+.footer { text-align:center; margin-top:20px; font-size:11px; color:#64748b; }
+</style>
+</head>
+<body>
+<div class="bg-pattern"></div>
+<div class="card">
+  <div class="logo">&#x1F3E6;</div>
+  <h1>LabCoop Admin</h1>
+  <p class="sub">Sign in to manage your application</p>
+  
+  
+  <form method="post" action="/admin/login">
+    <label for="email">Email</label>
+    <input type="email" id="email" name="email" placeholder="admin@labcoop.app" required autocomplete="email">
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" placeholder="Enter your password" required autocomplete="current-password">
+    <button type="submit" class="btn">Sign In</button>
+  </form>
+  <div class="alt-link"><a href="/admin/login/forgot">Forgot password?</a></div>
+  <div class="footer">LabCoop v1.0 &middot; Admin Dashboard</div>
+</div>
+</body>
+</html>

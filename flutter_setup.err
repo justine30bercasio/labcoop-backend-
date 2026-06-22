@@ -1,0 +1,9 @@
+Building flutter tool... 
+Running pub upgrade... 
+Failed to find the latest git commit date: VersionCheckError: Command exited with code 128: git -c log.showSignature=false log HEAD -n 1 --pretty=format:%ad --date=iso
+Standard out: 
+Standard error: fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'
+
+Returning 1970-01-01 08:00:00.000 instead.

@@ -10,6 +10,9 @@ const { getDb, store } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const { layout } = require('./admin-lib');
 
+const sql = (q, ...p) => store.query(q, p).then(r => r.rows);
+const one = (q, ...p) => store.query(q, p).then(r => r.rows[0]);
+
 const router = express.Router();
 
 function requireSession(req, res, next) {
@@ -100,42 +103,30 @@ router.post('/upload-and-seed', requireSession, upload.single('file'), (req, res
   }
 });
 
-router.get('/', requireSession, (req, res) => {
-  const db = getDb();
-  const dbPath = path.join(__dirname, '..', 'labcoop.db');
+router.get('/', requireSession, asyncHandler(async (req, res) => {
+  const sql = (s, p) => store.query(s, p || []).then(r => r.rows);
+  const one = (s, p) => store.query(s, p || []).then(r => r.rows[0]);
 
-  const accounts = db.prepare('SELECT rowid, * FROM accounts').all();
-  const goals = db.prepare('SELECT g.*, a.child_name FROM goal_jars g LEFT JOIN accounts a ON g.account_id = a.account_id ORDER BY g.created_at ASC').all();
-  const badges = db.prepare('SELECT b.*, a.child_name FROM badges b LEFT JOIN accounts a ON b.account_id = a.account_id ORDER BY b.created_at ASC').all();
-  const transactions = db.prepare('SELECT t.*, a.child_name FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id ORDER BY t.created_at DESC LIMIT 200').all();
-  const coopGoals = db.prepare('SELECT cg.*, (SELECT COALESCE(SUM(amount),0) FROM coop_contributions WHERE goal_id=cg.goal_id) as contributed FROM coop_goals cg ORDER BY cg.created_at ASC').all();
-  const coopContribs = db.prepare('SELECT cc.*, a.child_name FROM coop_contributions cc LEFT JOIN accounts a ON cc.account_id = a.account_id ORDER BY cc.created_at DESC LIMIT 50').all();
+  const [accounts, goals, badges, transactions, coopGoals, coopContribs] = await Promise.all([
+    sql('SELECT * FROM accounts'),
+    sql('SELECT g.*, a.child_name FROM goal_jars g LEFT JOIN accounts a ON g.account_id = a.account_id ORDER BY g.created_at ASC'),
+    sql('SELECT b.*, a.child_name FROM badges b LEFT JOIN accounts a ON b.account_id = a.account_id ORDER BY b.created_at ASC'),
+    sql('SELECT t.*, a.child_name FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id ORDER BY t.created_at DESC LIMIT 200'),
+    sql('SELECT cg.*, (SELECT COALESCE(SUM(amount),0) FROM coop_contributions WHERE goal_id=cg.goal_id) as contributed FROM coop_goals cg ORDER BY cg.created_at ASC'),
+    sql('SELECT cc.*, a.child_name FROM coop_contributions cc LEFT JOIN accounts a ON cc.account_id = a.account_id ORDER BY cc.created_at DESC LIMIT 50'),
+  ]);
 
-  const totalBalance = db.prepare('SELECT COALESCE(SUM(actual_balance),0) as s FROM accounts').get().s;
-  const totalXp = db.prepare('SELECT COALESCE(SUM(current_xp),0) as s FROM accounts').get().s;
-  const completedGoals = db.prepare('SELECT COUNT(*) as c FROM goal_jars WHERE is_completed=1').get().c;
-  const totalBadges = db.prepare('SELECT COUNT(*) as c FROM badges').get().c;
-  const unlockedBadges = db.prepare('SELECT COUNT(*) as c FROM badges WHERE is_unlocked=1').get().c;
+  const totalBalance = (await one('SELECT COALESCE(SUM(actual_balance),0) as s FROM accounts')).s;
+  const totalXp = (await one('SELECT COALESCE(SUM(current_xp),0) as s FROM accounts')).s;
+  const completedGoals = (await one('SELECT COUNT(*) as c FROM goal_jars WHERE is_completed=1')).c;
+  const totalBadges = (await one('SELECT COUNT(*) as c FROM badges')).c;
+  const unlockedBadges = (await one('SELECT COUNT(*) as c FROM badges WHERE is_unlocked=1')).c;
   const totalCoopGoals = coopGoals.length;
   const completedCoopGoals = coopGoals.filter(g => g.is_completed).length;
-
-  const itemsCount = db.prepare('SELECT COUNT(*) as c FROM shop_items').get().c;
-  const dbSize = fs.existsSync(dbPath) ? fs.statSync(dbPath).size : 0;
-  const goalRate = goals.length > 0 ? ((completedGoals / goals.length) * 100).toFixed(0) : 0;
-
-  const q = req.query;
-  const banner = q.import === 'ok'
-    ? `success:${q.mode === 'seed'
-        ? `Seeded ${q.rows} rows across ${q.sheets} sheet(s). Accounts: ${q.accountWrites || 0}, Goals: ${q.goalWrites || 0}, Badges: ${q.badgeWrites || 0}${Number(q.errors) > 0 ? `, ${q.errors} error(s)` : ''}`
-        : `Parsed ${q.rows} rows from ${q.sheets} sheet(s): ${q.sheetNames || ''}`
-      }`
-    : q.error
-      ? `error:${q.error}`
-      : '';
-
-  const pendingLoans = db.prepare("SELECT COUNT(*) as c FROM loans WHERE status='pending'").get().c;
-  const pendingWithdrawals = db.prepare("SELECT COUNT(*) as c FROM withdrawal_requests WHERE status='pending'").get().c;
-  const pendingSavingsApps = db.prepare("SELECT COUNT(*) as c FROM savings_applications WHERE status='pending'").get().c;
+  const itemsCount = (await one('SELECT COUNT(*) as c FROM shop_items')).c;
+  const pendingLoans = (await one("SELECT COUNT(*) as c FROM loans WHERE status='pending'")).c;
+  const pendingWithdrawals = (await one("SELECT COUNT(*) as c FROM withdrawal_requests WHERE status='pending'")).c;
+  const pendingSavingsApps = (await one("SELECT COUNT(*) as c FROM savings_applications WHERE status='pending'")).c;
 
   const content = `
   <style>
@@ -153,8 +144,6 @@ router.get('/', requireSession, (req, res) => {
   .pending-alert .pa-text { font-size:13px; color:#F57F17; flex:1; }
   .pending-alert .pa-link { font-size:12px; }
   </style>
-
-  ${banner ? `<div class="toast ${banner.startsWith('error:') ? 'error' : 'success'}">${banner.startsWith('error:') ? '&#x274C; ' + banner.slice(6) : '&#x2705; ' + banner.slice(8)}</div>` : ''}
 
   <!-- Pending Actions Alert -->
   ${(pendingLoans + pendingWithdrawals + pendingSavingsApps) > 0 ? `
@@ -189,7 +178,7 @@ router.get('/', requireSession, (req, res) => {
     <div class="stat-card"><div class="stat-icon">&#x1F3C6;</div><div class="stat-value">${unlockedBadges}<span style="font-size:14px;color:var(--text-muted)">/${totalBadges}</span></div><div class="stat-label">Badges</div><div class="stat-bar"><div class="stat-bar-fill" style="width:${totalBadges > 0 ? (unlockedBadges/totalBadges*100).toFixed(0) : 0}%;background:var(--purple)"></div></div></div>
     <div class="stat-card"><div class="stat-icon">&#x1F4B3;</div><div class="stat-value" data-count="${transactions.length}">0</div><div class="stat-label">Transactions Today</div></div>
     <div class="stat-card"><div class="stat-icon">&#x1F91D;</div><div class="stat-value" data-count="${coopGoals.length}">0</div><div class="stat-label">Co-op Goals</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F4CA;</div><div class="stat-value">${(dbSize / 1024).toFixed(1)}<span style="font-size:14px;color:var(--text-muted)">KB</span></div><div class="stat-label">Database Size</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4CA;</div><div class="stat-value">PostgreSQL<span style="font-size:14px;color:var(--text-muted)"></span></div><div class="stat-label">Database</div></div>
   </div>
 
   <!-- Excel Import -->
@@ -280,15 +269,15 @@ router.get('/', requireSession, (req, res) => {
   `;
 
   res.type('html').send(layout('Dashboard', 'dashboard', content, {
-    subtitle: `${(dbSize / 1024).toFixed(1)} KB &middot; ${new Date().toLocaleString()}`,
+    subtitle: `${new Date().toLocaleString()}`,
     counts: { dashboard: accounts.length },
     headerActions: '<a href="/api/excel/export/all" class="btn btn-secondary btn-sm">&#x1F4E5; Export All</a><a href="/api/excel/template" class="btn btn-outline btn-sm">&#x1F4C4; Template</a>',
   }));
-});
+}));
 
-router.get('/shop', requireSession, (req, res) => {
-  const db = getDb();
-  const items = db.prepare('SELECT * FROM shop_items ORDER BY type, cost ASC').all();
+router.get('/shop', requireSession, asyncHandler(async (req, res) => {
+
+  const items = await sql('SELECT * FROM shop_items ORDER BY type, cost ASC');
 
   const q = req.query;
 
@@ -559,23 +548,23 @@ document.querySelectorAll('.sidebar-nav a').forEach(a=>{if(a.href===location.hre
 </html>`;
 
   res.type('html').send(html);
-});
+}));
 
 const shopUpload = require('multer')({
   dest: require('path').join(__dirname, '..', 'uploads', 'shop'),
   limits: { fileSize: 5 * 1024 * 1024 },
 });
 
-router.post('/shop/create', requireSession, shopUpload.single('image'), (req, res) => {
+router.post('/shop/create', requireSession, shopUpload.single('image'), asyncHandler(async (req, res) => {
   try {
-    const db = getDb();
+
     const { name, type, cost, rarity, emoji } = req.body;
     if (!name || !type) return res.redirect('/admin/shop?error=Name+and+type+required');
     const id = `shop_${require('crypto').randomBytes(4).toString('hex')}`;
-    db.prepare(`
+    await store.query(`
       INSERT INTO shop_items (id, name, type, cost, emoji, rarity, color1, color2, image_url, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-    `).run(id, name.trim(), type, Number(cost) || 0, emoji || '', rarity || 'Common', '#2E7D32', '#2E7D32', '');
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1)
+    `, [id, name.trim(), type, Number(cost) || 0, emoji || '', rarity || 'Common', '#2E7D32', '#2E7D32', '']);
     const { v4: uuidv4 } = require('uuid');
     if (req.file) {
       const ext = require('path').extname(req.file.originalname).toLowerCase();
@@ -583,56 +572,56 @@ router.post('/shop/create', requireSession, shopUpload.single('image'), (req, re
       const dest = require('path').join(__dirname, '..', 'uploads', 'shop', filename);
       require('fs').renameSync(req.file.path, dest);
       const imageUrl = '/uploads/shop/' + filename;
-      db.prepare("UPDATE shop_items SET image_url=? WHERE id=?").run(imageUrl, id);
+      await store.query("UPDATE shop_items SET image_url=$1 WHERE id=$2", [imageUrl, id]);
     }
     res.redirect('/admin/shop?added=ok');
   } catch (err) {
     res.redirect(`/admin/shop?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/shop/update/:id', requireSession, (req, res) => {
+router.post('/shop/update/:id', requireSession, asyncHandler(async (req, res) => {
   try {
-    const db = getDb();
-    const existing = db.prepare('SELECT * FROM shop_items WHERE id = ?').get(req.params.id);
+
+    const existing = await one('SELECT * FROM shop_items WHERE id = $1', [req.params.id]);
     if (!existing) return res.redirect('/admin/shop?error=Item+not+found');
     const { name, cost, rarity, emoji, color1, color2, is_active } = req.body;
-    db.prepare(`
-      UPDATE shop_items SET name=?, cost=?, emoji=?, rarity=?, color1=?, color2=?, is_active=?, updated_at=datetime('now')
-      WHERE id=?
-    `).run(
+    await store.query(`
+      UPDATE shop_items SET name=$1, cost=$2, emoji=$3, rarity=$4, color1=$5, color2=$6, is_active=$7, updated_at=datetime('now')
+      WHERE id=$8
+    `, [
       name ?? existing.name, Number(cost ?? existing.cost),
       emoji ?? existing.emoji, rarity ?? existing.rarity,
       color1 ?? existing.color1, color2 ?? existing.color2,
       is_active !== undefined ? (is_active === '1' ? 1 : 0) : existing.is_active,
       req.params.id
-    );
+    ]);
     res.redirect('/admin/shop?updated=ok');
   } catch (err) {
     res.redirect(`/admin/shop?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/shop/delete/:id', requireSession, (req, res) => {
+router.post('/shop/delete/:id', requireSession, asyncHandler(async (req, res) => {
   try {
-    const db = getDb();
-    const existing = db.prepare('SELECT * FROM shop_items WHERE id = ?').get(req.params.id);
+
+    const existing = await one('SELECT * FROM shop_items WHERE id = $1', [req.params.id]);
     if (!existing) return res.redirect('/admin/shop?error=Item+not+found');
     if (existing.image_url && existing.image_url.startsWith('/uploads/')) {
       const filePath = require('path').join(__dirname, '..', existing.image_url);
       if (require('fs').existsSync(filePath)) require('fs').unlinkSync(filePath);
     }
-    db.prepare('DELETE FROM shop_items WHERE id = ?').run(req.params.id);
+    await store.query('DELETE FROM shop_items WHERE id = $1', [req.params.id]);
     res.redirect('/admin/shop?deleted=ok');
   } catch (err) {
     res.redirect(`/admin/shop?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/shop/upload/:id', requireSession, shopUpload.single('image'), (req, res) => {
+router.post('/shop/upload/:id', requireSession, shopUpload.single('image'), asyncHandler(async (req, res) => {
   try {
-    const db = getDb();
-    const existing = db.prepare('SELECT * FROM shop_items WHERE id = ?').get(req.params.id);
+
+    const existing = await one('SELECT * FROM shop_items WHERE id = $1', [req.params.id]);
     if (!existing) return res.redirect('/admin/shop?error=Item+not+found');
     if (!req.file) return res.redirect('/admin/shop?error=No+file');
     const ext = require('path').extname(req.file.originalname).toLowerCase();
@@ -649,18 +638,17 @@ router.post('/shop/upload/:id', requireSession, shopUpload.single('image'), (req
       const oldFile = require('path').join(__dirname, '..', existing.image_url);
       if (require('fs').existsSync(oldFile)) require('fs').unlinkSync(oldFile);
     }
-    db.prepare("UPDATE shop_items SET image_url=?, updated_at=datetime('now') WHERE id=?").run(imageUrl, req.params.id);
+    await store.query("UPDATE shop_items SET image_url=$1, updated_at=datetime('now') WHERE id=$2", [imageUrl, req.params.id]);
     res.redirect('/admin/shop?uploaded=ok');
   } catch (err) {
     res.redirect(`/admin/shop?error=${encodeURIComponent(err.message)}`);
   }
-});
-
+}));
 // ── Quiz Management ──
 
-router.get('/quiz', requireSession, (req, res) => {
-  const db = getDb();
-  const questions = db.prepare('SELECT * FROM quiz_questions ORDER BY difficulty_level, category, question').all();
+router.get('/quiz', requireSession, asyncHandler(async (req, res) => {
+
+  const questions = await sql('SELECT * FROM quiz_questions ORDER BY difficulty_level, category, question');
   const q = req.query;
   const toast = q.added ? 'success:Question created.'
     : q.updated ? 'success:Question updated.'
@@ -781,66 +769,66 @@ router.get('/quiz', requireSession, (req, res) => {
   `;
 
   res.type('html').send(layout('Quiz Questions', 'quiz', content, { toast: toast || undefined }));
-});
+}));
 
-router.post('/quiz/create', requireSession, (req, res) => {
+router.post('/quiz/create', requireSession, asyncHandler(async (req, res) => {
   try {
-    const db = getDb();
+
     const { question, category, difficulty_level, opt0, opt1, opt2, opt3, correct_index, xp_reward, coin_reward, explanation } = req.body;
     if (!question || !opt0 || !opt1) return res.redirect('/admin/quiz?error=Question+and+at+least+2+options+required');
     const options = JSON.stringify([opt0, opt1, opt2 || '', opt3 || '']);
     const { v4: uuidv4 } = require('uuid');
     const id = uuidv4();
-    db.prepare(`
+    await store.query(`
       INSERT INTO quiz_questions (id, question, options, correct_index, explanation, category, difficulty_level, xp_reward, coin_reward, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-    `).run(id, question.trim(), options, Number(correct_index) || 0, explanation || '', category || 'General', difficulty_level || 'easy', Number(xp_reward) || 10, Number(coin_reward) || 5);
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1)
+    `, [id, question.trim(), options, Number(correct_index) || 0, explanation || '', category || 'General', difficulty_level || 'easy', Number(xp_reward) || 10, Number(coin_reward) || 5]);
     res.redirect('/admin/quiz?added=ok');
   } catch (err) {
     res.redirect(`/admin/quiz?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/quiz/update/:id', requireSession, (req, res) => {
+router.post('/quiz/update/:id', requireSession, asyncHandler(async (req, res) => {
   try {
-    const db = getDb();
-    const existing = db.prepare('SELECT * FROM quiz_questions WHERE id = ?').get(req.params.id);
+
+    const existing = await one('SELECT * FROM quiz_questions WHERE id = $1', [req.params.id]);
     if (!existing) return res.redirect('/admin/quiz?error=Question+not+found');
     const { question, category, difficulty_level, opt0, opt1, opt2, opt3, correct_index, xp_reward, coin_reward, explanation, is_active } = req.body;
     const options = opt0 || opt1 ? JSON.stringify([opt0 || existing.options[0], opt1 || '', opt2 || '', opt3 || '']) : existing.options;
-    db.prepare(`
-      UPDATE quiz_questions SET question=?, options=?, correct_index=?, explanation=?, category=?, difficulty_level=?, xp_reward=?, coin_reward=?, is_active=?, updated_at=datetime('now')
-      WHERE id=?
-    `).run(
+    await store.query(`
+      UPDATE quiz_questions SET question=$1, options=$2, correct_index=$3, explanation=$4, category=$5, difficulty_level=$6, xp_reward=$7, coin_reward=$8, is_active=$9, updated_at=datetime('now')
+      WHERE id=$10
+    `, [
       question ?? existing.question, options, Number(correct_index ?? existing.correct_index),
       explanation ?? existing.explanation, category ?? existing.category,
       difficulty_level ?? existing.difficulty_level, Number(xp_reward ?? existing.xp_reward),
       Number(coin_reward ?? existing.coin_reward), is_active === '1' ? 1 : 0,
       req.params.id
-    );
+    ]);
     res.redirect('/admin/quiz?updated=ok');
   } catch (err) {
     res.redirect(`/admin/quiz?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/quiz/delete/:id', requireSession, (req, res) => {
+router.post('/quiz/delete/:id', requireSession, asyncHandler(async (req, res) => {
   try {
-    const db = getDb();
-    const existing = db.prepare('SELECT * FROM quiz_questions WHERE id = ?').get(req.params.id);
+
+    const existing = await one('SELECT * FROM quiz_questions WHERE id = $1', [req.params.id]);
     if (!existing) return res.redirect('/admin/quiz?error=Question+not+found');
-    db.prepare('DELETE FROM quiz_questions WHERE id = ?').run(req.params.id);
+    await store.query('DELETE FROM quiz_questions WHERE id = $1', [req.params.id]);
     res.redirect('/admin/quiz?deleted=ok');
   } catch (err) {
     res.redirect(`/admin/quiz?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
 // ── Accounts Management ──
 
-router.get('/accounts', requireSession, (req, res) => {
-  const db = getDb();
-  const accounts = db.prepare('SELECT * FROM accounts ORDER BY child_name ASC').all();
+router.get('/accounts', requireSession, asyncHandler(async (req, res) => {
+
+  const accounts = await sql('SELECT * FROM accounts ORDER BY child_name ASC');
   const q = req.query;
   const toast = q.added ? 'success:Account created.'
     : q.updated ? 'success:Account updated.'
@@ -958,14 +946,14 @@ router.get('/accounts', requireSession, (req, res) => {
     toast,
     subtitle: `${accounts.length} accounts registered`,
   }));
-});
+}));
 
-router.post('/accounts/create', requireSession, (req, res) => {
+router.post('/accounts/create', requireSession, asyncHandler(async (req, res) => {
   try {
     const { child_name, actual_balance, current_xp, parent_phone } = req.body;
     if (!child_name) return res.redirect('/admin/accounts?error=Name+required');
-    const db = getDb();
-    const maxMember = db.prepare("SELECT MAX(CAST(member_id AS INTEGER)) as m FROM accounts").get().m || 0;
+
+    const maxMember = (await one("SELECT MAX(CAST(member_id AS INTEGER)) as m FROM accounts")).m || 0;
     const account = store.createAccount({
       child_name: child_name.trim(),
       actual_balance: Number(actual_balance) || 0,
@@ -974,14 +962,14 @@ router.post('/accounts/create', requireSession, (req, res) => {
       parent_phone: parent_phone || '',
       password: bcrypt.hashSync('0000', 10),
     });
-    db.prepare('UPDATE accounts SET member_id=? WHERE account_id=?').run(String(maxMember + 1).padStart(6, '0'), account.account_id);
+    await store.query('UPDATE accounts SET member_id=$1 WHERE account_id=$2', [String(maxMember + 1).padStart(6, '0'), account.account_id]);
     res.redirect('/admin/accounts?added=ok');
   } catch (err) {
     res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/accounts/update/:id', requireSession, (req, res) => {
+router.post('/accounts/update/:id', requireSession, asyncHandler(async (req, res) => {
   try {
     const { child_name, actual_balance, unallocated_balance, current_xp, parent_phone } = req.body;
     store.updateAccount(req.params.id, {
@@ -995,18 +983,18 @@ router.post('/accounts/update/:id', requireSession, (req, res) => {
   } catch (err) {
     res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/accounts/deposit/:id', requireSession, (req, res) => {
+router.post('/accounts/deposit/:id', requireSession, asyncHandler(async (req, res) => {
   try {
     const { amount, description } = req.body;
     const val = Number(amount);
     if (!val || val <= 0) return res.redirect('/admin/accounts?error=Invalid+amount');
-    const db = getDb();
-    const account = db.prepare('SELECT * FROM accounts WHERE account_id = ?').get(req.params.id);
+
+    const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
     if (!account) return res.redirect('/admin/accounts?error=Account+not+found');
     const newBalance = Number(account.actual_balance) + val;
-    db.prepare('UPDATE accounts SET actual_balance=?, unallocated_balance=unallocated_balance+?, updated_at=datetime(\'now\') WHERE account_id=?').run(newBalance, val, req.params.id);
+    await store.query('UPDATE accounts SET actual_balance=$1, unallocated_balance=unallocated_balance+$2, updated_at=datetime(\'now\') WHERE account_id=$3', [newBalance, val, req.params.id]);
     store.addTransaction({
       account_id: req.params.id,
       type: 'deposit',
@@ -1017,20 +1005,20 @@ router.post('/accounts/deposit/:id', requireSession, (req, res) => {
   } catch (err) {
     res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/accounts/withdraw/:id', requireSession, (req, res) => {
+router.post('/accounts/withdraw/:id', requireSession, asyncHandler(async (req, res) => {
   try {
     const { amount, description } = req.body;
     const val = Number(amount);
     if (!val || val <= 0) return res.redirect('/admin/accounts?error=Invalid+amount');
-    const db = getDb();
-    const account = db.prepare('SELECT * FROM accounts WHERE account_id = ?').get(req.params.id);
+
+    const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
     if (!account) return res.redirect('/admin/accounts?error=Account+not+found');
     if (Number(account.actual_balance) < val) return res.redirect('/admin/accounts?error=Insufficient+balance');
     const newBalance = Math.round((Number(account.actual_balance) - val) * 100) / 100;
     const newUnallocated = Math.round((Number(account.unallocated_balance) - val) * 100) / 100;
-    db.prepare('UPDATE accounts SET actual_balance=?, unallocated_balance=?, updated_at=datetime(\'now\') WHERE account_id=?').run(newBalance, Math.max(0, newUnallocated), req.params.id);
+    await store.query('UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=datetime(\'now\') WHERE account_id=$3', [newBalance, Math.max(0, newUnallocated), req.params.id]);
     store.addTransaction({
       account_id: req.params.id,
       type: 'withdrawal',
@@ -1043,26 +1031,26 @@ router.post('/accounts/withdraw/:id', requireSession, (req, res) => {
   } catch (err) {
     res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/accounts/delete/:id', requireSession, (req, res) => {
+router.post('/accounts/delete/:id', requireSession, asyncHandler(async (req, res) => {
   try {
-    const db = getDb();
-    const account = db.prepare('SELECT * FROM accounts WHERE account_id = ?').get(req.params.id);
+
+    const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
     if (!account) return res.redirect('/admin/accounts?error=Account+not+found');
-    db.prepare('DELETE FROM accounts WHERE account_id = ?').run(req.params.id);
+    await store.query('DELETE FROM accounts WHERE account_id = $1', [req.params.id]);
     res.redirect('/admin/accounts?deleted=ok');
   } catch (err) {
     res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
 // ── Goals Management ──
 
-router.get('/goals', requireSession, (req, res) => {
-  const db = getDb();
-  const goals = db.prepare('SELECT g.*, a.child_name FROM goal_jars g LEFT JOIN accounts a ON g.account_id = a.account_id ORDER BY g.created_at ASC').all();
-  const accounts = db.prepare('SELECT account_id, child_name FROM accounts ORDER BY child_name ASC').all();
+router.get('/goals', requireSession, asyncHandler(async (req, res) => {
+
+  const goals = await sql('SELECT g.*, a.child_name FROM goal_jars g LEFT JOIN accounts a ON g.account_id = a.account_id ORDER BY g.created_at ASC');
+  const accounts = await sql('SELECT account_id, child_name FROM accounts ORDER BY child_name ASC');
   const q = req.query;
   const toast = q.added ? 'success:Goal created.'
     : q.updated ? 'success:Goal updated.'
@@ -1181,14 +1169,14 @@ router.get('/goals', requireSession, (req, res) => {
     toast, subtitle: `${filtered.length} goals shown`,
     counts: { goals: goals.length },
   }));
-});
+}));
 
-router.post('/goals/create', requireSession, (req, res) => {
+router.post('/goals/create', requireSession, asyncHandler(async (req, res) => {
   try {
     const { account_id, title, target_amount, current_allocated, category_icon } = req.body;
     if (!account_id || !title) return res.redirect('/admin/goals?error=Account+and+title+required');
-    const db = getDb();
-    const account = db.prepare('SELECT * FROM accounts WHERE account_id = ?').get(account_id);
+
+    const account = await one('SELECT * FROM accounts WHERE account_id = $1', [account_id]);
     if (!account) return res.redirect('/admin/goals?error=Account+not+found');
     store.createGoal({
       account_id,
@@ -1201,12 +1189,12 @@ router.post('/goals/create', requireSession, (req, res) => {
   } catch (err) {
     res.redirect(`/admin/goals?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/goals/update/:id', requireSession, (req, res) => {
+router.post('/goals/update/:id', requireSession, asyncHandler(async (req, res) => {
   try {
-    const db = getDb();
-    const existing = db.prepare('SELECT * FROM goal_jars WHERE goal_id = ?').get(req.params.id);
+
+    const existing = await one('SELECT * FROM goal_jars WHERE goal_id = $1', [req.params.id]);
     if (!existing) return res.redirect('/admin/goals?error=Goal+not+found');
     const { title, target_amount, current_allocated, category_icon } = req.body;
     store.updateGoal(req.params.id, {
@@ -1219,39 +1207,39 @@ router.post('/goals/update/:id', requireSession, (req, res) => {
   } catch (err) {
     res.redirect(`/admin/goals?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/goals/toggle/:id', requireSession, (req, res) => {
+router.post('/goals/toggle/:id', requireSession, asyncHandler(async (req, res) => {
   try {
-    const db = getDb();
-    const goal = db.prepare('SELECT * FROM goal_jars WHERE goal_id = ?').get(req.params.id);
+
+    const goal = await one('SELECT * FROM goal_jars WHERE goal_id = $1', [req.params.id]);
     if (!goal) return res.redirect('/admin/goals?error=Goal+not+found');
     const newStatus = goal.is_completed ? 0 : 1;
-    db.prepare('UPDATE goal_jars SET is_completed=?, updated_at=datetime(\'now\') WHERE goal_id=?').run(newStatus, req.params.id);
+    await store.query('UPDATE goal_jars SET is_completed=$1, updated_at=datetime(\'now\') WHERE goal_id=$2', [newStatus, req.params.id]);
     res.redirect('/admin/goals?toggled=ok');
   } catch (err) {
     res.redirect(`/admin/goals?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/goals/delete/:id', requireSession, (req, res) => {
+router.post('/goals/delete/:id', requireSession, asyncHandler(async (req, res) => {
   try {
-    const db = getDb();
-    const existing = db.prepare('SELECT * FROM goal_jars WHERE goal_id = ?').get(req.params.id);
+
+    const existing = await one('SELECT * FROM goal_jars WHERE goal_id = $1', [req.params.id]);
     if (!existing) return res.redirect('/admin/goals?error=Goal+not+found');
     store.deleteGoal(req.params.id);
     res.redirect('/admin/goals?deleted=ok');
   } catch (err) {
     res.redirect(`/admin/goals?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
 // ── Badges Management ──
 
-router.get('/badges', requireSession, (req, res) => {
-  const db = getDb();
-  const badges = db.prepare('SELECT b.*, a.child_name FROM badges b LEFT JOIN accounts a ON b.account_id = a.account_id ORDER BY b.created_at ASC').all();
-  const accounts = db.prepare('SELECT account_id, child_name FROM accounts ORDER BY child_name ASC').all();
+router.get('/badges', requireSession, asyncHandler(async (req, res) => {
+
+  const badges = await sql('SELECT b.*, a.child_name FROM badges b LEFT JOIN accounts a ON b.account_id = a.account_id ORDER BY b.created_at ASC');
+  const accounts = await sql('SELECT account_id, child_name FROM accounts ORDER BY child_name ASC');
   const q = req.query;
   const toast = q.added ? 'success:Badge created.'
     : q.updated ? 'success:Badge updated.'
@@ -1368,14 +1356,14 @@ router.get('/badges', requireSession, (req, res) => {
     toast, subtitle: `${filtered.length} badges shown`,
     counts: { badges: badges.length },
   }));
-});
+}));
 
-router.post('/badges/create', requireSession, (req, res) => {
+router.post('/badges/create', requireSession, asyncHandler(async (req, res) => {
   try {
-    const db = getDb();
+
     const { account_id, name, description, required_xp, is_unlocked } = req.body;
     if (!account_id || !name) return res.redirect('/admin/badges?error=Account+and+name+required');
-    const account = db.prepare('SELECT * FROM accounts WHERE account_id = ?').get(account_id);
+    const account = await one('SELECT * FROM accounts WHERE account_id = $1', [account_id]);
     if (!account) return res.redirect('/admin/badges?error=Account+not+found');
     store.createBadge({
       account_id,
@@ -1388,12 +1376,12 @@ router.post('/badges/create', requireSession, (req, res) => {
   } catch (err) {
     res.redirect(`/admin/badges?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/badges/update/:id', requireSession, (req, res) => {
+router.post('/badges/update/:id', requireSession, asyncHandler(async (req, res) => {
   try {
-    const db = getDb();
-    const existing = db.prepare('SELECT * FROM badges WHERE badge_id = ?').get(req.params.id);
+
+    const existing = await one('SELECT * FROM badges WHERE badge_id = $1', [req.params.id]);
     if (!existing) return res.redirect('/admin/badges?error=Badge+not+found');
     const { name, description, required_xp, is_unlocked } = req.body;
     store.updateBadge(req.params.id, {
@@ -1406,12 +1394,12 @@ router.post('/badges/update/:id', requireSession, (req, res) => {
   } catch (err) {
     res.redirect(`/admin/badges?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/badges/toggle/:id', requireSession, (req, res) => {
+router.post('/badges/toggle/:id', requireSession, asyncHandler(async (req, res) => {
   try {
-    const db = getDb();
-    const existing = db.prepare('SELECT * FROM badges WHERE badge_id = ?').get(req.params.id);
+
+    const existing = await one('SELECT * FROM badges WHERE badge_id = $1', [req.params.id]);
     if (!existing) return res.redirect('/admin/badges?error=Badge+not+found');
     const newStatus = existing.is_unlocked ? 0 : 1;
     store.updateBadge(req.params.id, { is_unlocked: newStatus });
@@ -1419,31 +1407,31 @@ router.post('/badges/toggle/:id', requireSession, (req, res) => {
   } catch (err) {
     res.redirect(`/admin/badges?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/badges/delete/:id', requireSession, (req, res) => {
+router.post('/badges/delete/:id', requireSession, asyncHandler(async (req, res) => {
   try {
-    const db = getDb();
-    const existing = db.prepare('SELECT * FROM badges WHERE badge_id = ?').get(req.params.id);
+
+    const existing = await one('SELECT * FROM badges WHERE badge_id = $1', [req.params.id]);
     if (!existing) return res.redirect('/admin/badges?error=Badge+not+found');
     store.deleteBadge(req.params.id);
     res.redirect('/admin/badges?deleted=ok');
   } catch (err) {
     res.redirect(`/admin/badges?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
 // ── Loans Management ──
 
-router.get('/loans', requireSession, (req, res) => {
-  const db = getDb();
-  const accounts = db.prepare('SELECT account_id, child_name FROM accounts ORDER BY child_name ASC').all();
-  const loans = db.prepare(`
+router.get('/loans', requireSession, asyncHandler(async (req, res) => {
+
+  const accounts = await sql('SELECT account_id, child_name FROM accounts ORDER BY child_name ASC');
+  const loans = await sql(`
     SELECT l.*, a.child_name, a.member_id
     FROM loans l
     LEFT JOIN accounts a ON l.account_id = a.account_id
     ORDER BY l.created_at DESC
-  `).all();
+  `);
   const q = req.query;
 
   const filterAccount = q.account || '';
@@ -1558,9 +1546,9 @@ router.get('/loans', requireSession, (req, res) => {
     subtitle: `${filtered.length} loans shown`,
     counts: { loans: pendingCount },
   }));
-});
+}));
 
-router.post('/loans/approve/:id', requireSession, (req, res) => {
+router.post('/loans/approve/:id', requireSession, asyncHandler(async (req, res) => {
   try {
     const loan = store.getLoan(req.params.id);
     if (!loan) return res.redirect('/admin/loans?error=Loan+not+found');
@@ -1570,9 +1558,9 @@ router.post('/loans/approve/:id', requireSession, (req, res) => {
   } catch (err) {
     res.redirect(`/admin/loans?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/loans/reject/:id', requireSession, (req, res) => {
+router.post('/loans/reject/:id', requireSession, asyncHandler(async (req, res) => {
   try {
     const loan = store.getLoan(req.params.id);
     if (!loan) return res.redirect('/admin/loans?error=Loan+not+found');
@@ -1582,11 +1570,11 @@ router.post('/loans/reject/:id', requireSession, (req, res) => {
   } catch (err) {
     res.redirect(`/admin/loans?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/loans/disburse/:id', requireSession, (req, res) => {
+router.post('/loans/disburse/:id', requireSession, asyncHandler(async (req, res) => {
   try {
-    const db = getDb();
+
     const loan = store.getLoan(req.params.id);
     if (!loan) return res.redirect('/admin/loans?error=Loan+not+found');
     if (loan.status !== 'approved') return res.redirect('/admin/loans?error=Loan+must+be+approved+first');
@@ -1597,7 +1585,7 @@ router.post('/loans/disburse/:id', requireSession, (req, res) => {
     const newBalance = Math.round((Number(account.actual_balance) + Number(loan.principal)) * 100) / 100;
     const newUnallocated = Math.round((Number(account.unallocated_balance) + Number(loan.principal)) * 100) / 100;
 
-    db.prepare('UPDATE accounts SET actual_balance=?, unallocated_balance=?, updated_at=datetime(\'now\') WHERE account_id=?').run(newBalance, newUnallocated, loan.account_id);
+    await store.query('UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=datetime(\'now\') WHERE account_id=$3', [newBalance, newUnallocated, loan.account_id]);
     store.addTransaction({
       account_id: loan.account_id,
       type: 'loan_disbursement',
@@ -1613,13 +1601,13 @@ router.post('/loans/disburse/:id', requireSession, (req, res) => {
   } catch (err) {
     res.redirect(`/admin/loans?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
 // ── Transactions Viewer ──
 
-router.get('/transactions', requireSession, (req, res) => {
-  const db = getDb();
-  const accounts = db.prepare('SELECT account_id, child_name FROM accounts ORDER BY child_name ASC').all();
+router.get('/transactions', requireSession, asyncHandler(async (req, res) => {
+
+  const accounts = await sql('SELECT account_id, child_name FROM accounts ORDER BY child_name ASC');
   const q = req.query;
 
   const filterAccount = q.account || '';
@@ -1646,17 +1634,17 @@ router.get('/transactions', requireSession, (req, res) => {
   }
 
   const whereClause = where.length > 0 ? 'WHERE ' + where.join(' AND ') : '';
-  const total = db.prepare(`SELECT COUNT(*) as c FROM transactions t ${whereClause}`).get(...params).c;
+  const total = await one(`SELECT COUNT(*) as c FROM transactions t ${whereClause}`, [...params]).c;
   const totalPages = Math.max(1, Math.ceil(total / perPage));
 
-  const transactions = db.prepare(`
+  const transactions = await sql(`
     SELECT t.*, a.child_name FROM transactions t
     LEFT JOIN accounts a ON t.account_id = a.account_id
     ${whereClause}
     ORDER BY t.created_at DESC LIMIT ? OFFSET ?
-  `).all(...params, perPage, offset);
+  `, ...params, perPage, offset);
 
-  const typedCounts = db.prepare('SELECT type, COUNT(*) as c FROM transactions GROUP BY type').all();
+  const typedCounts = await sql('SELECT type, COUNT(*) as c FROM transactions GROUP BY type');
   const typeSummary = typedCounts.map(t => `${t.type}: ${t.c}`).join(' &middot; ');
 
   const toast = q.error ? `error:${q.error}` : '';
@@ -1723,20 +1711,21 @@ router.get('/transactions', requireSession, (req, res) => {
     subtitle: `Page ${page} of ${totalPages} — ${total} total`,
     counts: { transactions: total },
   }));
-});
+}));
 
 // ── Settings ──
 
-router.get('/settings', requireSession, (req, res) => {
-  const db = getDb();
+router.get('/settings', requireSession, asyncHandler(async (req, res) => {
+
   const dbPath = path.join(__dirname, '..', 'labcoop.db');
   const dbSize = fs.existsSync(dbPath) ? fs.statSync(dbPath).size : 0;
 
-  const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all();
-  const tableInfo = tables.map(t => {
-    const cnt = db.prepare(`SELECT COUNT(*) as c FROM "${t.name}"`).get();
-    return { name: t.name, rows: cnt.c };
-  });
+  const tables = await sql("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
+  const tableInfo = [];
+  for (const t of tables) {
+    const cnt = await one(`SELECT COUNT(*) as c FROM "${t.name}"`);
+    tableInfo.push({ name: t.name, rows: cnt.c });
+  }
 
   const envVars = [
     { key: 'PORT', val: process.env.PORT || '3000' },
@@ -1789,13 +1778,13 @@ router.get('/settings', requireSession, (req, res) => {
   res.type('html').send(layout('Settings', 'settings', content, {
     subtitle: 'System information and configuration',
   }));
-});
+}));
 
 // ── Loan Products Management ──
 
-router.get('/loan-products', requireSession, (req, res) => {
-  const db = getDb();
-  const products = db.prepare('SELECT * FROM loan_products ORDER BY min_amount ASC').all();
+router.get('/loan-products', requireSession, asyncHandler(async (req, res) => {
+
+  const products = await sql('SELECT * FROM loan_products ORDER BY min_amount ASC');
   const q = req.query;
   const toast = q.created ? 'success:Loan product created.'
     : q.updated ? 'success:Loan product updated.'
@@ -1899,9 +1888,9 @@ router.get('/loan-products', requireSession, (req, res) => {
     toast,
     subtitle: `${activeCount} active of ${products.length} total`,
   }));
-});
+}));
 
-router.post('/loan-products/create', requireSession, (req, res) => {
+router.post('/loan-products/create', requireSession, asyncHandler(async (req, res) => {
   try {
     const { name, description, interest_rate, interest_type, min_amount, max_amount, min_term, max_term } = req.body;
     if (!name) return res.redirect('/admin/loan-products?error=Name+required');
@@ -1919,9 +1908,9 @@ router.post('/loan-products/create', requireSession, (req, res) => {
   } catch (err) {
     res.redirect(`/admin/loan-products?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/loan-products/update/:id', requireSession, (req, res) => {
+router.post('/loan-products/update/:id', requireSession, asyncHandler(async (req, res) => {
   try {
     const { name, description, interest_rate, interest_type, min_amount, max_amount, min_term, max_term } = req.body;
     store.updateLoanProduct(req.params.id, {
@@ -1938,9 +1927,9 @@ router.post('/loan-products/update/:id', requireSession, (req, res) => {
   } catch (err) {
     res.redirect(`/admin/loan-products?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/loan-products/toggle/:id', requireSession, (req, res) => {
+router.post('/loan-products/toggle/:id', requireSession, asyncHandler(async (req, res) => {
   try {
     const product = store.getLoanProduct(req.params.id);
     if (!product) return res.redirect('/admin/loan-products?error=Product+not+found');
@@ -1949,13 +1938,13 @@ router.post('/loan-products/toggle/:id', requireSession, (req, res) => {
   } catch (err) {
     res.redirect(`/admin/loan-products?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
 // ── Savings Products Management ──
 
-router.get('/savings-products', requireSession, (req, res) => {
-  const db = getDb();
-  const products = db.prepare('SELECT * FROM savings_products ORDER BY name ASC').all();
+router.get('/savings-products', requireSession, asyncHandler(async (req, res) => {
+
+  const products = await sql('SELECT * FROM savings_products ORDER BY name ASC');
   const q = req.query;
   const toast = q.created ? 'success:Savings product created.'
     : q.updated ? 'success:Savings product updated.'
@@ -2049,9 +2038,9 @@ router.get('/savings-products', requireSession, (req, res) => {
     toast,
     subtitle: `${activeCount} active of ${products.length} total`,
   }));
-});
+}));
 
-router.post('/savings-products/create', requireSession, (req, res) => {
+router.post('/savings-products/create', requireSession, asyncHandler(async (req, res) => {
   try {
     const { name, description, interest_rate, interest_frequency, min_balance, withdrawal_limit } = req.body;
     if (!name) return res.redirect('/admin/savings-products?error=Name+required');
@@ -2067,9 +2056,9 @@ router.post('/savings-products/create', requireSession, (req, res) => {
   } catch (err) {
     res.redirect(`/admin/savings-products?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/savings-products/update/:id', requireSession, (req, res) => {
+router.post('/savings-products/update/:id', requireSession, asyncHandler(async (req, res) => {
   try {
     const { name, description, interest_rate, interest_frequency, min_balance, withdrawal_limit } = req.body;
     store.updateSavingsProduct(req.params.id, {
@@ -2084,9 +2073,9 @@ router.post('/savings-products/update/:id', requireSession, (req, res) => {
   } catch (err) {
     res.redirect(`/admin/savings-products?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/savings-products/toggle/:id', requireSession, (req, res) => {
+router.post('/savings-products/toggle/:id', requireSession, asyncHandler(async (req, res) => {
   try {
     const product = store.getSavingsProduct(req.params.id);
     if (!product) return res.redirect('/admin/savings-products?error=Product+not+found');
@@ -2095,13 +2084,13 @@ router.post('/savings-products/toggle/:id', requireSession, (req, res) => {
   } catch (err) {
     res.redirect(`/admin/savings-products?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
 // ── Withdrawal Requests Management ──
 
-router.get('/withdrawal-requests', requireSession, (req, res) => {
-  const db = getDb();
-  const requests = db.prepare('SELECT w.*, a.child_name, a.member_id FROM withdrawal_requests w LEFT JOIN accounts a ON w.account_id = a.account_id ORDER BY w.created_at DESC').all();
+router.get('/withdrawal-requests', requireSession, asyncHandler(async (req, res) => {
+
+  const requests = await sql('SELECT w.*, a.child_name, a.member_id FROM withdrawal_requests w LEFT JOIN accounts a ON w.account_id = a.account_id ORDER BY w.created_at DESC');
   const q = req.query;
 
   const filterStatus = q.status || '';
@@ -2178,9 +2167,9 @@ router.get('/withdrawal-requests', requireSession, (req, res) => {
     subtitle: `${pendingCount} pending`,
     counts: { 'withdrawal-requests': pendingCount },
   }));
-});
+}));
 
-router.post('/withdrawal-requests/approve/:id', requireSession, (req, res) => {
+router.post('/withdrawal-requests/approve/:id', requireSession, asyncHandler(async (req, res) => {
   try {
     const reqData = store.getWithdrawalRequest(req.params.id);
     if (!reqData) return res.redirect('/admin/withdrawal-requests?error=Request+not+found');
@@ -2190,9 +2179,9 @@ router.post('/withdrawal-requests/approve/:id', requireSession, (req, res) => {
   } catch (err) {
     res.redirect(`/admin/withdrawal-requests?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/withdrawal-requests/reject/:id', requireSession, (req, res) => {
+router.post('/withdrawal-requests/reject/:id', requireSession, asyncHandler(async (req, res) => {
   try {
     const reqData = store.getWithdrawalRequest(req.params.id);
     if (!reqData) return res.redirect('/admin/withdrawal-requests?error=Request+not+found');
@@ -2202,11 +2191,11 @@ router.post('/withdrawal-requests/reject/:id', requireSession, (req, res) => {
   } catch (err) {
     res.redirect(`/admin/withdrawal-requests?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/withdrawal-requests/pay/:id', requireSession, (req, res) => {
+router.post('/withdrawal-requests/pay/:id', requireSession, asyncHandler(async (req, res) => {
   try {
-    const db = getDb();
+
     const reqData = store.getWithdrawalRequest(req.params.id);
     if (!reqData) return res.redirect('/admin/withdrawal-requests?error=Request+not+found');
     if (reqData.status !== 'approved') return res.redirect('/admin/withdrawal-requests?error=Request+must+be+approved+first');
@@ -2221,7 +2210,7 @@ router.post('/withdrawal-requests/pay/:id', requireSession, (req, res) => {
     const newBalance = Math.round((Number(account.actual_balance) - val) * 100) / 100;
     const newUnallocated = Math.round((Number(account.unallocated_balance) - val) * 100) / 100;
 
-    db.prepare("UPDATE accounts SET actual_balance=?, unallocated_balance=?, updated_at=datetime('now') WHERE account_id=?").run(newBalance, Math.max(0, newUnallocated), reqData.account_id);
+    await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=datetime('now') WHERE account_id=$3", [newBalance, Math.max(0, newUnallocated), reqData.account_id]);
     store.addTransaction({
       account_id: reqData.account_id,
       type: 'withdrawal',
@@ -2235,19 +2224,19 @@ router.post('/withdrawal-requests/pay/:id', requireSession, (req, res) => {
   } catch (err) {
     res.redirect(`/admin/withdrawal-requests?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
 // ── Savings Applications Management ──
 
-router.get('/savings-applications', requireSession, (req, res) => {
-  const db = getDb();
-  const apps = db.prepare(`
+router.get('/savings-applications', requireSession, asyncHandler(async (req, res) => {
+
+  const apps = await sql(`
     SELECT sa.*, a.child_name, a.member_id, sp.name as product_name, sp.interest_rate, sp.interest_frequency
     FROM savings_applications sa
     LEFT JOIN accounts a ON sa.account_id = a.account_id
     LEFT JOIN savings_products sp ON sa.product_id = sp.product_id
     ORDER BY sa.created_at DESC
-  `).all();
+  `);
   const q = req.query;
 
   const filterStatus = q.status || '';
@@ -2319,27 +2308,27 @@ router.get('/savings-applications', requireSession, (req, res) => {
     subtitle: `${pendingCount} pending`,
     counts: { 'savings-applications': pendingCount },
   }));
-});
+}));
 
-router.post('/savings-applications/approve/:id', requireSession, (req, res) => {
+router.post('/savings-applications/approve/:id', requireSession, asyncHandler(async (req, res) => {
   try {
-    const db = getDb();
-    const app = db.prepare('SELECT * FROM savings_applications WHERE application_id = ?').get(req.params.id);
+
+    const app = await one('SELECT * FROM savings_applications WHERE application_id = $1', [req.params.id]);
     if (!app) return res.redirect('/admin/savings-applications?error=Application+not+found');
     if (app.status !== 'pending') return res.redirect('/admin/savings-applications?error=Application+is+not+pending');
 
     // Assign the savings product to the account
-    db.prepare("UPDATE accounts SET savings_product_id = ?, updated_at = datetime('now') WHERE account_id = ?").run(app.product_id, app.account_id);
+    await store.query("UPDATE accounts SET savings_product_id = $1, updated_at = datetime('now') WHERE account_id = $2", [app.product_id, app.account_id]);
     store.updateSavingsApplication(req.params.id, { status: 'approved', resolved_at: new Date().toISOString() });
     res.redirect('/admin/savings-applications?approved=ok');
   } catch (err) {
     res.redirect(`/admin/savings-applications?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/savings-applications/reject/:id', requireSession, (req, res) => {
+router.post('/savings-applications/reject/:id', requireSession, asyncHandler(async (req, res) => {
   try {
-    const app = getDb().prepare('SELECT * FROM savings_applications WHERE application_id = ?').get(req.params.id);
+    const app = await one('SELECT * FROM savings_applications WHERE application_id = $1', [req.params.id]);
     if (!app) return res.redirect('/admin/savings-applications?error=Application+not+found');
     if (app.status !== 'pending') return res.redirect('/admin/savings-applications?error=Application+is+not+pending');
     store.updateSavingsApplication(req.params.id, { status: 'rejected', resolved_at: new Date().toISOString() });
@@ -2347,17 +2336,17 @@ router.post('/savings-applications/reject/:id', requireSession, (req, res) => {
   } catch (err) {
     res.redirect(`/admin/savings-applications?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
 // ── Teller Counter ──
 
-router.get('/teller', requireSession, (req, res) => {
-  const db = getDb();
+router.get('/teller', requireSession, asyncHandler(async (req, res) => {
+
   const qry = req.query;
   const selectedId = qry.account || '';
   const searchQ = (qry.q || '').trim().toLowerCase();
 
-  let accounts = db.prepare('SELECT * FROM accounts ORDER BY child_name ASC').all();
+  let accounts = await sql('SELECT * FROM accounts ORDER BY child_name ASC');
   if (searchQ) {
     accounts = accounts.filter(function(a) {
       return (a.child_name || '').toLowerCase().indexOf(searchQ) !== -1
@@ -2369,10 +2358,10 @@ router.get('/teller', requireSession, (req, res) => {
   let recentTxs = [];
   let loanOptionsHtml = '';
   if (selectedId) {
-    selectedAccount = db.prepare('SELECT * FROM accounts WHERE account_id = ?').get(selectedId);
+    selectedAccount = await one('SELECT * FROM accounts WHERE account_id = $1', [selectedId]);
     if (selectedAccount) {
-      recentTxs = db.prepare('SELECT * FROM transactions WHERE account_id = ? ORDER BY created_at DESC LIMIT 20').all(selectedId);
-      const activeLoans = db.prepare("SELECT * FROM loans WHERE account_id = ? AND status = 'active' ORDER BY created_at DESC").all(selectedId);
+      recentTxs = await sql('SELECT * FROM transactions WHERE account_id = $1 ORDER BY created_at DESC LIMIT 20', [selectedId]);
+      const activeLoans = await sql("SELECT * FROM loans WHERE account_id = $1 AND status = 'active' ORDER BY created_at DESC", [selectedId]);
       loanOptionsHtml = activeLoans.map(function(l) {
         return '<option value="' + l.loan_id + '">' + (l.purpose || 'Loan') + ' - \u20B1' + Number(l.remaining_balance).toFixed(2) + ' remaining</option>';
       }).join('');
@@ -2385,7 +2374,7 @@ router.get('/teller', requireSession, (req, res) => {
     : qry.error ? `error:${qry.error}`
     : '';
 
-  const receipt = qry.receipt ? db.prepare("SELECT t.*, a.child_name, a.member_id FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id WHERE t.transaction_id = ?").get(qry.receipt) : null;
+  const receipt = qry.receipt ? (await one("SELECT t.*, a.child_name, a.member_id FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id WHERE t.transaction_id = $1", [qry.receipt])) : null;
 
   const bankStyle = `<style>
   .teller-bar { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 24px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
@@ -2614,18 +2603,18 @@ router.get('/teller', requireSession, (req, res) => {
   const tellerContent = toastHtml + bankContent;
 
   res.type('html').send(layout('Teller Counter', 'teller', tellerContent, { toast: toast || undefined }));
-});
+}));
 
-router.post('/teller/deposit/:id', requireSession, (req, res) => {
+router.post('/teller/deposit/:id', requireSession, asyncHandler(async (req, res) => {
   try {
     const { amount, description } = req.body;
     const val = Number(amount);
     if (!val || val <= 0) return res.redirect('/admin/teller?error=Invalid+amount');
-    const db = getDb();
-    const account = db.prepare('SELECT * FROM accounts WHERE account_id = ?').get(req.params.id);
+
+    const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
     if (!account) return res.redirect('/admin/teller?error=Account+not+found');
     const newBalance = Number(account.actual_balance) + val;
-    db.prepare("UPDATE accounts SET actual_balance=?, unallocated_balance=unallocated_balance+?, updated_at=datetime('now') WHERE account_id=?").run(newBalance, val, req.params.id);
+    await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=unallocated_balance+$2, updated_at=datetime('now') WHERE account_id=$3", [newBalance, val, req.params.id]);
     const result = store.addTransaction({
       account_id: req.params.id,
       type: 'deposit',
@@ -2640,20 +2629,20 @@ router.post('/teller/deposit/:id', requireSession, (req, res) => {
   } catch (err) {
     res.redirect(`/admin/teller?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/teller/withdraw/:id', requireSession, (req, res) => {
+router.post('/teller/withdraw/:id', requireSession, asyncHandler(async (req, res) => {
   try {
     const { amount, description } = req.body;
     const val = Number(amount);
     if (!val || val <= 0) return res.redirect('/admin/teller?error=Invalid+amount');
-    const db = getDb();
-    const account = db.prepare('SELECT * FROM accounts WHERE account_id = ?').get(req.params.id);
+
+    const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
     if (!account) return res.redirect('/admin/teller?error=Account+not+found');
     if (Number(account.actual_balance) < val) return res.redirect('/admin/teller?error=Insufficient+balance');
     const newBalance = Math.round((Number(account.actual_balance) - val) * 100) / 100;
     const newUnallocated = Math.round((Number(account.unallocated_balance) - val) * 100) / 100;
-    db.prepare("UPDATE accounts SET actual_balance=?, unallocated_balance=?, updated_at=datetime('now') WHERE account_id=?").run(newBalance, Math.max(0, newUnallocated), req.params.id);
+    await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=datetime('now') WHERE account_id=$3", [newBalance, Math.max(0, newUnallocated), req.params.id]);
     const result = store.addTransaction({
       account_id: req.params.id,
       type: 'withdrawal',
@@ -2668,21 +2657,20 @@ router.post('/teller/withdraw/:id', requireSession, (req, res) => {
   } catch (err) {
     res.redirect(`/admin/teller?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
-router.post('/teller/loan-pay/:id', requireSession, (req, res) => {
+router.post('/teller/loan-pay/:id', requireSession, asyncHandler(async (req, res) => {
   try {
     const { loan_id, amount } = req.body;
     const val = Number(amount);
     if (!val || val <= 0) return res.redirect('/admin/teller?error=Invalid+amount');
     const accountId = req.params.id;
 
-    const db = getDb();
-    const loan = db.prepare('SELECT * FROM loans WHERE loan_id = ?').get(loan_id);
+    const loan = await one('SELECT * FROM loans WHERE loan_id = $1', [loan_id]);
     if (!loan) return res.redirect(`/admin/teller?error=Loan+not+found&account=${accountId}`);
     if (loan.status !== 'active') return res.redirect(`/admin/teller?error=Loan+is+not+active&account=${accountId}`);
 
-    const account = db.prepare('SELECT * FROM accounts WHERE account_id = ?').get(accountId);
+    const account = await one('SELECT * FROM accounts WHERE account_id = $1', [accountId]);
     if (!account) return res.redirect(`/admin/teller?error=Account+not+found&account=${accountId}`);
 
     // Calculate interest portion
@@ -2690,7 +2678,7 @@ router.post('/teller/loan-pay/:id', requireSession, (req, res) => {
     const schedule = interestService.generateAmortizationSchedule(
       loan.principal, loan.interest_rate, loan.term_months, loan.interest_type
     );
-    const paymentsMade = db.prepare('SELECT COUNT(*) as cnt FROM loan_payments WHERE loan_id = ?').get(loan_id);
+    const paymentsMade = await one('SELECT COUNT(*) as cnt FROM loan_payments WHERE loan_id = $1', [loan_id]);
     const paymentNum = (paymentsMade?.cnt || 0) + 1;
     const scheduleEntry = schedule[paymentNum - 1] || schedule[schedule.length - 1];
 
@@ -2712,7 +2700,7 @@ router.post('/teller/loan-pay/:id', requireSession, (req, res) => {
     });
 
     // Update loan
-    db.prepare("UPDATE loans SET amount_paid = ?, remaining_balance = ?, status = ?, updated_at = datetime('now') WHERE loan_id = ?").run(newAmountPaid, newRemainingBalance, newStatus, loan_id);
+    await store.query("UPDATE loans SET amount_paid = $1, remaining_balance = $2, status = $3, updated_at = datetime('now') WHERE loan_id = $4", [newAmountPaid, newRemainingBalance, newStatus, loan_id]);
 
     // Record transaction (no balance change since it's over-the-counter collection)
     const txResult = store.addTransaction({
@@ -2731,18 +2719,18 @@ router.post('/teller/loan-pay/:id', requireSession, (req, res) => {
   } catch (err) {
     res.redirect(`/admin/teller?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
 // ── Audit Reports ──
 
-router.get('/audit', requireSession, (req, res) => {
-  const db = getDb();
+router.get('/audit', requireSession, asyncHandler(async (req, res) => {
+
   const q = req.query;
   const fromDate = q.from || '';
   const toDate = q.to || '';
   const filterAccount = q.account || '';
   const filterType = q.type || '';
-  const accounts = db.prepare('SELECT account_id, child_name, member_id FROM accounts ORDER BY child_name ASC').all();
+  const accounts = await sql('SELECT account_id, child_name, member_id FROM accounts ORDER BY child_name ASC');
 
   let where = [];
   let params = [];
@@ -2753,7 +2741,7 @@ router.get('/audit', requireSession, (req, res) => {
   const wc = where.length ? 'WHERE ' + where.join(' AND ') : '';
 
   // Stats
-  const stats = db.prepare(`
+  const stats = await one(`
     SELECT COUNT(*) as total,
       SUM(CASE WHEN t.type IN ('deposit','loan_disbursement','interest_credit') THEN t.amount ELSE 0 END) as credits,
       SUM(CASE WHEN t.type IN ('withdrawal','loan_payment') THEN t.amount ELSE 0 END) as debits,
@@ -2763,13 +2751,13 @@ router.get('/audit', requireSession, (req, res) => {
       SUM(CASE WHEN t.type='loan_payment' THEN t.amount ELSE 0 END) as total_loan_payments,
       SUM(CASE WHEN t.type LIKE 'interest%' THEN t.amount ELSE 0 END) as total_interest
     FROM transactions t ${wc}
-  `).get(...params);
+  `, [...params]);
 
-  const txns = db.prepare(`
+  const txns = await sql(`
     SELECT t.*, a.child_name, a.member_id FROM transactions t
     LEFT JOIN accounts a ON t.account_id = a.account_id
     ${wc} ORDER BY t.created_at DESC LIMIT 500
-  `).all(...params);
+  `, [...params]);
 
   var csvParams = Object.keys(q).filter(function(k) { return k !== 'export'; }).map(function(k) { return k + '=' + encodeURIComponent(q[k]); }).join('&');
   var csvLink = '/admin/audit/csv?' + csvParams;
@@ -2832,12 +2820,12 @@ router.get('/audit', requireSession, (req, res) => {
   </div>`;
 
   res.type('html').send(layout('Audit Reports', 'audit', content, { subtitle: 'Compliance-ready transaction register with date range filtering' }));
-});
+}));
 
 // ── Audit CSV Export ──
 
-router.get('/audit/csv', requireSession, (req, res) => {
-  const db = getDb();
+router.get('/audit/csv', requireSession, asyncHandler(async (req, res) => {
+
   const q = req.query;
   let where = [];
   let params = [];
@@ -2847,12 +2835,12 @@ router.get('/audit/csv', requireSession, (req, res) => {
   if (q.type) { where.push('t.type = ?'); params.push(q.type); }
   const wc = where.length ? 'WHERE ' + where.join(' AND ') : '';
 
-  const rows = db.prepare(`
+  const rows = await sql(`
     SELECT t.transaction_id, t.created_at, a.child_name, a.member_id, t.type, t.amount,
       t.balance_before, t.balance_after, t.description, t.reference_type, t.reference_id
     FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id
     ${wc} ORDER BY t.created_at DESC
-  `).all(...params);
+  `, [...params]);
 
   var csv = 'Receipt No,Date & Time,Member Name,Member ID,Type,Amount,Balance Before,Balance After,Description,Reference\n';
   csv += rows.map(function(r) {
@@ -2873,7 +2861,7 @@ router.get('/audit/csv', requireSession, (req, res) => {
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', 'attachment; filename="labcoop_audit_' + new Date().toISOString().slice(0,10) + '.csv"');
   res.send(csv);
-});
+}));
 
 // ── Clear All User Data (keep reference tables) ──
 router.post('/reset-database', requireSession, asyncHandler(async (req, res) => {

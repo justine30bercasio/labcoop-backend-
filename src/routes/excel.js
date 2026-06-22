@@ -154,14 +154,15 @@ router.get('/template', (req, res) => {
   res.send(buffer);
 });
 
-router.get('/export/all', (req, res) => {
+router.get('/export/all', async (req, res) => {
   try {
-    const { getDb } = require('../db');
-    const db = getDb();
-    const accounts = db.prepare('SELECT * FROM accounts').all();
-    const goals = db.prepare('SELECT * FROM goal_jars').all();
-    const badges = db.prepare('SELECT * FROM badges').all();
-    const transactions = db.prepare('SELECT * FROM transactions ORDER BY created_at DESC').all();
+    const { store } = require('../db');
+    const [accounts, goals, badges, transactions] = await Promise.all([
+      store.query('SELECT * FROM accounts').then(r => r.rows),
+      store.query('SELECT * FROM goal_jars').then(r => r.rows),
+      store.query('SELECT * FROM badges').then(r => r.rows),
+      store.query('SELECT * FROM transactions ORDER BY created_at DESC').then(r => r.rows),
+    ]);
 
     const wb = xlsx.utils.book_new();
     xlsx.utils.book_append_sheet(wb, xlsx.utils.json_to_sheet(accounts), 'Accounts');
@@ -181,8 +182,7 @@ router.get('/export/all', (req, res) => {
 
 router.get('/export/:accountId', (req, res) => {
   try {
-    const { store, getDb } = require('../db');
-    const db = getDb();
+    const { store } = require('../db');
     const accountId = req.params.accountId;
 
     const account = store.getAccount(accountId);

@@ -1,29 +1,67 @@
 function layout(title, active, content, opts = {}) {
   const { toast, counts, subtitle, headerActions } = opts;
-  const navItems = [
-    { href: '/admin', icon: '&#x1F4CA;', label: 'Dashboard', key: 'dashboard' },
-    { href: '/admin/teller', icon: '&#x1F3E6;', label: 'Teller Counter', key: 'teller' },
-    { href: '/admin/accounts', icon: '&#x1F465;', label: 'Accounts', key: 'accounts' },
-    { href: '/admin/loans', icon: '&#x1F4B0;', label: 'Loans', key: 'loans' },
-    { href: '/admin/withdrawal-requests', icon: '&#x1F4B8;', label: 'Withdrawals', key: 'withdrawal-requests' },
-    { href: '/admin/savings-applications', icon: '&#x1F4B1;', label: 'Savings Apps', key: 'savings-applications' },
-    { href: '/admin/loan-products', icon: '&#x1F3ED;', label: 'Loan Products', key: 'loan-products' },
-    { href: '/admin/savings-products', icon: '&#x1F4E6;', label: 'Savings Products', key: 'savings-products' },
-    { href: '/admin/goals', icon: '&#x1F3AF;', label: 'Goals', key: 'goals' },
-    { href: '/admin/badges', icon: '&#x1F3C6;', label: 'Badges', key: 'badges' },
-    { href: '/admin/transactions', icon: '&#x1F4B3;', label: 'Transactions', key: 'transactions' },
-    { href: '/admin/audit', icon: '&#x1F4DC;', label: 'Audit Reports', key: 'audit' },
-    { href: '/admin/gl/trial-balance', icon: '&#x1F4CA;', label: 'GL Reports', key: 'gl' },
-    { href: '/admin/audit-log', icon: '&#x1F4DD;', label: 'Audit Log', key: 'audit-log' },
-    { href: '/admin/users', icon: '&#x1F465;', label: 'Admin Users', key: 'users' },
-    { href: '/admin/shop', icon: '&#x1F6D2;', label: 'Shop', key: 'shop' },
-    { href: '/admin/quiz', icon: '&#x1F4DD;', label: 'Quiz', key: 'quiz' },
-    { href: '/admin/settings', icon: '&#x2699;', label: 'Settings', key: 'settings' },
+
+  const menuGroups = [
+    { icon: '&#x1F4CA;', label: 'Dashboard', key: 'dashboard', href: '/admin' },
+    { icon: '&#x1F3E6;', label: 'Banking', key: 'banking', children: [
+      { icon: '&#x1F3E6;', label: 'Teller Counter', href: '/admin/teller', key: 'teller' },
+      { icon: '&#x1F465;', label: 'Accounts', href: '/admin/accounts', key: 'accounts' },
+      { icon: '&#x1F4B0;', label: 'Loans', href: '/admin/loans', key: 'loans' },
+      { icon: '&#x1F4B8;', label: 'Withdrawals', href: '/admin/withdrawal-requests', key: 'withdrawal-requests' },
+      { icon: '&#x1F4B3;', label: 'Transactions', href: '/admin/transactions', key: 'transactions' },
+    ]},
+    { icon: '&#x1F4E6;', label: 'Products', key: 'products', children: [
+      { icon: '&#x1F3ED;', label: 'Loan Products', href: '/admin/loan-products', key: 'loan-products' },
+      { icon: '&#x1F4E6;', label: 'Savings Products', href: '/admin/savings-products', key: 'savings-products' },
+      { icon: '&#x1F6D2;', label: 'Shop', href: '/admin/shop', key: 'shop' },
+      { icon: '&#x1F4DD;', label: 'Quiz', href: '/admin/quiz', key: 'quiz' },
+    ]},
+    { icon: '&#x1F4CA;', label: 'Reports & Audit', key: 'reports', children: [
+      { icon: '&#x1F4DC;', label: 'Audit Reports', href: '/admin/audit', key: 'audit' },
+      { icon: '&#x2696;', label: 'Trial Balance', href: '/admin/gl/trial-balance', key: 'gl' },
+      { icon: '&#x1F4C8;', label: 'Balance Sheet', href: '/admin/gl/balance-sheet', key: 'gl' },
+      { icon: '&#x1F4C9;', label: 'P&L', href: '/admin/gl/profit-and-loss', key: 'gl' },
+      { icon: '&#x1F4CB;', label: 'Ledger', href: '/admin/gl/ledger', key: 'gl' },
+      { icon: '&#x1F4DD;', label: 'Audit Log', href: '/admin/audit-log', key: 'audit-log' },
+      { icon: '&#x1F465;', label: 'Admin Users', href: '/admin/users', key: 'users' },
+    ]},
+    { icon: '&#x1F3C6;', label: 'Gamification', key: 'gamification', children: [
+      { icon: '&#x1F3AF;', label: 'Goals', href: '/admin/goals', key: 'goals' },
+      { icon: '&#x1F3C6;', label: 'Badges', href: '/admin/badges', key: 'badges' },
+      { icon: '&#x1F4B1;', label: 'Savings Apps', href: '/admin/savings-applications', key: 'savings-applications' },
+    ]},
+    { icon: '&#x2699;', label: 'Settings', key: 'settings', href: '/admin/settings' },
   ];
 
-  const navHtml = navItems.map(n => `
-    <a href="${n.href}"${n.key === active ? ' class="active"' : ''}><span class="icon">${n.icon}</span> <span>${n.label}</span>${counts && counts[n.key] !== undefined ? `<span class="badge-count">${counts[n.key]}</span>` : ''}</a>
-  `).join('');
+  function isActive(key) {
+    if (key === active) return true;
+    return false;
+  }
+
+  function renderGroup(g) {
+    if (g.href) {
+      const c = isActive(g.key) ? ' class="active"' : '';
+      const badge = counts && counts[g.key] !== undefined ? `<span class="badge-count">${counts[g.key]}</span>` : '';
+      return `<a href="${g.href}"${c}><span class="icon">${g.icon}</span> <span>${g.label}</span>${badge}</a>`;
+    }
+    const hasActiveChild = g.children.some(c => isActive(c.key));
+    const open = hasActiveChild ? ' open' : '';
+    const childHtml = g.children.map(c => {
+      const cc = isActive(c.key) ? ' class="active"' : '';
+      const badge = counts && counts[c.key] !== undefined ? `<span class="badge-count">${counts[c.key]}</span>` : '';
+      return `<a href="${c.href}"${cc}><span class="icon">${c.icon}</span> <span>${c.label}</span>${badge}</a>`;
+    }).join('');
+    return `<div class="menu-group${open}" data-key="${g.key}">
+      <div class="menu-parent" onclick="toggleGroup('${g.key}')">
+        <span class="icon">${g.icon}</span>
+        <span>${g.label}</span>
+        <span class="chevron">&#x25BC;</span>
+      </div>
+      <div class="sub-menu">${childHtml}</div>
+    </div>`;
+  }
+
+  const sidebarNav = menuGroups.map(renderGroup).join('');
 
   const toastHtml = toast ? `<div class="toast ${toast.startsWith('error:') ? 'error' : 'success'}">${toast.startsWith('error:') ? '&#x274C; ' + toast.slice(6) : '&#x2705; ' + toast.slice(8)}</div>` : '';
 
@@ -35,20 +73,21 @@ function layout(title, active, content, opts = {}) {
 <title>LabCoop — ${title}</title>
 <style>
 :root {
-  --sidebar: #0d2818; --sidebar-hover: #1a3d2a; --sidebar-active: #2E7D32;
-  --sidebar-text: #94a3b8; --sidebar-text-active: #fff;
+  --sidebar: #0d2818; --sidebar-hover: #143020; --sidebar-active: #1a5c2a;
+  --sidebar-text: #8899aa; --sidebar-text-active: #e8f5e9;
   --bg: #f0f4f8; --card: #fff; --border: #e2e8f0;
   --text: #1e293b; --text-muted: #64748b;
   --accent: #2E7D32; --accent-hover: #1B5E20;
   --green: #22c55e; --blue: #3b82f6; --amber: #f59e0b; --purple: #8b5cf6; --red: #ef4444;
-  --radius: 12px; --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --radius: 12px; --radius-sm: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
   --shadow-lg: 0 4px 24px rgba(0,0,0,0.08);
   --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
   --transition: 0.2s ease;
 }
 [data-theme="dark"] {
-  --sidebar: #0a0f0d; --sidebar-hover: #1a2e1e; --sidebar-active: #1B5E20;
+  --sidebar: #0a0f0d; --sidebar-hover: #112015; --sidebar-active: #1a4a22;
   --sidebar-text: #6b7280; --sidebar-text-active: #d1d5db;
   --bg: #0f1411; --card: #1a231c; --border: #2a3a2e;
   --text: #e2e8f0; --text-muted: #94a3b8;
@@ -60,19 +99,41 @@ function layout(title, active, content, opts = {}) {
 html { font-size:14px; }
 body { font-family:var(--font); background:var(--bg); color:var(--text); display:flex; min-height:100vh; }
 
-.sidebar { width:240px; background:var(--sidebar); display:flex; flex-direction:column; position:fixed; top:0; left:0; bottom:0; z-index:50; transition:width var(--transition); }
-.sidebar-brand { padding:20px 20px 16px; border-bottom:1px solid rgba(255,255,255,0.06); }
-.sidebar-brand h1 { font-size:18px; color:#fff; font-weight:700; letter-spacing:-0.3px; }
-.sidebar-brand span { font-size:11px; color:var(--sidebar-text); display:block; margin-top:2px; }
-.sidebar-nav { flex:1; padding:12px 10px; display:flex; flex-direction:column; gap:2px; overflow-y:auto; }
-.sidebar-nav a { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:8px; color:var(--sidebar-text); text-decoration:none; font-size:13px; font-weight:500; transition:all var(--transition); }
-.sidebar-nav a:hover { background:var(--sidebar-hover); color:#fff; }
-.sidebar-nav a.active { background:var(--sidebar-active); color:#fff; font-weight:600; }
-.sidebar-nav a .icon { font-size:16px; width:20px; text-align:center; }
-.sidebar-nav a .badge-count { margin-left:auto; background:rgba(255,255,255,0.1); padding:1px 8px; border-radius:10px; font-size:11px; }
-.sidebar-footer { padding:12px 10px; border-top:1px solid rgba(255,255,255,0.06); display:flex; flex-direction:column; gap:2px; }
-.sidebar-footer a { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:8px; color:var(--sidebar-text); text-decoration:none; font-size:13px; transition:all var(--transition); }
-.sidebar-footer a:hover { background:var(--sidebar-hover); color:#fff; }
+.sidebar { width:240px; background:var(--sidebar); display:flex; flex-direction:column; position:fixed; top:0; left:0; bottom:0; z-index:50; transition:width var(--transition); overflow:hidden; }
+.sidebar-brand { padding:18px 16px 14px; border-bottom:1px solid rgba(255,255,255,0.05); flex-shrink:0; }
+.sidebar-brand h1 { font-size:16px; color:#fff; font-weight:700; letter-spacing:-0.3px; display:flex; align-items:center; gap:8px; }
+.sidebar-brand h1 .brand-icon { width:28px; height:28px; background:linear-gradient(135deg,#2E7D32,#1B5E20); border-radius:7px; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0; }
+.sidebar-brand span { font-size:10px; color:var(--sidebar-text); display:block; margin-top:1px; padding-left:36px; text-transform:uppercase; letter-spacing:0.8px; }
+.sidebar-nav { flex:1; padding:8px 8px; overflow-y:auto; overflow-x:hidden; }
+.sidebar-nav::-webkit-scrollbar { width:3px; }
+.sidebar-nav::-webkit-scrollbar-track { background:transparent; }
+.sidebar-nav::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.1); border-radius:2px; }
+
+.sidebar-nav a { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:var(--radius-sm); color:var(--sidebar-text); text-decoration:none; font-size:13px; font-weight:500; transition:all var(--transition); white-space:nowrap; }
+.sidebar-nav a:hover { background:var(--sidebar-hover); color:var(--sidebar-text-active); }
+.sidebar-nav a.active { background:var(--sidebar-active); color:#fff; font-weight:600; box-shadow:inset 2px 0 0 var(--accent); }
+.sidebar-nav a .icon { font-size:15px; width:20px; text-align:center; flex-shrink:0; }
+.sidebar-nav a .badge-count { margin-left:auto; background:rgba(255,255,255,0.1); padding:0 7px; border-radius:10px; font-size:10px; font-weight:600; line-height:18px; }
+
+.menu-group { margin-bottom:1px; }
+.menu-parent { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:var(--radius-sm); color:var(--sidebar-text); font-size:13px; font-weight:500; cursor:pointer; transition:all var(--transition); white-space:nowrap; user-select:none; }
+.menu-parent:hover { background:var(--sidebar-hover); color:var(--sidebar-text-active); }
+.menu-parent .icon { font-size:15px; width:20px; text-align:center; flex-shrink:0; }
+.menu-parent .chevron { margin-left:auto; font-size:8px; transition:transform var(--transition); opacity:0.5; }
+.menu-group.open .menu-parent .chevron { transform:rotate(180deg); opacity:0.8; }
+.menu-group.open .menu-parent { color:var(--sidebar-text-active); }
+
+.sub-menu { max-height:0; overflow:hidden; transition:max-height 0.3s cubic-bezier(0.4,0,0.2,1); padding-left:8px; }
+.menu-group.open .sub-menu { max-height:500px; }
+.sub-menu a { padding:7px 12px 7px 20px; font-size:12.5px; color:var(--sidebar-text); border-left:1px solid rgba(255,255,255,0.06); margin-left:10px; border-radius:0 var(--radius-sm) var(--radius-sm) 0; position:relative; }
+.sub-menu a:hover { color:var(--sidebar-text-active); border-left-color:var(--accent); }
+.sub-menu a.active { color:#fff; font-weight:600; border-left-color:var(--accent); background:linear-gradient(90deg,rgba(46,125,50,0.15) 0%,transparent 100%); }
+.sub-menu a .icon { font-size:12px; width:16px; }
+
+.sidebar-footer { padding:8px; border-top:1px solid rgba(255,255,255,0.05); flex-shrink:0; }
+.sidebar-footer a { display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:var(--radius-sm); color:var(--sidebar-text); text-decoration:none; font-size:12px; transition:all var(--transition); white-space:nowrap; }
+.sidebar-footer a:hover { background:var(--sidebar-hover); color:var(--sidebar-text-active); }
+.sidebar-footer a .icon { font-size:13px; width:20px; text-align:center; flex-shrink:0; }
 
 .main { margin-left:240px; flex:1; padding:24px 28px; max-width:100%; transition:margin-left var(--transition); }
 .page-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:12px; }
@@ -143,6 +204,11 @@ td.num { text-align:right; font-variant-numeric:tabular-nums; }
 .form-row > div { flex:1; }
 form.inline { display:inline; }
 
+.field { display:flex; flex-direction:column; gap:4px; }
+.field label { font-size:12px; font-weight:600; color:var(--text-muted); }
+.field input, .field select, .field textarea { width:100%; padding:9px 12px; border:2px solid var(--border); border-radius:8px; font-size:14px; outline:none; font-family:var(--font); transition:border var(--transition); }
+.field input:focus, .field select:focus, .field textarea:focus { border-color:var(--accent); }
+
 .stats-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:14px; margin-bottom:24px; }
 .stat-card { background:var(--card); border-radius:var(--radius); padding:16px 18px; box-shadow:var(--shadow); border:1px solid var(--border); transition:transform var(--transition), box-shadow var(--transition); cursor:default; }
 .stat-card:hover { transform:translateY(-2px); box-shadow:var(--shadow-lg); }
@@ -161,9 +227,16 @@ form.inline { display:inline; }
 
 @media(max-width:768px) {
   .sidebar { width:60px; }
-  .sidebar-brand h1, .sidebar-brand span, .sidebar-footer a span, .sidebar-nav a span { display:none; }
-  .sidebar-nav a, .sidebar-footer a { justify-content:center; padding:10px; }
-  .sidebar-nav a .badge-count { display:none; }
+  .sidebar-brand span { display:none; }
+  .sidebar-brand h1 .brand-icon { margin:0; }
+  .sidebar-brand h1 span:not(.brand-icon) { display:none; }
+  .sidebar-nav a span, .sidebar-footer a span { display:none; }
+  .menu-parent span:not(.icon) { display:none; }
+  .menu-parent .chevron { display:none; }
+  .sub-menu { max-height:0 !important; display:none; }
+  .sidebar-nav a, .menu-parent { justify-content:center; padding:10px; }
+  .sidebar-nav a .badge-count, .menu-parent .badge-count { display:none; }
+  .sidebar-footer a { justify-content:center; padding:10px; }
   .main { margin-left:60px; padding:16px; }
   .stats-grid { grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:10px; }
 }
@@ -173,15 +246,15 @@ form.inline { display:inline; }
 
 <div class="sidebar">
   <div class="sidebar-brand">
-    <h1>&#x1F3E6; LabCoop</h1>
+    <h1><span class="brand-icon">&#x1F3E6;</span> <span>LabCoop</span></h1>
     <span>Admin Dashboard</span>
   </div>
   <div class="sidebar-nav">
-    ${navHtml}
+    ${sidebarNav}
   </div>
   <div class="sidebar-footer">
     <a href="#" onclick="toggleTheme(event)"><span class="icon">&#x1F319;</span> <span>Dark Mode</span></a>
-    <a href="/admin/logout"><span class="icon">&#x1F6AA;</span> <span>Logout</span></a>
+    <a href="/admin/logout"><span class="icon">&#x1F6AA;</span> <span>Sign Out</span></a>
   </div>
 </div>
 
@@ -202,17 +275,33 @@ form.inline { display:inline; }
 <script>
 (function(){
   const t = document.querySelector('.toast');
-  if(t) setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity 0.5s';setTimeout(()=>t.remove(),500)},4000);
-  document.querySelectorAll('.sidebar-nav a').forEach(a=>{if(a.href===location.href||a.href===location.href.split('?')[0])a.classList.add('active')});
-  const saved = localStorage.getItem('labcoop-theme');
+  if(t) setTimeout(function(){t.style.opacity='0';t.style.transition='opacity 0.5s';setTimeout(function(){t.remove()},500)},4000);
+
+  document.querySelectorAll('.sidebar-nav a').forEach(function(a){
+    if(a.href===location.href||a.href===location.href.split('?')[0])a.classList.add('active');
+  });
+
+  var saved = localStorage.getItem('labcoop-theme');
   if(saved === 'dark') document.documentElement.setAttribute('data-theme','dark');
+
+  document.querySelectorAll('.menu-group').forEach(function(g){
+    var key = g.getAttribute('data-key');
+    var stored = localStorage.getItem('sidebar-group-' + key);
+    if(stored === 'open') g.classList.add('open');
+  });
 })();
+function toggleGroup(key){
+  var g = document.querySelector('.menu-group[data-key="'+key+'"]');
+  if(!g) return;
+  g.classList.toggle('open');
+  localStorage.setItem('sidebar-group-'+key, g.classList.contains('open') ? 'open' : '');
+}
 function toggleTheme(e){
   e.preventDefault();
-  const html = document.documentElement;
-  const isDark = html.getAttribute('data-theme') === 'dark';
-  if(isDark) { html.removeAttribute('data-theme'); localStorage.setItem('labcoop-theme','light'); }
-  else { html.setAttribute('data-theme','dark'); localStorage.setItem('labcoop-theme','dark'); }
+  var html = document.documentElement;
+  var isDark = html.getAttribute('data-theme') === 'dark';
+  if(isDark){ html.removeAttribute('data-theme'); localStorage.setItem('labcoop-theme','light'); }
+  else{ html.setAttribute('data-theme','dark'); localStorage.setItem('labcoop-theme','dark'); }
 }
 </script>
 </body>

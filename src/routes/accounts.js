@@ -7,14 +7,14 @@ const router = express.Router();
 
 router.get('/:accountId',
   param('accountId').isString().notEmpty().trim().withMessage('accountId is required'),
-  (req, res) => {
+  asyncHandler(async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const account = store.getAccount(req.params.accountId);
+    const account = await store.getAccount(req.params.accountId);
     if (!account) return res.status(404).json({ message: 'Account not found' });
     res.json(account);
-  }
+  })
 );
 
 router.put('/:accountId',
@@ -24,12 +24,12 @@ router.put('/:accountId',
   body('current_xp').optional().isInt({ min: 0 }).withMessage('current_xp must be >= 0'),
   body('child_name').optional().isString().trim().isLength({ min: 1, max: 100 }),
   body('parent_phone').optional().isString().isLength({ max: 20 }),
-  (req, res) => {
+  asyncHandler(async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     const { actual_balance, unallocated_balance, current_xp, child_name, parent_phone } = req.body;
-    const updated = store.updateAccount(req.params.accountId, {
+    const updated = await store.updateAccount(req.params.accountId, {
       actual_balance,
       unallocated_balance,
       current_xp,
@@ -38,7 +38,7 @@ router.put('/:accountId',
     });
     if (!updated) return res.status(404).json({ message: 'Account not found' });
     res.json(updated);
-  }
+  })
 );
 
 router.put('/:accountId/deposit',

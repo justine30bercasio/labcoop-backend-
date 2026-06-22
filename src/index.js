@@ -389,7 +389,7 @@ app.use('/api/quiz', quizRouter);
 app.use('/api/games', gamesRouter);
 
 // ── Clear all user data (keep reference tables) ──
-app.post('/api/admin/reset-database', async (req, res) => {
+app.post('/reset-database', async (req, res) => {
   const tables = ['loan_payments','transactions','badges','goal_jars','loans','withdrawal_requests','standing_orders','savings_applications','coop_contributions','coop_goals','accounts'];
   try {
     await store.query('BEGIN');

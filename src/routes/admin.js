@@ -2985,10 +2985,11 @@ router.get('/audit', requireSession, asyncHandler(async (req, res) => {
 
   let where = [];
   let params = [];
-  if (fromDate) { where.push("t.created_at >= ?"); params.push(fromDate + ' 00:00:00'); }
-  if (toDate) { where.push("t.created_at <= ?"); params.push(toDate + ' 23:59:59'); }
-  if (filterAccount) { where.push('t.account_id = ?'); params.push(filterAccount); }
-  if (filterType) { where.push('t.type = ?'); params.push(filterType); }
+  let p = 1;
+  if (fromDate) { where.push('t.created_at >= $' + p++); params.push(fromDate + ' 00:00:00'); }
+  if (toDate) { where.push('t.created_at <= $' + p++); params.push(toDate + ' 23:59:59'); }
+  if (filterAccount) { where.push('t.account_id = $' + p++); params.push(filterAccount); }
+  if (filterType) { where.push('t.type = $' + p++); params.push(filterType); }
   const wc = where.length ? 'WHERE ' + where.join(' AND ') : '';
 
   // Stats
@@ -3002,22 +3003,22 @@ router.get('/audit', requireSession, asyncHandler(async (req, res) => {
       SUM(CASE WHEN t.type='loan_payment' THEN t.amount ELSE 0 END) as total_loan_payments,
       SUM(CASE WHEN t.type LIKE 'interest%' THEN t.amount ELSE 0 END) as total_interest
     FROM transactions t ${wc}
-  `, [...params]);
+  `, params);
 
   const txns = await sql(`
     SELECT t.*, a.child_name, a.member_id FROM transactions t
     LEFT JOIN accounts a ON t.account_id = a.account_id
     ${wc} ORDER BY t.created_at DESC LIMIT 500
-  `, [...params]);
+  `, params);
 
-  var csvParams = Object.keys(q).filter(function(k) { return k !== 'export'; }).map(function(k) { return k + '=' + encodeURIComponent(q[k]); }).join('&');
-  var csvLink = '/admin/audit/csv?' + csvParams;
+  const csvParams = Object.keys(q).filter(k => k !== 'export').map(k => k + '=' + encodeURIComponent(q[k])).join('&');
+  const csvLink = '/admin/audit/csv?' + csvParams;
 
-  var typeOpts = ['deposit','withdrawal','loan_disbursement','loan_payment','interest_credit','interest','allocation','transfer'];
-  var typeSummary = txns.reduce(function(acc, t) { acc[t.type] = (acc[t.type]||0) + 1; return acc; }, {});
-  var summaryStr = Object.keys(typeSummary).map(function(k) { return k + ': ' + typeSummary[k]; }).join(' &middot; ');
+  const typeOpts = ['deposit','withdrawal','loan_disbursement','loan_payment','interest_credit','interest','allocation','transfer'];
+  const typeSummary = txns.reduce((acc, t) => { acc[t.type] = (acc[t.type]||0) + 1; return acc; }, {});
+  const summaryStr = Object.keys(typeSummary).map(k => k + ': ' + typeSummary[k]).join(' &middot; ');
 
-  var content = `
+  const content = `
   <div class="stats-grid">
     <div class="stat-card"><div class="stat-icon">&#x1F4CA;</div><div class="stat-value">${stats.total||0}</div><div class="stat-label">Total Transactions</div></div>
     <div class="stat-card"><div class="stat-icon" style="color:#16a34a">&#x2B06;</div><div class="stat-value" style="color:#16a34a">&#x20B1;${Number(stats.credits||0).toFixed(2)}</div><div class="stat-label">Total Credits (In)</div></div>
@@ -3030,9 +3031,7 @@ router.get('/audit', requireSession, asyncHandler(async (req, res) => {
   </div>
 
   <div class="card">
-    <div class="card-header">
-      <h3>&#x1F50D; Filter Transactions</h3>
-    </div>
+    <div class="card-header"><h3>&#x1F50D; Filter Transactions</h3></div>
     <div class="card-body-padded">
       <form method="get" action="/admin/audit" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
         <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:3px">From</label><input type="date" name="from" value="${fromDate}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px"></div>
@@ -3040,13 +3039,13 @@ router.get('/audit', requireSession, asyncHandler(async (req, res) => {
         <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:3px">Account</label>
           <select name="account" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px">
             <option value="">All</option>
-            ${accounts.map(function(a) { return '<option value="' + a.account_id + '"' + (a.account_id===filterAccount?' selected':'') + '>' + a.child_name + ' (' + (a.member_id||'') + ')</option>'; }).join('')}
+            ${accounts.map(a => '<option value="' + a.account_id + '"' + (a.account_id===filterAccount?' selected':'') + '>' + a.child_name + ' (' + (a.member_id||'') + ')</option>').join('')}
           </select>
         </div>
         <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:3px">Type</label>
           <select name="type" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px">
             <option value="">All</option>
-            ${typeOpts.map(function(t) { return '<option value="' + t + '"' + (t===filterType?' selected':'') + '>' + t.replace(/_/g,' ') + '</option>'; }).join('')}
+            ${typeOpts.map(t => '<option value="' + t + '"' + (t===filterType?' selected':'') + '>' + t.replace(/_/g,' ') + '</option>').join('')}
           </select>
         </div>
         <div><button type="submit" class="btn btn-primary btn-sm">&#x1F50D; Filter</button> <a href="/admin/audit" class="btn btn-outline btn-sm">&#x1F504; Reset</a> <a href="${csvLink}" class="btn btn-outline btn-sm">&#x1F4E5; Export CSV</a></div>
@@ -3060,11 +3059,11 @@ router.get('/audit', requireSession, asyncHandler(async (req, res) => {
       <span class="count">${txns.length} entries ${summaryStr ? '&middot; ' + summaryStr : ''}</span>
     </div>
     <div class="card-body">
-      ${txns.length === 0 ? '<div style="text-align:center;padding:48px;color:var(--text-muted)">No transactions found for the selected filters.</div>' : '<table><tr><th>Receipt #</th><th>Date &amp; Time</th><th>Member</th><th>ID</th><th>Type</th><th>Amount</th><th>Balance Delta</th><th>Description</th><th>Ref</th></tr>' + txns.map(function(t) {
-        var sign = (t.type==='deposit'||t.type==='loan_disbursement'||t.type==='interest_credit') ? '+' : '-';
-        var col = (t.type==='deposit'||t.type==='loan_disbursement'||t.type==='interest_credit') ? '#16a34a' : '#dc2626';
-        var delta = t.balance_before != null ? '<span style="color:' + col + '">' + sign + '&#x20B1;' + Number(t.amount).toFixed(2) + '</span>' : '-';
-        var bg = ({deposit:'badge-green',withdrawal:'badge-red',loan_disbursement:'badge-amber',loan_payment:'badge-blue',interest_credit:'badge-purple',interest:'badge-purple',allocation:'badge-gray'})[t.type] || 'badge-gray';
+      ${txns.length === 0 ? '<div style="text-align:center;padding:48px;color:var(--text-muted)">No transactions found for the selected filters.</div>' : '<table><tr><th>Receipt #</th><th>Date &amp; Time</th><th>Member</th><th>ID</th><th>Type</th><th>Amount</th><th>Balance Delta</th><th>Description</th><th>Ref</th></tr>' + txns.map(t => {
+        const sign = (t.type==='deposit'||t.type==='loan_disbursement'||t.type==='interest_credit') ? '+' : '-';
+        const col = (t.type==='deposit'||t.type==='loan_disbursement'||t.type==='interest_credit') ? '#16a34a' : '#dc2626';
+        const delta = t.balance_before != null ? '<span style="color:' + col + '">' + sign + '&#x20B1;' + Number(t.amount).toFixed(2) + '</span>' : '-';
+        const bg = ({deposit:'badge-green',withdrawal:'badge-red',loan_disbursement:'badge-amber',loan_payment:'badge-blue',interest_credit:'badge-purple',interest:'badge-purple',allocation:'badge-gray'})[t.type] || 'badge-gray';
         return '<tr><td class="mono"><a href="/admin/teller?account=' + t.account_id + '&receipt=' + t.transaction_id + '" style="color:var(--accent);text-decoration:none">' + (t.transaction_id||'').slice(0,8).toUpperCase() + '</a></td><td class="mono" style="font-size:11px">' + (t.created_at||'').slice(0,19).replace('T',' ') + '</td><td>' + (t.child_name||'') + '</td><td class="mono" style="font-size:11px;color:var(--text-muted)">' + (t.member_id||'-') + '</td><td><span class="badge ' + bg + '">' + t.type.replace(/_/g,' ') + '</span></td><td class="num mono" style="color:' + col + '">' + sign + '&#x20B1;' + Number(t.amount).toFixed(2) + '</td><td class="num mono">' + delta + '</td><td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted)">' + (t.description||'-') + '</td><td class="mono" style="font-size:11px;color:var(--text-muted)">' + (t.reference_id ? (t.reference_type||'') + ':' + (t.reference_id||'').slice(0,8) : '-') + '</td></tr>';
       }).join('') + '</table>'}
     </div>
@@ -3080,10 +3079,11 @@ router.get('/audit/csv', requireSession, asyncHandler(async (req, res) => {
   const q = req.query;
   let where = [];
   let params = [];
-  if (q.from) { where.push("t.created_at >= ?"); params.push(q.from + ' 00:00:00'); }
-  if (q.to) { where.push("t.created_at <= ?"); params.push(q.to + ' 23:59:59'); }
-  if (q.account) { where.push('t.account_id = ?'); params.push(q.account); }
-  if (q.type) { where.push('t.type = ?'); params.push(q.type); }
+  let p = 1;
+  if (q.from) { where.push('t.created_at >= $' + p++); params.push(q.from + ' 00:00:00'); }
+  if (q.to) { where.push('t.created_at <= $' + p++); params.push(q.to + ' 23:59:59'); }
+  if (q.account) { where.push('t.account_id = $' + p++); params.push(q.account); }
+  if (q.type) { where.push('t.type = $' + p++); params.push(q.type); }
   const wc = where.length ? 'WHERE ' + where.join(' AND ') : '';
 
   const rows = await sql(`
@@ -3091,10 +3091,10 @@ router.get('/audit/csv', requireSession, asyncHandler(async (req, res) => {
       t.balance_before, t.balance_after, t.description, t.reference_type, t.reference_id
     FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id
     ${wc} ORDER BY t.created_at DESC
-  `, [...params]);
+  `, params);
 
-  var csv = 'Receipt No,Date & Time,Member Name,Member ID,Type,Amount,Balance Before,Balance After,Description,Reference\n';
-  csv += rows.map(function(r) {
+  let csv = 'Receipt No,Date & Time,Member Name,Member ID,Type,Amount,Balance Before,Balance After,Description,Reference\n';
+  csv += rows.map(r => {
     return [
       r.transaction_id,
       r.created_at,
@@ -3147,10 +3147,30 @@ router.post('/reset-database', requireSession, asyncHandler(async (req, res) => 
 
 router.get('/gl/trial-balance', requireSession, asyncHandler(async (req, res) => {
   const { getTrialBalance } = require('../services/gl');
-  const result = await getTrialBalance(req.query.date || null);
+  const date = req.query.date || '';
+  const result = await getTrialBalance(date || null);
+  const totalD = result.rows.reduce((s, r) => s + r.debit, 0);
+  const totalC = result.rows.reduce((s, r) => s + r.credit, 0);
+  const balanced = Math.abs(totalD - totalC) < 0.01;
   const content = `
+  <form method="get" action="/admin/gl/trial-balance" style="display:flex;gap:8px;align-items:end;margin-bottom:16px">
+    <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:3px">As of date</label><input type="date" name="date" value="${date}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px"></div>
+    <button type="submit" class="btn btn-primary btn-sm">&#x1F50D; View</button>
+    <a href="/admin/gl/trial-balance" class="btn btn-outline btn-sm">&#x1F504; Reset</a>
+    <div style="margin-left:auto;display:flex;gap:8px">
+      <a href="/admin/gl/balance-sheet" class="btn btn-outline btn-sm">&#x1F4C8; Balance Sheet</a>
+      <a href="/admin/gl/profit-and-loss" class="btn btn-outline btn-sm">&#x1F4C9; P&amp;L</a>
+      <a href="/admin/gl/ledger" class="btn btn-outline btn-sm">&#x1F4CB; Ledger</a>
+    </div>
+  </form>
+  <div class="stats-grid" style="margin-bottom:16px">
+    <div class="stat-card"><div class="stat-icon">&#x2696;</div><div class="stat-value">${result.rows.length}</div><div class="stat-label">GL Accounts</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4B5;</div><div class="stat-value">&#x20B1;${totalD.toFixed(2)}</div><div class="stat-label">Total Debits</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4B8;</div><div class="stat-value">&#x20B1;${totalC.toFixed(2)}</div><div class="stat-label">Total Credits</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x2705;</div><div class="stat-value" style="color:${balanced ? '#16a34a' : '#dc2626'}">${balanced ? 'Balanced' : 'Unbalanced'}</div><div class="stat-label">Debits = Credits</div></div>
+  </div>
   <div class="card">
-    <div class="card-header"><h3>&#x1F4CA; Trial Balance ${req.query.date ? 'as of ' + req.query.date : ''}</h3></div>
+    <div class="card-header"><h3>&#x1F4CA; Trial Balance${date ? ' as of ' + date : ''}</h3></div>
     <div class="card-body" style="padding:0">
     <table>
       <tr><th>Code</th><th>Account</th><th>Type</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr>
@@ -3159,81 +3179,91 @@ router.get('/gl/trial-balance', requireSession, asyncHandler(async (req, res) =>
         <td><span class="badge ${r.type === 'asset' || r.type === 'expense' ? 'badge-red' : r.type === 'liability' || r.type === 'equity' ? 'badge-blue' : 'badge-green'}">${r.type}</span></td>
         <td class="num mono">${r.debit ? '&#x20B1;' + r.debit.toFixed(2) : '-'}</td>
         <td class="num mono">${r.credit ? '&#x20B1;' + r.credit.toFixed(2) : '-'}</td>
-        <td class="num mono" style="color:${r.balance >= 0 ? '#16a34a' : '#dc2626'}">&#x20B1;${r.balance.toFixed(2)}</td>
+        <td class="num mono" style="color:${r.balance >= 0 ? '#16a34a' : '#dc2626'};font-weight:600">&#x20B1;${Math.abs(r.balance).toFixed(2)} ${r.balance < 0 ? 'CR' : 'DR'}</td>
       </tr>`).join('')}
       <tr style="font-weight:700;background:var(--bg2)"><td colspan="3">TOTAL</td>
-        <td class="num mono">&#x20B1;${result.totalDebit.toFixed(2)}</td>
-        <td class="num mono">&#x20B1;${result.totalCredit.toFixed(2)}</td>
-        <td></td>
+        <td class="num mono">&#x20B1;${totalD.toFixed(2)}</td>
+        <td class="num mono">&#x20B1;${totalC.toFixed(2)}</td>
+        <td class="num mono" style="color:${balanced ? '#16a34a' : '#dc2626'}">${balanced ? '&#x2705;' : '&#x26A0; Diff: &#x20B1;' + Math.abs(totalD - totalC).toFixed(2)}</td>
       </tr>
     </table></div>
-  </div>
-  <div style="margin-top:12px;display:flex;gap:8px">
-    <a href="/admin/gl/balance-sheet" class="btn btn-outline">&#x1F4C8; Balance Sheet</a>
-    <a href="/admin/gl/profit-and-loss" class="btn btn-outline">&#x1F4C9; P&L</a>
-    <a href="/admin/gl/ledger" class="btn btn-outline">&#x1F4CB; Ledger</a>
   </div>`;
-  res.type('html').send(layout('Trial Balance', 'gl', content, { subtitle: 'General Ledger trial balance' }));
+  res.type('html').send(layout('Trial Balance', 'gl', content, { subtitle: 'All GL accounts with debit/credit totals' }));
 }));
 
 router.get('/gl/balance-sheet', requireSession, asyncHandler(async (req, res) => {
   const { getBalanceSheet } = require('../services/gl');
-  const result = await getBalanceSheet(req.query.date || null);
-  const section = (title, items, total) => `
-    <div class="card" style="margin-top:16px">
-      <div class="card-header"><h4>${title}</h4></div>
+  const date = req.query.date || '';
+  const result = await getBalanceSheet(date || null);
+  const diff = result.totalAssets - (result.totalLiabilities + result.totalEquity);
+  const section = (title, items, total, color) => `
+    <div class="card">
+      <div class="card-header"><h4>${title}</h4><span class="count">${items.length} accounts</span></div>
       <div class="card-body" style="padding:0">
       <table>
         <tr><th>Account</th><th class="num">Amount</th></tr>
-        ${items.map(r => `<tr><td>${r.name}</td><td class="num mono">&#x20B1;${r.balance.toFixed(2)}</td></tr>`).join('')}
-        <tr style="font-weight:700;background:var(--bg2)"><td>TOTAL ${title.toUpperCase()}</td><td class="num mono">&#x20B1;${total.toFixed(2)}</td></tr>
+        ${items.map(r => `<tr><td>${r.name}</td><td class="num mono" style="color:${color};font-weight:600">&#x20B1;${Math.abs(r.balance).toFixed(2)}</td></tr>`).join('')}
+        <tr style="font-weight:700;background:var(--bg2)"><td>TOTAL ${title.toUpperCase()}</td><td class="num mono" style="color:${color}">&#x20B1;${total.toFixed(2)}</td></tr>
       </table></div>
     </div>`;
-  const diff = result.totalAssets - (result.totalLiabilities + result.totalEquity);
   const content = `
+    <form method="get" action="/admin/gl/balance-sheet" style="display:flex;gap:8px;align-items:end;margin-bottom:16px">
+      <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:3px">As of date</label><input type="date" name="date" value="${date}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px"></div>
+      <button type="submit" class="btn btn-primary btn-sm">&#x1F50D; View</button>
+      <a href="/admin/gl/balance-sheet" class="btn btn-outline btn-sm">&#x1F504; Reset</a>
+      <div style="margin-left:auto;display:flex;gap:8px">
+        <a href="/admin/gl/trial-balance" class="btn btn-outline btn-sm">&#x1F4CA; Trial Balance</a>
+        <a href="/admin/gl/profit-and-loss" class="btn btn-outline btn-sm">&#x1F4C9; P&amp;L</a>
+      </div>
+    </form>
     <div class="stats-grid">
-      <div class="stat-card"><div class="stat-icon">&#x1F4B0;</div><div class="stat-value" style="color:#16a34a">&#x20B1;${result.totalAssets.toFixed(2)}</div><div class="stat-label">Total Assets</div></div>
+      <div class="stat-card" style="border-left:3px solid var(--accent)"><div class="stat-icon">&#x1F4B0;</div><div class="stat-value" style="color:#16a34a">&#x20B1;${result.totalAssets.toFixed(2)}</div><div class="stat-label">Total Assets</div></div>
       <div class="stat-card"><div class="stat-icon">&#x1F4B3;</div><div class="stat-value" style="color:#dc2626">&#x20B1;${result.totalLiabilities.toFixed(2)}</div><div class="stat-label">Total Liabilities</div></div>
       <div class="stat-card"><div class="stat-icon">&#x1F511;</div><div class="stat-value" style="color:#2563eb">&#x20B1;${result.totalEquity.toFixed(2)}</div><div class="stat-label">Total Equity</div></div>
-      <div class="stat-card"><div class="stat-icon">&#x2696;</div><div class="stat-value" style="color:${diff === 0 ? '#16a34a' : '#dc2626'}">${diff === 0 ? '&#x2705; Balanced' : '&#x26A0; Diff: &#x20B1;' + diff.toFixed(2)}</div><div class="stat-label">A = L + E</div></div>
+      <div class="stat-card"><div class="stat-icon">&#x2696;</div><div class="stat-value" style="color:${diff === 0 ? '#16a34a' : '#dc2626'}">${diff === 0 ? '&#x2705; A = L + E' : '&#x26A0; Off by &#x20B1;' + diff.toFixed(2)}</div><div class="stat-label">Accounting Equation</div></div>
     </div>
-    ${section('Assets', result.assets, result.totalAssets)}
-    ${section('Liabilities', result.liabilities, result.totalLiabilities)}
-    ${section('Equity', result.equity, result.totalEquity)}
-    <div style="margin-top:12px;display:flex;gap:8px">
-      <a href="/admin/gl/trial-balance" class="btn btn-outline">&#x1F4CA; Trial Balance</a>
-      <a href="/admin/gl/profit-and-loss" class="btn btn-outline">&#x1F4C9; P&L</a>
-    </div>`;
+    ${section('Assets', result.assets, result.totalAssets, '#16a34a')}
+    ${section('Liabilities', result.liabilities, result.totalLiabilities, '#dc2626')}
+    ${section('Equity', result.equity, result.totalEquity, '#2563eb')}`;
   res.type('html').send(layout('Balance Sheet', 'gl', content, { subtitle: 'Assets = Liabilities + Equity' }));
 }));
 
 router.get('/gl/profit-and-loss', requireSession, asyncHandler(async (req, res) => {
   const { getProfitAndLoss } = require('../services/gl');
   const now = new Date();
-  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  const result = await getProfitAndLoss(req.query.from || firstDay, req.query.to || now.toISOString());
+  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+  const todayStr = now.toISOString().slice(0,10);
+  const from = req.query.from || firstDay;
+  const to = req.query.to || todayStr;
+  const result = await getProfitAndLoss(from, to);
   const section = (title, items, total, color) => `
-    <div class="card" style="margin-top:16px">
-      <div class="card-header"><h4>${title}</h4></div>
+    <div class="card">
+      <div class="card-header"><h4>${title}</h4><span class="count">${items.length} accounts</span></div>
       <div class="card-body" style="padding:0">
       <table>
         <tr><th>Account</th><th class="num">Amount</th></tr>
-        ${items.map(r => `<tr><td>${r.name}</td><td class="num mono" style="color:${color}">&#x20B1;${r.amount.toFixed(2)}</td></tr>`).join('')}
+        ${items.map(r => `<tr><td>${r.name}</td><td class="num mono" style="color:${color};font-weight:600">&#x20B1;${r.amount.toFixed(2)}</td></tr>`).join('')}
         <tr style="font-weight:700;background:var(--bg2)"><td>TOTAL ${title.toUpperCase()}</td><td class="num mono" style="color:${color}">&#x20B1;${total.toFixed(2)}</td></tr>
       </table></div>
     </div>`;
   const content = `
+    <form method="get" action="/admin/gl/profit-and-loss" style="display:flex;gap:8px;align-items:end;margin-bottom:16px">
+      <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:3px">From</label><input type="date" name="from" value="${from}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px"></div>
+      <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:3px">To</label><input type="date" name="to" value="${to}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px"></div>
+      <button type="submit" class="btn btn-primary btn-sm">&#x1F50D; View</button>
+      <a href="/admin/gl/profit-and-loss" class="btn btn-outline btn-sm">&#x1F504; Reset</a>
+      <div style="margin-left:auto;display:flex;gap:8px">
+        <a href="/admin/gl/trial-balance" class="btn btn-outline btn-sm">&#x1F4CA; Trial Balance</a>
+        <a href="/admin/gl/balance-sheet" class="btn btn-outline btn-sm">&#x1F4C8; Balance Sheet</a>
+      </div>
+    </form>
     <div class="stats-grid">
-      <div class="stat-card"><div class="stat-icon">&#x1F4B5;</div><div class="stat-value" style="color:#16a34a">&#x20B1;${result.totalIncome.toFixed(2)}</div><div class="stat-label">Total Income</div></div>
+      <div class="stat-card" style="border-left:3px solid #16a34a"><div class="stat-icon">&#x1F4B5;</div><div class="stat-value" style="color:#16a34a">&#x20B1;${result.totalIncome.toFixed(2)}</div><div class="stat-label">Total Income</div></div>
       <div class="stat-card"><div class="stat-icon">&#x1F4B8;</div><div class="stat-value" style="color:#dc2626">&#x20B1;${result.totalExpense.toFixed(2)}</div><div class="stat-label">Total Expenses</div></div>
-      <div class="stat-card"><div class="stat-icon">&#x1F3C6;</div><div class="stat-value" style="color:${result.netProfit >= 0 ? '#16a34a' : '#dc2626'}">&#x20B1;${result.netProfit.toFixed(2)}</div><div class="stat-label">Net ${result.netProfit >= 0 ? 'Profit' : 'Loss'}</div></div>
+      <div class="stat-card"><div class="stat-icon">&#x1F3C6;</div><div class="stat-value" style="color:${result.netProfit >= 0 ? '#16a34a' : '#dc2626'}">${result.netProfit >= 0 ? '+' : ''}&#x20B1;${result.netProfit.toFixed(2)}</div><div class="stat-label">Net ${result.netProfit >= 0 ? 'Profit' : 'Loss'}</div></div>
     </div>
-    ${section('Income', result.income, result.totalIncome, '#16a34a')}
-    ${section('Expenses', result.expense, result.totalExpense, '#dc2626')}
-    <div style="margin-top:12px;display:flex;gap:8px">
-      <a href="/admin/gl/trial-balance" class="btn btn-outline">&#x1F4CA; Trial Balance</a>
-      <a href="/admin/gl/balance-sheet" class="btn btn-outline">&#x1F4C8; Balance Sheet</a>
-    </div>`;
+    ${result.income.length ? section('Income', result.income, result.totalIncome, '#16a34a') : ''}
+    ${result.expense.length ? section('Expenses', result.expense, result.totalExpense, '#dc2626') : ''}`;
   res.type('html').send(layout('Profit & Loss', 'gl', content, { subtitle: 'Income - Expenses = Net Profit/Loss' }));
 }));
 
@@ -3246,38 +3276,47 @@ router.get('/gl/ledger', requireSession, asyncHandler(async (req, res) => {
   if (selected) {
     entries = await getAccountLedger(selected);
     const a = accounts.find(x => x.code === selected);
-    accName = a ? a.name + ' (' + a.code + ')' : selected;
+    accName = a ? a.name + ' (' + a.code + ') [' + a.type + ']' : selected;
   }
   const content = `
-  <div class="card">
-    <div class="card-header"><h3>&#x1F4CB; General Ledger</h3></div>
-    <div class="card-body">
-      <form method="get" action="/admin/gl/ledger" style="display:flex;gap:8px;margin-bottom:16px">
-        <select name="account" style="flex:1;padding:8px 12px;border:2px solid var(--border);border-radius:8px;font-size:14px">
-          <option value="">-- Select account --</option>
+  <div style="display:flex;gap:8px;align-items:end;margin-bottom:16px">
+    <form method="get" action="/admin/gl/ledger" style="display:flex;gap:8px;flex:1">
+      <div style="flex:1"><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:3px">Account</label>
+        <select name="account" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+          <option value="">-- Select GL account --</option>
           ${accounts.map(a => `<option value="${a.code}" ${a.code === selected ? 'selected' : ''}>${a.code} — ${a.name} [${a.type}]</option>`).join('')}
         </select>
-        <button type="submit" class="btn btn-secondary">View</button>
-      </form>
-      ${selected ? `
-      <h4 style="margin-bottom:8px">${accName}</h4>
-      <table>
-        <tr><th>Date</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th></tr>
-        ${entries.length === 0 ? '<tr><td colspan="4" style="text-align:center;color:var(--text-muted)">No entries</td></tr>' :
-          entries.map(e => `<tr>
-            <td class="mono" style="font-size:11px">${(e.created_at||'').slice(0,16).replace('T',' ')}</td>
-            <td>${e.description || '-'}</td>
-            <td class="num mono">${Number(e.debit) ? '&#x20B1;' + Number(e.debit).toFixed(2) : '-'}</td>
-            <td class="num mono">${Number(e.credit) ? '&#x20B1;' + Number(e.credit).toFixed(2) : '-'}</td>
-          </tr>`).join('')}
-      </table>` : ''}
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm" style="margin-top:18px">&#x1F50D; View</button>
+    </form>
+    <div style="display:flex;gap:8px">
+      <a href="/admin/gl/trial-balance" class="btn btn-outline btn-sm">&#x1F4CA; Trial Balance</a>
+      <a href="/admin/gl/balance-sheet" class="btn btn-outline btn-sm">&#x1F4C8; Balance Sheet</a>
+      <a href="/admin/gl/profit-and-loss" class="btn btn-outline btn-sm">&#x1F4C9; P&amp;L</a>
     </div>
   </div>
-  <div style="margin-top:12px;display:flex;gap:8px">
-    <a href="/admin/gl/trial-balance" class="btn btn-outline">&#x1F4CA; Trial Balance</a>
-    <a href="/admin/gl/balance-sheet" class="btn btn-outline">&#x1F4C8; Balance Sheet</a>
-    <a href="/admin/gl/profit-and-loss" class="btn btn-outline">&#x1F4C9; P&L</a>
-  </div>`;
+  ${selected ? `
+  <div class="card">
+    <div class="card-header"><h3>&#x1F4CB; ${accName}</h3><span class="count">${entries.length} entries</span></div>
+    <div class="card-body" style="padding:0">
+    <table>
+      <tr><th>Date</th><th>Transaction</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Running Balance</th></tr>
+      ${entries.length === 0 ? '<tr><td colspan="6" style="text-align:center;padding:16px;color:var(--text-muted)">No entries for this account</td></tr>' :
+        entries.map((e, i) => {
+          const d = Number(e.debit), c = Number(e.credit);
+          const isAssetExpense = ['asset','expense'].includes(accounts.find(x => x.code === selected)?.type);
+          const balance = d - c;
+          return `<tr>
+            <td class="mono" style="font-size:11px">${(e.created_at||'').slice(0,16).replace('T',' ')}</td>
+            <td class="mono" style="font-size:10px;color:var(--text-muted)">${(e.transaction_id||'').slice(0,8)}</td>
+            <td>${e.description || '-'}</td>
+            <td class="num mono" style="color:#16a34a">${d ? '&#x20B1;' + d.toFixed(2) : '-'}</td>
+            <td class="num mono" style="color:#dc2626">${c ? '&#x20B1;' + c.toFixed(2) : '-'}</td>
+            <td class="num mono" style="font-weight:600;color:${balance >= 0 ? '#16a34a' : '#dc2626'}">${balance >= 0 ? '' : '-'}&#x20B1;${Math.abs(balance).toFixed(2)}</td>
+          </tr>`;
+        }).join('')}
+    </table></div>
+  </div>` : '<div style="text-align:center;padding:48px;color:var(--text-muted);font-size:14px">&#x1F4CB; Select a GL account above to view its ledger entries</div>'}`;
   res.type('html').send(layout('General Ledger', 'gl', content, { subtitle: 'View individual account entries' }));
 }));
 
@@ -3288,31 +3327,37 @@ router.get('/audit-log', requireSession, asyncHandler(async (req, res) => {
   const limit = Number(req.query.limit) || 100;
   const offset = Number(req.query.offset) || 0;
   const logs = await getLogs(limit, offset);
+  const actionColors = {
+    TELLER_DEPOSIT:'badge-green',TELLER_WITHDRAWAL:'badge-red',
+    LOAN_APPROVE:'badge-green',LOAN_REJECT:'badge-red',LOAN_DISBURSE:'badge-amber',
+    ACCOUNT_CREATE:'badge-blue',ADMIN_DEPOSIT:'badge-green',ADMIN_WITHDRAWAL:'badge-red',
+    TELLER_LOAN_PAYMENT:'badge-purple'
+  };
   const content = `
   <div class="card">
-    <div class="card-header"><h3>&#x1F4DD; Audit Log</h3></div>
+    <div class="card-header"><h3>&#x1F4DD; Audit Log</h3><span class="count">${logs.length} entries</span></div>
     <div class="card-body" style="padding:0">
     <table>
       <tr><th>Date</th><th>Admin</th><th>Action</th><th>Entity</th><th>ID</th><th>IP</th></tr>
-      ${logs.length === 0 ? '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">No audit entries yet</td></tr>' :
+      ${logs.length === 0 ? '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)">No audit entries yet</td></tr>' :
         logs.map(l => {
-          const badge = ({LOAN_APPROVE:'badge-green',LOAN_REJECT:'badge-red',TELLER_DEPOSIT:'badge-blue',TELLER_WITHDRAW:'badge-orange',ACCOUNT_CREATE:'badge-green'})[l.action] || 'badge-blue';
+          const badge = actionColors[l.action] || 'badge-blue';
           return `<tr>
             <td class="mono" style="font-size:11px">${(l.created_at||'').slice(0,19).replace('T',' ')}</td>
             <td>${l.admin_name || l.admin_id || '-'}</td>
-            <td><span class="badge ${badge}">${l.action}</span></td>
+            <td><span class="badge ${badge}">${l.action.replace(/_/g,' ')}</span></td>
             <td>${l.entity_type || '-'}</td>
-            <td class="mono" style="font-size:11px">${l.entity_id ? l.entity_id.slice(0,8) : '-'}</td>
-            <td class="mono" style="font-size:11px">${l.ip_address || '-'}</td>
+            <td class="mono" style="font-size:10px;color:var(--text-muted)">${l.entity_id ? l.entity_id.slice(0,8) : '-'}</td>
+            <td class="mono" style="font-size:10px;color:var(--text-muted)">${l.ip_address || '-'}</td>
           </tr>`;
         }).join('')}
     </table></div>
   </div>
-  <div style="margin-top:12px;display:flex;gap:8px;justify-content:center">
-    ${offset > 0 ? `<a href="/admin/audit-log?limit=${limit}&offset=${Math.max(0, offset - limit)}" class="btn btn-outline">&#x25C0; Previous</a>` : ''}
-    ${logs.length === limit ? `<a href="/admin/audit-log?limit=${limit}&offset=${offset + limit}" class="btn btn-outline">Next &#x25B6;</a>` : ''}
+  <div style="display:flex;gap:8px;justify-content:center">
+    ${offset > 0 ? `<a href="/admin/audit-log?limit=${limit}&offset=${Math.max(0, offset - limit)}" class="btn btn-outline btn-sm">&#x25C0; Previous ${limit}</a>` : ''}
+    ${logs.length === limit ? `<a href="/admin/audit-log?limit=${limit}&offset=${offset + limit}" class="btn btn-outline btn-sm">Next ${limit} &#x25B6;</a>` : ''}
   </div>`;
-  res.type('html').send(layout('Audit Log', 'audit', content, { subtitle: 'Track all admin actions' }));
+  res.type('html').send(layout('Audit Log', 'audit-log', content, { subtitle: 'Track all admin actions with timestamps' }));
 }));
 
 // ── Admin Users ──
@@ -3324,42 +3369,50 @@ router.get('/users', requireSession, asyncHandler(async (req, res) => {
     : q.updated ? 'success:Admin user updated.'
     : q.error ? `error:${q.error}`
     : '';
+  const roleColors = { super_admin:'badge-red', manager:'badge-blue', teller:'badge-green', auditor:'badge-orange' };
   const content = `
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-icon">&#x1F465;</div><div class="stat-value">${users.length}</div><div class="stat-label">Total Admins</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F451;</div><div class="stat-value">${users.filter(u => u.role === 'super_admin').length}</div><div class="stat-label">Super Admins</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4BC;</div><div class="stat-value">${users.filter(u => u.role === 'manager').length}</div><div class="stat-label">Managers</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F3E6;</div><div class="stat-value">${users.filter(u => u.role === 'teller').length}</div><div class="stat-label">Tellers</div></div>
+  </div>
   <div class="card">
-    <div class="card-header"><h3>&#x1F465; Admin Users</h3></div>
+    <div class="card-header"><h3>&#x1F465; Admin Users</h3><span class="count">${users.filter(u => u.is_active).length} active</span></div>
     <div class="card-body" style="padding:0">
     <table>
-      <tr><th>Username</th><th>Display Name</th><th>Role</th><th>Active</th><th>Created</th></tr>
+      <tr><th>Username</th><th>Display Name</th><th>Role</th><th>Status</th><th>Created</th><th></th></tr>
       ${users.map(u => `
       <tr>
-        <td class="mono">${u.username}</td>
+        <td class="mono"><b>${u.username}</b></td>
         <td>${u.display_name || '-'}</td>
-        <td><span class="badge ${u.role === 'super_admin' ? 'badge-red' : u.role === 'manager' ? 'badge-blue' : u.role === 'teller' ? 'badge-green' : 'badge-orange'}">${u.role}</span></td>
-        <td>${u.is_active ? '<span style="color:#16a34a">&#x2705; Active</span>' : '<span style="color:#dc2626">&#x274C; Inactive</span>'}</td>
-        <td class="mono" style="font-size:11px">${(u.created_at||'').slice(0,10)}</td>
+        <td><span class="badge ${roleColors[u.role] || 'badge-gray'}">${u.role.replace(/_/g,' ')}</span></td>
+        <td>${u.is_active ? '<span style="color:#16a34a;font-weight:600">&#x2705; Active</span>' : '<span style="color:#dc2626;font-weight:600">&#x274C; Inactive</span>'}</td>
+        <td class="mono" style="font-size:11px;color:var(--text-muted)">${(u.created_at||'').slice(0,10)}</td>
+        <td><a href="/admin/users/deactivate/${u.admin_id}" class="btn ${u.is_active ? 'btn-danger' : 'btn-secondary'} btn-xs" onclick="return confirm('${u.is_active ? 'Deactivate' : 'Activate'} ${u.username}?')">${u.is_active ? 'Deactivate' : 'Activate'}</a></td>
       </tr>`).join('')}
     </table></div>
   </div>
   <div class="card">
-    <div class="card-header"><h3>&#x2795; Create Admin User</h3></div>
-    <div class="card-body">
-    <form method="post" action="/admin/users/create" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="field"><label>Username</label><input type="text" name="username" required></div>
-      <div class="field"><label>Display Name</label><input type="text" name="display_name"></div>
-      <div class="field"><label>Password</label><input type="text" name="password" required minlength="4"></div>
+    <div class="card-header"><h3>&#x2795; Create New Admin</h3></div>
+    <div class="card-body-padded">
+    <form method="post" action="/admin/users/create" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:500px">
+      <div class="field"><label>Username</label><input type="text" name="username" placeholder="e.g. teller1" required></div>
+      <div class="field"><label>Display Name</label><input type="text" name="display_name" placeholder="e.g. Juan Dela Cruz"></div>
+      <div class="field"><label>Password</label><input type="text" name="password" placeholder="Min 4 characters" required minlength="4"></div>
       <div class="field"><label>Role</label>
         <select name="role">
-          <option value="teller">Teller</option>
-          <option value="manager">Manager</option>
-          <option value="auditor">Auditor</option>
-          <option value="super_admin">Super Admin</option>
+          <option value="teller">Teller (counter ops)</option>
+          <option value="manager">Manager (approvals)</option>
+          <option value="auditor">Auditor (read-only)</option>
+          <option value="super_admin">Super Admin (full access)</option>
         </select>
       </div>
-      <div style="grid-column:span 2"><button type="submit" class="btn btn-secondary">Create Admin</button></div>
+      <div style="grid-column:span 2"><button type="submit" class="btn btn-secondary">&#x2795; Create Admin User</button></div>
     </form>
     </div>
   </div>`;
-  res.type('html').send(layout('Admin Users', 'users', content, { subtitle: 'Manage admin accounts and roles' }));
+  res.type('html').send(layout('Admin Users', 'users', content, { subtitle: 'Manage admin accounts and roles', toast }));
 }));
 
 router.post('/users/create', requireSession, asyncHandler(async (req, res) => {

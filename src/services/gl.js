@@ -33,7 +33,9 @@ async function getTrialBalance(asOf) {
   const rows = res.rows.map(r => ({
     code: r.code, name: r.name, type: r.type,
     debit: Number(r.total_debit), credit: Number(r.total_credit),
-    balance: Number(r.total_debit) - Number(r.total_credit),
+    balance: (r.type === 'asset' || r.type === 'expense')
+      ? Number(r.total_debit) - Number(r.total_credit)
+      : Number(r.total_credit) - Number(r.total_debit),
   }));
   const totalD = rows.reduce((s, r) => s + r.debit, 0);
   const totalC = rows.reduce((s, r) => s + r.credit, 0);
@@ -71,7 +73,9 @@ async function getProfitAndLoss(fromDate, toDate) {
   const expense = [];
   let totalIncome = 0, totalExpense = 0;
   for (const r of res.rows) {
-    const balance = Number(r.total_credit) - Number(r.total_debit);
+    const balance = r.type === 'income'
+      ? Number(r.total_credit) - Number(r.total_debit)
+      : Number(r.total_debit) - Number(r.total_credit);
     if (r.type === 'income') { income.push({ code: r.code, name: r.name, amount: balance }); totalIncome += balance; }
     else { expense.push({ code: r.code, name: r.name, amount: balance }); totalExpense += balance; }
   }

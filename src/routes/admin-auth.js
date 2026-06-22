@@ -108,11 +108,11 @@ input:focus { border-color:#2E7D32; }
 <div class="bg-pattern"></div>
 <div class="card">
   <h1>&#x1F511; Reset Password</h1>
-  <p class="sub">Enter your email to receive a reset OTP</p>
+  <p class="sub">Enter your username to receive a reset OTP at the registered email</p>
   ${msg ? (msg.startsWith('err:') ? `<div class="error">${msg.slice(4)}</div>` : `<div class="msg">${msg}</div>`) : ''}
   <form method="post" action="/admin/login/forgot">
-    <label for="email">Email</label>
-    <input type="email" id="email" name="email" placeholder="admin@labcoop.app" required>
+    <label for="email">Username</label>
+    <input type="text" id="email" name="email" placeholder="admin" required>
     <button type="submit" class="btn">Send OTP</button>
   </form>
   <div class="alt-link"><a href="/admin/login">Back to Sign In</a></div>

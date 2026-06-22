@@ -100,10 +100,11 @@ html { font-size:14px; }
 body { font-family:var(--font); background:var(--bg); color:var(--text); display:flex; min-height:100vh; }
 
 .sidebar { width:240px; background:var(--sidebar); display:flex; flex-direction:column; position:fixed; top:0; left:0; bottom:0; z-index:50; transition:width var(--transition); overflow:hidden; }
-.sidebar-brand { padding:18px 16px 14px; border-bottom:1px solid rgba(255,255,255,0.05); flex-shrink:0; }
-.sidebar-brand h1 { font-size:16px; color:#fff; font-weight:700; letter-spacing:-0.3px; display:flex; align-items:center; gap:8px; }
-.sidebar-brand h1 .brand-icon { width:28px; height:28px; background:linear-gradient(135deg,#2E7D32,#1B5E20); border-radius:7px; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0; }
-.sidebar-brand span { font-size:10px; color:var(--sidebar-text); display:block; margin-top:1px; padding-left:36px; text-transform:uppercase; letter-spacing:0.8px; }
+.sidebar-brand { padding:16px 14px; border-bottom:1px solid rgba(255,255,255,0.05); flex-shrink:0; }
+.sidebar-brand .brand-row { display:flex; align-items:center; gap:10px; }
+.sidebar-brand .brand-icon { width:32px; height:32px; background:linear-gradient(135deg,#2E7D32,#1B5E20); border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:17px; flex-shrink:0; line-height:1; }
+.sidebar-brand .brand-name { font-size:15px; color:#fff; font-weight:700; letter-spacing:-0.3px; display:block; line-height:1.2; }
+.sidebar-brand .brand-sub { font-size:9.5px; color:var(--sidebar-text); text-transform:uppercase; letter-spacing:0.6px; display:block; }
 .sidebar-nav { flex:1; padding:8px 8px; overflow-y:auto; overflow-x:hidden; }
 .sidebar-nav::-webkit-scrollbar { width:3px; }
 .sidebar-nav::-webkit-scrollbar-track { background:transparent; }
@@ -227,9 +228,9 @@ form.inline { display:inline; }
 
 @media(max-width:768px) {
   .sidebar { width:60px; }
-  .sidebar-brand span { display:none; }
-  .sidebar-brand h1 .brand-icon { margin:0; }
-  .sidebar-brand h1 span:not(.brand-icon) { display:none; }
+  .sidebar-brand .brand-sub { display:none; }
+  .sidebar-brand .brand-name { display:none; }
+  .sidebar-brand .brand-icon { margin:0 auto; }
   .sidebar-nav a span, .sidebar-footer a span { display:none; }
   .menu-parent span:not(.icon) { display:none; }
   .menu-parent .chevron { display:none; }
@@ -246,8 +247,13 @@ form.inline { display:inline; }
 
 <div class="sidebar">
   <div class="sidebar-brand">
-    <h1><span class="brand-icon">&#x1F3E6;</span> <span>LabCoop</span></h1>
-    <span>Admin Dashboard</span>
+    <div class="brand-row">
+      <span class="brand-icon">&#x1F3E6;</span>
+      <div>
+        <span class="brand-name">LabCoop</span>
+        <span class="brand-sub">Admin Dashboard</span>
+      </div>
+    </div>
   </div>
   <div class="sidebar-nav">
     ${sidebarNav}

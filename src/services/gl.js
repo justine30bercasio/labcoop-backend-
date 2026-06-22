@@ -19,14 +19,15 @@ async function postDoubleEntry(transactionId, entries) {
 }
 
 async function getTrialBalance(asOf) {
-  const where = asOf ? 'WHERE created_at <= $1' : '';
-  const params = asOf ? [asOf] : [];
+  const params = [];
+  const onClause = asOf ? 'AND e.created_at <= $' + (params.length + 1) : '';
+  if (asOf) params.push(asOf);
   const res = await store.query(
     `SELECT g.code, g.name, g.type,
        COALESCE(SUM(e.debit),0) as total_debit,
        COALESCE(SUM(e.credit),0) as total_credit
      FROM gl_accounts g
-     LEFT JOIN gl_entries e ON g.code = e.account_code ${where}
+     LEFT JOIN gl_entries e ON g.code = e.account_code ${onClause}
      GROUP BY g.code, g.name, g.type
      ORDER BY g.code`, params
   );
@@ -54,18 +55,17 @@ async function getBalanceSheet(asOf) {
 }
 
 async function getProfitAndLoss(fromDate, toDate) {
-  const where = [];
+  const where = ["g.type IN ('income','expense')"];
   const params = [];
   if (fromDate) { where.push('e.created_at >= $' + (params.length + 1)); params.push(fromDate); }
   if (toDate) { where.push('e.created_at <= $' + (params.length + 1)); params.push(toDate); }
-  const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
   const res = await store.query(
     `SELECT g.code, g.name, g.type,
        COALESCE(SUM(e.debit),0) as total_debit,
        COALESCE(SUM(e.credit),0) as total_credit
      FROM gl_accounts g
-     JOIN gl_entries e ON g.code = e.account_code ${whereClause}
-     WHERE g.type IN ('income','expense')
+     JOIN gl_entries e ON g.code = e.account_code
+     WHERE ${where.join(' AND ')}
      GROUP BY g.code, g.name, g.type
      ORDER BY g.code`, params
   );

@@ -388,6 +388,8 @@ app.use('/api/shop', shopRouter);
 app.use('/api/quiz', quizRouter);
 app.use('/api/games', gamesRouter);
 
+app.get('/test-ping', (req, res) => res.json({ping:'pong'}));
+
 // ── Clear all user data (keep reference tables) ──
 app.post('/reset-database', async (req, res) => {
   const tables = ['loan_payments','transactions','badges','goal_jars','loans','withdrawal_requests','standing_orders','savings_applications','coop_contributions','coop_goals','accounts'];

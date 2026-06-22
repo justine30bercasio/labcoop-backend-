@@ -394,7 +394,7 @@ app.post('/reset-database', async (req, res) => {
   try {
     await store.query('BEGIN');
     for (const t of tables) {
-      await store.query(`DELETE FROM ${t}`);
+      await store.query(`DELETE FROM "${t}"`);
     }
     await store.query('COMMIT');
     res.json({ success: true, message: 'Database reset successful' });
@@ -403,6 +403,8 @@ app.post('/reset-database', async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
+app.get('/test', (req, res) => res.json({ok:true}));
 
 app.use('/api', authMiddleware, loansRouter);
 app.use('/api', authMiddleware, bankingFeaturesRouter);

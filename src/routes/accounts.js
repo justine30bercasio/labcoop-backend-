@@ -13,7 +13,12 @@ router.get('/:accountId',
 
     const account = await store.getAccount(req.params.accountId);
     if (!account) return res.status(404).json({ message: 'Account not found' });
-    res.json(account);
+    res.json({
+      ...account,
+      actual_balance: Number(account.actual_balance),
+      unallocated_balance: Number(account.unallocated_balance),
+      current_xp: Number(account.current_xp),
+    });
   })
 );
 

@@ -56,9 +56,9 @@ router.post('/login', asyncHandler(async (req, res) => {
     account: {
       account_id: account.account_id,
       child_name: account.child_name,
-      actual_balance: account.actual_balance,
-      unallocated_balance: account.unallocated_balance,
-      current_xp: account.current_xp,
+      actual_balance: Number(account.actual_balance),
+      unallocated_balance: Number(account.unallocated_balance),
+      current_xp: Number(account.current_xp),
     },
   });
 }));

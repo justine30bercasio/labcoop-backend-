@@ -37,6 +37,16 @@ class PgStore {
         created_at TEXT,
         updated_at TEXT
       );
+      ALTER TABLE accounts ADD COLUMN IF NOT EXISTS last_name VARCHAR(100) DEFAULT '';
+      ALTER TABLE accounts ADD COLUMN IF NOT EXISTS first_name VARCHAR(100) DEFAULT '';
+      ALTER TABLE accounts ADD COLUMN IF NOT EXISTS middle_name VARCHAR(100) DEFAULT '';
+      ALTER TABLE accounts ADD COLUMN IF NOT EXISTS age INTEGER DEFAULT 0;
+      ALTER TABLE accounts ADD COLUMN IF NOT EXISTS birthday VARCHAR(10) DEFAULT '';
+      ALTER TABLE accounts ADD COLUMN IF NOT EXISTS gender VARCHAR(10) DEFAULT '';
+      ALTER TABLE accounts ADD COLUMN IF NOT EXISTS savings_schedule VARCHAR(50) DEFAULT '';
+      ALTER TABLE accounts ADD COLUMN IF NOT EXISTS photo_2x2_url TEXT DEFAULT '';
+      ALTER TABLE accounts ADD COLUMN IF NOT EXISTS birth_cert_url TEXT DEFAULT '';
+      ALTER TABLE accounts ADD COLUMN IF NOT EXISTS id_photo_url TEXT DEFAULT '';
       CREATE TABLE IF NOT EXISTS goal_jars (
         goal_id TEXT PRIMARY KEY,
         account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,

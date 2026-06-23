@@ -1679,6 +1679,8 @@ router.get('/loans', requireSession, asyncHandler(async (req, res) => {
   const pendingCount = loans.filter(l => l.status === 'pending').length;
   const activeCount = loans.filter(l => l.status === 'active').length;
 
+  const loanProducts = await store.getLoanProducts();
+
   const toast = q.approved ? 'success:Loan approved.'
     : q.disbursed ? 'success:Loan disbursed (account credited).'
     : q.rejected ? 'success:Loan rejected.'
@@ -1755,11 +1757,9 @@ router.get('/loans', requireSession, asyncHandler(async (req, res) => {
   <div class="card">
     <div class="card-header"><h3>&#x1F4CB; Loan Products</h3></div>
     <div class="card-body">
-    ${(() => {
-      const products = store.getLoanProducts();
-      return products.length === 0 ? '<div style="padding:24px;text-align:center;color:var(--text-muted)">No loan products configured.</div>' : `
+    ${loanProducts.length === 0 ? '<div style="padding:24px;text-align:center;color:var(--text-muted)">No loan products configured.</div>' : `
       <table><tr><th>Name</th><th>Rate</th><th>Type</th><th>Min</th><th>Max</th><th>Min Term</th><th>Max Term</th><th>Status</th></tr>
-      ${products.map(p => `<tr>
+      ${loanProducts.map(p => `<tr>
         <td><b>${p.name}</b></td>
         <td>${(Number(p.interest_rate) * 100).toFixed(1)}%</td>
         <td><span class="badge badge-blue">${p.interest_type === 'flat' ? 'Flat' : 'Diminishing'}</span></td>
@@ -1769,8 +1769,7 @@ router.get('/loans', requireSession, asyncHandler(async (req, res) => {
         <td class="num">${p.max_term}mo</td>
         <td><span class="badge ${p.is_active ? 'badge-green' : 'badge-gray'}">${p.is_active ? 'Active' : 'Inactive'}</span></td>
       </tr>`).join('')}
-      </table>`;
-    })()}
+      </table>`}
     </div>
   </div>
   `;

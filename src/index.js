@@ -267,8 +267,14 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(morgan('dev'));
 
+let sessionStore;
+if (isPostgres) {
+  const pgSession = require('connect-pg-simple')(session);
+  sessionStore = new pgSession({ pool: store.getPool(), tableName: 'session', createTableIfMissing: true });
+}
 app.use(session({
   secret: process.env.SESSION_SECRET,
+  store: sessionStore,
   resave: false,
   saveUninitialized: false,
   cookie: { secure: process.env.NODE_ENV === 'production', httpOnly: true, maxAge: 86400000, sameSite: 'strict' },

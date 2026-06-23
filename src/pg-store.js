@@ -4,8 +4,8 @@ const { v4: uuidv4 } = require('uuid');
 class PgStore {
   constructor(connectionString) {
     const clean = connectionString.replace(/\?sslmode=require$/, '');
-    const needsSSL = connectionString.includes('sslmode=') || connectionString.includes('ssl=');
-    const ssl = needsSSL ? { rejectUnauthorized: false } : (process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false);
+    const isLocal = connectionString.includes('@localhost') || connectionString.includes('@127.0.0.1') || connectionString.includes('@0.0.0.0');
+    const ssl = isLocal ? false : { rejectUnauthorized: false };
     this.pool = new Pool({ connectionString: clean, max: 10, ssl });
     this._initialized = false;
   }
@@ -1091,6 +1091,10 @@ class PgStore {
 
   async close() {
     await this.pool.end();
+  }
+
+  getPool() {
+    return this.pool;
   }
 }
 

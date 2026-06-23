@@ -207,10 +207,13 @@ router.post('/login', async (req, res) => {
   if (!match) {
     return res.type('html').send(loginPage('Invalid username or password.'));
   }
-  req.session.adminId = adminUser.admin_id;
-  req.session.adminName = adminUser.display_name || adminUser.username;
-  req.session.adminRole = adminUser.role;
-  res.redirect('/admin');
+  req.session.regenerate((err) => {
+    if (err) return res.type('html').send(loginPage('Session error. Please try again.'));
+    req.session.adminId = adminUser.admin_id;
+    req.session.adminName = adminUser.display_name || adminUser.username;
+    req.session.adminRole = adminUser.role;
+    res.redirect('/admin');
+  });
 });
 
 router.get('/login/forgot', (req, res) => {
@@ -230,7 +233,7 @@ router.post('/login/forgot', async (req, res) => {
   res.type('html').send(forgotPage(`OTP sent to ${email}. Check your inbox.`));
 });
 
-router.post('/login/verify-otp', (req, res) => {
+router.post('/login/verify-otp', async (req, res) => {
   const { email, otp } = req.body;
   if (!email || !otp) return res.type('html').send(loginPage('Missing email or OTP.'));
   const stored = otpStore.get(email);
@@ -243,8 +246,19 @@ router.post('/login/verify-otp', (req, res) => {
     return res.type('html').send(loginPage('Invalid OTP.'));
   }
   otpStore.delete(email);
-  req.session.adminId = email;
-  res.redirect('/admin');
+  // Look up the actual admin user from the database
+  const result = await store.query('SELECT admin_id, display_name, role FROM admin_users WHERE username = $1', [email]);
+  if (result.rows.length === 0) {
+    return res.type('html').send(loginPage('No admin account found for this email.'));
+  }
+  const adminUser = result.rows[0];
+  req.session.regenerate((err) => {
+    if (err) return res.type('html').send(loginPage('Session error. Please try again.'));
+    req.session.adminId = adminUser.admin_id;
+    req.session.adminName = adminUser.display_name || email;
+    req.session.adminRole = adminUser.role;
+    res.redirect('/admin');
+  });
 });
 
 router.get('/logout', (req, res) => {

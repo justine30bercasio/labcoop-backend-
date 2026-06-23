@@ -219,7 +219,7 @@ const adminAuthRouter = require('./routes/admin-auth');
 const loansRouter = require('./routes/loans');
 const bankingFeaturesRouter = require('./routes/banking-features');
 const { startScheduler } = require('./services/scheduler');
-const { authMiddleware } = require('./middleware/auth');
+const { authMiddleware, requireOwnership } = require('./middleware/auth');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET || JWT_SECRET === 'change-this-to-a-secure-random-string-in-production') {
@@ -240,7 +240,20 @@ function startServer() {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", 'code.jquery.com', 'cdn.datatables.net'],
+      styleSrc: ["'self'", "'unsafe-inline'", 'cdn.datatables.net'],
+      imgSrc: ["'self'", "data:"],
+      fontSrc: ["'self'"],
+      connectSrc: ["'self'"],
+      formAction: ["'self'"],
+    },
+  },
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
 app.set('trust proxy', 1);
 app.use(cors({
   origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : ['http://localhost:3000', 'https://labcoop-backend.onrender.com'],
@@ -254,7 +267,7 @@ app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: process.env.NODE_ENV === 'production', httpOnly: true, maxAge: 86400000, sameSite: 'lax' },
+  cookie: { secure: process.env.NODE_ENV === 'production', httpOnly: true, maxAge: 86400000, sameSite: 'strict' },
 }));
 
 const globalLimiter = rateLimit({
@@ -342,92 +355,60 @@ app.get('/', (req, res) => {
 
 app.get('/api/health', async (req, res) => {
   let dbOk = false;
-  let accountCount = 0;
-  let sampleAccount = null;
-  let loginTest = null;
-  const dbUrl = process.env.NODE_ENV === 'production' ? '(redacted)' : (process.env.DATABASE_URL || '(not set)').slice(0, 50);
   try {
     if (isPostgres) {
-      const result = await store.query('SELECT COUNT(*) as c FROM accounts');
-      accountCount = parseInt(result.rows[0]?.c || '0', 10);
+      await store.query('SELECT 1');
     } else {
       const db = require('./db').getDb();
-      accountCount = db.prepare('SELECT COUNT(*) as c FROM accounts').get().c;
+      db.prepare('SELECT 1').get();
     }
     dbOk = true;
-    const account = await store.getAccount('00000000-0000-0000-0000-000000000001');
-    const member = await store.getAccountByName('Juan');
-    sampleAccount = account ? { account_id: account.account_id, child_name: account.child_name, member_id: account.member_id, password_changed: account.password_changed } : null;
-    if (member) {
-      loginTest = { found: true, childName: member.child_name, passwordHashLength: member.password ? member.password.length : 0, bcryptResult: bcrypt.compareSync('0000', member.password) };
-    } else {
-      loginTest = { found: false };
-    }
-  } catch (e) { loginTest = { error: e.message }; }
-  res.json({ status: 'ok', dbConnected: dbOk, dbUrl, accountCount, sampleAccount, loginTest, timestamp: new Date().toISOString() });
+  } catch (_) {}
+  res.json({ status: 'ok', dbConnected: dbOk, timestamp: new Date().toISOString() });
 });
-
-// Debug login endpoint (development only)
-if (process.env.NODE_ENV !== 'production') {
-app.post('/api/debug-login', async (req, res) => {
-  try {
-    const bcrypt = require('bcryptjs');
-    const jwt = require('jsonwebtoken');
-    const { memberId, password } = req.body;
-    const padded = (memberId || '').trim().padStart(6, '0');
-    const account = await store.getAccountByName(padded);
-    if (!account) {
-      const byMember = await store.query('SELECT * FROM accounts WHERE member_id = $1', [padded]);
-      if (byMember.rows.length === 0) return res.status(404).json({ message: 'Not found' });
-      account.account_id = byMember.rows[0].account_id;
-      account.child_name = byMember.rows[0].child_name;
-      account.password = byMember.rows[0].password;
-      account.password_changed = byMember.rows[0].password_changed;
-    }
-    const valid = bcrypt.compareSync(password || '', account.password);
-    if (!valid) return res.status(401).json({ message: 'Wrong password' });
-    const token = jwt.sign(
-      { accountId: account.account_id, childName: account.child_name },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-    res.json({ token, passwordChanged: account.password_changed === 1, account: { account_id: account.account_id, child_name: account.child_name } });
-  } catch (e) {
-    res.status(500).json({ message: 'Error' });
-  }
-});
-}
 
 app.use('/api/auth', loginLimiter, authRouter);
 
-app.use('/api/accounts', authMiddleware, accountsRouter);
-app.get('/api/accounts/:accountId/goals', (req, res, next) => {
+app.use('/api/accounts', authMiddleware, requireOwnership, accountsRouter);
+app.get('/api/accounts/:accountId/goals', authMiddleware, requireOwnership, (req, res, next) => {
   req.url = `/account/${req.params.accountId}`;
   next();
 }, goalsRouter);
-app.use('/api/goals', authMiddleware, goalsRouter);
-app.get('/api/accounts/:accountId/badges', authMiddleware, (req, res, next) => {
+app.use('/api/goals', authMiddleware, requireOwnership, goalsRouter);
+app.get('/api/accounts/:accountId/badges', authMiddleware, requireOwnership, (req, res, next) => {
   req.url = `/account/${req.params.accountId}`;
   next();
 }, badgesRouter);
-app.use('/api/badges', authMiddleware, badgesRouter);
-app.get('/api/accounts/:accountId/transactions', authMiddleware, (req, res, next) => {
+app.use('/api/badges', authMiddleware, requireOwnership, badgesRouter);
+app.get('/api/accounts/:accountId/transactions', authMiddleware, requireOwnership, (req, res, next) => {
   req.url = `/account/${req.params.accountId}`;
   next();
 }, transactionsRouter);
-app.get('/api/accounts/:accountId/statement', authMiddleware, (req, res, next) => {
+app.get('/api/accounts/:accountId/statement', authMiddleware, requireOwnership, (req, res, next) => {
   req.url = `/statement/${req.params.accountId}`;
   next();
 }, transactionsRouter);
-app.use('/api/transactions', authMiddleware, transactionsRouter);
+app.use('/api/transactions', authMiddleware, requireOwnership, transactionsRouter);
 app.use('/api/excel', authMiddleware, excelRouter);
-app.use('/api/coop', authMiddleware, coopRouter);
+app.use('/api/coop', authMiddleware, requireOwnership, coopRouter);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/shop', authMiddleware, shopRouter);
 app.use('/api/quiz', authMiddleware, quizRouter);
 app.use('/api/games', authMiddleware, gamesRouter);
 
-app.get('/test-ping', (req, res) => res.json({ping:'pong'}));
+app.get('/api/health', async (req, res) => {
+  let dbOk = false;
+  try {
+    if (isPostgres) {
+      await store.query('SELECT 1');
+    } else {
+      const db = require('./db').getDb();
+      db.prepare('SELECT 1').get();
+    }
+    dbOk = true;
+  } catch (_) {}
+  res.json({ status: 'ok', dbConnected: dbOk, timestamp: new Date().toISOString() });
+});
 
 // ── Clear all user data (keep reference tables) — requires admin session ──
 app.post('/reset-database', async (req, res) => {
@@ -459,10 +440,8 @@ app.post('/reset-database', async (req, res) => {
   }
 });
 
-app.get('/test', (req, res) => res.json({ok:true}));
-
-app.use('/api', authMiddleware, loansRouter);
-app.use('/api', authMiddleware, bankingFeaturesRouter);
+app.use('/api', authMiddleware, requireOwnership, loansRouter);
+app.use('/api', authMiddleware, requireOwnership, bankingFeaturesRouter);
 app.use('/admin', adminAuthRouter);
 app.use('/admin', adminRouter);
 

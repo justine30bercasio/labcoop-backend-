@@ -20,6 +20,14 @@ function authMiddleware(req, res, next) {
   }
 }
 
+function requireOwnership(req, res, next) {
+  const requestedId = req.params.accountId || req.body.account_id || req.body.accountId || req.query.account_id;
+  if (requestedId && req.accountId !== requestedId) {
+    return res.status(403).json({ message: 'Forbidden: you can only access your own account' });
+  }
+  next();
+}
+
 function adminAuthMiddleware(req, res, next) {
   if (!ADMIN_TOKEN) {
     return res.status(403).json({ message: 'Admin access not configured (set ADMIN_TOKEN)' });
@@ -35,4 +43,4 @@ function adminAuthMiddleware(req, res, next) {
   next();
 }
 
-module.exports = { authMiddleware, adminAuthMiddleware };
+module.exports = { authMiddleware, adminAuthMiddleware, requireOwnership };

@@ -172,7 +172,7 @@ body { font-family:var(--font); background:var(--bg); color:var(--text); display
 .card-header { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid var(--border); flex-wrap:wrap; gap:8px; }
 .card-header h3 { font-size:15px; font-weight:600; display:flex; align-items:center; gap:8px; }
 .card-header .count { font-size:12px; font-weight:400; color:var(--text-muted); }
-.card-body { overflow-x:auto; padding:16px; }
+.card-body { overflow-x:auto; overflow-y:visible; padding:16px; }
 .card-body-padded { padding:18px; }
 
 table { width:100%; border-collapse:collapse; }
@@ -258,6 +258,7 @@ form.inline { display:inline; }
 
 .action-menu { position:relative; display:inline-block; direction:ltr; }
 .action-menu td, .action-menu tr, .action-menu tbody, .action-menu thead, .action-menu table { overflow:visible !important; }
+.action-menu, .action-menu details, .action-menu[open] { overflow:visible !important; }
 table.dataTable td, table.dataTable th, table.dataTable tbody, table.dataTable thead, table.dataTable tr { overflow:visible !important; }
 .action-menu summary { list-style:none; cursor:pointer; padding:4px 8px; border-radius:6px; font-size:18px; line-height:1; letter-spacing:2px; color:var(--text-muted); user-select:none; transition:all var(--transition); display:flex; align-items:center; justify-content:center; width:32px; height:28px; }
 .action-menu summary::-webkit-details-marker { display:none; }

@@ -353,7 +353,7 @@ body { font-family:var(--font); background:var(--bg); color:var(--text); display
 .card { background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); border:1px solid var(--border); margin-bottom:20px; overflow:hidden; }
 .card-header { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid var(--border); }
 .card-header h3 { font-size:15px; font-weight:600; display:flex; align-items:center; gap:8px; }
-.card-body { overflow-x:auto; padding:0; }
+.card-body { overflow-x:auto; overflow-y:visible; padding:0; }
 
 table { width:100%; border-collapse:collapse; }
 th { background:#f8fafc; color:var(--text-muted); padding:10px 14px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; font-weight:600; white-space:nowrap; border-bottom:1px solid var(--border); }

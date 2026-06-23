@@ -28,6 +28,7 @@ class PgStore {
         first_name VARCHAR(100) DEFAULT '',
         middle_name VARCHAR(100) DEFAULT '',
         age INTEGER DEFAULT 0,
+        birthday VARCHAR(10) DEFAULT '',
         gender VARCHAR(10) DEFAULT '',
         savings_schedule VARCHAR(50) DEFAULT '',
         photo_2x2_url TEXT DEFAULT '',
@@ -306,6 +307,8 @@ class PgStore {
   }
 
   async createAccount(fields) {
+    const birthday = fields.birthday || '';
+    const computedAge = birthday ? _computeAge(birthday) : (fields.age || 0);
     const account = {
       account_id: uuidv4(),
       child_name: fields.child_name,
@@ -319,7 +322,8 @@ class PgStore {
       last_name: fields.last_name || '',
       first_name: fields.first_name || '',
       middle_name: fields.middle_name || '',
-      age: fields.age || 0,
+      birthday: birthday,
+      age: computedAge,
       gender: fields.gender || '',
       savings_schedule: fields.savings_schedule || '',
       photo_2x2_url: fields.photo_2x2_url || '',
@@ -329,25 +333,42 @@ class PgStore {
       updated_at: new Date().toISOString(),
     };
     await this.query(`
-      INSERT INTO accounts (account_id, child_name, member_id, password, password_changed, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, age, gender, savings_schedule, photo_2x2_url, birth_cert_url, id_photo_url, created_at, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+      INSERT INTO accounts (account_id, child_name, member_id, password, password_changed, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, age, gender, savings_schedule, photo_2x2_url, birth_cert_url, id_photo_url, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
     `, [
       account.account_id, account.child_name, account.member_id,
       account.password, account.password_changed, account.actual_balance,
       account.unallocated_balance, account.current_xp, account.parent_phone,
       account.last_name, account.first_name, account.middle_name,
-      account.age, account.gender, account.savings_schedule,
+      account.birthday, account.age, account.gender, account.savings_schedule,
       account.photo_2x2_url, account.birth_cert_url, account.id_photo_url,
       account.created_at, account.updated_at,
     ]);
     return account;
   }
 
+  _computeAge(birthday) {
+    if (!birthday) return 0;
+    const parts = birthday.split('-');
+    if (parts.length !== 3) return 0;
+    const birth = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+    return age;
+  }
+
   async updateAccount(accountId, fields) {
-    const allowed = ['actual_balance', 'unallocated_balance', 'current_xp', 'child_name', 'parent_phone', 'last_name', 'first_name', 'middle_name', 'age', 'gender', 'savings_schedule', 'photo_2x2_url', 'birth_cert_url', 'id_photo_url'];
+    const allowed = ['actual_balance', 'unallocated_balance', 'current_xp', 'child_name', 'parent_phone', 'last_name', 'first_name', 'middle_name', 'birthday', 'age', 'gender', 'savings_schedule', 'photo_2x2_url', 'birth_cert_url', 'id_photo_url'];
     const setClauses = [];
     const values = [];
     let idx = 1;
+
+    if (fields.birthday !== undefined && fields.birthday) {
+      fields.age = this._computeAge(fields.birthday);
+    }
+
     for (const key of allowed) {
       if (fields[key] !== undefined) {
         setClauses.push(`${key} = $${idx++}`);

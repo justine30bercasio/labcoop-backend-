@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     first_name TEXT DEFAULT '',
     middle_name TEXT DEFAULT '',
     age INTEGER DEFAULT 0,
+    birthday TEXT DEFAULT '',
     gender TEXT DEFAULT '',
     savings_schedule TEXT DEFAULT '',
     photo_2x2_url TEXT DEFAULT '',

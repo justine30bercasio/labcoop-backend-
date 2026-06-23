@@ -888,7 +888,7 @@ router.get('/accounts', requireSession, asyncHandler(async (req, res) => {
       <div><label for="amid">Middle Name</label><input type="text" id="amid" name="middle_name" placeholder="Optional"></div>
     </div>
     <div class="form-row">
-      <div><label for="aage">Age</label><input type="number" id="aage" name="age" min="1" max="120" value="0"></div>
+      <div><label for="abday">Birthday</label><input type="date" id="abday" name="birthday"></div>
       <div><label for="agender">Gender</label><select id="agender" name="gender"><option value="">--</option><option value="Male">Male</option><option value="Female">Female</option></select></div>
       <div><label for="asched">Savings Schedule</label><select id="asched" name="savings_schedule"><option value="">--</option><option value="Daily">Daily</option><option value="Weekly">Weekly</option><option value="Bi-Weekly">Bi-Weekly</option><option value="Monthly">Monthly</option><option value="Every Quarter">Every Quarter</option></select></div>
     </div>
@@ -917,7 +917,7 @@ router.get('/accounts', requireSession, asyncHandler(async (req, res) => {
       <div><label for="emid_${a.account_id}">Middle Name</label><input type="text" id="emid_${a.account_id}" name="middle_name" value="${a.middle_name || ''}"></div>
     </div>
     <div class="form-row">
-      <div><label for="eage_${a.account_id}">Age</label><input type="number" id="eage_${a.account_id}" name="age" min="1" max="120" value="${a.age || 0}"></div>
+      <div><label for="ebday_${a.account_id}">Birthday</label><input type="date" id="ebday_${a.account_id}" name="birthday" value="${a.birthday || ''}"></div>
       <div><label for="egender_${a.account_id}">Gender</label><select id="egender_${a.account_id}" name="gender"><option value="">--</option><option value="Male"${a.gender === 'Male' ? ' selected' : ''}>Male</option><option value="Female"${a.gender === 'Female' ? ' selected' : ''}>Female</option></select></div>
       <div><label for="esched_${a.account_id}">Savings Schedule</label><select id="esched_${a.account_id}" name="savings_schedule"><option value="">--</option><option value="Daily"${a.savings_schedule === 'Daily' ? ' selected' : ''}>Daily</option><option value="Weekly"${a.savings_schedule === 'Weekly' ? ' selected' : ''}>Weekly</option><option value="Bi-Weekly"${a.savings_schedule === 'Bi-Weekly' ? ' selected' : ''}>Bi-Weekly</option><option value="Monthly"${a.savings_schedule === 'Monthly' ? ' selected' : ''}>Monthly</option><option value="Every Quarter"${a.savings_schedule === 'Every Quarter' ? ' selected' : ''}>Every Quarter</option></select></div>
     </div>
@@ -973,7 +973,7 @@ router.get('/accounts', requireSession, asyncHandler(async (req, res) => {
 
 router.post('/accounts/create', requireSession, asyncHandler(async (req, res) => {
   try {
-    const { child_name, actual_balance, current_xp, parent_phone, last_name, first_name, middle_name, age, gender, savings_schedule } = req.body;
+    const { child_name, actual_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, gender, savings_schedule } = req.body;
     if (!child_name) return res.redirect('/admin/accounts?error=Name+required');
 
     const maxResult = await store.query("SELECT MAX(CAST(member_id AS INTEGER)) as m FROM accounts");
@@ -983,7 +983,7 @@ router.post('/accounts/create', requireSession, asyncHandler(async (req, res) =>
       last_name: (last_name || '').trim(),
       first_name: (first_name || '').trim(),
       middle_name: (middle_name || '').trim(),
-      age: parseInt(age || '0', 10),
+      birthday: birthday || '',
       gender: gender || '',
       savings_schedule: savings_schedule || '',
       actual_balance: Number(actual_balance) || 0,
@@ -1001,7 +1001,7 @@ router.post('/accounts/create', requireSession, asyncHandler(async (req, res) =>
 
 router.post('/accounts/update/:id', requireSession, asyncHandler(async (req, res) => {
   try {
-    const { child_name, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, age, gender, savings_schedule } = req.body;
+    const { child_name, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, gender, savings_schedule } = req.body;
     store.updateAccount(req.params.id, {
       child_name: child_name?.trim(),
       actual_balance: Number(actual_balance),
@@ -1011,7 +1011,7 @@ router.post('/accounts/update/:id', requireSession, asyncHandler(async (req, res
       last_name: (last_name || '').trim(),
       first_name: (first_name || '').trim(),
       middle_name: (middle_name || '').trim(),
-      age: parseInt(age || '0', 10),
+      birthday: birthday || '',
       gender: gender || '',
       savings_schedule: savings_schedule || '',
     });

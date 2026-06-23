@@ -57,7 +57,8 @@ function createAccount(fields) {
     last_name: fields.last_name || '',
     first_name: fields.first_name || '',
     middle_name: fields.middle_name || '',
-    age: fields.age || 0,
+    birthday: fields.birthday || '',
+    age: fields.birthday ? _computeAge(fields.birthday) : (fields.age || 0),
     gender: fields.gender || '',
     savings_schedule: fields.savings_schedule || '',
     photo_2x2_url: fields.photo_2x2_url || '',
@@ -67,16 +68,33 @@ function createAccount(fields) {
     updated_at: new Date().toISOString(),
   };
   getDb().prepare(`
-    INSERT INTO accounts (account_id, child_name, member_id, password, password_changed, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, age, gender, savings_schedule, photo_2x2_url, birth_cert_url, id_photo_url, created_at, updated_at)
-    VALUES (@account_id, @child_name, @member_id, @password, @password_changed, @actual_balance, @unallocated_balance, @current_xp, @parent_phone, @last_name, @first_name, @middle_name, @age, @gender, @savings_schedule, @photo_2x2_url, @birth_cert_url, @id_photo_url, @created_at, @updated_at)
+    INSERT INTO accounts (account_id, child_name, member_id, password, password_changed, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, age, gender, savings_schedule, photo_2x2_url, birth_cert_url, id_photo_url, created_at, updated_at)
+    VALUES (@account_id, @child_name, @member_id, @password, @password_changed, @actual_balance, @unallocated_balance, @current_xp, @parent_phone, @last_name, @first_name, @middle_name, @birthday, @age, @gender, @savings_schedule, @photo_2x2_url, @birth_cert_url, @id_photo_url, @created_at, @updated_at)
   `).run(account);
   return account;
 }
 
+function _computeAge(birthday) {
+  if (!birthday) return 0;
+  const parts = birthday.split('-');
+  if (parts.length !== 3) return 0;
+  const birth = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+}
+
 function updateAccount(accountId, fields) {
-  const allowed = ['actual_balance', 'unallocated_balance', 'current_xp', 'child_name', 'parent_phone', 'last_name', 'first_name', 'middle_name', 'age', 'gender', 'savings_schedule', 'photo_2x2_url', 'birth_cert_url', 'id_photo_url'];
+  const allowed = ['actual_balance', 'unallocated_balance', 'current_xp', 'child_name', 'parent_phone', 'last_name', 'first_name', 'middle_name', 'birthday', 'age', 'gender', 'savings_schedule', 'photo_2x2_url', 'birth_cert_url', 'id_photo_url'];
   const setClauses = [];
   const values = [];
+
+  if (fields.birthday !== undefined && fields.birthday) {
+    fields.age = _computeAge(fields.birthday);
+  }
+
   for (const key of allowed) {
     if (fields[key] !== undefined) {
       setClauses.push(`${key} = ?`);

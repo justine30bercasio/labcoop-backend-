@@ -87,6 +87,7 @@ router.post('/login', asyncHandler(async (req, res) => {
       last_name: account.last_name || '',
       first_name: account.first_name || '',
       middle_name: account.middle_name || '',
+      birthday: account.birthday || '',
       age: account.age || 0,
       gender: account.gender || '',
       savings_schedule: account.savings_schedule || '',
@@ -107,7 +108,7 @@ router.post('/register', regUpload.fields([
 ]), asyncHandler(async (req, res) => {
   const {
     lastName, firstName, middleName,
-    age, gender,
+    birthday, gender,
     password, parentPhone,
     savingsSchedule,
   } = req.body;
@@ -144,6 +145,7 @@ router.post('/register', regUpload.fields([
     age: parseInt(age || '0', 10),
     gender: gender || '',
     parent_phone: parentPhone || '',
+    birthday: birthday || '',
     savings_schedule: savingsSchedule || '',
     photo_2x2_url: photo2x2Url,
     birth_cert_url: birthCertUrl,
@@ -172,6 +174,7 @@ router.post('/register', regUpload.fields([
       last_name: account.last_name,
       first_name: account.first_name,
       middle_name: account.middle_name,
+      birthday: account.birthday,
       age: account.age,
       gender: account.gender,
       savings_schedule: account.savings_schedule,

@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     first_name VARCHAR(100) DEFAULT '',
     middle_name VARCHAR(100) DEFAULT '',
     age INTEGER DEFAULT 0,
+    birthday VARCHAR(10) DEFAULT '',
     gender VARCHAR(10) DEFAULT '',
     savings_schedule VARCHAR(50) DEFAULT '',
     photo_2x2_url TEXT DEFAULT '',

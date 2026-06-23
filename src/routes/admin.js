@@ -3032,12 +3032,13 @@ router.get('/audit', requireSession, asyncHandler(async (req, res) => {
   if (toDate) { where.push('t.created_at <= $' + p++); params.push(toDate + ' 23:59:59'); }
   if (filterAccount) { where.push('t.account_id = $' + p++); params.push(filterAccount); }
   if (filterType) { where.push('t.type = $' + p++); params.push(filterType); }
+  where.push("t.type NOT IN ('allocation','transfer')");
   const wc = where.length ? 'WHERE ' + where.join(' AND ') : '';
 
   // Stats
   const stats = await one(`
     SELECT COUNT(*) as total,
-      SUM(CASE WHEN t.type IN ('deposit','loan_disbursement','interest_credit') THEN t.amount ELSE 0 END) as credits,
+      SUM(CASE WHEN t.type IN ('deposit','loan_disbursement','interest_credit','interest') THEN t.amount ELSE 0 END) as credits,
       SUM(CASE WHEN t.type IN ('withdrawal','loan_payment') THEN t.amount ELSE 0 END) as debits,
       SUM(CASE WHEN t.type='deposit' THEN t.amount ELSE 0 END) as total_deposits,
       SUM(CASE WHEN t.type='withdrawal' THEN t.amount ELSE 0 END) as total_withdrawals,
@@ -3056,7 +3057,7 @@ router.get('/audit', requireSession, asyncHandler(async (req, res) => {
   const csvParams = Object.keys(q).filter(k => k !== 'export').map(k => k + '=' + encodeURIComponent(q[k])).join('&');
   const csvLink = '/admin/audit/csv?' + csvParams;
 
-  const typeOpts = ['deposit','withdrawal','loan_disbursement','loan_payment','interest_credit','interest','allocation','transfer'];
+  const typeOpts = ['deposit','withdrawal','loan_disbursement','loan_payment','interest_credit','interest'];
   const typeSummary = txns.reduce((acc, t) => { acc[t.type] = (acc[t.type]||0) + 1; return acc; }, {});
   const summaryStr = Object.keys(typeSummary).map(k => k + ': ' + typeSummary[k]).join(' &middot; ');
 
@@ -3102,8 +3103,8 @@ router.get('/audit', requireSession, asyncHandler(async (req, res) => {
     </div>
     <div class="card-body">
       ${txns.length === 0 ? '<div style="text-align:center;padding:48px;color:var(--text-muted)">No transactions found for the selected filters.</div>' : '<table><tr><th>Receipt #</th><th>Date &amp; Time</th><th>Member</th><th>ID</th><th>Type</th><th>Amount</th><th>Balance Delta</th><th>Description</th><th>Ref</th></tr>' + txns.map(t => {
-        const sign = (t.type==='deposit'||t.type==='loan_disbursement'||t.type==='interest_credit') ? '+' : '-';
-        const col = (t.type==='deposit'||t.type==='loan_disbursement'||t.type==='interest_credit') ? '#16a34a' : '#dc2626';
+        const sign = (t.type==='deposit'||t.type==='loan_disbursement'||t.type==='interest_credit'||t.type==='interest') ? '+' : '-';
+        const col = (t.type==='deposit'||t.type==='loan_disbursement'||t.type==='interest_credit'||t.type==='interest') ? '#16a34a' : '#dc2626';
         const delta = t.balance_before != null ? '<span style="color:' + col + '">' + sign + '&#x20B1;' + Number(t.amount).toFixed(2) + '</span>' : '-';
         const bg = ({deposit:'badge-green',withdrawal:'badge-red',loan_disbursement:'badge-amber',loan_payment:'badge-blue',interest_credit:'badge-purple',interest:'badge-purple',allocation:'badge-gray'})[t.type] || 'badge-gray';
         return '<tr><td class="mono"><a href="/admin/teller?account=' + t.account_id + '&receipt=' + t.transaction_id + '" style="color:var(--accent);text-decoration:none">' + (t.transaction_id||'').slice(0,8).toUpperCase() + '</a></td><td class="mono" style="font-size:11px">' + (t.created_at||'').slice(0,19).replace('T',' ') + '</td><td>' + (t.child_name||'') + '</td><td class="mono" style="font-size:11px;color:var(--text-muted)">' + (t.member_id||'-') + '</td><td><span class="badge ' + bg + '">' + t.type.replace(/_/g,' ') + '</span></td><td class="num mono" style="color:' + col + '">' + sign + '&#x20B1;' + Number(t.amount).toFixed(2) + '</td><td class="num mono">' + delta + '</td><td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted)">' + (t.description||'-') + '</td><td class="mono" style="font-size:11px;color:var(--text-muted)">' + (t.reference_id ? (t.reference_type||'') + ':' + (t.reference_id||'').slice(0,8) : '-') + '</td></tr>';
@@ -3126,6 +3127,7 @@ router.get('/audit/csv', requireSession, asyncHandler(async (req, res) => {
   if (q.to) { where.push('t.created_at <= $' + p++); params.push(q.to + ' 23:59:59'); }
   if (q.account) { where.push('t.account_id = $' + p++); params.push(q.account); }
   if (q.type) { where.push('t.type = $' + p++); params.push(q.type); }
+  where.push("t.type NOT IN ('allocation','transfer')");
   const wc = where.length ? 'WHERE ' + where.join(' AND ') : '';
 
   const rows = await sql(`

@@ -126,11 +126,11 @@ router.post('/register', regUpload.fields([
   const ulast = lastName.trim().toUpperCase();
   const ufirst = firstName.trim().toUpperCase();
   const umid = middleName ? middleName.trim().toUpperCase() : '';
-  const fullName = umid ? `${ulast}, ${ufirst} ${umid}` : `${ulast}, ${ufirst}`;
+  const displayName = umid ? `${ufirst} ${umid[0]}. ${ulast}` : `${ufirst} ${ulast}`;
 
-  const existing = await store.getAccountByName(fullName);
+  const existing = await store.getAccountByName(displayName);
   if (existing) {
-    return res.status(409).json({ message: `Account "${fullName}" already exists. Please login.` });
+    return res.status(409).json({ message: `Account "${displayName}" already exists. Please login.` });
   }
 
   const files = req.files || {};
@@ -139,7 +139,7 @@ router.post('/register', regUpload.fields([
   const idPhotoUrl = files.id_photo ? '/uploads/registration/' + files.id_photo[0].filename : '';
 
   const account = await store.createAccount({
-    child_name: fullName,
+    child_name: displayName,
     last_name: ulast,
     first_name: ufirst,
     middle_name: umid,

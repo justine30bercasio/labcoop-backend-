@@ -1019,7 +1019,7 @@ router.get('/accounts', requireSession, asyncHandler(async (req, res) => {
     <div class="card-body">
     <table><tr><th>Name</th><th>Member ID</th><th>Age</th><th>Gender</th><th>Schedule</th><th>Balance</th><th>XP</th><th>Password</th><th>Phone</th><th>Created</th><th>Actions</th></tr>
     ${accounts.map(a => `<tr>
-      <td><b>${a.child_name}</b>${a.last_name ? `<br><small style="color:var(--text-muted)">${a.last_name}, ${a.first_name}${a.middle_name ? ' ' + a.middle_name : ''}</small>` : ''}</td>
+      <td><b>${a.child_name}</b></td>
       <td class="mono">${a.member_id || '-'}</td>
       <td class="num">${a.age || '-'}</td>
       <td>${a.gender || '-'}</td>
@@ -1046,8 +1046,8 @@ router.get('/accounts', requireSession, asyncHandler(async (req, res) => {
   <a href="#" class="close">&times;</a>
   <h2>&#x2795; New Account</h2>
   <form method="post" action="/admin/accounts/create">
-    <label for="aname">Child Name (display name)</label>
-    <input type="text" id="aname" name="child_name" placeholder="e.g. Juan" required style="text-transform:uppercase">
+    <input type="hidden" name="child_name" value="auto">
+    <div class="info-box" style="margin-bottom:12px;padding:8px 12px;background:var(--bg-secondary);border-radius:6px;font-size:13px">Display name auto-composed as: <b>FIRSTNAME M. LASTNAME</b></div>
     <div class="form-row">
       <div><label for="alast">Last Name</label><input type="text" id="alast" name="last_name" placeholder="Dela Cruz" style="text-transform:uppercase"></div>
       <div><label for="afirst">First Name</label><input type="text" id="afirst" name="first_name" placeholder="Juan" style="text-transform:uppercase"></div>
@@ -1142,13 +1142,18 @@ router.post('/accounts/create', requireSession, asyncHandler(async (req, res) =>
     const { child_name, actual_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, gender, savings_schedule } = req.body;
     if (!child_name) return res.redirect('/admin/accounts?error=Name+required');
 
+    const ulast = (last_name || '').trim().toUpperCase();
+    const ufirst = (first_name || '').trim().toUpperCase();
+    const umid = (middle_name || '').trim().toUpperCase();
+    const displayName = umid ? `${ufirst} ${umid[0]}. ${ulast}` : `${ufirst} ${ulast}`;
+
     const maxResult = await store.query("SELECT MAX(CAST(member_id AS INTEGER)) as m FROM accounts");
     const maxMember = parseInt(maxResult.rows[0]?.m || '0', 10);
     const account = await store.createAccount({
-      child_name: child_name.trim().toUpperCase(),
-      last_name: (last_name || '').trim().toUpperCase(),
-      first_name: (first_name || '').trim().toUpperCase(),
-      middle_name: (middle_name || '').trim().toUpperCase(),
+      child_name: displayName,
+      last_name: ulast,
+      first_name: ufirst,
+      middle_name: umid,
       birthday: birthday || '',
       gender: gender || '',
       savings_schedule: savings_schedule || '',
@@ -1169,15 +1174,19 @@ router.post('/accounts/create', requireSession, asyncHandler(async (req, res) =>
 router.post('/accounts/update/:id', requireSession, asyncHandler(async (req, res) => {
   try {
     const { child_name, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, gender, savings_schedule } = req.body;
+    const ulast = (last_name || '').trim().toUpperCase();
+    const ufirst = (first_name || '').trim().toUpperCase();
+    const umid = (middle_name || '').trim().toUpperCase();
+    const displayName = umid ? `${ufirst} ${umid[0]}. ${ulast}` : `${ufirst} ${ulast}`;
     store.updateAccount(req.params.id, {
-      child_name: child_name?.trim().toUpperCase(),
+      child_name: child_name?.trim() ? child_name.trim().toUpperCase() : displayName,
       actual_balance: Number(actual_balance),
       unallocated_balance: Number(unallocated_balance),
       current_xp: Number(current_xp),
       parent_phone: parent_phone || '',
-      last_name: (last_name || '').trim().toUpperCase(),
-      first_name: (first_name || '').trim().toUpperCase(),
-      middle_name: (middle_name || '').trim().toUpperCase(),
+      last_name: ulast,
+      first_name: ufirst,
+      middle_name: umid,
       birthday: birthday || '',
       gender: gender || '',
       savings_schedule: savings_schedule || '',

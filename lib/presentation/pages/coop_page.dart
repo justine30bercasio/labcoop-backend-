@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../../core/constants/app_constants.dart';
+import '../../core/network/dio_client.dart';
 import '../../core/theme/app_theme.dart';
 
 class CoopPage extends StatefulWidget {
@@ -12,16 +12,18 @@ class CoopPage extends StatefulWidget {
 }
 
 class _CoopPageState extends State<CoopPage> {
-  final _dio = Dio(BaseOptions(baseUrl: AppConstants.baseUrl));
   final _titleCtrl = TextEditingController();
   final _targetCtrl = TextEditingController();
   List<dynamic> _goals = [];
   bool _loading = true;
   bool _showCreate = false;
 
+  late final Dio _dio;
+
   @override
   void initState() {
     super.initState();
+    _dio = DioClient.create();
     _load();
   }
 

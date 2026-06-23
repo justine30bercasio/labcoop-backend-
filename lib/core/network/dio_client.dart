@@ -5,10 +5,10 @@ import '../constants/app_constants.dart';
 import '../errors/exceptions.dart';
 
 class DioClient {
-  static final _secureStorage = const FlutterSecureStorage(
+  static final _secureStorage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
     iOptions: IOSOptions(
-      accessibility: KeychainAccessibility.first_unlock_this_device,
+      accessibility: KeychainAccessibility.unlocked_this_device,
       synchronizable: false,
     ),
   );

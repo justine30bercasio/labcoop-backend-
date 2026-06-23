@@ -287,11 +287,6 @@ class _LoginPageState extends State<LoginPage>
                                 ),
                               ),
                             ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Default password: 0000',
-                            style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 12),
-                          ),
                           const SizedBox(height: 14),
                           SizedBox(
                             width: double.infinity,

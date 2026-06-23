@@ -142,11 +142,12 @@ class _GameWebViewPageState extends State<GameWebViewPage> {
                   initialUrlRequest: URLRequest(url: WebUri(widget.url)),
                   initialSettings: InAppWebViewSettings(
                     javaScriptEnabled: true,
-                    javaScriptCanOpenWindowsAutomatically: true,
-                    mediaPlaybackRequiresUserGesture: false,
+                    javaScriptCanOpenWindowsAutomatically: false,
+                    mediaPlaybackRequiresUserGesture: true,
                     allowsInlineMediaPlayback: true,
                     useWideViewPort: true,
                     supportZoom: false,
+                    allowFileAccess: false,
                   ),
                   initialUserScripts: UnmodifiableListView([
                     UserScript(
@@ -220,11 +221,14 @@ class _GameWebViewPageState extends State<GameWebViewPage> {
                     }
                   },
                   onCreateWindow: (ctrl, createWindowRequest) async {
-                    ctrl.loadUrl(urlRequest: createWindowRequest.request);
-                    return true;
+                    return false;
                   },
                   shouldOverrideUrlLoading: (ctrl, navAction) async {
-                    return NavigationActionPolicy.ALLOW;
+                    final url = navAction.request.url.toString();
+                    if (url.startsWith('https://gamezipper.com/')) {
+                      return NavigationActionPolicy.ALLOW;
+                    }
+                    return NavigationActionPolicy.CANCEL;
                   },
                 ),
                 if (_loading)

@@ -112,7 +112,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Your default password is 0000.\nPlease set a new password.',
+                    'Please set a new password.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 14),
                   ),

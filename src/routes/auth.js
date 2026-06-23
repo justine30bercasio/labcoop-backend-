@@ -9,7 +9,7 @@ const { asyncHandler } = require('../async-handler');
 
 const router = express.Router();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'labcoop-dev-secret';
+const JWT_SECRET = process.env.JWT_SECRET;
 
 const UPLOAD_DIR = path.join(__dirname, '..', 'uploads', 'registration');
 if (!fs.existsSync(UPLOAD_DIR)) {
@@ -64,18 +64,18 @@ router.post('/login', asyncHandler(async (req, res) => {
   }
 
   if (!account) {
-    return res.status(404).json({ message: `No account found` });
+    return res.status(401).json({ message: 'Invalid credentials' });
   }
 
   const valid = bcrypt.compareSync(password, account.password);
   if (!valid) {
-    return res.status(401).json({ message: 'Incorrect password' });
+    return res.status(401).json({ message: 'Invalid credentials' });
   }
 
   const token = jwt.sign(
     { accountId: account.account_id, childName: account.child_name },
     JWT_SECRET,
-    { expiresIn: '7d' }
+    { expiresIn: '1h' }
   );
 
   res.json({
@@ -119,8 +119,8 @@ router.post('/register', regUpload.fields([
   if (!firstName || typeof firstName !== 'string' || firstName.trim().length === 0) {
     return res.status(400).json({ message: 'firstName is required' });
   }
-  if (!password || typeof password !== 'string' || password.length < 4) {
-    return res.status(400).json({ message: 'password is required (min 4 characters)' });
+  if (!password || typeof password !== 'string' || password.length < 8) {
+    return res.status(400).json({ message: 'password is required (min 8 characters)' });
   }
 
   const ulast = lastName.trim().toUpperCase();
@@ -162,7 +162,7 @@ router.post('/register', regUpload.fields([
   const token = jwt.sign(
     { accountId: account.account_id, childName: account.child_name },
     JWT_SECRET,
-    { expiresIn: '7d' }
+    { expiresIn: '1h' }
   );
 
   res.status(201).json({
@@ -198,8 +198,8 @@ router.post('/change-password', asyncHandler(async (req, res) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     const { oldPassword, newPassword } = req.body;
-    if (!oldPassword || !newPassword || newPassword.length < 4) {
-      return res.status(400).json({ message: 'oldPassword and newPassword (min 4 chars) are required' });
+    if (!oldPassword || !newPassword || newPassword.length < 8) {
+      return res.status(400).json({ message: 'oldPassword and newPassword (min 8 chars) are required' });
     }
 
     const account = await store.getAccount(decoded.accountId);

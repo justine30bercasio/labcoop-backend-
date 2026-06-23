@@ -230,22 +230,31 @@ if (!JWT_SECRET || JWT_SECRET === 'change-this-to-a-secure-random-string-in-prod
 if (!process.env.PORT) {
   console.warn('PORT not set, defaulting to 3000');
 }
+if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET === 'labcoop-session-secret-2026') {
+  console.error('FATAL: SESSION_SECRET environment variable is not set or is the default value.');
+  console.error('Set a secure random string in .env or environment before starting.');
+  process.exit(1);
+}
 
 function startServer() {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.set('trust proxy', 1);
+app.use(cors({
+  origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : ['http://localhost:3000', 'https://labcoop-backend.onrender.com'],
+  credentials: true,
+}));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(morgan('dev'));
 
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'labcoop-session-default',
+  secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: false, httpOnly: true, maxAge: 86400000 },
+  cookie: { secure: process.env.NODE_ENV === 'production', httpOnly: true, maxAge: 86400000, sameSite: 'lax' },
 }));
 
 const loginLimiter = rateLimit({
@@ -327,7 +336,7 @@ app.get('/api/health', async (req, res) => {
   let accountCount = 0;
   let sampleAccount = null;
   let loginTest = null;
-  const dbUrl = (process.env.DATABASE_URL || '(not set)').slice(0, 50);
+  const dbUrl = process.env.NODE_ENV === 'production' ? '(redacted)' : (process.env.DATABASE_URL || '(not set)').slice(0, 50);
   try {
     if (isPostgres) {
       const result = await store.query('SELECT COUNT(*) as c FROM accounts');
@@ -349,7 +358,8 @@ app.get('/api/health', async (req, res) => {
   res.json({ status: 'ok', dbConnected: dbOk, dbUrl, accountCount, sampleAccount, loginTest, timestamp: new Date().toISOString() });
 });
 
-// Debug login endpoint (bypasses rate limiter)
+// Debug login endpoint (development only)
+if (process.env.NODE_ENV !== 'production') {
 app.post('/api/debug-login', async (req, res) => {
   try {
     const bcrypt = require('bcryptjs');
@@ -366,17 +376,18 @@ app.post('/api/debug-login', async (req, res) => {
       account.password_changed = byMember.rows[0].password_changed;
     }
     const valid = bcrypt.compareSync(password || '', account.password);
-    if (!valid) return res.status(401).json({ message: 'Wrong password', pwLen: account.password.length });
+    if (!valid) return res.status(401).json({ message: 'Wrong password' });
     const token = jwt.sign(
       { accountId: account.account_id, childName: account.child_name },
-      process.env.JWT_SECRET || 'labcoop-dev-secret',
+      process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
     res.json({ token, passwordChanged: account.password_changed === 1, account: { account_id: account.account_id, child_name: account.child_name } });
   } catch (e) {
-    res.status(500).json({ message: 'Error', detail: e.message, stack: e.stack });
+    res.status(500).json({ message: 'Error' });
   }
 });
+}
 
 app.use('/api/auth', loginLimiter, authRouter);
 
@@ -403,14 +414,17 @@ app.use('/api/transactions', authMiddleware, transactionsRouter);
 app.use('/api/excel', authMiddleware, excelRouter);
 app.use('/api/coop', authMiddleware, coopRouter);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-app.use('/api/shop', shopRouter);
-app.use('/api/quiz', quizRouter);
-app.use('/api/games', gamesRouter);
+app.use('/api/shop', authMiddleware, shopRouter);
+app.use('/api/quiz', authMiddleware, quizRouter);
+app.use('/api/games', authMiddleware, gamesRouter);
 
 app.get('/test-ping', (req, res) => res.json({ping:'pong'}));
 
-// ── Clear all user data (keep reference tables) ──
+// ── Clear all user data (keep reference tables) — requires admin session ──
 app.post('/reset-database', async (req, res) => {
+  if (!req.session || !req.session.adminId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
   const tables = ['gl_entries','loan_payments','transactions','badges','goal_jars','loans','withdrawal_requests','standing_orders','savings_applications','coop_contributions','coop_goals','accounts'];
   try {
     if (isPostgres) {
@@ -445,7 +459,11 @@ app.use('/admin', adminRouter);
 
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
-  res.status(500).json({ message: 'Internal server error', error: err.message, type: err.type });
+  if (process.env.NODE_ENV === 'production') {
+    res.status(500).json({ message: 'Internal server error' });
+  } else {
+    res.status(500).json({ message: 'Internal server error', error: err.message, type: err.type });
+  }
 });
 
 app.listen(PORT, () => {

@@ -4,7 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 class PgStore {
   constructor(connectionString) {
     const clean = connectionString.replace(/\?sslmode=require$/, '');
-    this.pool = new Pool({ connectionString: clean, max: 10, ssl: { rejectUnauthorized: false } });
+    this.pool = new Pool({ connectionString: clean, max: 10, ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: true } : { rejectUnauthorized: false } });
     this._initialized = false;
   }
 

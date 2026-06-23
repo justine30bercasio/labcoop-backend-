@@ -291,9 +291,6 @@ form.inline { display:inline; }
 
 /* Bottom row spacing */
 .dt-layout-row:last-child { padding:10px 0 0; }
-.dt-layout-end .dt-layout-cell { flex-shrink:0; gap:12px; }
-.dt-layout-end .dt-paging { overflow-x:auto; white-space:nowrap; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
-.dt-layout-end .dt-paging::-webkit-scrollbar { display:none; }
 
 .dt-search { display:flex; align-items:center; gap:6px; }
 .dt-search label { font-size:12px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; }
@@ -472,8 +469,8 @@ $(document).ready(function(){
           layout: {
             topStart: 'pageLength',
             topEnd: 'search',
-            bottomStart: null,
-            bottomEnd: ['info', 'paging']
+            bottomStart: 'info',
+            bottomEnd: 'paging'
           }
         });
       }catch(e){}

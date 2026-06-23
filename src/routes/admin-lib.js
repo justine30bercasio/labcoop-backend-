@@ -281,6 +281,18 @@ table.dataTable td, table.dataTable th, table.dataTable tbody, table.dataTable t
 [data-theme="dark"] .action-dropdown .text-red:hover { background:rgba(239,68,68,0.15); }
 [data-theme="dark"] .action-dropdown .text-green:hover { background:rgba(34,197,94,0.15); }
 [data-theme="dark"] .action-dropdown .text-amber:hover { background:rgba(245,158,11,0.15); }
+
+/* ── Confirmation Modal ── */
+.confirm-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.55); z-index:999999; align-items:center; justify-content:center; backdrop-filter:blur(3px); animation:cfade 0.2s ease; }
+.confirm-modal { background:var(--card); border-radius:20px; padding:32px 36px; width:100%; max-width:400px; box-shadow:0 12px 48px rgba(0,0,0,0.25); text-align:center; animation:cscale 0.25s cubic-bezier(0.34,1.56,0.64,1); }
+.confirm-icon { font-size:42px; margin-bottom:8px; line-height:1; }
+.confirm-msg { font-size:15px; font-weight:500; color:var(--text); margin-bottom:24px; line-height:1.6; }
+.confirm-actions { display:flex; gap:12px; justify-content:center; }
+.confirm-actions .btn { min-width:120px; justify-content:center; padding:10px 20px; font-size:14px; border-radius:10px; }
+.confirm-actions .btn-cancel { background:var(--bg); color:var(--text); border:1px solid var(--border); }
+.confirm-actions .btn-cancel:hover { background:var(--border); }
+@keyframes cfade { from{opacity:0} to{opacity:1} }
+@keyframes cscale { from{opacity:0;transform:scale(0.92) translateY(8px)} to{opacity:1;transform:scale(1) translateY(0)} }
 </style>
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.datatables.net/2.2.2/js/dataTables.js"></script>
@@ -449,7 +461,84 @@ function toggleTheme(e){
   else{ html.setAttribute('data-theme','dark'); localStorage.setItem('labcoop-theme','dark'); }
 }
 </script>
+<div id="confirm-modal" class="confirm-overlay" role="dialog" aria-modal="true" style="display:none">
+  <div class="confirm-modal">
+    <div class="confirm-icon">&#x26A0;&#xFE0F;</div>
+    <div class="confirm-msg" id="confirm-msg">Are you sure?</div>
+    <div class="confirm-actions">
+      <button class="btn btn-cancel" id="confirm-cancel">Cancel</button>
+      <button class="btn btn-danger" id="confirm-yes">Yes, proceed</button>
+    </div>
+  </div>
+</div>
+
 <script>
+// ── Confirmation Modal ──
+(function(){
+  var overlay = document.getElementById('confirm-modal');
+  var msgEl = document.getElementById('confirm-msg');
+  var yesBtn = document.getElementById('confirm-yes');
+  var cancelBtn = document.getElementById('confirm-cancel');
+  var callback = null;
+
+  window.confirmAction = function(message, cb) {
+    if (overlay.style.display === 'flex') return;
+    msgEl.textContent = message;
+    callback = cb;
+    overlay.style.display = 'flex';
+  };
+
+  function closeModal() {
+    overlay.style.display = 'none';
+    callback = null;
+  }
+
+  yesBtn.addEventListener('click', function() {
+    var cb = callback;
+    closeModal();
+    if (cb) setTimeout(cb, 50);
+  });
+
+  cancelBtn.addEventListener('click', closeModal);
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) closeModal(); });
+  document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeModal(); });
+})();
+
+// ── Delegate data-confirm forms, buttons, links ──
+(function(){
+  // Forms with data-confirm
+  $(document).on('submit', 'form[data-confirm]', function(e) {
+    e.preventDefault();
+    var form = this;
+    var msg = form.getAttribute('data-confirm');
+    confirmAction(msg, function() {
+      form.removeAttribute('data-confirm');
+      form.submit();
+    });
+  });
+  // Buttons/links with data-confirm and data-action-url (fetch pattern)
+  $(document).on('click', '[data-confirm][data-action-url]', function(e) {
+    e.preventDefault();
+    var el = this;
+    var msg = el.getAttribute('data-confirm');
+    var url = el.getAttribute('data-action-url');
+    var method = el.getAttribute('data-method') || 'POST';
+    confirmAction(msg, function() {
+      fetch(url, { method: method })
+        .then(function(r) { return r.json(); })
+        .then(function(d) { alert(d.message || 'Done'); location.reload(); })
+        .catch(function() { alert('Error'); location.reload(); });
+    });
+  });
+  // Anchor links with data-confirm (direct navigation)
+  $(document).on('click', 'a[data-confirm]:not([data-action-url])', function(e) {
+    e.preventDefault();
+    var el = this;
+    var msg = el.getAttribute('data-confirm');
+    confirmAction(msg, function() { window.location.href = el.href; });
+  });
+})();
+
 // ── Floating action dropdown (fixed position to escape table clipping) ──
 (function(){
   var activeDD = null;

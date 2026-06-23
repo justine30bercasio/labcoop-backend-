@@ -469,7 +469,7 @@ td.mono { font-family:var(--mono); font-size:12px; }
       <td><div class="actions-cell">
         <a href="#edit-${item.id}" class="btn btn-secondary btn-xs">&#x270F;</a>
         <a href="#upload-${item.id}" class="btn btn-amber btn-xs">&#x1F4F7;</a>
-        <form method="post" action="/admin/shop/delete/${item.id}" onsubmit="return confirm('Delete ${item.name}?')">
+        <form method="post" action="/admin/shop/delete/${item.id}" data-confirm="Delete ${item.name}?">
           <button type="submit" class="btn btn-danger btn-xs">&#x1F5D1;</button>
         </form>
       </div></td>
@@ -687,7 +687,7 @@ router.get('/quiz', requireSession, asyncHandler(async (req, res) => {
         <td>${qu.is_active ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Inactive</span>'}</td>
         <td><div style="display:flex;gap:4px">
           <a href="#edit-${qu.id}" class="btn btn-secondary btn-xs">&#x270F;</a>
-          <form class="inline" method="post" action="/admin/quiz/delete/${qu.id}" onsubmit="return confirm('Delete this question?')">
+          <form class="inline" method="post" action="/admin/quiz/delete/${qu.id}" data-confirm="Delete this question?">
             <button type="submit" class="btn btn-danger btn-xs">&#x1F5D1;</button>
           </form>
         </div></td>
@@ -871,11 +871,11 @@ router.get('/accounts', requireSession, asyncHandler(async (req, res) => {
         <summary>&#x22EE;</summary>
         <div class="action-dropdown">
           <a href="#edit-${a.account_id}">&#x270F; Edit</a>
-          ${statusNum === 1 ? `<form method="post" action="/admin/accounts/toggle/${a.account_id}" onsubmit="return confirm('Deactivate ${a.child_name}?')"><button type="submit" class="text-amber">&#x1F4A4; Deactivate</button></form>` : ''}
+          ${statusNum === 1 ? `<form method="post" action="/admin/accounts/toggle/${a.account_id}" data-confirm="Deactivate ${a.child_name}?"><button type="submit" class="text-amber">&#x1F4A4; Deactivate</button></form>` : ''}
           ${statusNum === 0 ? `<form method="post" action="/admin/accounts/toggle/${a.account_id}"><button type="submit" class="text-green">&#x2705; Reactivate</button></form>` : ''}
-          ${statusNum === 1 ? `<form method="post" action="/admin/accounts/close/${a.account_id}" onsubmit="return confirm('Close ${a.child_name} permanently? This cannot be undone.')"><button type="submit" class="text-red">&#x1F6AB; Close Account</button></form>` : ''}
+          ${statusNum === 1 ? `<form method="post" action="/admin/accounts/close/${a.account_id}" data-confirm="Close ${a.child_name} permanently? This cannot be undone."><button type="submit" class="text-red">&#x1F6AB; Close Account</button></form>` : ''}
           <hr>
-          <form method="post" action="/admin/accounts/delete/${a.account_id}" onsubmit="return confirm('Delete ${a.child_name}?')">
+          <form method="post" action="/admin/accounts/delete/${a.account_id}" data-confirm="Delete ${a.child_name}?">
             <button type="submit" class="text-red">&#x1F5D1; Delete</button>
           </form>
         </div>
@@ -1159,7 +1159,7 @@ router.get('/goals', requireSession, asyncHandler(async (req, res) => {
         <form class="inline" method="post" action="/admin/goals/toggle/${g.goal_id}">
           <button type="submit" class="btn btn-${g.is_completed ? 'amber' : 'green'} btn-xs">${g.is_completed ? '&#x21A9;' : '&#x2705;'}</button>
         </form>
-        <form class="inline" method="post" action="/admin/goals/delete/${g.goal_id}" onsubmit="return confirm('Delete goal ${g.title}?')">
+        <form class="inline" method="post" action="/admin/goals/delete/${g.goal_id}" data-confirm="Delete goal ${g.title}?">
           <button type="submit" class="btn btn-danger btn-xs">&#x1F5D1;</button>
         </form>
       </div></td>
@@ -1343,7 +1343,7 @@ router.get('/badges', requireSession, asyncHandler(async (req, res) => {
         <form class="inline" method="post" action="/admin/badges/toggle/${b.badge_id}">
           <button type="submit" class="btn btn-${b.is_unlocked ? 'amber' : 'green'} btn-xs">${b.is_unlocked ? '&#x1F512;' : '&#x1F513;'}</button>
         </form>
-        <form class="inline" method="post" action="/admin/badges/delete/${b.badge_id}" onsubmit="return confirm('Delete badge ${b.name}?')">
+        <form class="inline" method="post" action="/admin/badges/delete/${b.badge_id}" data-confirm="Delete badge ${b.name}?">
           <button type="submit" class="btn btn-danger btn-xs">&#x1F5D1;</button>
         </form>
       </div></td>
@@ -1550,11 +1550,11 @@ router.get('/loans', requireSession, asyncHandler(async (req, res) => {
             <form method="post" action="/admin/loans/approve/${l.loan_id}" style="display:inline">
               <button type="submit" class="btn btn-primary btn-xs">&#x2705; Approve</button>
             </form>
-            <form method="post" action="/admin/loans/reject/${l.loan_id}" style="display:inline" onsubmit="return confirm('Reject this loan?')">
+            <form method="post" action="/admin/loans/reject/${l.loan_id}" style="display:inline" data-confirm="Reject this loan?">
               <button type="submit" class="btn btn-danger btn-xs">&#x274C; Reject</button>
             </form>
           ` : l.status === 'approved' ? `
-            <form method="post" action="/admin/loans/disburse/${l.loan_id}" style="display:inline" onsubmit="return confirm('Disburse &#x20B1;${Number(l.principal).toFixed(2)} to ${l.child_name}?')">
+            <form method="post" action="/admin/loans/disburse/${l.loan_id}" style="display:inline" data-confirm="Disburse &#x20B1;${Number(l.principal).toFixed(2)} to ${l.child_name}?">
               <button type="submit" class="btn btn-amber btn-xs">&#x1F4B5; Disburse</button>
             </form>
           ` : '<span style="font-size:11px;color:var(--text-muted)">—</span>'}
@@ -1864,7 +1864,7 @@ router.get('/loan-products', requireSession, asyncHandler(async (req, res) => {
       <td><span class="badge ${p.is_active ? 'badge-green' : 'badge-gray'}">${p.is_active ? 'Active' : 'Inactive'}</span></td>
       <td><div class="actions-cell">
         <a href="#edit-${p.product_id}" class="btn btn-secondary btn-xs">&#x270F;</a>
-        <form method="post" action="/admin/loan-products/toggle/${p.product_id}" style="display:inline" onsubmit="return confirm('${p.is_active ? 'Deactivate' : 'Activate'} ${p.name}?')">
+        <form method="post" action="/admin/loan-products/toggle/${p.product_id}" style="display:inline" data-confirm="${p.is_active ? 'Deactivate' : 'Activate'} ${p.name}?">
           <button type="submit" class="btn btn-${p.is_active ? 'danger' : 'primary'} btn-xs">${p.is_active ? '&#x1F4A4;' : '&#x2705;'}</button>
         </form>
       </div></td>
@@ -2022,7 +2022,7 @@ router.get('/savings-products', requireSession, asyncHandler(async (req, res) =>
       <td><span class="badge ${p.is_active ? 'badge-green' : 'badge-gray'}">${p.is_active ? 'Active' : 'Inactive'}</span></td>
       <td><div class="actions-cell">
         <a href="#edit-${p.product_id}" class="btn btn-secondary btn-xs">&#x270F;</a>
-        <form method="post" action="/admin/savings-products/toggle/${p.product_id}" style="display:inline" onsubmit="return confirm('${p.is_active ? 'Deactivate' : 'Activate'} ${p.name}?')">
+        <form method="post" action="/admin/savings-products/toggle/${p.product_id}" style="display:inline" data-confirm="${p.is_active ? 'Deactivate' : 'Activate'} ${p.name}?">
           <button type="submit" class="btn btn-${p.is_active ? 'danger' : 'primary'} btn-xs">${p.is_active ? '&#x1F4A4;' : '&#x2705;'}</button>
         </form>
       </div></td>
@@ -2188,14 +2188,14 @@ router.get('/withdrawal-requests', requireSession, asyncHandler(async (req, res)
       <td class="mono">${(r.created_at || '').slice(0, 10)}</td>
       <td><div class="actions-cell">
         ${r.status === 'pending' ? `
-          <form method="post" action="/admin/withdrawal-requests/approve/${r.request_id}" style="display:inline" onsubmit="return confirm('Approve withdrawal of &#x20B1;${Number(r.amount).toFixed(2)}?')">
+          <form method="post" action="/admin/withdrawal-requests/approve/${r.request_id}" style="display:inline" data-confirm="Approve withdrawal of &#x20B1;${Number(r.amount).toFixed(2)}?">
             <button type="submit" class="btn btn-primary btn-xs">&#x2705; Approve</button>
           </form>
-          <form method="post" action="/admin/withdrawal-requests/reject/${r.request_id}" style="display:inline" onsubmit="return confirm('Reject this request?')">
+          <form method="post" action="/admin/withdrawal-requests/reject/${r.request_id}" style="display:inline" data-confirm="Reject this request?">
             <button type="submit" class="btn btn-danger btn-xs">&#x274C; Reject</button>
           </form>
         ` : r.status === 'approved' ? `
-          <form method="post" action="/admin/withdrawal-requests/pay/${r.request_id}" style="display:inline" onsubmit="return confirm('Process payment of &#x20B1;${Number(r.amount).toFixed(2)} to ${r.child_name}? This will deduct from their balance.')">
+          <form method="post" action="/admin/withdrawal-requests/pay/${r.request_id}" style="display:inline" data-confirm="Process payment of &#x20B1;${Number(r.amount).toFixed(2)} to ${r.child_name}? This will deduct from their balance.">
             <button type="submit" class="btn btn-amber btn-xs">&#x1F4B5; Pay Out</button>
           </form>
         ` : '<span style="font-size:11px;color:var(--text-muted)">—</span>'}
@@ -2333,10 +2333,10 @@ router.get('/savings-applications', requireSession, asyncHandler(async (req, res
       <td class="mono">${(a.created_at || '').slice(0, 10)}</td>
       <td><div class="actions-cell">
         ${a.status === 'pending' ? `
-          <form method="post" action="/admin/savings-applications/approve/${a.application_id}" style="display:inline" onsubmit="return confirm('Approve ${a.child_name}\'s application for ${a.product_name}?')">
+          <form method="post" action="/admin/savings-applications/approve/${a.application_id}" style="display:inline" data-confirm="Approve ${a.child_name}'s application for ${a.product_name}?">
             <button type="submit" class="btn btn-primary btn-xs">&#x2705; Approve</button>
           </form>
-          <form method="post" action="/admin/savings-applications/reject/${a.application_id}" style="display:inline" onsubmit="return confirm('Reject this application?')">
+          <form method="post" action="/admin/savings-applications/reject/${a.application_id}" style="display:inline" data-confirm="Reject this application?">
             <button type="submit" class="btn btn-danger btn-xs">&#x274C; Reject</button>
           </form>
         ` : '<span style="font-size:11px;color:var(--text-muted)">—</span>'}

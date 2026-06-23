@@ -472,6 +472,7 @@ $(document).ready(function(){
           layout: {
             topStart: 'pageLength',
             topEnd: 'search',
+            bottomStart: null,
             bottomEnd: ['info', 'paging']
           }
         });

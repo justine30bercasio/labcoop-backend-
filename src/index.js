@@ -221,19 +221,23 @@ const bankingFeaturesRouter = require('./routes/banking-features');
 const { startScheduler } = require('./services/scheduler');
 const { authMiddleware, requireOwnership } = require('./middleware/auth');
 
+const crypto = require('crypto');
+
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET || JWT_SECRET === 'change-this-to-a-secure-random-string-in-production') {
-  console.error('FATAL: JWT_SECRET environment variable is not set or is the default value.');
-  console.error('Set a secure random string in .env or environment before starting.');
-  process.exit(1);
+  const generated = crypto.randomBytes(32).toString('hex');
+  process.env.JWT_SECRET = generated;
+  console.warn('WARN: JWT_SECRET not configured. Generated a temporary random secret (will change on restart).');
+  console.warn('      Set JWT_SECRET in environment variables for persistence.');
+}
+if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET === 'labcoop-session-secret-2026') {
+  const generated = crypto.randomBytes(32).toString('hex');
+  process.env.SESSION_SECRET = generated;
+  console.warn('WARN: SESSION_SECRET not configured. Generated a temporary random secret (will change on restart).');
+  console.warn('      Set SESSION_SECRET in environment variables for persistence.');
 }
 if (!process.env.PORT) {
   console.warn('PORT not set, defaulting to 3000');
-}
-if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET === 'labcoop-session-secret-2026') {
-  console.error('FATAL: SESSION_SECRET environment variable is not set or is the default value.');
-  console.error('Set a secure random string in .env or environment before starting.');
-  process.exit(1);
 }
 
 function startServer() {

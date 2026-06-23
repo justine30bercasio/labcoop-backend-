@@ -21,7 +21,7 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
       final goals = await _repository.getGoals(event.accountId);
       emit(GoalsLoaded(goals: goals));
     } catch (e) {
-      emit(GoalError(e.toString()));
+      emit(GoalError('Something went wrong.'));
     }
   }
 
@@ -40,7 +40,7 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
       await _repository.updateGoal(event.goal);
       emit(GoalUpdated(event.goal));
     } catch (e) {
-      emit(GoalError(e.toString()));
+      emit(GoalError('Something went wrong.'));
     }
   }
 }

@@ -34,7 +34,7 @@ class _StatementPageState extends State<StatementPage> {
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() { _loading = false; _error = e.toString(); });
+      setState(() { _loading = false; _error = 'Something went wrong loading the statement.'; });
     }
   }
 

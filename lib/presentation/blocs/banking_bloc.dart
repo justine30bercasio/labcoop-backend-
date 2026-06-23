@@ -28,7 +28,7 @@ class BankingBloc extends Bloc<BankingEvent, BankingState> {
     } catch (e) {
       emit(state.copyWith(
         transactionStatus: TransactionStatus.error,
-        errorMessage: e.toString(),
+        errorMessage: 'Something went wrong. Please try again.',
       ));
     }
   }

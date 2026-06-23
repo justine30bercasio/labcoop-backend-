@@ -209,7 +209,7 @@ class _RegistrationPageState extends State<RegistrationPage>
       });
     } catch (e) {
       setState(() {
-        _error = 'Unexpected error: ${e.toString()}';
+        _error = 'Something went wrong. Please try again.';
         _loading = false;
       });
     }
@@ -673,7 +673,7 @@ class _RegistrationPageState extends State<RegistrationPage>
               ),
             ),
             validator: (v) {
-              if (v == null || v.length < 4) return 'Password must be at least 4 characters';
+              if (v == null || v.length < 8) return 'Password must be at least 8 characters';
               return null;
             },
           ),

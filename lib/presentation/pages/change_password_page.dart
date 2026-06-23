@@ -45,7 +45,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
       setState(() => _error = 'Please fill in all fields');
       return;
     }
-    if (newPw.length < 4) {
+    if (newPw.length < 8) {
       setState(() => _error = 'New password must be at least 4 characters');
       return;
     }

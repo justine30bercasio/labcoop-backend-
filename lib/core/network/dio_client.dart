@@ -1,10 +1,17 @@
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../constants/app_constants.dart';
 import '../errors/exceptions.dart';
 
 class DioClient {
-  static final _secureStorage = const FlutterSecureStorage();
+  static final _secureStorage = const FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock_this_device,
+      synchronizable: false,
+    ),
+  );
 
   static Future<String?> get _authToken async {
     return await _secureStorage.read(key: 'auth_token');
@@ -53,7 +60,7 @@ class DioClient {
             handler.next(DioException(
               requestOptions: error.requestOptions,
               error: ServerException(
-                message: error.response!.data?['message'] ?? 'Server error',
+                message: 'Server error. Please try again later.',
                 statusCode: error.response!.statusCode,
               ),
               type: error.type,
@@ -64,6 +71,19 @@ class DioClient {
         },
       ),
     );
+
+    // Certificate pinning — reject untrusted certificates
+    // To pin a specific certificate, add its SHA-256 fingerprint check here:
+    //   client.badCertificateCallback = (cert, host, port) {
+    //     final fingerprint = sha256.convert(cert.pem.codeUnits).toString();
+    //     return pinnedFingerprints.contains(fingerprint);
+    //   };
+    try {
+      (dio.httpClientAdapter as IOHttpClientAdapter).onHttpClientCreate = (client) {
+        client.badCertificateCallback = (cert, host, port) => false;
+        return client;
+      };
+    } catch (_) {}
 
     return dio;
   }

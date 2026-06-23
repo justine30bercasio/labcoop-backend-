@@ -27,7 +27,7 @@ class LoanBloc extends Bloc<LoanEvent, LoanState> {
       final loans = await _repository.getLoans(event.accountId);
       emit(state.copyWith(loanStatus: LoanStatusBloc.loaded, loans: loans));
     } catch (e) {
-      emit(state.copyWith(loanStatus: LoanStatusBloc.error, errorMessage: e.toString()));
+      emit(state.copyWith(loanStatus: LoanStatusBloc.error, errorMessage: 'Something went wrong. Please try again.'));
     }
   }
 
@@ -45,7 +45,7 @@ class LoanBloc extends Bloc<LoanEvent, LoanState> {
       emit(state.copyWith(submitStatus: LoanSubmitStatus.success));
       add(LoadMyLoans(event.loan.accountId));
     } catch (e) {
-      emit(state.copyWith(submitStatus: LoanSubmitStatus.error, errorMessage: e.toString()));
+      emit(state.copyWith(submitStatus: LoanSubmitStatus.error, errorMessage: 'Something went wrong. Please try again.'));
     }
   }
 
@@ -74,7 +74,7 @@ class LoanBloc extends Bloc<LoanEvent, LoanState> {
       emit(state.copyWith(submitStatus: LoanSubmitStatus.success));
       add(LoadMyLoans(event.accountId));
     } catch (e) {
-      emit(state.copyWith(submitStatus: LoanSubmitStatus.error, errorMessage: e.toString()));
+      emit(state.copyWith(submitStatus: LoanSubmitStatus.error, errorMessage: 'Something went wrong. Please try again.'));
     }
   }
 

@@ -45,7 +45,7 @@ class SavingsBloc extends Bloc<SavingsEvent, SavingsState> {
       ));
       _repository.processPendingOps();
     } catch (e) {
-      emit(SavingsError(e.toString()));
+      emit(SavingsError('Something went wrong.'));
     }
   }
 
@@ -83,7 +83,7 @@ class SavingsBloc extends Bloc<SavingsEvent, SavingsState> {
         ),
       );
     } catch (e) {
-      emit(SavingsError(e.toString()));
+      emit(SavingsError('Something went wrong.'));
     }
   }
 
@@ -111,7 +111,7 @@ class SavingsBloc extends Bloc<SavingsEvent, SavingsState> {
         ),
       );
     } catch (e) {
-      emit(SavingsError(e.toString()));
+      emit(SavingsError('Something went wrong.'));
     }
   }
 

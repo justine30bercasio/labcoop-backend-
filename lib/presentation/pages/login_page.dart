@@ -88,16 +88,11 @@ class _LoginPageState extends State<LoginPage>
         return;
       }
       final statusCode = e.response?.statusCode;
-      final msg = e.response?.data?['message'];
       setState(() {
-        if (statusCode == 401) {
-          _error = 'Incorrect password';
-        } else if (statusCode == 404) {
-          _error = 'Account not found';
-        } else if (msg != null && msg is String && msg.isNotEmpty) {
-          _error = msg;
+        if (statusCode == 401 || statusCode == 404) {
+          _error = 'Invalid credentials. Please try again.';
         } else if (statusCode != null) {
-          _error = 'Server error (HTTP $statusCode)';
+          _error = 'Server error (HTTP $statusCode). Please try again.';
         } else {
           _error = 'Connection failed. Is the server running?';
         }
@@ -105,7 +100,7 @@ class _LoginPageState extends State<LoginPage>
       });
     } catch (e) {
       setState(() {
-        _error = 'Unexpected error: ${e.toString()}';
+        _error = 'Something went wrong. Please try again.';
         _loading = false;
       });
     }

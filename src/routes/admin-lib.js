@@ -291,7 +291,7 @@ form.inline { display:inline; }
 
 /* Bottom row: info + paging on same side as search (right) */
 .dt-layout-row:last-child { display:flex !important; align-items:center; padding:10px 0 0; justify-content:flex-end !important; }
-.dt-layout-row:last-child .dt-layout-cell.dt-start { flex-shrink:0; }
+.dt-layout-row:last-child .dt-layout-cell.dt-start { flex-shrink:0; margin-right:0 !important; }
 .dt-layout-row:last-child .dt-layout-cell.dt-end { flex-shrink:1; min-width:0; overflow-x:auto; white-space:nowrap; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
 .dt-layout-row:last-child .dt-layout-cell.dt-end::-webkit-scrollbar { display:none; }
 

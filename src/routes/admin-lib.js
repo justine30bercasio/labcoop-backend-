@@ -289,10 +289,11 @@ form.inline { display:inline; }
 .dt-layout-row:first-child .dt-layout-cell.dt-start { flex:0 0 auto; }
 .dt-layout-row:first-child .dt-layout-cell.dt-end { flex:1; justify-content:flex-end; }
 
-/* Bottom row: info + paging together on right */
-.dt-layout-row:last-child { display:flex !important; align-items:center; padding:10px 0 0; gap:8px; }
-.dt-layout-row:last-child .dt-layout-cell { max-width:100%; }
-.dt-layout-row:last-child .dt-layout-cell.dt-start { margin-left:auto; }
+/* Bottom row: info + paging on same side as search (right) */
+.dt-layout-row:last-child { display:flex !important; align-items:center; padding:10px 0 0; justify-content:flex-end !important; }
+.dt-layout-row:last-child .dt-layout-cell.dt-start { flex-shrink:0; }
+.dt-layout-row:last-child .dt-layout-cell.dt-end { flex-shrink:1; min-width:0; overflow-x:auto; white-space:nowrap; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+.dt-layout-row:last-child .dt-layout-cell.dt-end::-webkit-scrollbar { display:none; }
 
 .dt-search { display:flex; align-items:center; gap:6px; }
 .dt-search label { font-size:12px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; }

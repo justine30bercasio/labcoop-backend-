@@ -422,7 +422,7 @@ class _RegistrationPageState extends State<RegistrationPage>
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white.withValues(alpha: 0.9)),
           ),
           const SizedBox(height: 4),
-          Text('Full name will be displayed as: LASTNAME, FIRSTNAME MIDDLENAME (all caps)',
+          Text('Display name auto-composed as: FIRSTNAME M. LASTNAME',
             style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.4)),
           ),
           const SizedBox(height: 16),

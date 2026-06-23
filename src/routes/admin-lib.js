@@ -449,6 +449,20 @@ function toggleTheme(e){
 }
 </script>
 <script>
+// ── Floating action dropdown (fixed position to escape table clipping) ──
+$(document).on('toggle', '.action-menu', function() {
+  var dd = $(this).find('.action-dropdown');
+  if (this.open) {
+    var rect = this.querySelector('summary').getBoundingClientRect();
+    dd.css({ position:'fixed', top:(rect.bottom + 4), right:(document.documentElement.clientWidth - rect.right), left:'auto', bottom:'auto', zIndex:99999 });
+  } else {
+    dd.css({ position:'', top:'', right:'', left:'', bottom:'', zIndex:'' });
+  }
+});
+$(document).on('click', function(e) {
+  if (!$(e.target).closest('.action-menu').length) $('.action-menu[open]').prop('open', false);
+});
+
 $(document).ready(function(){
   $('.card-body table').each(function(){
     var $th = $(this).find('thead th, > tr:first th').length;

@@ -256,6 +256,9 @@ form.inline { display:inline; }
   .header-actions { width:100%; }
 }
 </style>
+<link rel="stylesheet" href="https://cdn.datatables.net/2.2.2/css/dataTables.dataTables.css">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/2.2.2/js/dataTables.js"></script>
 </head>
 <body>
 
@@ -341,6 +344,16 @@ function toggleTheme(e){
   if(isDark){ html.removeAttribute('data-theme'); localStorage.setItem('labcoop-theme','light'); }
   else{ html.setAttribute('data-theme','dark'); localStorage.setItem('labcoop-theme','dark'); }
 }
+</script>
+<script>
+$(document).ready(function(){
+  $('table').each(function(){
+    if(!this.id) this.id = 'dt-' + Math.random().toString(36).slice(2, 9);
+    if(!this.classList.contains('no-dt')){
+      try{ $('#'+this.id).DataTable({pageLength:25,order:[]}); }catch(e){}
+    }
+  });
+});
 </script>
 </body>
 </html>`;

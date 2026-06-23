@@ -224,8 +224,8 @@ router.post('/login/forgot', async (req, res) => {
   otpStore.set(email, { otp, expires: Date.now() + 600000 });
   const sent = sendOtpEmail(email, otp);
   if (!sent) {
-    otpStore.set(email, { otp: '123456', expires: Date.now() + 600000 });
-    return res.type('html').send(forgotPage('SMTP not configured. Development OTP: 123456'));
+    console.log(`[OTP] Password reset requested for ${email}. OTP: ${otp} (server log only)`);
+    return res.type('html').send(forgotPage('err:Cannot send email — SMTP is not configured. Contact your administrator to reset your password.'));
   }
   res.type('html').send(forgotPage(`OTP sent to ${email}. Check your inbox.`));
 });

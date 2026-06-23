@@ -1,5 +1,3 @@
-import 'package:device_preview/device_preview.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -15,12 +13,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
   await di.initDependencies();
-  runApp(
-    DevicePreview(
-      enabled: !kReleaseMode,
-      builder: (context) => const LabCoopApp(),
-    ),
-  );
+  runApp(const LabCoopApp());
 }
 
 class LabCoopApp extends StatelessWidget {
@@ -38,9 +31,6 @@ class LabCoopApp extends StatelessWidget {
       child: MaterialApp(
         title: 'LabCoop',
         theme: AppTheme.lightTheme,
-        useInheritedMediaQuery: true,
-        locale: DevicePreview.locale(context),
-        builder: DevicePreview.appBuilder,
         debugShowCheckedModeBanner: false,
         home: const SplashPage(),
       ),

@@ -172,7 +172,7 @@ body { font-family:var(--font); background:var(--bg); color:var(--text); display
 .card-header { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid var(--border); flex-wrap:wrap; gap:8px; }
 .card-header h3 { font-size:15px; font-weight:600; display:flex; align-items:center; gap:8px; }
 .card-header .count { font-size:12px; font-weight:400; color:var(--text-muted); }
-.card-body { overflow-x:auto; }
+.card-body { overflow-x:auto; padding:16px; }
 .card-body-padded { padding:18px; }
 
 table { width:100%; border-collapse:collapse; }
@@ -262,13 +262,14 @@ form.inline { display:inline; }
 .dt-container { padding:0; width:100%; }
 
 /* Toolbar: length left, search right, full width */
-.dt-layout-row:first-child { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; border-bottom:1px solid var(--border); background:var(--card); flex-wrap:wrap; gap:8px; }
+.dt-layout-row:first-child { display:flex; align-items:center; justify-content:space-between; padding:0 0 10px 0; border-bottom:1px solid var(--border); flex-wrap:wrap; gap:8px; margin-bottom:12px; }
 .dt-layout-row:first-child .dt-layout-cell { display:flex; align-items:center; }
 .dt-layout-row:first-child .dt-layout-cell.dt-start { flex:0 0 auto; }
 .dt-layout-row:first-child .dt-layout-cell.dt-end { flex:1; justify-content:flex-end; }
 
-/* Bottom row: info left, paging right */
-.dt-layout-row:last-child { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; flex-wrap:wrap; gap:8px; }
+/* Bottom row: info left (auto margin), paging right (flex-end) */
+.dt-layout-row:last-child { display:flex; align-items:center; justify-content:flex-end; padding:10px 0 0; flex-wrap:wrap; gap:8px; }
+.dt-layout-row:last-child .dt-layout-cell.dt-start { margin-right:auto; }
 
 .dt-search { display:flex; align-items:center; gap:6px; }
 .dt-search label { font-size:12px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; }

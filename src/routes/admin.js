@@ -1016,7 +1016,7 @@ router.get('/accounts', requireSession, asyncHandler(async (req, res) => {
       <div><a href="#add-account" class="btn btn-primary btn-sm">&#x2795; New Account</a></div>
     </div>
     <div class="card-body">
-    <table>
+    <table class="dt-accounts-table">
     <thead><tr><th>Name</th><th>Member ID</th><th>Age</th><th>Gender</th><th>Schedule</th><th>Balance</th><th>Unallocated</th><th>Password</th><th>Phone</th><th>Created</th><th>Actions</th></tr></thead>
     <tbody>
     ${accounts.map(a => `<tr>

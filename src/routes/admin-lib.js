@@ -267,9 +267,8 @@ form.inline { display:inline; }
 .dt-layout-row:first-child .dt-layout-cell.dt-start { flex:0 0 auto; }
 .dt-layout-row:first-child .dt-layout-cell.dt-end { flex:1; justify-content:flex-end; }
 
-/* Bottom row: info left (auto margin), paging right (flex-end) */
-.dt-layout-row:last-child { display:flex; align-items:center; justify-content:flex-end; padding:10px 0 0; flex-wrap:wrap; gap:8px; }
-.dt-layout-row:last-child .dt-layout-cell.dt-start { margin-right:auto; }
+/* Bottom row: everything right-aligned (same side as search) */
+.dt-layout-row:last-child { display:flex; align-items:center; justify-content:flex-end; padding:10px 0 0; flex-wrap:wrap; gap:12px; }
 
 .dt-search { display:flex; align-items:center; gap:6px; }
 .dt-search label { font-size:12px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; }

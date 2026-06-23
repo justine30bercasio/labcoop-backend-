@@ -64,12 +64,13 @@ function createAccount(fields) {
     photo_2x2_url: fields.photo_2x2_url || '',
     birth_cert_url: fields.birth_cert_url || '',
     id_photo_url: fields.id_photo_url || '',
+    is_active: fields.is_active ?? 1,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
   getDb().prepare(`
-    INSERT INTO accounts (account_id, child_name, member_id, password, password_changed, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, age, gender, savings_schedule, photo_2x2_url, birth_cert_url, id_photo_url, created_at, updated_at)
-    VALUES (@account_id, @child_name, @member_id, @password, @password_changed, @actual_balance, @unallocated_balance, @current_xp, @parent_phone, @last_name, @first_name, @middle_name, @birthday, @age, @gender, @savings_schedule, @photo_2x2_url, @birth_cert_url, @id_photo_url, @created_at, @updated_at)
+    INSERT INTO accounts (account_id, child_name, member_id, password, password_changed, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, age, gender, savings_schedule, photo_2x2_url, birth_cert_url, id_photo_url, is_active, created_at, updated_at)
+    VALUES (@account_id, @child_name, @member_id, @password, @password_changed, @actual_balance, @unallocated_balance, @current_xp, @parent_phone, @last_name, @first_name, @middle_name, @birthday, @age, @gender, @savings_schedule, @photo_2x2_url, @birth_cert_url, @id_photo_url, @is_active, @created_at, @updated_at)
   `).run(account);
   return account;
 }
@@ -87,7 +88,7 @@ function _computeAge(birthday) {
 }
 
 function updateAccount(accountId, fields) {
-  const allowed = ['actual_balance', 'unallocated_balance', 'current_xp', 'child_name', 'parent_phone', 'last_name', 'first_name', 'middle_name', 'birthday', 'age', 'gender', 'savings_schedule', 'photo_2x2_url', 'birth_cert_url', 'id_photo_url'];
+  const allowed = ['actual_balance', 'unallocated_balance', 'current_xp', 'child_name', 'parent_phone', 'last_name', 'first_name', 'middle_name', 'birthday', 'age', 'gender', 'savings_schedule', 'photo_2x2_url', 'birth_cert_url', 'id_photo_url', 'is_active'];
   const setClauses = [];
   const values = [];
 

@@ -1000,8 +1000,7 @@ router.get('/accounts', requireSession, asyncHandler(async (req, res) => {
   const toast = q.added ? 'success:Account created.'
     : q.updated ? 'success:Account updated.'
     : q.deleted ? 'success:Account deleted.'
-    : q.deposited ? 'success:Deposit added.'
-    : q.withdrawn ? 'success:Withdrawal completed.'
+    : q.toggled ? 'success:Account status changed.'
     : q.error ? `error:${q.error}`
     : '';
 
@@ -1017,9 +1016,13 @@ router.get('/accounts', requireSession, asyncHandler(async (req, res) => {
     </div>
     <div class="card-body">
     <table class="dt-accounts-table">
-    <thead><tr><th>Name</th><th>Member ID</th><th>Age</th><th>Gender</th><th>Schedule</th><th>Balance</th><th>Unallocated</th><th>Password</th><th>Phone</th><th>Created</th><th>Actions</th></tr></thead>
+    <thead><tr><th>Name</th><th>Member ID</th><th>Age</th><th>Gender</th><th>Schedule</th><th>Balance</th><th>Unallocated</th><th>Status</th><th>Password</th><th>Created</th><th>Actions</th></tr></thead>
     <tbody>
-    ${accounts.map(a => `<tr>
+    ${accounts.map(a => {
+      const statusNum = Number(a.is_active);
+      const statusLabel = statusNum === 1 ? 'Active' : statusNum === 0 ? 'Inactive' : 'Closed';
+      const statusBadge = statusNum === 1 ? 'badge-green' : statusNum === 0 ? 'badge-gray' : 'badge-red';
+      return `<tr>
       <td><b>${a.child_name}</b></td>
       <td class="mono">${a.member_id || '-'}</td>
       <td class="num">${a.age || '-'}</td>
@@ -1027,18 +1030,19 @@ router.get('/accounts', requireSession, asyncHandler(async (req, res) => {
       <td>${a.savings_schedule || '-'}</td>
       <td class="num">&#x20B1;${Number(a.actual_balance).toFixed(2)}</td>
       <td class="num">&#x20B1;${Number(a.unallocated_balance).toFixed(2)}</td>
+      <td><span class="badge ${statusBadge}">${statusLabel}</span></td>
       <td><span class="badge ${a.password_changed ? 'badge-green' : 'badge-red'}">${a.password_changed ? 'Changed' : 'Default'}</span></td>
-      <td>${a.parent_phone || '-'}</td>
       <td class="mono">${(a.created_at || '').slice(0, 10)}</td>
       <td><div style="display:flex;gap:4px">
         <a href="#edit-${a.account_id}" class="btn btn-secondary btn-xs">&#x270F;</a>
-        <a href="#deposit-${a.account_id}" class="btn btn-amber btn-xs">&#x1F4B5;</a>
-        <a href="#withdraw-${a.account_id}" class="btn btn-outline btn-xs">&#x1F4B8;</a>
+        ${statusNum === 1 ? `<form class="inline" method="post" action="/admin/accounts/toggle/${a.account_id}" onsubmit="return confirm('Deactivate ${a.child_name}?')"><button type="submit" class="btn btn-outline btn-xs">&#x1F4A4;</button></form>` :
+          statusNum === 0 ? `<form class="inline" method="post" action="/admin/accounts/toggle/${a.account_id}" style="display:inline"><button type="submit" class="btn btn-amber btn-xs">&#x2705;</button></form>` : ''}
+        ${statusNum === 1 ? `<form class="inline" method="post" action="/admin/accounts/close/${a.account_id}" onsubmit="return confirm('Close ${a.child_name} permanently? This cannot be undone.')"><button type="submit" class="btn btn-danger btn-xs">&#x1F6AB;</button></form>` : ''}
         <form class="inline" method="post" action="/admin/accounts/delete/${a.account_id}" onsubmit="return confirm('Delete ${a.child_name}?')">
-          <button type="submit" class="btn btn-danger btn-xs">&#x1F5D1;</button>
+          <button type="submit" class="btn btn-outline btn-xs">&#x1F5D1;</button>
         </form>
       </div></td>
-    </tr>`).join('')}
+    </tr>`}).join('')}
     </table></div>
   </div>
 
@@ -1090,39 +1094,11 @@ router.get('/accounts', requireSession, asyncHandler(async (req, res) => {
       <div><label for="eb_${a.account_id}">Balance (&#x20B1;)</label><input type="number" id="eb_${a.account_id}" name="actual_balance" min="0" step="0.01" value="${a.actual_balance}"></div>
       <div><label for="eu_${a.account_id}">Unallocated (&#x20B1;)</label><input type="number" id="eu_${a.account_id}" name="unallocated_balance" min="0" step="0.01" value="${a.unallocated_balance}"></div>
     </div>
-    <label for="ephone_${a.account_id}">Parent Phone</label>
-    <input type="text" id="ephone_${a.account_id}" name="parent_phone" value="${a.parent_phone || ''}">
+    <div class="form-row">
+      <div><label for="estatus_${a.account_id}">Status</label><select id="estatus_${a.account_id}" name="is_active"><option value="1"${Number(a.is_active) === 1 ? ' selected' : ''}>Active</option><option value="0"${Number(a.is_active) === 0 ? ' selected' : ''}>Inactive</option><option value="-1"${Number(a.is_active) === -1 ? ' selected' : ''}>Closed</option></select></div>
+      <div><label for="ephone_${a.account_id}">Phone</label><input type="text" id="ephone_${a.account_id}" name="parent_phone" value="${a.parent_phone || ''}"></div>
+    </div>
     <button type="submit" class="btn btn-primary">&#x1F4BE; Save Changes</button>
-  </form>
-  </div>
-  </div>
-
-  <div id="deposit-${a.account_id}" class="modal-overlay">
-  <div class="modal">
-  <a href="#" class="close">&times;</a>
-  <h2>&#x1F4B5; Deposit to ${a.child_name}</h2>
-  <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Current balance: &#x20B1;${Number(a.actual_balance).toFixed(2)}</p>
-  <form method="post" action="/admin/accounts/deposit/${a.account_id}">
-    <label for="damount_${a.account_id}">Amount (&#x20B1;)</label>
-    <input type="number" id="damount_${a.account_id}" name="amount" min="1" step="0.01" placeholder="e.g. 100" required>
-    <label for="ddesc_${a.account_id}">Description</label>
-    <input type="text" id="ddesc_${a.account_id}" name="description" placeholder="e.g. Allowance" value="Admin deposit">
-    <button type="submit" class="btn btn-amber">&#x1F4B5; Deposit</button>
-  </form>
-  </div>
-  </div>
-
-  <div id="withdraw-${a.account_id}" class="modal-overlay">
-  <div class="modal">
-  <a href="#" class="close">&times;</a>
-  <h2>&#x1F4B8; Withdraw from ${a.child_name}</h2>
-  <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Current balance: &#x20B1;${Number(a.actual_balance).toFixed(2)} &middot; Available: &#x20B1;${Number(a.unallocated_balance).toFixed(2)}</p>
-  <form method="post" action="/admin/accounts/withdraw/${a.account_id}">
-    <label for="wamount_${a.account_id}">Amount (&#x20B1;)</label>
-    <input type="number" id="wamount_${a.account_id}" name="amount" min="1" step="0.01" placeholder="e.g. 50" required>
-    <label for="wdesc_${a.account_id}">Description</label>
-    <input type="text" id="wdesc_${a.account_id}" name="description" placeholder="e.g. Cash withdrawal" value="Admin withdrawal">
-    <button type="submit" class="btn btn-danger">&#x1F4B8; Withdraw</button>
   </form>
   </div>
   </div>`).join('')}
@@ -1170,7 +1146,7 @@ router.post('/accounts/create', requireSession, asyncHandler(async (req, res) =>
 
 router.post('/accounts/update/:id', requireSession, asyncHandler(async (req, res) => {
   try {
-    const { child_name, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, gender, savings_schedule } = req.body;
+    const { child_name, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, gender, savings_schedule, is_active } = req.body;
     const ulast = (last_name || '').trim().toUpperCase();
     const ufirst = (first_name || '').trim().toUpperCase();
     const umid = (middle_name || '').trim().toUpperCase();
@@ -1187,8 +1163,31 @@ router.post('/accounts/update/:id', requireSession, asyncHandler(async (req, res
       birthday: birthday || '',
       gender: gender || '',
       savings_schedule: savings_schedule || '',
+      is_active: is_active !== undefined ? Number(is_active) : 1,
     });
     res.redirect('/admin/accounts?updated=ok');
+  } catch (err) {
+    res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
+  }
+}));
+
+router.post('/accounts/toggle/:id', requireSession, asyncHandler(async (req, res) => {
+  try {
+    const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
+    if (!account) return res.redirect('/admin/accounts?error=Account+not+found');
+    store.updateAccount(req.params.id, { is_active: Number(account.is_active) === 1 ? 0 : 1 });
+    res.redirect('/admin/accounts?toggled=ok');
+  } catch (err) {
+    res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
+  }
+}));
+
+router.post('/accounts/close/:id', requireSession, asyncHandler(async (req, res) => {
+  try {
+    const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
+    if (!account) return res.redirect('/admin/accounts?error=Account+not+found');
+    store.updateAccount(req.params.id, { is_active: -1 });
+    res.redirect('/admin/accounts?toggled=ok');
   } catch (err) {
     res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
   }

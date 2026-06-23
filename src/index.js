@@ -411,12 +411,18 @@ app.get('/test-ping', (req, res) => res.json({ping:'pong'}));
 
 // ── Clear all user data (keep reference tables) ──
 app.post('/reset-database', async (req, res) => {
-  const tables = ['gl_entries','purchases','loan_payments','transactions','badges','goal_jars','loans','withdrawal_requests','standing_orders','savings_applications','coop_contributions','coop_goals','accounts'];
+  const tables = ['gl_entries','loan_payments','transactions','badges','goal_jars','loans','withdrawal_requests','standing_orders','savings_applications','coop_contributions','coop_goals','accounts'];
   try {
     if (isPostgres) {
+      const existing = await store.query(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"
+      );
+      const existingSet = new Set(existing.rows.map(r => r.table_name));
       await store.transaction(async (tx) => {
         for (const t of tables) {
-          await tx.query(`DELETE FROM "${t}"`);
+          if (existingSet.has(t)) {
+            await tx.query(`DELETE FROM "${t}"`);
+          }
         }
       });
     } else {

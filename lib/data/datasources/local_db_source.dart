@@ -32,13 +32,13 @@ class LocalDbSource {
       return _cachedKey!;
     }
     final newKey = Hive.generateSecureKey();
-    await _secureStorage.write(key: 'encryption_key', value: newKey);
-    _cachedKey = base64Decode(newKey);
+    await _secureStorage.write(key: 'encryption_key', value: base64Encode(newKey));
+    _cachedKey = Uint8List.fromList(newKey);
     return _cachedKey!;
   }
 
   Future<Box> _openBox(String name) async {
-    return await _openBox(name, encryptionKey: await _getKey());
+    return await Hive.openBox(name, encryptionCipher: HiveAesCipher(await _getKey()));
   }
 
   Future<void> saveAccount(SavingsAccountModel account) async {

@@ -58,12 +58,53 @@ class RemoteApiSource {
     return data;
   }
 
-  Future<Map<String, dynamic>> register(String childName, String password, {String parentPhone = ''}) async {
-    final response = await _dio.post('/api/auth/register', data: {
-      'childName': childName,
+  Future<Map<String, dynamic>> register({
+    required String lastName,
+    required String firstName,
+    String middleName = '',
+    required String password,
+    String parentPhone = '',
+    int age = 0,
+    String gender = '',
+    String savingsSchedule = '',
+    List<int>? photo2x2Bytes,
+    String? photo2x2Filename,
+    List<int>? birthCertBytes,
+    String? birthCertFilename,
+    List<int>? idPhotoBytes,
+    String? idPhotoFilename,
+  }) async {
+    final formData = FormData.fromMap({
+      'lastName': lastName,
+      'firstName': firstName,
+      'middleName': middleName,
       'password': password,
       'parentPhone': parentPhone,
+      'age': age,
+      'gender': gender,
+      'savingsSchedule': savingsSchedule,
     });
+
+    if (photo2x2Bytes != null && photo2x2Filename != null) {
+      formData.files.add(MapEntry(
+        'photo_2x2',
+        MultipartFile.fromBytes(photo2x2Bytes, filename: photo2x2Filename),
+      ));
+    }
+    if (birthCertBytes != null && birthCertFilename != null) {
+      formData.files.add(MapEntry(
+        'birth_cert',
+        MultipartFile.fromBytes(birthCertBytes, filename: birthCertFilename),
+      ));
+    }
+    if (idPhotoBytes != null && idPhotoFilename != null) {
+      formData.files.add(MapEntry(
+        'id_photo',
+        MultipartFile.fromBytes(idPhotoBytes, filename: idPhotoFilename),
+      ));
+    }
+
+    final response = await _dio.post('/api/auth/register', data: formData);
     final data = response.data as Map<String, dynamic>;
     await saveSession(
       token: data['token'] as String,

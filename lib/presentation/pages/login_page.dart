@@ -2,9 +2,11 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
 import '../../core/theme/app_theme.dart';
+import '../../data/datasources/local_db_source.dart';
 import '../../data/datasources/remote_api_source.dart';
 import 'change_password_page.dart';
 import 'home_page.dart';
+import 'registration_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -62,6 +64,7 @@ class _LoginPageState extends State<LoginPage>
     });
 
     try {
+      await GetIt.instance<LocalDbSource>().clearAll();
       final api = GetIt.instance<RemoteApiSource>();
       final result = await api.login(password, memberId: cid);
       if (!mounted) return;
@@ -329,6 +332,30 @@ class _LoginPageState extends State<LoginPage>
                                       ],
                                     ),
                             ),
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                "Don't have an account? ",
+                                style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 13),
+                              ),
+                              GestureDetector(
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => const RegistrationPage()),
+                                ),
+                                child: Text(
+                                  'Create Account',
+                                  style: TextStyle(
+                                    color: AppTheme.accentAmber,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),

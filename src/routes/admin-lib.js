@@ -347,9 +347,11 @@ function toggleTheme(e){
 </script>
 <script>
 $(document).ready(function(){
-  $('table').each(function(){
-    if(!this.id) this.id = 'dt-' + Math.random().toString(36).slice(2, 9);
-    if(!this.classList.contains('no-dt')){
+  $('.card-body table').each(function(){
+    var $th = $(this).find('thead th').length;
+    var $td = $(this).find('tbody tr:first td').length;
+    if($th > 0 && $th === $td){
+      if(!this.id) this.id = 'dt-' + Math.random().toString(36).slice(2, 9);
       try{ $('#'+this.id).DataTable({pageLength:25,order:[]}); }catch(e){}
     }
   });

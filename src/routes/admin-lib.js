@@ -256,9 +256,60 @@ form.inline { display:inline; }
   .header-actions { width:100%; }
 }
 </style>
-<link rel="stylesheet" href="https://cdn.datatables.net/2.2.2/css/dataTables.dataTables.css">
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.datatables.net/2.2.2/js/dataTables.js"></script>
+<style>
+.dt-container { padding:0; }
+.dt-search { display:flex; align-items:center; gap:8px; padding:10px 14px; border-bottom:1px solid var(--border); background:var(--card); }
+.dt-search label { font-size:12px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.4px; }
+.dt-search input { padding:7px 12px; border:2px solid var(--border); border-radius:8px; font-size:13px; outline:none; background:var(--bg); color:var(--text); width:200px; transition:border var(--transition), box-shadow var(--transition); font-family:var(--font); }
+.dt-search input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(46,125,50,0.12); }
+[data-theme="dark"] .dt-search input { background:#1a231c; border-color:#2a3a2e; }
+[data-theme="dark"] .dt-search input:focus { border-color:var(--accent); }
+
+.dt-length { display:flex; align-items:center; gap:8px; padding:10px 14px; }
+.dt-length label { font-size:12px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.4px; }
+.dt-length select { padding:5px 8px; border:2px solid var(--border); border-radius:8px; font-size:12px; outline:none; background:var(--bg); color:var(--text); cursor:pointer; transition:border var(--transition); font-family:var(--font); }
+.dt-length select:focus { border-color:var(--accent); }
+[data-theme="dark"] .dt-length select { background:#1a231c; border-color:#2a3a2e; }
+
+.dt-info { padding:10px 14px; font-size:12px; color:var(--text-muted); }
+.dt-paging { padding:10px 14px; display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+.dt-paging nav { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+.dt-paging button { padding:6px 12px; border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--text); font-size:12px; font-weight:500; cursor:pointer; transition:all var(--transition); font-family:var(--font); min-width:32px; text-align:center; }
+.dt-paging button:hover { background:var(--accent); color:#fff; border-color:var(--accent); transform:translateY(-1px); box-shadow:0 2px 8px rgba(46,125,50,0.2); }
+.dt-paging button:active { transform:translateY(0); }
+.dt-paging button.current { background:var(--accent); color:#fff; border-color:var(--accent); font-weight:600; box-shadow:0 2px 8px rgba(46,125,50,0.25); }
+.dt-paging button.disabled { opacity:0.4; cursor:not-allowed; pointer-events:none; }
+.dt-paging button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+[data-theme="dark"] .dt-paging button { background:var(--card); border-color:#2a3a2e; }
+[data-theme="dark"] .dt-paging button:hover { background:var(--accent); border-color:var(--accent); }
+[data-theme="dark"] .dt-paging button.current { background:var(--accent); border-color:var(--accent); }
+
+.dt-layout-row { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:4px; }
+.dt-layout-cell { display:flex; align-items:center; }
+.dt-layout-cell.dt-start { justify-content:flex-start; }
+.dt-layout-cell.dt-end { justify-content:flex-end; }
+
+table.dataTable { margin:0 !important; width:100% !important; }
+table.dataTable thead th { position:relative; cursor:pointer; user-select:none; padding-right:24px !important; }
+table.dataTable thead th:after { position:absolute; right:8px; top:50%; transform:translateY(-50%); font-size:10px; color:var(--text-muted); }
+table.dataTable thead th.dt-orderable-asc:after { content:'\\25B4\\25BE'; letter-spacing:-2px; opacity:0.3; }
+table.dataTable thead th.dt-orderable-desc:after { content:'\\25B4\\25BE'; letter-spacing:-2px; opacity:0.3; }
+table.dataTable thead th.dt-ordering-asc:after { content:'\\25B4'; opacity:1; color:var(--accent); }
+table.dataTable thead th.dt-ordering-desc:after { content:'\\25BE'; opacity:1; color:var(--accent); }
+table.dataTable thead th:hover { background:#f0fdf4; }
+[data-theme="dark"] table.dataTable thead th:hover { background:rgba(46,125,50,0.1); }
+table.dataTable tbody tr { transition:background var(--transition); }
+table.dataTable tbody tr:hover td { background:#f0fdf4; }
+[data-theme="dark"] table.dataTable tbody tr:hover td { background:rgba(46,125,50,0.08); }
+table.dataTable tbody tr:nth-child(even) td { background:rgba(0,0,0,0.015); }
+[data-theme="dark"] table.dataTable tbody tr:nth-child(even) td { background:rgba(255,255,255,0.015); }
+table.dataTable tbody tr:nth-child(even):hover td { background:#f0fdf4; }
+[data-theme="dark"] table.dataTable tbody tr:nth-child(even):hover td { background:rgba(46,125,50,0.08); }
+
+.dt-empty { text-align:center; padding:32px !important; color:var(--text-muted); font-size:13px; }
+</style>
 </head>
 <body>
 
@@ -353,7 +404,24 @@ $(document).ready(function(){
     if($td === 0) $td = $th;
     if($th > 0 && $th === $td){
       if(!this.id) this.id = 'dt-' + Math.random().toString(36).slice(2, 9);
-      try{ $('#'+this.id).DataTable({pageLength:25,order:[]}); }catch(e){}
+      try{
+        $('#'+this.id).DataTable({
+          pageLength: 25,
+          lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, 'All']],
+          order: [],
+          language: {
+            search: 'Search:',
+            lengthMenu: 'Show _MENU_',
+            info: 'Showing _START_ to _END_ of _TOTAL_',
+            infoEmpty: 'No entries',
+            infoFiltered: '(filtered from _MAX_ total)',
+            zeroRecords: 'No matching records found',
+            emptyTable: 'No data available'
+          },
+          pagingType: 'full_numbers',
+          processing: true
+        });
+      }catch(e){}
     }
   });
 });

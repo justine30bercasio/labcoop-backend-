@@ -2031,15 +2031,40 @@ router.get('/settings', requireSession, asyncHandler(async (req, res) => {
 }));
 
 router.post('/reset-data', requireSession, asyncHandler(async (req, res) => {
-  const tables = isPostgres
-    ? await sql("SELECT table_name as name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' ORDER BY table_name")
-    : await sql("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
-  for (const t of tables) {
-    if (t.name === 'sqlite_sequence') continue;
-    await store.query(`DELETE FROM "${t.name}"`);
-    if (!isPostgres) await store.query(`DELETE FROM sqlite_sequence WHERE name='${t.name}'`);
+  // Keep reference tables — only clear user/transaction data
+  const tables = [
+    'gl_entries',
+    'loan_payments',
+    'transactions',
+    'badges',
+    'goal_jars',
+    'loans',
+    'withdrawal_requests',
+    'standing_orders',
+    'savings_applications',
+    'coop_contributions',
+    'coop_goals',
+    'accounts',
+  ];
+  if (isPostgres) {
+    const existing = await store.query(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"
+    );
+    const existingSet = new Set(existing.rows.map(r => r.table_name));
+    await store.transaction(async (tx) => {
+      for (const t of tables) {
+        if (existingSet.has(t)) {
+          await tx.query(`DELETE FROM "${t}"`);
+        }
+      }
+    });
+  } else {
+    for (const t of tables) {
+      try { store.query(`DELETE FROM ${t}`); } catch (_) {}
+    }
+    try { store.query("DELETE FROM sqlite_sequence WHERE name IN ('" + tables.join("','") + "')"); } catch (_) {}
   }
-  res.json({ message: 'All data reset. Tables are empty.' });
+  res.json({ message: 'All data reset successfully.' });
 }));
 
 // ── Loan Products Management ──

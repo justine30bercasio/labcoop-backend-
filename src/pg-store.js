@@ -24,6 +24,15 @@ class PgStore {
         parent_phone VARCHAR(20) DEFAULT '',
         interest_earned DECIMAL(12,2) DEFAULT 0,
         savings_product_id TEXT,
+        last_name VARCHAR(100) DEFAULT '',
+        first_name VARCHAR(100) DEFAULT '',
+        middle_name VARCHAR(100) DEFAULT '',
+        age INTEGER DEFAULT 0,
+        gender VARCHAR(10) DEFAULT '',
+        savings_schedule VARCHAR(50) DEFAULT '',
+        photo_2x2_url TEXT DEFAULT '',
+        birth_cert_url TEXT DEFAULT '',
+        id_photo_url TEXT DEFAULT '',
         created_at TEXT,
         updated_at TEXT
       );
@@ -307,23 +316,35 @@ class PgStore {
       unallocated_balance: fields.unallocated_balance || 0,
       current_xp: fields.current_xp || 0,
       parent_phone: fields.parent_phone || '',
+      last_name: fields.last_name || '',
+      first_name: fields.first_name || '',
+      middle_name: fields.middle_name || '',
+      age: fields.age || 0,
+      gender: fields.gender || '',
+      savings_schedule: fields.savings_schedule || '',
+      photo_2x2_url: fields.photo_2x2_url || '',
+      birth_cert_url: fields.birth_cert_url || '',
+      id_photo_url: fields.id_photo_url || '',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
     await this.query(`
-      INSERT INTO accounts (account_id, child_name, member_id, password, password_changed, actual_balance, unallocated_balance, current_xp, parent_phone, created_at, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      INSERT INTO accounts (account_id, child_name, member_id, password, password_changed, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, age, gender, savings_schedule, photo_2x2_url, birth_cert_url, id_photo_url, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
     `, [
       account.account_id, account.child_name, account.member_id,
       account.password, account.password_changed, account.actual_balance,
       account.unallocated_balance, account.current_xp, account.parent_phone,
+      account.last_name, account.first_name, account.middle_name,
+      account.age, account.gender, account.savings_schedule,
+      account.photo_2x2_url, account.birth_cert_url, account.id_photo_url,
       account.created_at, account.updated_at,
     ]);
     return account;
   }
 
   async updateAccount(accountId, fields) {
-    const allowed = ['actual_balance', 'unallocated_balance', 'current_xp', 'child_name', 'parent_phone'];
+    const allowed = ['actual_balance', 'unallocated_balance', 'current_xp', 'child_name', 'parent_phone', 'last_name', 'first_name', 'middle_name', 'age', 'gender', 'savings_schedule', 'photo_2x2_url', 'birth_cert_url', 'id_photo_url'];
     const setClauses = [];
     const values = [];
     let idx = 1;

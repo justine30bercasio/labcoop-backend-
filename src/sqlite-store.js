@@ -54,18 +54,27 @@ function createAccount(fields) {
     unallocated_balance: fields.unallocated_balance || 0,
     current_xp: fields.current_xp || 0,
     parent_phone: fields.parent_phone || '',
+    last_name: fields.last_name || '',
+    first_name: fields.first_name || '',
+    middle_name: fields.middle_name || '',
+    age: fields.age || 0,
+    gender: fields.gender || '',
+    savings_schedule: fields.savings_schedule || '',
+    photo_2x2_url: fields.photo_2x2_url || '',
+    birth_cert_url: fields.birth_cert_url || '',
+    id_photo_url: fields.id_photo_url || '',
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
   getDb().prepare(`
-    INSERT INTO accounts (account_id, child_name, member_id, password, password_changed, actual_balance, unallocated_balance, current_xp, parent_phone, created_at, updated_at)
-    VALUES (@account_id, @child_name, @member_id, @password, @password_changed, @actual_balance, @unallocated_balance, @current_xp, @parent_phone, @created_at, @updated_at)
+    INSERT INTO accounts (account_id, child_name, member_id, password, password_changed, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, age, gender, savings_schedule, photo_2x2_url, birth_cert_url, id_photo_url, created_at, updated_at)
+    VALUES (@account_id, @child_name, @member_id, @password, @password_changed, @actual_balance, @unallocated_balance, @current_xp, @parent_phone, @last_name, @first_name, @middle_name, @age, @gender, @savings_schedule, @photo_2x2_url, @birth_cert_url, @id_photo_url, @created_at, @updated_at)
   `).run(account);
   return account;
 }
 
 function updateAccount(accountId, fields) {
-  const allowed = ['actual_balance', 'unallocated_balance', 'current_xp', 'child_name', 'parent_phone'];
+  const allowed = ['actual_balance', 'unallocated_balance', 'current_xp', 'child_name', 'parent_phone', 'last_name', 'first_name', 'middle_name', 'age', 'gender', 'savings_schedule', 'photo_2x2_url', 'birth_cert_url', 'id_photo_url'];
   const setClauses = [];
   const values = [];
   for (const key of allowed) {

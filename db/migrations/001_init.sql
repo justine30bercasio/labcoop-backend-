@@ -9,6 +9,15 @@ CREATE TABLE IF NOT EXISTS accounts (
     unallocated_balance DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
     current_xp INTEGER NOT NULL DEFAULT 0,
     parent_phone VARCHAR(20),
+    last_name VARCHAR(100) DEFAULT '',
+    first_name VARCHAR(100) DEFAULT '',
+    middle_name VARCHAR(100) DEFAULT '',
+    age INTEGER DEFAULT 0,
+    gender VARCHAR(10) DEFAULT '',
+    savings_schedule VARCHAR(50) DEFAULT '',
+    photo_2x2_url TEXT DEFAULT '',
+    birth_cert_url TEXT DEFAULT '',
+    id_photo_url TEXT DEFAULT '',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

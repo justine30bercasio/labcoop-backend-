@@ -8,6 +8,15 @@ CREATE TABLE IF NOT EXISTS accounts (
     unallocated_balance REAL NOT NULL DEFAULT 0.00,
     current_xp INTEGER NOT NULL DEFAULT 0,
     parent_phone TEXT,
+    last_name TEXT DEFAULT '',
+    first_name TEXT DEFAULT '',
+    middle_name TEXT DEFAULT '',
+    age INTEGER DEFAULT 0,
+    gender TEXT DEFAULT '',
+    savings_schedule TEXT DEFAULT '',
+    photo_2x2_url TEXT DEFAULT '',
+    birth_cert_url TEXT DEFAULT '',
+    id_photo_url TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
 );

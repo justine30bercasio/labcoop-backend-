@@ -472,7 +472,7 @@ $(document).ready(function(){
           layout: {
             topStart: 'pageLength',
             topEnd: 'search',
-            bottomEnd: 'info paging'
+            bottomEnd: ['info', 'paging']
           }
         });
       }catch(e){}

@@ -1009,7 +1009,6 @@ router.get('/accounts', requireSession, asyncHandler(async (req, res) => {
   <div class="stats-grid">
     <div class="stat-card"><div class="stat-icon">&#x1F464;</div><div class="stat-value">${accounts.length}</div><div class="stat-label">Total Accounts</div></div>
     <div class="stat-card"><div class="stat-icon">&#x20B1;</div><div class="stat-value">${accounts.reduce((s,a)=>s+Number(a.actual_balance),0).toFixed(0)}</div><div class="stat-label">Combined Balance</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x2728;</div><div class="stat-value">${accounts.reduce((s,a)=>s+Number(a.current_xp),0)}</div><div class="stat-label">Total XP</div></div>
   </div>
 
   <div class="card">
@@ -1017,7 +1016,9 @@ router.get('/accounts', requireSession, asyncHandler(async (req, res) => {
       <div><a href="#add-account" class="btn btn-primary btn-sm">&#x2795; New Account</a></div>
     </div>
     <div class="card-body">
-    <table><tr><th>Name</th><th>Member ID</th><th>Age</th><th>Gender</th><th>Schedule</th><th>Balance</th><th>XP</th><th>Password</th><th>Phone</th><th>Created</th><th>Actions</th></tr>
+    <table>
+    <thead><tr><th>Name</th><th>Member ID</th><th>Age</th><th>Gender</th><th>Schedule</th><th>Balance</th><th>Unallocated</th><th>Password</th><th>Phone</th><th>Created</th><th>Actions</th></tr></thead>
+    <tbody>
     ${accounts.map(a => `<tr>
       <td><b>${a.child_name}</b></td>
       <td class="mono">${a.member_id || '-'}</td>
@@ -1025,7 +1026,7 @@ router.get('/accounts', requireSession, asyncHandler(async (req, res) => {
       <td>${a.gender || '-'}</td>
       <td>${a.savings_schedule || '-'}</td>
       <td class="num">&#x20B1;${Number(a.actual_balance).toFixed(2)}</td>
-      <td class="num">${a.current_xp}</td>
+      <td class="num">&#x20B1;${Number(a.unallocated_balance).toFixed(2)}</td>
       <td><span class="badge ${a.password_changed ? 'badge-green' : 'badge-red'}">${a.password_changed ? 'Changed' : 'Default'}</span></td>
       <td>${a.parent_phone || '-'}</td>
       <td class="mono">${(a.created_at || '').slice(0, 10)}</td>
@@ -1060,8 +1061,6 @@ router.get('/accounts', requireSession, asyncHandler(async (req, res) => {
     </div>
     <label for="abalance">Initial Balance (&#x20B1;)</label>
     <input type="number" id="abalance" name="actual_balance" min="0" value="0">
-    <label for="axp">Initial XP</label>
-    <input type="number" id="axp" name="current_xp" min="0" value="0">
     <label for="aphone">Parent Phone</label>
     <input type="text" id="aphone" name="parent_phone" placeholder="Optional">
     <button type="submit" class="btn btn-primary">&#x2795; Create Account</button>
@@ -1091,8 +1090,6 @@ router.get('/accounts', requireSession, asyncHandler(async (req, res) => {
       <div><label for="eb_${a.account_id}">Balance (&#x20B1;)</label><input type="number" id="eb_${a.account_id}" name="actual_balance" min="0" step="0.01" value="${a.actual_balance}"></div>
       <div><label for="eu_${a.account_id}">Unallocated (&#x20B1;)</label><input type="number" id="eu_${a.account_id}" name="unallocated_balance" min="0" step="0.01" value="${a.unallocated_balance}"></div>
     </div>
-    <label for="exp_${a.account_id}">XP</label>
-    <input type="number" id="exp_${a.account_id}" name="current_xp" min="0" value="${a.current_xp}">
     <label for="ephone_${a.account_id}">Parent Phone</label>
     <input type="text" id="ephone_${a.account_id}" name="parent_phone" value="${a.parent_phone || ''}">
     <button type="submit" class="btn btn-primary">&#x1F4BE; Save Changes</button>
@@ -3432,7 +3429,8 @@ router.get('/users', requireSession, asyncHandler(async (req, res) => {
         <td>${u.is_active ? '<span style="color:#16a34a;font-weight:600">&#x2705; Active</span>' : '<span style="color:#dc2626;font-weight:600">&#x274C; Inactive</span>'}</td>
         <td class="mono" style="font-size:11px;color:var(--text-muted)">${(u.created_at||'').slice(0,10)}</td>
         <td><a href="/admin/users/deactivate/${u.admin_id}" class="btn ${u.is_active ? 'btn-danger' : 'btn-secondary'} btn-xs" onclick="return confirm('${u.is_active ? 'Deactivate' : 'Activate'} ${u.username}?')">${u.is_active ? 'Deactivate' : 'Activate'}</a></td>
-      </tr>`).join('')}
+    </tr>`).join('')}
+    </tbody>
     </table></div>
   </div>
   <div class="card">

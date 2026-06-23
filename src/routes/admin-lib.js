@@ -348,8 +348,9 @@ function toggleTheme(e){
 <script>
 $(document).ready(function(){
   $('.card-body table').each(function(){
-    var $th = $(this).find('thead th').length;
-    var $td = $(this).find('tbody tr:first td').length;
+    var $th = $(this).find('thead th, > tr:first th').length;
+    var $td = $(this).find('tbody tr:first td, > tr:eq(1) td').length;
+    if($td === 0) $td = $th;
     if($th > 0 && $th === $td){
       if(!this.id) this.id = 'dt-' + Math.random().toString(36).slice(2, 9);
       try{ $('#'+this.id).DataTable({pageLength:25,order:[]}); }catch(e){}

@@ -16,11 +16,26 @@ const one = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows[0]);
 
 const router = express.Router();
 
+const ROLE_LEVELS = { super_admin: 4, manager: 3, teller: 2, auditor: 1 };
+
 function requireSession(req, res, next) {
   if (!req.session || !req.session.adminId) {
     return res.redirect('/admin/login');
   }
   next();
+}
+
+function requireRole(minLevel) {
+  return (req, res, next) => {
+    if (!req.session || !req.session.adminId) {
+      return res.redirect('/admin/login');
+    }
+    const level = ROLE_LEVELS[req.session.adminRole] ?? 0;
+    if (level < minLevel) {
+      return res.status(403).send('Forbidden: insufficient role level');
+    }
+    next();
+  };
 }
 
 const upload = multer({
@@ -36,7 +51,7 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-router.post('/upload', requireSession, upload.single('file'), (req, res) => {
+router.post('/upload', requireRole(2), upload.single('file'), (req, res) => {
   if (!req.file) return res.redirect('/admin?error=No+file+uploaded');
   try {
     const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
@@ -51,7 +66,7 @@ router.post('/upload', requireSession, upload.single('file'), (req, res) => {
   }
 });
 
-router.post('/upload-and-seed', requireSession, upload.single('file'), (req, res) => {
+router.post('/upload-and-seed', requireRole(3), upload.single('file'), (req, res) => {
   if (!req.file) return res.redirect('/admin?error=No+file+uploaded');
   try {
     const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
@@ -104,7 +119,7 @@ router.post('/upload-and-seed', requireSession, upload.single('file'), (req, res
   }
 });
 
-router.get('/', requireSession, asyncHandler(async (req, res) => {
+router.get('/', requireRole(1), asyncHandler(async (req, res) => {
   const sql = (s, p) => store.query(s, p || []).then(r => r.rows);
   const one = (s, p) => store.query(s, p || []).then(r => r.rows[0]);
 
@@ -442,7 +457,7 @@ router.get('/', requireSession, asyncHandler(async (req, res) => {
   }));
 }));
 
-router.get('/shop', requireSession, asyncHandler(async (req, res) => {
+router.get('/shop', requireRole(1), asyncHandler(async (req, res) => {
 
   const items = await sql('SELECT * FROM shop_items ORDER BY type, cost ASC');
 
@@ -722,7 +737,7 @@ const shopUpload = require('multer')({
   limits: { fileSize: 5 * 1024 * 1024 },
 });
 
-router.post('/shop/create', requireSession, shopUpload.single('image'), asyncHandler(async (req, res) => {
+router.post('/shop/create', requireRole(2), shopUpload.single('image'), asyncHandler(async (req, res) => {
   try {
 
     const { name, type, cost, rarity, emoji } = req.body;
@@ -747,7 +762,7 @@ router.post('/shop/create', requireSession, shopUpload.single('image'), asyncHan
   }
 }));
 
-router.post('/shop/update/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/shop/update/:id', requireRole(2), asyncHandler(async (req, res) => {
   try {
 
     const existing = await one('SELECT * FROM shop_items WHERE id = $1', [req.params.id]);
@@ -769,7 +784,7 @@ router.post('/shop/update/:id', requireSession, asyncHandler(async (req, res) =>
   }
 }));
 
-router.post('/shop/delete/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/shop/delete/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
 
     const existing = await one('SELECT * FROM shop_items WHERE id = $1', [req.params.id]);
@@ -785,7 +800,7 @@ router.post('/shop/delete/:id', requireSession, asyncHandler(async (req, res) =>
   }
 }));
 
-router.post('/shop/upload/:id', requireSession, shopUpload.single('image'), asyncHandler(async (req, res) => {
+router.post('/shop/upload/:id', requireRole(2), shopUpload.single('image'), asyncHandler(async (req, res) => {
   try {
 
     const existing = await one('SELECT * FROM shop_items WHERE id = $1', [req.params.id]);
@@ -813,7 +828,7 @@ router.post('/shop/upload/:id', requireSession, shopUpload.single('image'), asyn
 }));
 // ── Quiz Management ──
 
-router.get('/quiz', requireSession, asyncHandler(async (req, res) => {
+router.get('/quiz', requireRole(1), asyncHandler(async (req, res) => {
 
   const questions = await sql('SELECT * FROM quiz_questions ORDER BY difficulty_level, category, question');
   const q = req.query;
@@ -938,7 +953,7 @@ router.get('/quiz', requireSession, asyncHandler(async (req, res) => {
   res.type('html').send(layout('Quiz Questions', 'quiz', content, { toast: toast || undefined }));
 }));
 
-router.post('/quiz/create', requireSession, asyncHandler(async (req, res) => {
+router.post('/quiz/create', requireRole(2), asyncHandler(async (req, res) => {
   try {
 
     const { question, category, difficulty_level, opt0, opt1, opt2, opt3, correct_index, xp_reward, coin_reward, explanation } = req.body;
@@ -956,7 +971,7 @@ router.post('/quiz/create', requireSession, asyncHandler(async (req, res) => {
   }
 }));
 
-router.post('/quiz/update/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/quiz/update/:id', requireRole(2), asyncHandler(async (req, res) => {
   try {
 
     const existing = await one('SELECT * FROM quiz_questions WHERE id = $1', [req.params.id]);
@@ -979,7 +994,7 @@ router.post('/quiz/update/:id', requireSession, asyncHandler(async (req, res) =>
   }
 }));
 
-router.post('/quiz/delete/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/quiz/delete/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
 
     const existing = await one('SELECT * FROM quiz_questions WHERE id = $1', [req.params.id]);
@@ -993,7 +1008,7 @@ router.post('/quiz/delete/:id', requireSession, asyncHandler(async (req, res) =>
 
 // ── Accounts Management ──
 
-router.get('/accounts', requireSession, asyncHandler(async (req, res) => {
+router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
 
   const accounts = await sql('SELECT * FROM accounts ORDER BY child_name ASC');
   const q = req.query;
@@ -1114,7 +1129,7 @@ router.get('/accounts', requireSession, asyncHandler(async (req, res) => {
   }));
 }));
 
-router.post('/accounts/create', requireSession, asyncHandler(async (req, res) => {
+router.post('/accounts/create', requireRole(2), asyncHandler(async (req, res) => {
   try {
     const { child_name, actual_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, gender, savings_schedule } = req.body;
     if (!child_name) return res.redirect('/admin/accounts?error=Name+required');
@@ -1148,7 +1163,7 @@ router.post('/accounts/create', requireSession, asyncHandler(async (req, res) =>
   }
 }));
 
-router.post('/accounts/update/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/accounts/update/:id', requireRole(2), asyncHandler(async (req, res) => {
   try {
     const { child_name, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, gender, savings_schedule, is_active } = req.body;
     const ulast = (last_name || '').trim().toUpperCase();
@@ -1175,7 +1190,7 @@ router.post('/accounts/update/:id', requireSession, asyncHandler(async (req, res
   }
 }));
 
-router.post('/accounts/toggle/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/accounts/toggle/:id', requireRole(2), asyncHandler(async (req, res) => {
   try {
     const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
     if (!account) return res.redirect('/admin/accounts?error=Account+not+found');
@@ -1186,7 +1201,7 @@ router.post('/accounts/toggle/:id', requireSession, asyncHandler(async (req, res
   }
 }));
 
-router.post('/accounts/close/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/accounts/close/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
     const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
     if (!account) return res.redirect('/admin/accounts?error=Account+not+found');
@@ -1197,7 +1212,7 @@ router.post('/accounts/close/:id', requireSession, asyncHandler(async (req, res)
   }
 }));
 
-router.post('/accounts/deposit/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/accounts/deposit/:id', requireRole(2), asyncHandler(async (req, res) => {
   try {
     const { amount, description } = req.body;
     const val = Number(amount);
@@ -1231,7 +1246,7 @@ router.post('/accounts/deposit/:id', requireSession, asyncHandler(async (req, re
   }
 }));
 
-router.post('/accounts/withdraw/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/accounts/withdraw/:id', requireRole(2), asyncHandler(async (req, res) => {
   try {
     const { amount, description } = req.body;
     const val = Number(amount);
@@ -1267,7 +1282,7 @@ router.post('/accounts/withdraw/:id', requireSession, asyncHandler(async (req, r
   }
 }));
 
-router.post('/accounts/delete/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/accounts/delete/:id', requireRole(4), asyncHandler(async (req, res) => {
   try {
 
     const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
@@ -1281,7 +1296,7 @@ router.post('/accounts/delete/:id', requireSession, asyncHandler(async (req, res
 
 // ── Goals Management ──
 
-router.get('/goals', requireSession, asyncHandler(async (req, res) => {
+router.get('/goals', requireRole(1), asyncHandler(async (req, res) => {
 
   const goals = await sql('SELECT g.*, a.child_name FROM goal_jars g LEFT JOIN accounts a ON g.account_id = a.account_id ORDER BY g.created_at ASC');
   const accounts = await sql('SELECT account_id, child_name FROM accounts ORDER BY child_name ASC');
@@ -1405,7 +1420,7 @@ router.get('/goals', requireSession, asyncHandler(async (req, res) => {
   }));
 }));
 
-router.post('/goals/create', requireSession, asyncHandler(async (req, res) => {
+router.post('/goals/create', requireRole(2), asyncHandler(async (req, res) => {
   try {
     const { account_id, title, target_amount, current_allocated, category_icon } = req.body;
     if (!account_id || !title) return res.redirect('/admin/goals?error=Account+and+title+required');
@@ -1425,7 +1440,7 @@ router.post('/goals/create', requireSession, asyncHandler(async (req, res) => {
   }
 }));
 
-router.post('/goals/update/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/goals/update/:id', requireRole(2), asyncHandler(async (req, res) => {
   try {
 
     const existing = await one('SELECT * FROM goal_jars WHERE goal_id = $1', [req.params.id]);
@@ -1443,7 +1458,7 @@ router.post('/goals/update/:id', requireSession, asyncHandler(async (req, res) =
   }
 }));
 
-router.post('/goals/toggle/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/goals/toggle/:id', requireRole(2), asyncHandler(async (req, res) => {
   try {
 
     const goal = await one('SELECT * FROM goal_jars WHERE goal_id = $1', [req.params.id]);
@@ -1456,7 +1471,7 @@ router.post('/goals/toggle/:id', requireSession, asyncHandler(async (req, res) =
   }
 }));
 
-router.post('/goals/delete/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/goals/delete/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
 
     const existing = await one('SELECT * FROM goal_jars WHERE goal_id = $1', [req.params.id]);
@@ -1470,7 +1485,7 @@ router.post('/goals/delete/:id', requireSession, asyncHandler(async (req, res) =
 
 // ── Badges Management ──
 
-router.get('/badges', requireSession, asyncHandler(async (req, res) => {
+router.get('/badges', requireRole(1), asyncHandler(async (req, res) => {
 
   const badges = await sql('SELECT b.*, a.child_name FROM badges b LEFT JOIN accounts a ON b.account_id = a.account_id ORDER BY b.created_at ASC');
   const accounts = await sql('SELECT account_id, child_name FROM accounts ORDER BY child_name ASC');
@@ -1592,7 +1607,7 @@ router.get('/badges', requireSession, asyncHandler(async (req, res) => {
   }));
 }));
 
-router.post('/badges/create', requireSession, asyncHandler(async (req, res) => {
+router.post('/badges/create', requireRole(2), asyncHandler(async (req, res) => {
   try {
 
     const { account_id, name, description, required_xp, is_unlocked } = req.body;
@@ -1612,7 +1627,7 @@ router.post('/badges/create', requireSession, asyncHandler(async (req, res) => {
   }
 }));
 
-router.post('/badges/update/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/badges/update/:id', requireRole(2), asyncHandler(async (req, res) => {
   try {
 
     const existing = await one('SELECT * FROM badges WHERE badge_id = $1', [req.params.id]);
@@ -1630,7 +1645,7 @@ router.post('/badges/update/:id', requireSession, asyncHandler(async (req, res) 
   }
 }));
 
-router.post('/badges/toggle/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/badges/toggle/:id', requireRole(2), asyncHandler(async (req, res) => {
   try {
 
     const existing = await one('SELECT * FROM badges WHERE badge_id = $1', [req.params.id]);
@@ -1643,7 +1658,7 @@ router.post('/badges/toggle/:id', requireSession, asyncHandler(async (req, res) 
   }
 }));
 
-router.post('/badges/delete/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/badges/delete/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
 
     const existing = await one('SELECT * FROM badges WHERE badge_id = $1', [req.params.id]);
@@ -1657,7 +1672,7 @@ router.post('/badges/delete/:id', requireSession, asyncHandler(async (req, res) 
 
 // ── Loans Management ──
 
-router.get('/loans', requireSession, asyncHandler(async (req, res) => {
+router.get('/loans', requireRole(1), asyncHandler(async (req, res) => {
 
   const accounts = await sql('SELECT account_id, child_name FROM accounts ORDER BY child_name ASC');
   const loans = await sql(`
@@ -1781,7 +1796,7 @@ router.get('/loans', requireSession, asyncHandler(async (req, res) => {
   }));
 }));
 
-router.post('/loans/approve/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/loans/approve/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
     const loan = store.getLoan(req.params.id);
     if (!loan) return res.redirect('/admin/loans?error=Loan+not+found');
@@ -1794,7 +1809,7 @@ router.post('/loans/approve/:id', requireSession, asyncHandler(async (req, res) 
   }
 }));
 
-router.post('/loans/reject/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/loans/reject/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
     const loan = store.getLoan(req.params.id);
     if (!loan) return res.redirect('/admin/loans?error=Loan+not+found');
@@ -1807,7 +1822,7 @@ router.post('/loans/reject/:id', requireSession, asyncHandler(async (req, res) =
   }
 }));
 
-router.post('/loans/disburse/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/loans/disburse/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
 
     const loan = store.getLoan(req.params.id);
@@ -1849,7 +1864,7 @@ router.post('/loans/disburse/:id', requireSession, asyncHandler(async (req, res)
 
 // ── Transactions Viewer ──
 
-router.get('/transactions', requireSession, asyncHandler(async (req, res) => {
+router.get('/transactions', requireRole(1), asyncHandler(async (req, res) => {
 
   const accounts = await sql('SELECT account_id, child_name FROM accounts ORDER BY child_name ASC');
   const q = req.query;
@@ -1959,7 +1974,7 @@ router.get('/transactions', requireSession, asyncHandler(async (req, res) => {
 
 // ── Settings ──
 
-router.get('/settings', requireSession, asyncHandler(async (req, res) => {
+router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {
 
   let dbSize = 0;
   if (!isPostgres) {
@@ -2020,7 +2035,7 @@ router.get('/settings', requireSession, asyncHandler(async (req, res) => {
       <a href="/api/excel/export/all" class="btn btn-secondary">&#x1F4E5; Export All Data</a>
       <a href="/api/excel/template" class="btn btn-outline">&#x1F4C4; Download Template</a>
       <a href="/api/health" target="_blank" class="btn btn-outline">&#x1F4C8; Health Check</a>
-      <button class="btn btn-danger" data-confirm="Reset ALL data? This cannot be undone." data-action-url="/admin/reset-data" data-method="POST">&#x26A0; Reset All Data</button>
+      <a href="/admin/reset-data/confirm" class="btn btn-danger">&#x26A0; Reset All Data</a>
     </div>
   </div>
   `;
@@ -2030,7 +2045,33 @@ router.get('/settings', requireSession, asyncHandler(async (req, res) => {
   }));
 }));
 
-router.post('/reset-data', requireSession, asyncHandler(async (req, res) => {
+router.get('/reset-data/confirm', requireRole(4), asyncHandler(async (req, res) => {
+  const err = req.query.error ? req.query.error : '';
+  const content = `
+  <div class="card" style="max-width:500px;margin:0 auto">
+    <div class="card-header"><h3>&#x26A0;&#xFE0F; Reset All Data</h3></div>
+    <div class="card-body-padded">
+      <p style="color:var(--danger);font-weight:600;margin-bottom:16px">This will permanently delete ALL member accounts, transactions, goals, badges, loans, and audit data. Reference tables (GL accounts, shop items, quiz questions) will be kept.</p>
+      <p style="margin-bottom:16px">Enter your password to confirm this destructive action.</p>
+      ${err ? `<p style="color:var(--danger);font-weight:600;margin-bottom:12px">&#x274C; ${err}</p>` : ''}
+      <form method="post" action="/admin/reset-data" style="display:flex;flex-direction:column;gap:12px">
+        <div class="field"><label>Your Password</label><input type="password" name="password" required></div>
+        <div style="display:flex;gap:8px">
+          <button type="submit" class="btn btn-danger">&#x26A0;&#xFE0F; Confirm Reset All Data</button>
+          <a href="/admin/settings" class="btn btn-cancel">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>`;
+  res.type('html').send(layout('Confirm Reset', 'settings', content, { subtitle: 'Password required' }));
+}));
+
+router.post('/reset-data', requireRole(4), asyncHandler(async (req, res) => {
+  const { password } = req.body;
+  const adminUser = await one('SELECT * FROM admin_users WHERE admin_id = $1', [req.session.adminId]);
+  if (!adminUser || !bcrypt.compareSync(password, adminUser.password_hash)) {
+    return res.redirect('/admin/reset-data/confirm?error=Incorrect+password');
+  }
   // Keep reference tables — only clear user/transaction data
   const tables = [
     'gl_entries',
@@ -2064,12 +2105,12 @@ router.post('/reset-data', requireSession, asyncHandler(async (req, res) => {
     }
     try { store.query("DELETE FROM sqlite_sequence WHERE name IN ('" + tables.join("','") + "')"); } catch (_) {}
   }
-  res.json({ message: 'All data reset successfully.' });
+  res.redirect('/admin?msg=All+data+reset+successful');
 }));
 
 // ── Loan Products Management ──
 
-router.get('/loan-products', requireSession, asyncHandler(async (req, res) => {
+router.get('/loan-products', requireRole(1), asyncHandler(async (req, res) => {
 
   const products = await sql('SELECT * FROM loan_products ORDER BY min_amount ASC');
   const q = req.query;
@@ -2177,7 +2218,7 @@ router.get('/loan-products', requireSession, asyncHandler(async (req, res) => {
   }));
 }));
 
-router.post('/loan-products/create', requireSession, asyncHandler(async (req, res) => {
+router.post('/loan-products/create', requireRole(3), asyncHandler(async (req, res) => {
   try {
     const { name, description, interest_rate, interest_type, min_amount, max_amount, min_term, max_term } = req.body;
     if (!name) return res.redirect('/admin/loan-products?error=Name+required');
@@ -2197,7 +2238,7 @@ router.post('/loan-products/create', requireSession, asyncHandler(async (req, re
   }
 }));
 
-router.post('/loan-products/update/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/loan-products/update/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
     const { name, description, interest_rate, interest_type, min_amount, max_amount, min_term, max_term } = req.body;
     store.updateLoanProduct(req.params.id, {
@@ -2216,7 +2257,7 @@ router.post('/loan-products/update/:id', requireSession, asyncHandler(async (req
   }
 }));
 
-router.post('/loan-products/toggle/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/loan-products/toggle/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
     const product = store.getLoanProduct(req.params.id);
     if (!product) return res.redirect('/admin/loan-products?error=Product+not+found');
@@ -2229,7 +2270,7 @@ router.post('/loan-products/toggle/:id', requireSession, asyncHandler(async (req
 
 // ── Savings Products Management ──
 
-router.get('/savings-products', requireSession, asyncHandler(async (req, res) => {
+router.get('/savings-products', requireRole(1), asyncHandler(async (req, res) => {
 
   const products = await sql('SELECT * FROM savings_products ORDER BY name ASC');
   const q = req.query;
@@ -2327,7 +2368,7 @@ router.get('/savings-products', requireSession, asyncHandler(async (req, res) =>
   }));
 }));
 
-router.post('/savings-products/create', requireSession, asyncHandler(async (req, res) => {
+router.post('/savings-products/create', requireRole(3), asyncHandler(async (req, res) => {
   try {
     const { name, description, interest_rate, interest_frequency, min_balance, withdrawal_limit } = req.body;
     if (!name) return res.redirect('/admin/savings-products?error=Name+required');
@@ -2345,7 +2386,7 @@ router.post('/savings-products/create', requireSession, asyncHandler(async (req,
   }
 }));
 
-router.post('/savings-products/update/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/savings-products/update/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
     const { name, description, interest_rate, interest_frequency, min_balance, withdrawal_limit } = req.body;
     store.updateSavingsProduct(req.params.id, {
@@ -2362,7 +2403,7 @@ router.post('/savings-products/update/:id', requireSession, asyncHandler(async (
   }
 }));
 
-router.post('/savings-products/toggle/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/savings-products/toggle/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
     const product = store.getSavingsProduct(req.params.id);
     if (!product) return res.redirect('/admin/savings-products?error=Product+not+found');
@@ -2375,7 +2416,7 @@ router.post('/savings-products/toggle/:id', requireSession, asyncHandler(async (
 
 // ── Withdrawal Requests Management ──
 
-router.get('/withdrawal-requests', requireSession, asyncHandler(async (req, res) => {
+router.get('/withdrawal-requests', requireRole(1), asyncHandler(async (req, res) => {
 
   const requests = await sql('SELECT w.*, a.child_name, a.member_id FROM withdrawal_requests w LEFT JOIN accounts a ON w.account_id = a.account_id ORDER BY w.created_at DESC');
   const q = req.query;
@@ -2456,7 +2497,7 @@ router.get('/withdrawal-requests', requireSession, asyncHandler(async (req, res)
   }));
 }));
 
-router.post('/withdrawal-requests/approve/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/withdrawal-requests/approve/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
     const reqData = store.getWithdrawalRequest(req.params.id);
     if (!reqData) return res.redirect('/admin/withdrawal-requests?error=Request+not+found');
@@ -2468,7 +2509,7 @@ router.post('/withdrawal-requests/approve/:id', requireSession, asyncHandler(asy
   }
 }));
 
-router.post('/withdrawal-requests/reject/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/withdrawal-requests/reject/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
     const reqData = store.getWithdrawalRequest(req.params.id);
     if (!reqData) return res.redirect('/admin/withdrawal-requests?error=Request+not+found');
@@ -2480,7 +2521,7 @@ router.post('/withdrawal-requests/reject/:id', requireSession, asyncHandler(asyn
   }
 }));
 
-router.post('/withdrawal-requests/pay/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/withdrawal-requests/pay/:id', requireRole(2), asyncHandler(async (req, res) => {
   try {
 
     const reqData = store.getWithdrawalRequest(req.params.id);
@@ -2515,7 +2556,7 @@ router.post('/withdrawal-requests/pay/:id', requireSession, asyncHandler(async (
 
 // ── Savings Applications Management ──
 
-router.get('/savings-applications', requireSession, asyncHandler(async (req, res) => {
+router.get('/savings-applications', requireRole(1), asyncHandler(async (req, res) => {
 
   const apps = await sql(`
     SELECT sa.*, a.child_name, a.member_id, sp.name as product_name, sp.interest_rate, sp.interest_frequency
@@ -2597,7 +2638,7 @@ router.get('/savings-applications', requireSession, asyncHandler(async (req, res
   }));
 }));
 
-router.post('/savings-applications/approve/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/savings-applications/approve/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
 
     const app = await one('SELECT * FROM savings_applications WHERE application_id = $1', [req.params.id]);
@@ -2613,7 +2654,7 @@ router.post('/savings-applications/approve/:id', requireSession, asyncHandler(as
   }
 }));
 
-router.post('/savings-applications/reject/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/savings-applications/reject/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
     const app = await one('SELECT * FROM savings_applications WHERE application_id = $1', [req.params.id]);
     if (!app) return res.redirect('/admin/savings-applications?error=Application+not+found');
@@ -2627,7 +2668,7 @@ router.post('/savings-applications/reject/:id', requireSession, asyncHandler(asy
 
 // ── Teller Counter ──
 
-router.get('/teller', requireSession, asyncHandler(async (req, res) => {
+router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
 
   const qry = req.query;
   const selectedId = qry.account || '';
@@ -2892,7 +2933,7 @@ router.get('/teller', requireSession, asyncHandler(async (req, res) => {
   res.type('html').send(layout('Teller Counter', 'teller', tellerContent, { toast: toast || undefined }));
 }));
 
-router.post('/teller/deposit/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/teller/deposit/:id', requireRole(2), asyncHandler(async (req, res) => {
   try {
     const { amount, description } = req.body;
     const val = Number(amount);
@@ -2927,7 +2968,7 @@ router.post('/teller/deposit/:id', requireSession, asyncHandler(async (req, res)
   }
 }));
 
-router.post('/teller/withdraw/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/teller/withdraw/:id', requireRole(2), asyncHandler(async (req, res) => {
   try {
     const { amount, description } = req.body;
     const val = Number(amount);
@@ -2964,7 +3005,7 @@ router.post('/teller/withdraw/:id', requireSession, asyncHandler(async (req, res
   }
 }));
 
-router.post('/teller/loan-pay/:id', requireSession, asyncHandler(async (req, res) => {
+router.post('/teller/loan-pay/:id', requireRole(2), asyncHandler(async (req, res) => {
   try {
     const { loan_id, amount } = req.body;
     const val = Number(amount);
@@ -3041,7 +3082,7 @@ router.post('/teller/loan-pay/:id', requireSession, asyncHandler(async (req, res
 
 // ── Audit Reports ──
 
-router.get('/audit', requireSession, asyncHandler(async (req, res) => {
+router.get('/audit', requireRole(1), asyncHandler(async (req, res) => {
 
   const q = req.query;
   const fromDate = q.from || '';
@@ -3142,7 +3183,7 @@ router.get('/audit', requireSession, asyncHandler(async (req, res) => {
 
 // ── Audit CSV Export ──
 
-router.get('/audit/csv', requireSession, asyncHandler(async (req, res) => {
+router.get('/audit/csv', requireRole(1), asyncHandler(async (req, res) => {
 
   const q = req.query;
   let where = [];
@@ -3184,7 +3225,33 @@ router.get('/audit/csv', requireSession, asyncHandler(async (req, res) => {
 }));
 
 // ── Clear All User Data (keep reference tables) ──
-router.post('/reset-database', requireSession, asyncHandler(async (req, res) => {
+router.get('/reset-database/confirm', requireRole(4), asyncHandler(async (req, res) => {
+  const err = req.query.error ? req.query.error : '';
+  const content = `
+  <div class="card" style="max-width:500px;margin:0 auto">
+    <div class="card-header"><h3>&#x26A0;&#xFE0F; Reset Database</h3></div>
+    <div class="card-body-padded">
+      <p style="color:var(--danger);font-weight:600;margin-bottom:16px">This will permanently delete ALL member accounts, transactions, goals, badges, loans, and audit data. Reference tables (GL accounts, shop items, quiz questions) will be kept.</p>
+      <p style="margin-bottom:16px">Enter your password to confirm this destructive action.</p>
+      ${err ? `<p style="color:var(--danger);font-weight:600;margin-bottom:12px">&#x274C; ${err}</p>` : ''}
+      <form method="post" action="/admin/reset-database" style="display:flex;flex-direction:column;gap:12px">
+        <div class="field"><label>Your Password</label><input type="password" name="password" required></div>
+        <div style="display:flex;gap:8px">
+          <button type="submit" class="btn btn-danger">&#x26A0;&#xFE0F; Confirm Reset Database</button>
+          <a href="/admin/settings" class="btn btn-cancel">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>`;
+  res.type('html').send(layout('Confirm Reset', 'settings', content, { subtitle: 'Password required' }));
+}));
+
+router.post('/reset-database', requireRole(4), asyncHandler(async (req, res) => {
+  const { password } = req.body;
+  const adminUser = await one('SELECT * FROM admin_users WHERE admin_id = $1', [req.session.adminId]);
+  if (!adminUser || !bcrypt.compareSync(password, adminUser.password_hash)) {
+    return res.redirect('/admin/reset-database/confirm?error=Incorrect+password');
+  }
   // Order respects FK dependencies: children before parents
   const tables = [
     'gl_entries',
@@ -3222,7 +3289,7 @@ router.post('/reset-database', requireSession, asyncHandler(async (req, res) => 
 
 // ── GL Reports ──
 
-router.get('/gl/trial-balance', requireSession, asyncHandler(async (req, res) => {
+router.get('/gl/trial-balance', requireRole(1), asyncHandler(async (req, res) => {
   const { getTrialBalance } = require('../services/gl');
   const date = req.query.date || '';
   const result = await getTrialBalance(date || null);
@@ -3268,7 +3335,7 @@ router.get('/gl/trial-balance', requireSession, asyncHandler(async (req, res) =>
   res.type('html').send(layout('Trial Balance', 'gl', content, { subtitle: 'All GL accounts with debit/credit totals' }));
 }));
 
-router.get('/gl/balance-sheet', requireSession, asyncHandler(async (req, res) => {
+router.get('/gl/balance-sheet', requireRole(1), asyncHandler(async (req, res) => {
   const { getBalanceSheet } = require('../services/gl');
   const date = req.query.date || '';
   const result = await getBalanceSheet(date || null);
@@ -3305,7 +3372,7 @@ router.get('/gl/balance-sheet', requireSession, asyncHandler(async (req, res) =>
   res.type('html').send(layout('Balance Sheet', 'gl', content, { subtitle: 'Assets = Liabilities + Equity' }));
 }));
 
-router.get('/gl/profit-and-loss', requireSession, asyncHandler(async (req, res) => {
+router.get('/gl/profit-and-loss', requireRole(1), asyncHandler(async (req, res) => {
   const { getProfitAndLoss } = require('../services/gl');
   const now = new Date();
   const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
@@ -3344,7 +3411,7 @@ router.get('/gl/profit-and-loss', requireSession, asyncHandler(async (req, res) 
   res.type('html').send(layout('Profit & Loss', 'gl', content, { subtitle: 'Income - Expenses = Net Profit/Loss' }));
 }));
 
-router.get('/gl/ledger', requireSession, asyncHandler(async (req, res) => {
+router.get('/gl/ledger', requireRole(1), asyncHandler(async (req, res) => {
   const { getAccountLedger } = require('../services/gl');
   const accounts = await sql('SELECT * FROM gl_accounts ORDER BY code');
   const selected = req.query.account || '';
@@ -3399,7 +3466,7 @@ router.get('/gl/ledger', requireSession, asyncHandler(async (req, res) => {
 
 // ── Audit Log ──
 
-router.get('/audit-log', requireSession, asyncHandler(async (req, res) => {
+router.get('/audit-log', requireRole(1), asyncHandler(async (req, res) => {
   const { getLogs } = require('../services/audit');
   const limit = Number(req.query.limit) || 100;
   const offset = Number(req.query.offset) || 0;
@@ -3439,7 +3506,7 @@ router.get('/audit-log', requireSession, asyncHandler(async (req, res) => {
 
 // ── Admin Users ──
 
-router.get('/users', requireSession, asyncHandler(async (req, res) => {
+router.get('/users', requireRole(4), asyncHandler(async (req, res) => {
   const users = await sql('SELECT * FROM admin_users ORDER BY created_at ASC');
   const q = req.query;
   const toast = q.created ? 'success:Admin user created.'
@@ -3458,15 +3525,19 @@ router.get('/users', requireSession, asyncHandler(async (req, res) => {
     <div class="card-header"><h3>&#x1F465; Admin Users</h3><span class="count">${users.filter(u => u.is_active).length} active</span></div>
     <div class="card-body" style="padding:0">
     <table>
-      <tr><th>Username</th><th>Display Name</th><th>Role</th><th>Status</th><th>Created</th><th></th></tr>
+      <tr><th>Username</th><th>Display Name</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th></th></tr>
       ${users.map(u => `
       <tr>
         <td class="mono"><b>${u.username}</b></td>
         <td>${u.display_name || '-'}</td>
+        <td class="mono" style="font-size:12px">${u.email || '-'}</td>
         <td><span class="badge ${roleColors[u.role] || 'badge-gray'}">${u.role.replace(/_/g,' ')}</span></td>
         <td>${u.is_active ? '<span style="color:#16a34a;font-weight:600">&#x2705; Active</span>' : '<span style="color:#dc2626;font-weight:600">&#x274C; Inactive</span>'}</td>
         <td class="mono" style="font-size:11px;color:var(--text-muted)">${(u.created_at||'').slice(0,10)}</td>
-        <td><a href="/admin/users/deactivate/${u.admin_id}" class="btn ${u.is_active ? 'btn-danger' : 'btn-secondary'} btn-xs" data-confirm="${u.is_active ? 'Deactivate' : 'Activate'} ${u.username}?">${u.is_active ? 'Deactivate' : 'Activate'}</a></td>
+        <td style="display:flex;gap:6px">
+          <a href="/admin/users/edit/${u.admin_id}" class="btn btn-secondary btn-xs">&#x270F; Edit</a>
+          <a href="/admin/users/deactivate/${u.admin_id}" class="btn ${u.is_active ? 'btn-danger' : 'btn-secondary'} btn-xs" data-confirm="${u.is_active ? 'Deactivate' : 'Activate'} ${u.username}?">${u.is_active ? 'Deactivate' : 'Activate'}</a>
+        </td>
     </tr>`).join('')}
     </tbody>
     </table></div>
@@ -3477,6 +3548,7 @@ router.get('/users', requireSession, asyncHandler(async (req, res) => {
     <form method="post" action="/admin/users/create" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:500px">
       <div class="field"><label>Username</label><input type="text" name="username" placeholder="e.g. teller1" required></div>
       <div class="field"><label>Display Name</label><input type="text" name="display_name" placeholder="e.g. Juan Dela Cruz"></div>
+      <div class="field"><label>Email</label><input type="email" name="email" placeholder="e.g. teller@labcoop.app"></div>
       <div class="field"><label>Password</label><input type="text" name="password" placeholder="Min 4 characters" required minlength="4"></div>
       <div class="field"><label>Role</label>
         <select name="role">
@@ -3493,21 +3565,70 @@ router.get('/users', requireSession, asyncHandler(async (req, res) => {
   res.type('html').send(layout('Admin Users', 'users', content, { subtitle: 'Manage admin accounts and roles', toast }));
 }));
 
-router.post('/users/create', requireSession, asyncHandler(async (req, res) => {
-  const { username, display_name, password, role } = req.body;
+router.post('/users/create', requireRole(4), asyncHandler(async (req, res) => {
+  const { username, display_name, email, password, role } = req.body;
   if (!username || !password) return res.redirect('/admin/users?error=Username+and+password+required');
   const existing = await one('SELECT * FROM admin_users WHERE username = $1', [username]);
   if (existing) return res.redirect('/admin/users?error=Username+already+exists');
   const hash = bcrypt.hashSync(password, 10);
   await store.query(
-    'INSERT INTO admin_users (admin_id, username, password_hash, role, display_name, created_at) VALUES ($1,$2,$3,$4,$5,$6)',
-    [uuidv4(), username, hash, role || 'teller', display_name || username, new Date().toISOString()]
+    'INSERT INTO admin_users (admin_id, username, password_hash, role, display_name, email, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+    [uuidv4(), username, hash, role || 'teller', display_name || username, email || '', new Date().toISOString()]
   );
   res.redirect('/admin/users?created=ok');
 }));
 
-router.get('/users/deactivate/:id', requireSession, asyncHandler(async (req, res) => {
+router.get('/users/deactivate/:id', requireRole(4), asyncHandler(async (req, res) => {
   await store.query('UPDATE admin_users SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END WHERE admin_id = $1', [req.params.id]);
+  res.redirect('/admin/users?updated=ok');
+}));
+
+router.get('/users/edit/:id', requireRole(4), asyncHandler(async (req, res) => {
+  const u = await one('SELECT * FROM admin_users WHERE admin_id = $1', [req.params.id]);
+  if (!u) return res.redirect('/admin/users?error=User+not+found');
+  const err = req.query.error ? req.query.error : '';
+  const roleOptions = ['super_admin','manager','teller','auditor'];
+  const content = `
+  <div class="card" style="max-width:500px;margin:0 auto">
+    <div class="card-header"><h3>&#x270F; Edit Admin: ${u.username}</h3></div>
+    <div class="card-body-padded">
+      ${err ? `<p style="color:var(--danger);font-weight:600;margin-bottom:12px">&#x274C; ${err}</p>` : ''}
+      <form method="post" action="/admin/users/update/${u.admin_id}" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:500px">
+        <div class="field"><label>Username</label><input type="text" name="username" value="${u.username}" required></div>
+        <div class="field"><label>Display Name</label><input type="text" name="display_name" value="${u.display_name || ''}"></div>
+        <div class="field"><label>Email</label><input type="email" name="email" value="${u.email || ''}"></div>
+        <div class="field"><label>New Password (leave blank to keep)</label><input type="password" name="password" placeholder="Min 4 characters" minlength="4"></div>
+        <div class="field"><label>Role</label>
+          <select name="role">
+            ${roleOptions.map(r => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${r.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}</option>`).join('')}
+          </select>
+        </div>
+        <div style="grid-column:span 2;display:flex;gap:8px">
+          <button type="submit" class="btn btn-secondary">&#x1F4BE; Save Changes</button>
+          <a href="/admin/users" class="btn btn-cancel">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>`;
+  res.type('html').send(layout('Edit Admin', 'users', content, { subtitle: 'Update admin account details' }));
+}));
+
+router.post('/users/update/:id', requireRole(4), asyncHandler(async (req, res) => {
+  const u = await one('SELECT * FROM admin_users WHERE admin_id = $1', [req.params.id]);
+  if (!u) return res.redirect('/admin/users?error=User+not+found');
+  const { username, display_name, email, role, password } = req.body;
+  if (!username) return res.redirect(`/admin/users/edit/${req.params.id}?error=Username+required`);
+  // Check unique username excluding current user
+  const dup = await one('SELECT * FROM admin_users WHERE username = $1 AND admin_id != $2', [username, req.params.id]);
+  if (dup) return res.redirect(`/admin/users/edit/${req.params.id}?error=Username+already+taken`);
+  if (password) {
+    const hash = bcrypt.hashSync(password, 10);
+    await store.query('UPDATE admin_users SET username=$1, display_name=$2, email=$3, role=$4, password_hash=$5 WHERE admin_id=$6',
+      [username, display_name || username, email || '', role || 'teller', hash, req.params.id]);
+  } else {
+    await store.query('UPDATE admin_users SET username=$1, display_name=$2, email=$3, role=$4 WHERE admin_id=$5',
+      [username, display_name || username, email || '', role || 'teller', req.params.id]);
+  }
   res.redirect('/admin/users?updated=ok');
 }));
 

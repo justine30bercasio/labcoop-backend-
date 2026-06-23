@@ -250,6 +250,7 @@ class PgStore {
         password_hash TEXT NOT NULL,
         role TEXT DEFAULT 'admin' CHECK(role IN ('super_admin','manager','teller','auditor')),
         display_name TEXT DEFAULT '',
+        email TEXT DEFAULT '',
         is_active INTEGER DEFAULT 1,
         created_at TEXT
       );

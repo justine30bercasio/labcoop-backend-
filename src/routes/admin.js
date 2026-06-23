@@ -1047,11 +1047,11 @@ router.get('/accounts', requireSession, asyncHandler(async (req, res) => {
   <h2>&#x2795; New Account</h2>
   <form method="post" action="/admin/accounts/create">
     <label for="aname">Child Name (display name)</label>
-    <input type="text" id="aname" name="child_name" placeholder="e.g. Juan" required>
+    <input type="text" id="aname" name="child_name" placeholder="e.g. Juan" required style="text-transform:uppercase">
     <div class="form-row">
-      <div><label for="alast">Last Name</label><input type="text" id="alast" name="last_name" placeholder="Dela Cruz"></div>
-      <div><label for="afirst">First Name</label><input type="text" id="afirst" name="first_name" placeholder="Juan"></div>
-      <div><label for="amid">Middle Name</label><input type="text" id="amid" name="middle_name" placeholder="Optional"></div>
+      <div><label for="alast">Last Name</label><input type="text" id="alast" name="last_name" placeholder="Dela Cruz" style="text-transform:uppercase"></div>
+      <div><label for="afirst">First Name</label><input type="text" id="afirst" name="first_name" placeholder="Juan" style="text-transform:uppercase"></div>
+      <div><label for="amid">Middle Name</label><input type="text" id="amid" name="middle_name" placeholder="Optional" style="text-transform:uppercase"></div>
     </div>
     <div class="form-row">
       <div><label for="abday">Birthday</label><input type="date" id="abday" name="birthday"></div>
@@ -1076,11 +1076,11 @@ router.get('/accounts', requireSession, asyncHandler(async (req, res) => {
   <h2>&#x270F; ${a.child_name}</h2>
   <form method="post" action="/admin/accounts/update/${a.account_id}">
     <label for="en_${a.account_id}">Child Name</label>
-    <input type="text" id="en_${a.account_id}" name="child_name" value="${a.child_name}" required>
+    <input type="text" id="en_${a.account_id}" name="child_name" value="${a.child_name}" required style="text-transform:uppercase">
     <div class="form-row">
-      <div><label for="elast_${a.account_id}">Last Name</label><input type="text" id="elast_${a.account_id}" name="last_name" value="${a.last_name || ''}"></div>
-      <div><label for="efirst_${a.account_id}">First Name</label><input type="text" id="efirst_${a.account_id}" name="first_name" value="${a.first_name || ''}"></div>
-      <div><label for="emid_${a.account_id}">Middle Name</label><input type="text" id="emid_${a.account_id}" name="middle_name" value="${a.middle_name || ''}"></div>
+      <div><label for="elast_${a.account_id}">Last Name</label><input type="text" id="elast_${a.account_id}" name="last_name" value="${a.last_name || ''}" style="text-transform:uppercase"></div>
+      <div><label for="efirst_${a.account_id}">First Name</label><input type="text" id="efirst_${a.account_id}" name="first_name" value="${a.first_name || ''}" style="text-transform:uppercase"></div>
+      <div><label for="emid_${a.account_id}">Middle Name</label><input type="text" id="emid_${a.account_id}" name="middle_name" value="${a.middle_name || ''}" style="text-transform:uppercase"></div>
     </div>
     <div class="form-row">
       <div><label for="ebday_${a.account_id}">Birthday</label><input type="date" id="ebday_${a.account_id}" name="birthday" value="${a.birthday || ''}"></div>

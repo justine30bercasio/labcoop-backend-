@@ -470,7 +470,7 @@ $(document).ready(function(){
           pagingType: 'full_numbers',
           processing: true,
           layout: {
-            topStart: 'length',
+            topStart: 'pageLength',
             topEnd: 'search',
             bottomEnd: 'info paging'
           }

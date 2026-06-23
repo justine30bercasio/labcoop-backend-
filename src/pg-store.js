@@ -308,7 +308,7 @@ class PgStore {
 
   async createAccount(fields) {
     const birthday = fields.birthday || '';
-    const computedAge = birthday ? _computeAge(birthday) : (fields.age || 0);
+    const computedAge = birthday ? this._computeAge(birthday) : (fields.age || 0);
     const account = {
       account_id: uuidv4(),
       child_name: fields.child_name,

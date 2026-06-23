@@ -3162,6 +3162,8 @@ router.get('/audit/csv', requireSession, asyncHandler(async (req, res) => {
 router.post('/reset-database', requireSession, asyncHandler(async (req, res) => {
   // Order respects FK dependencies: children before parents
   const tables = [
+    'gl_entries',
+    'purchases',
     'loan_payments',
     'transactions',
     'badges',
@@ -3174,15 +3176,16 @@ router.post('/reset-database', requireSession, asyncHandler(async (req, res) => 
     'coop_goals',
     'accounts',
   ];
-  try {
-    await store.query('BEGIN');
+  if (isPostgres) {
+    await store.transaction(async (tx) => {
+      for (const t of tables) {
+        await tx.query(`DELETE FROM "${t}"`);
+      }
+    });
+  } else {
     for (const t of tables) {
-      await store.query(`DELETE FROM ${t}`);
+      try { store.query(`DELETE FROM ${t}`); } catch (_) {}
     }
-    await store.query('COMMIT');
-  } catch (err) {
-    await store.query('ROLLBACK');
-    return res.redirect('/admin?error=' + encodeURIComponent('Reset failed: ' + err.message));
   }
   res.redirect('/admin?msg=Database+reset+successful');
 }));

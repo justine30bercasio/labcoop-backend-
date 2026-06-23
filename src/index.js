@@ -411,16 +411,21 @@ app.get('/test-ping', (req, res) => res.json({ping:'pong'}));
 
 // ── Clear all user data (keep reference tables) ──
 app.post('/reset-database', async (req, res) => {
-  const tables = ['loan_payments','transactions','badges','goal_jars','loans','withdrawal_requests','standing_orders','savings_applications','coop_contributions','coop_goals','accounts'];
+  const tables = ['gl_entries','purchases','loan_payments','transactions','badges','goal_jars','loans','withdrawal_requests','standing_orders','savings_applications','coop_contributions','coop_goals','accounts'];
   try {
-    await store.query('BEGIN');
-    for (const t of tables) {
-      await store.query(`DELETE FROM "${t}"`);
+    if (isPostgres) {
+      await store.transaction(async (tx) => {
+        for (const t of tables) {
+          await tx.query(`DELETE FROM "${t}"`);
+        }
+      });
+    } else {
+      for (const t of tables) {
+        try { store.query(`DELETE FROM ${t}`); } catch (_) {}
+      }
     }
-    await store.query('COMMIT');
     res.json({ success: true, message: 'Database reset successful' });
   } catch (err) {
-    await store.query('ROLLBACK');
     res.status(500).json({ success: false, message: err.message });
   }
 });

@@ -256,6 +256,8 @@ class PgStore {
       );
     `;
     await this.pool.query(schema);
+    // Migrations for existing tables
+    await this.pool.query("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS email TEXT DEFAULT ''").catch(() => {});
     await this._seedGlAccounts();
   }
 

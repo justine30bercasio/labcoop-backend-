@@ -979,10 +979,10 @@ router.post('/accounts/create', requireSession, asyncHandler(async (req, res) =>
     const maxResult = await store.query("SELECT MAX(CAST(member_id AS INTEGER)) as m FROM accounts");
     const maxMember = parseInt(maxResult.rows[0]?.m || '0', 10);
     const account = await store.createAccount({
-      child_name: child_name.trim(),
-      last_name: (last_name || '').trim(),
-      first_name: (first_name || '').trim(),
-      middle_name: (middle_name || '').trim(),
+      child_name: child_name.trim().toUpperCase(),
+      last_name: (last_name || '').trim().toUpperCase(),
+      first_name: (first_name || '').trim().toUpperCase(),
+      middle_name: (middle_name || '').trim().toUpperCase(),
       birthday: birthday || '',
       gender: gender || '',
       savings_schedule: savings_schedule || '',
@@ -1003,14 +1003,14 @@ router.post('/accounts/update/:id', requireSession, asyncHandler(async (req, res
   try {
     const { child_name, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, gender, savings_schedule } = req.body;
     store.updateAccount(req.params.id, {
-      child_name: child_name?.trim(),
+      child_name: child_name?.trim().toUpperCase(),
       actual_balance: Number(actual_balance),
       unallocated_balance: Number(unallocated_balance),
       current_xp: Number(current_xp),
       parent_phone: parent_phone || '',
-      last_name: (last_name || '').trim(),
-      first_name: (first_name || '').trim(),
-      middle_name: (middle_name || '').trim(),
+      last_name: (last_name || '').trim().toUpperCase(),
+      first_name: (first_name || '').trim().toUpperCase(),
+      middle_name: (middle_name || '').trim().toUpperCase(),
       birthday: birthday || '',
       gender: gender || '',
       savings_schedule: savings_schedule || '',

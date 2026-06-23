@@ -123,9 +123,10 @@ router.post('/register', regUpload.fields([
     return res.status(400).json({ message: 'password is required (min 4 characters)' });
   }
 
-  const fullName = middleName && middleName.trim()
-    ? `${lastName.trim()}, ${firstName.trim()} ${middleName.trim()}`
-    : `${lastName.trim()}, ${firstName.trim()}`;
+  const ulast = lastName.trim().toUpperCase();
+  const ufirst = firstName.trim().toUpperCase();
+  const umid = middleName ? middleName.trim().toUpperCase() : '';
+  const fullName = umid ? `${ulast}, ${ufirst} ${umid}` : `${ulast}, ${ufirst}`;
 
   const existing = await store.getAccountByName(fullName);
   if (existing) {
@@ -139,9 +140,9 @@ router.post('/register', regUpload.fields([
 
   const account = await store.createAccount({
     child_name: fullName,
-    last_name: lastName.trim(),
-    first_name: firstName.trim(),
-    middle_name: middleName ? middleName.trim() : '',
+    last_name: ulast,
+    first_name: ufirst,
+    middle_name: umid,
     age: parseInt(age || '0', 10),
     gender: gender || '',
     parent_phone: parentPhone || '',

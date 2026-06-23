@@ -867,15 +867,19 @@ router.get('/accounts', requireSession, asyncHandler(async (req, res) => {
       <td><span class="badge ${statusBadge}">${statusLabel}</span></td>
       <td><span class="badge ${a.password_changed ? 'badge-green' : 'badge-red'}">${a.password_changed ? 'Changed' : 'Default'}</span></td>
       <td class="mono">${(a.created_at || '').slice(0, 10)}</td>
-      <td><div style="display:flex;gap:4px">
-        <a href="#edit-${a.account_id}" class="btn btn-secondary btn-xs">&#x270F;</a>
-        ${statusNum === 1 ? `<form class="inline" method="post" action="/admin/accounts/toggle/${a.account_id}" onsubmit="return confirm('Deactivate ${a.child_name}?')"><button type="submit" class="btn btn-outline btn-xs">&#x1F4A4;</button></form>` :
-          statusNum === 0 ? `<form class="inline" method="post" action="/admin/accounts/toggle/${a.account_id}" style="display:inline"><button type="submit" class="btn btn-amber btn-xs">&#x2705;</button></form>` : ''}
-        ${statusNum === 1 ? `<form class="inline" method="post" action="/admin/accounts/close/${a.account_id}" onsubmit="return confirm('Close ${a.child_name} permanently? This cannot be undone.')"><button type="submit" class="btn btn-danger btn-xs">&#x1F6AB;</button></form>` : ''}
-        <form class="inline" method="post" action="/admin/accounts/delete/${a.account_id}" onsubmit="return confirm('Delete ${a.child_name}?')">
-          <button type="submit" class="btn btn-outline btn-xs">&#x1F5D1;</button>
-        </form>
-      </div></td>
+      <td><details class="action-menu">
+        <summary>&#x22EE;</summary>
+        <div class="action-dropdown">
+          <a href="#edit-${a.account_id}">&#x270F; Edit</a>
+          ${statusNum === 1 ? `<form method="post" action="/admin/accounts/toggle/${a.account_id}" onsubmit="return confirm('Deactivate ${a.child_name}?')"><button type="submit" class="text-amber">&#x1F4A4; Deactivate</button></form>` : ''}
+          ${statusNum === 0 ? `<form method="post" action="/admin/accounts/toggle/${a.account_id}"><button type="submit" class="text-green">&#x2705; Reactivate</button></form>` : ''}
+          ${statusNum === 1 ? `<form method="post" action="/admin/accounts/close/${a.account_id}" onsubmit="return confirm('Close ${a.child_name} permanently? This cannot be undone.')"><button type="submit" class="text-red">&#x1F6AB; Close Account</button></form>` : ''}
+          <hr>
+          <form method="post" action="/admin/accounts/delete/${a.account_id}" onsubmit="return confirm('Delete ${a.child_name}?')">
+            <button type="submit" class="text-red">&#x1F5D1; Delete</button>
+          </form>
+        </div>
+      </details></td>
     </tr>`}).join('')}
     </table></div>
   </div>

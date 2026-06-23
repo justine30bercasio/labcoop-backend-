@@ -255,6 +255,28 @@ form.inline { display:inline; }
   .page-header { flex-direction:column; align-items:flex-start; }
   .header-actions { width:100%; }
 }
+
+.action-menu { position:relative; display:inline-block; direction:ltr; }
+.action-menu summary { list-style:none; cursor:pointer; padding:4px 8px; border-radius:6px; font-size:18px; line-height:1; letter-spacing:2px; color:var(--text-muted); user-select:none; transition:all var(--transition); display:flex; align-items:center; justify-content:center; width:32px; height:28px; }
+.action-menu summary::-webkit-details-marker { display:none; }
+.action-menu summary:hover { background:var(--bg); color:var(--text); }
+.action-menu[open] summary { background:var(--accent); color:#fff; border-radius:6px 6px 0 0; }
+.action-dropdown { position:absolute; right:0; top:100%; z-index:20; min-width:160px; background:var(--card); border:1px solid var(--border); border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.12); padding:4px; display:flex; flex-direction:column; gap:2px; animation:dropIn 0.15s ease; }
+@keyframes dropIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
+.action-dropdown a, .action-dropdown button { display:flex; align-items:center; gap:8px; padding:8px 12px; border:none; border-radius:6px; font-size:12px; font-weight:500; cursor:pointer; text-decoration:none; color:var(--text); background:transparent; white-space:nowrap; width:100%; text-align:left; font-family:var(--font); transition:background var(--transition); }
+.action-dropdown a:hover, .action-dropdown button:hover { background:var(--bg); }
+.action-dropdown .text-red { color:var(--red); }
+.action-dropdown .text-red:hover { background:#fce4ec; }
+.action-dropdown .text-green { color:var(--accent); }
+.action-dropdown .text-green:hover { background:#e8f5e9; }
+.action-dropdown .text-amber { color:#d97706; }
+.action-dropdown .text-amber:hover { background:#fff8e1; }
+.action-dropdown hr { margin:4px 0; border:none; border-top:1px solid var(--border); }
+[data-theme="dark"] .action-dropdown { border-color:#2a3a2e; box-shadow:0 4px 16px rgba(0,0,0,0.4); }
+[data-theme="dark"] .action-dropdown a:hover, [data-theme="dark"] .action-dropdown button:hover { background:rgba(255,255,255,0.05); }
+[data-theme="dark"] .action-dropdown .text-red:hover { background:rgba(239,68,68,0.15); }
+[data-theme="dark"] .action-dropdown .text-green:hover { background:rgba(34,197,94,0.15); }
+[data-theme="dark"] .action-dropdown .text-amber:hover { background:rgba(245,158,11,0.15); }
 </style>
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.datatables.net/2.2.2/js/dataTables.js"></script>
@@ -267,8 +289,10 @@ form.inline { display:inline; }
 .dt-layout-row:first-child .dt-layout-cell.dt-start { flex:0 0 auto; }
 .dt-layout-row:first-child .dt-layout-cell.dt-end { flex:1; justify-content:flex-end; }
 
-/* Bottom row: everything right-aligned (same side as search) */
-.dt-layout-row:last-child { display:flex; align-items:center; justify-content:flex-end; padding:10px 0 0; flex-wrap:wrap; gap:12px; }
+/* Bottom row: info + paging together on right, no overflow */
+.dt-layout-row:last-child { display:flex; align-items:center; justify-content:flex-end; padding:10px 0 0; gap:8px; }
+.dt-layout-row:last-child .dt-layout-cell { max-width:100%; }
+.dt-layout-row:last-child .dt-layout-cell.dt-end { flex-shrink:1; min-width:0; }
 
 .dt-search { display:flex; align-items:center; gap:6px; }
 .dt-search label { font-size:12px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; }
@@ -283,8 +307,10 @@ form.inline { display:inline; }
 .dt-length select:focus { border-color:var(--accent); }
 [data-theme="dark"] .dt-length select { background:#1a231c; border-color:#2a3a2e; }
 
-.dt-info { padding:0; font-size:12px; color:var(--text-muted); }
-.dt-paging { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+.dt-info { padding:0; font-size:12px; color:var(--text-muted); white-space:nowrap; }
+.dt-paging { display:flex; align-items:center; gap:4px; flex-wrap:wrap; max-width:100%; }
+.dt-paging nav { overflow-x:auto; white-space:nowrap; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+.dt-paging nav::-webkit-scrollbar { display:none; }
 .dt-paging nav { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
 .dt-paging button { padding:6px 12px; border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--text); font-size:12px; font-weight:500; cursor:pointer; transition:all var(--transition); font-family:var(--font); min-width:32px; text-align:center; }
 .dt-paging button:hover { background:var(--accent); color:#fff; border-color:var(--accent); transform:translateY(-1px); box-shadow:0 2px 8px rgba(46,125,50,0.2); }

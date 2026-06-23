@@ -844,7 +844,7 @@ router.get('/accounts', requireSession, asyncHandler(async (req, res) => {
     <div class="stat-card"><div class="stat-icon">&#x20B1;</div><div class="stat-value">${accounts.reduce((s,a)=>s+Number(a.actual_balance),0).toFixed(0)}</div><div class="stat-label">Combined Balance</div></div>
   </div>
 
-  <div class="card">
+  <div class="card" style="overflow:visible">
     <div class="card-header"><h3>&#x1F464; All Accounts</h3>
       <div><a href="#add-account" class="btn btn-primary btn-sm">&#x2795; New Account</a></div>
     </div>

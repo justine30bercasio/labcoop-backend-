@@ -257,11 +257,13 @@ form.inline { display:inline; }
 }
 
 .action-menu { position:relative; display:inline-block; direction:ltr; }
+.action-menu td, .action-menu tr, .action-menu tbody, .action-menu thead, .action-menu table { overflow:visible !important; }
+table.dataTable td, table.dataTable th, table.dataTable tbody, table.dataTable thead, table.dataTable tr { overflow:visible !important; }
 .action-menu summary { list-style:none; cursor:pointer; padding:4px 8px; border-radius:6px; font-size:18px; line-height:1; letter-spacing:2px; color:var(--text-muted); user-select:none; transition:all var(--transition); display:flex; align-items:center; justify-content:center; width:32px; height:28px; }
 .action-menu summary::-webkit-details-marker { display:none; }
 .action-menu summary:hover { background:var(--bg); color:var(--text); }
 .action-menu[open] summary { background:var(--accent); color:#fff; border-radius:6px 6px 0 0; }
-.action-dropdown { position:absolute; right:0; top:100%; z-index:20; min-width:160px; background:var(--card); border:1px solid var(--border); border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.12); padding:4px; display:flex; flex-direction:column; gap:2px; animation:dropIn 0.15s ease; }
+.action-dropdown { position:absolute; right:0; top:100%; z-index:9999; min-width:160px; background:var(--card); border:1px solid var(--border); border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.12); padding:4px; display:flex; flex-direction:column; gap:2px; animation:dropIn 0.15s ease; }
 @keyframes dropIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
 .action-dropdown a, .action-dropdown button { display:flex; align-items:center; gap:8px; padding:8px 12px; border:none; border-radius:6px; font-size:12px; font-weight:500; cursor:pointer; text-decoration:none; color:var(--text); background:transparent; white-space:nowrap; width:100%; text-align:left; font-family:var(--font); transition:background var(--transition); }
 .action-dropdown a:hover, .action-dropdown button:hover { background:var(--bg); }

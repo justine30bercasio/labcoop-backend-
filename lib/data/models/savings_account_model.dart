@@ -6,6 +6,7 @@ class SavingsAccountModel {
   final String lastName;
   final String firstName;
   final String middleName;
+  final String birthday;
   final int age;
   final String gender;
   final String savingsSchedule;
@@ -22,6 +23,7 @@ class SavingsAccountModel {
     this.lastName = '',
     this.firstName = '',
     this.middleName = '',
+    this.birthday = '',
     this.age = 0,
     this.gender = '',
     this.savingsSchedule = '',
@@ -42,6 +44,7 @@ class SavingsAccountModel {
       lastName: (json['last_name'] as String?) ?? '',
       firstName: (json['first_name'] as String?) ?? '',
       middleName: (json['middle_name'] as String?) ?? '',
+      birthday: (json['birthday'] as String?) ?? '',
       age: json['age'] != null ? i(json['age']) : 0,
       gender: (json['gender'] as String?) ?? '',
       savingsSchedule: (json['savings_schedule'] as String?) ?? '',
@@ -61,6 +64,7 @@ class SavingsAccountModel {
       'last_name': lastName,
       'first_name': firstName,
       'middle_name': middleName,
+      'birthday': birthday,
       'age': age,
       'gender': gender,
       'savings_schedule': savingsSchedule,
@@ -80,6 +84,7 @@ class SavingsAccountModel {
       lastName: lastName,
       firstName: firstName,
       middleName: middleName,
+      birthday: birthday,
       age: age,
       gender: gender,
       savingsSchedule: savingsSchedule,
@@ -99,6 +104,7 @@ class SavingsAccountModel {
       lastName: entity.lastName,
       firstName: entity.firstName,
       middleName: entity.middleName,
+      birthday: entity.birthday,
       age: entity.age,
       gender: entity.gender,
       savingsSchedule: entity.savingsSchedule,

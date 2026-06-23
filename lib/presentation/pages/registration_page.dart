@@ -23,11 +23,11 @@ class _RegistrationPageState extends State<RegistrationPage>
   final _lastNameController = TextEditingController();
   final _firstNameController = TextEditingController();
   final _middleNameController = TextEditingController();
-  final _ageController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _parentPhoneController = TextEditingController();
 
+  DateTime? _birthday;
   String _selectedGender = '';
   String _selectedSchedule = '';
 
@@ -40,6 +40,17 @@ class _RegistrationPageState extends State<RegistrationPage>
   bool _obscureConfirm = true;
   String? _error;
   int _currentStep = 0;
+
+  int get _computedAge {
+    if (_birthday == null) return 0;
+    final now = DateTime.now();
+    int age = now.year - _birthday!.year;
+    final m = now.month - _birthday!.month;
+    if (m < 0 || (m == 0 && now.day < _birthday!.day)) age--;
+    return age;
+  }
+
+  String get _birthdayString => _birthday == null ? '' : '${_birthday!.year.toString().padLeft(4, '0')}-${_birthday!.month.toString().padLeft(2, '0')}-${_birthday!.day.toString().padLeft(2, '0')}';
 
   final _formKey = GlobalKey<FormState>();
 
@@ -69,7 +80,6 @@ class _RegistrationPageState extends State<RegistrationPage>
     _lastNameController.dispose();
     _firstNameController.dispose();
     _middleNameController.dispose();
-    _ageController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _parentPhoneController.dispose();
@@ -155,7 +165,7 @@ class _RegistrationPageState extends State<RegistrationPage>
         middleName: _middleNameController.text.trim(),
         password: _passwordController.text,
         parentPhone: _parentPhoneController.text.trim(),
-        age: int.tryParse(_ageController.text.trim()) ?? 0,
+        birthday: _birthdayString,
         gender: _selectedGender,
         savingsSchedule: _selectedSchedule,
         photo2x2Bytes: photoBytes,
@@ -202,6 +212,30 @@ class _RegistrationPageState extends State<RegistrationPage>
         _error = 'Unexpected error: ${e.toString()}';
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _pickBirthday() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _birthday ?? DateTime(now.year - 10),
+      firstDate: DateTime(now.year - 18),
+      lastDate: now,
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: ColorScheme.dark(
+            primary: AppTheme.accentAmber,
+            onPrimary: AppTheme.textDark,
+            surface: const Color(0xFF1A2E1F),
+            onSurface: Colors.white,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked != null) {
+      setState(() => _birthday = picked);
     }
   }
 
@@ -421,33 +455,48 @@ class _RegistrationPageState extends State<RegistrationPage>
           Row(
             children: [
               Expanded(
-                child: TextFormField(
-                  controller: _ageController,
-                  style: const TextStyle(color: Colors.white, fontSize: 15),
-                  cursorColor: AppTheme.accentAmber,
-                  keyboardType: TextInputType.number,
-                  decoration: _inputDecoration(hint: 'Age *', icon: Icons.numbers),
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Age is required';
-                    final age = int.tryParse(v.trim());
-                    if (age == null || age < 1 || age > 120) return 'Invalid age';
-                    return null;
-                  },
+                child: InkWell(
+                  onTap: _pickBirthday,
+                  child: InputDecorator(
+                    decoration: _inputDecoration(hint: '', icon: Icons.cake_outlined).copyWith(
+                      hintText: _birthday != null
+                          ? '${_birthday!.month}/${_birthday!.day}/${_birthday!.year}'
+                          : 'Birthday *',
+                    ),
+                    child: Text(
+                      _birthday != null ? '${_birthday!.month}/${_birthday!.day}/${_birthday!.year}' : '',
+                      style: TextStyle(color: Colors.white, fontSize: 15),
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: DropdownButtonFormField<String>(
-                  value: _selectedGender.isEmpty ? null : _selectedGender,
-                  dropdownColor: const Color(0xFF1A2E1F),
-                  style: const TextStyle(color: Colors.white, fontSize: 15),
-                  decoration: _inputDecoration(hint: 'Gender *', icon: Icons.wc_outlined),
-                  items: _genders.map((g) => DropdownMenuItem(value: g, child: Text(g))).toList(),
-                  onChanged: (v) => setState(() => _selectedGender = v ?? ''),
-                  validator: (v) => (v == null || v.isEmpty) ? 'Select gender' : null,
+                child: Container(
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Center(
+                    child: Text(
+                      _computedAge > 0 ? 'Age: $_computedAge' : 'Age: --',
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 14),
+                    ),
+                  ),
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            value: _selectedGender.isEmpty ? null : _selectedGender,
+            dropdownColor: const Color(0xFF1A2E1F),
+            style: const TextStyle(color: Colors.white, fontSize: 15),
+            decoration: _inputDecoration(hint: 'Gender *', icon: Icons.wc_outlined),
+            items: _genders.map((g) => DropdownMenuItem(value: g, child: Text(g))).toList(),
+            onChanged: (v) => setState(() => _selectedGender = v ?? ''),
+            validator: (v) => (v == null || v.isEmpty) ? 'Select gender' : null,
           ),
         ],
       ),

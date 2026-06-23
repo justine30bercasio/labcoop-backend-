@@ -4,6 +4,7 @@ class SavingsAccount {
   final String lastName;
   final String firstName;
   final String middleName;
+  final String birthday;
   final int age;
   final String gender;
   final String savingsSchedule;
@@ -20,6 +21,7 @@ class SavingsAccount {
     this.lastName = '',
     this.firstName = '',
     this.middleName = '',
+    this.birthday = '',
     this.age = 0,
     this.gender = '',
     this.savingsSchedule = '',
@@ -48,6 +50,7 @@ class SavingsAccount {
     String? lastName,
     String? firstName,
     String? middleName,
+    String? birthday,
     int? age,
     String? gender,
     String? savingsSchedule,
@@ -64,6 +67,7 @@ class SavingsAccount {
       lastName: lastName ?? this.lastName,
       firstName: firstName ?? this.firstName,
       middleName: middleName ?? this.middleName,
+      birthday: birthday ?? this.birthday,
       age: age ?? this.age,
       gender: gender ?? this.gender,
       savingsSchedule: savingsSchedule ?? this.savingsSchedule,

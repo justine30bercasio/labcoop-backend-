@@ -44,18 +44,14 @@ class SavingsRepositoryImpl implements SavingsRepository {
         final model = await _remoteSource.fetchAccount(accountId);
         await _localSource.saveAccount(model);
         return model.toEntity();
-      } on ServerException catch (e) {
-        if (e.statusCode == 404) {
-          throw ServerException(message: 'Account not found', statusCode: 404);
-        }
+      } on ServerException {
+        rethrow;
       } on NetworkException {
-        // Offline, fall through to sample
-      } catch (_) {}
+        throw NetworkException('Unable to reach server');
+      }
     }
 
-    final sample = _sampleSource.fetchAccount(accountId);
-    await _localSource.saveAccount(sample);
-    return sample.toEntity();
+    throw NetworkException('No internet connection');
   }
 
   @override
@@ -69,13 +65,11 @@ class SavingsRepositoryImpl implements SavingsRepository {
         await _localSource.saveGoals(models);
         return models.map((m) => m.toEntity()).toList();
       } on NetworkException {
-        // Offline, fall through to sample
-      } catch (_) {}
+        throw NetworkException('Unable to reach server');
+      }
     }
 
-    final sample = _sampleSource.fetchGoals(accountId);
-    await _localSource.saveGoals(sample);
-    return sample.map((m) => m.toEntity()).toList();
+    throw NetworkException('No internet connection');
   }
 
   @override
@@ -89,13 +83,11 @@ class SavingsRepositoryImpl implements SavingsRepository {
         await _localSource.saveBadges(models);
         return models.map((m) => m.toEntity()).toList();
       } on NetworkException {
-        // Offline, fall through to sample
-      } catch (_) {}
+        throw NetworkException('Unable to reach server');
+      }
     }
 
-    final sample = _sampleSource.fetchBadges(accountId);
-    await _localSource.saveBadges(sample);
-    return sample.map((m) => m.toEntity()).toList();
+    throw NetworkException('No internet connection');
   }
 
   @override

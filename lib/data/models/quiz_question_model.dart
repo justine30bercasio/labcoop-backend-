@@ -24,17 +24,18 @@ class QuizQuestionModel {
   });
 
   factory QuizQuestionModel.fromJson(Map<String, dynamic> json) {
+    int i(v) => v is String ? int.parse(v) : v as int;
     return QuizQuestionModel(
       id: json['id'] as String,
       question: json['question'] as String,
       options: (json['options'] as List).map((e) => e as String).toList(),
-      correctIndex: json['correct_index'] as int? ?? 0,
+      correctIndex: json['correct_index'] != null ? i(json['correct_index']) : 0,
       explanation: json['explanation'] as String? ?? '',
       category: json['category'] as String? ?? 'General',
       difficultyLevel: json['difficulty_level'] as String? ?? 'easy',
-      xpReward: json['xp_reward'] as int? ?? 10,
-      coinReward: json['coin_reward'] as int? ?? 5,
-      isActive: (json['is_active'] as int? ?? 1) == 1,
+      xpReward: json['xp_reward'] != null ? i(json['xp_reward']) : 10,
+      coinReward: json['coin_reward'] != null ? i(json['coin_reward']) : 5,
+      isActive: (json['is_active'] != null ? i(json['is_active']) : 1) == 1,
     );
   }
 

@@ -51,9 +51,7 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void initState() {
     super.initState();
-    context
-        .read<SavingsBloc>()
-        .add(LoadSavings(widget.accountId));
+    context.read<SavingsBloc>().add(LoadSavings(widget.accountId));
   }
 
   @override
@@ -63,9 +61,8 @@ class _DashboardPageState extends State<DashboardPage> {
         title: const Text('LabCoop'),
         actions: [
           BlocSelector<SavingsBloc, SavingsState, SyncStatus>(
-            selector: (state) => state is SavingsLoaded
-                ? state.syncStatus
-                : SyncStatus.synced,
+            selector: (state) =>
+                state is SavingsLoaded ? state.syncStatus : SyncStatus.synced,
             builder: (context, syncStatus) {
               IconData icon;
               Color iconColor;
@@ -95,8 +92,8 @@ class _DashboardPageState extends State<DashboardPage> {
                 tooltip: tooltip,
                 onPressed: () {
                   context.read<SavingsBloc>().add(
-                    SyncWithServer(accountId: widget.accountId),
-                  );
+                        SyncWithServer(accountId: widget.accountId),
+                      );
                 },
               );
             },
@@ -115,16 +112,19 @@ class _DashboardPageState extends State<DashboardPage> {
               SnackBar(
                 content: Row(
                   children: [
-                    const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                    const Icon(Icons.check_circle,
+                        color: Colors.white, size: 20),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text('₱${_lastAmount.toStringAsFixed(0)} added to your goal!'),
+                      child: Text(
+                          '₱${_lastAmount.toStringAsFixed(0)} added to your goal!'),
                     ),
                   ],
                 ),
                 backgroundColor: AppTheme.primaryGreen,
                 behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
                 duration: const Duration(seconds: 2),
               ),
             );
@@ -192,7 +192,8 @@ class _DashboardPageState extends State<DashboardPage> {
         },
       ),
       floatingActionButton: Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom > 0 ? 0 : 8),
+        padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).padding.bottom > 0 ? 0 : 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -207,7 +208,8 @@ class _DashboardPageState extends State<DashboardPage> {
               heroTag: 'add_wish',
               onPressed: () => Navigator.push(
                 context,
-                PageTransition.slideUp(AddItemPage(accountId: widget.accountId)),
+                PageTransition.slideUp(
+                    AddItemPage(accountId: widget.accountId)),
               ),
               icon: const Icon(Icons.auto_awesome),
               label: const Text('New Wish'),
@@ -245,7 +247,10 @@ class _DashboardPageState extends State<DashboardPage> {
             child: StaggeredAnimation(
               children: [
                 const SizedBox(height: Spacing.md),
-                _buildBalanceHeader(account, totalSavings: totalSaved, totalTargetAmount: goals.fold<double>(0, (s, g) => s + g.targetAmount)),
+                _buildBalanceHeader(account,
+                    totalSavings: totalSaved,
+                    totalTargetAmount:
+                        goals.fold<double>(0, (s, g) => s + g.targetAmount)),
                 const SizedBox(height: Spacing.md),
                 Padding(
                   padding: EdgeInsets.symmetric(horizontal: hp),
@@ -268,7 +273,8 @@ class _DashboardPageState extends State<DashboardPage> {
                 Padding(
                   padding: EdgeInsets.symmetric(horizontal: hp),
                   child: GrowthProjectionWidget(
-                    currentBalance: goals.fold<double>(0, (sum, g) => sum + g.currentAllocated),
+                    currentBalance: goals.fold<double>(
+                        0, (sum, g) => sum + g.currentAllocated),
                     goalTargets: goals.map((g) => g.targetAmount).toList(),
                   ),
                 ),
@@ -304,7 +310,8 @@ class _DashboardPageState extends State<DashboardPage> {
                           onTap: () {
                             Navigator.push(
                               context,
-                              PageTransition.slideUp(GoalDetailsPage(goal: goal)),
+                              PageTransition.slideUp(
+                                  GoalDetailsPage(goal: goal)),
                             );
                           },
                           onAllocate: () => _showQuickAllocate(goal),
@@ -350,7 +357,8 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildBalanceHeader(SavingsAccount account, {double? totalSavings, double? totalTargetAmount}) {
+  Widget _buildBalanceHeader(SavingsAccount account,
+      {double? totalSavings, double? totalTargetAmount}) {
     final saved = totalSavings ?? account.actualBalance;
     final target = totalTargetAmount ?? saved;
     final ratio = target > 0 ? saved / target : 0.0;
@@ -395,7 +403,8 @@ class _DashboardPageState extends State<DashboardPage> {
                   children: [
                     Text(
                       'Hello, ${account.childName}!',
-                      style: const TextStyle(color: Colors.white70, fontSize: 14),
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 14),
                     ),
                     const SizedBox(height: Spacing.sm),
                     AnimatedCounter(
@@ -411,23 +420,29 @@ class _DashboardPageState extends State<DashboardPage> {
                     const SizedBox(height: Spacing.xs),
                     Text(
                       '₱${account.unallocatedBalance.toStringAsFixed(2)} available',
-                      style: const TextStyle(color: Colors.white60, fontSize: 14),
+                      style:
+                          const TextStyle(color: Colors.white60, fontSize: 14),
                     ),
                     const SizedBox(height: Spacing.xs),
                     Row(
                       children: [
-                        Icon(Icons.pets, color: Colors.white.withValues(alpha: 0.6), size: 14),
+                        Icon(Icons.pets,
+                            color: Colors.white.withValues(alpha: 0.6),
+                            size: 14),
                         const SizedBox(width: 4),
                         Text(
                           'Tap to play with Piggy!',
-                          style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 11),
+                          style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.6),
+                              fontSize: 11),
                         ),
                       ],
                     ),
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right, color: Colors.white.withValues(alpha: 0.4)),
+              Icon(Icons.chevron_right,
+                  color: Colors.white.withValues(alpha: 0.4)),
             ],
           ),
         ),
@@ -448,7 +463,9 @@ class _DashboardPageState extends State<DashboardPage> {
   void _showQuickAllocate(GoalJar goal) {
     final amountController = TextEditingController();
     final available = context.read<SavingsBloc>().state is SavingsLoaded
-        ? (context.read<SavingsBloc>().state as SavingsLoaded).account.unallocatedBalance
+        ? (context.read<SavingsBloc>().state as SavingsLoaded)
+            .account
+            .unallocatedBalance
         : 0.0;
     showDialog(
       context: context,
@@ -456,9 +473,11 @@ class _DashboardPageState extends State<DashboardPage> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
-            Text(AppConstants.displayIcon(goal.categoryIcon), style: const TextStyle(fontSize: 24)),
+            Text(AppConstants.displayIcon(goal.categoryIcon),
+                style: const TextStyle(fontSize: 24)),
             const SizedBox(width: 12),
-            Expanded(child: Text(goal.title, style: const TextStyle(fontSize: 18))),
+            Expanded(
+                child: Text(goal.title, style: const TextStyle(fontSize: 18))),
           ],
         ),
         content: Column(
@@ -471,7 +490,8 @@ class _DashboardPageState extends State<DashboardPage> {
               autofocus: true,
               decoration: InputDecoration(
                 labelText: 'Amount (₱)',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 prefixText: '₱ ',
                 filled: true,
                 fillColor: Colors.white,
@@ -495,10 +515,11 @@ class _DashboardPageState extends State<DashboardPage> {
               if (amount > 0) {
                 if (amount > available) {
                   Navigator.pop(ctx);
-                  _showAllocationError(context,
-                    'You only have ₱${available.toStringAsFixed(0)} available, '
-                    'but you tried to allocate ₱${amount.toStringAsFixed(0)}.\n\n'
-                    'Try a smaller amount or add more funds first.');
+                  _showAllocationError(
+                      context,
+                      'You only have ₱${available.toStringAsFixed(0)} available, '
+                      'but you tried to allocate ₱${amount.toStringAsFixed(0)}.\n\n'
+                      'Try a smaller amount or add more funds first.');
                   return;
                 }
                 setState(() => _lastAmount = amount);
@@ -511,7 +532,8 @@ class _DashboardPageState extends State<DashboardPage> {
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primaryGreen,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
             ),
             child: const Text('Add'),
           ),
@@ -533,7 +555,8 @@ class _DashboardPageState extends State<DashboardPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Allocate Funds', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Allocate Funds',
+            style: TextStyle(fontWeight: FontWeight.bold)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -541,8 +564,10 @@ class _DashboardPageState extends State<DashboardPage> {
               value: null,
               decoration: InputDecoration(
                 labelText: 'Select Goal Jar',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                prefixIcon: const Icon(Icons.savings, color: AppTheme.primaryGreen),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                prefixIcon:
+                    const Icon(Icons.savings, color: AppTheme.primaryGreen),
                 filled: true,
                 fillColor: Colors.white,
               ),
@@ -552,7 +577,8 @@ class _DashboardPageState extends State<DashboardPage> {
                       value: g,
                       child: Row(
                         children: [
-                          Text(AppConstants.displayIcon(g.categoryIcon), style: const TextStyle(fontSize: 20)),
+                          Text(AppConstants.displayIcon(g.categoryIcon),
+                              style: const TextStyle(fontSize: 20)),
                           const SizedBox(width: 12),
                           Text(g.title),
                         ],
@@ -568,9 +594,11 @@ class _DashboardPageState extends State<DashboardPage> {
               keyboardType: TextInputType.number,
               decoration: InputDecoration(
                 labelText: 'Amount (₱)',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 prefixText: '₱ ',
-                prefixIcon: const Icon(Icons.monetization_on, color: AppTheme.primaryGreen),
+                prefixIcon: const Icon(Icons.monetization_on,
+                    color: AppTheme.primaryGreen),
                 filled: true,
                 fillColor: Colors.white,
               ),
@@ -594,10 +622,11 @@ class _DashboardPageState extends State<DashboardPage> {
                 if (amount > 0) {
                   if (amount > available) {
                     Navigator.pop(ctx);
-                    _showAllocationError(context,
-                      'You only have ₱${available.toStringAsFixed(0)} available, '
-                      'but you tried to allocate ₱${amount.toStringAsFixed(0)}.\n\n'
-                      'Try a smaller amount or add more funds first.');
+                    _showAllocationError(
+                        context,
+                        'You only have ₱${available.toStringAsFixed(0)} available, '
+                        'but you tried to allocate ₱${amount.toStringAsFixed(0)}.\n\n'
+                        'Try a smaller amount or add more funds first.');
                     return;
                   }
                   setState(() => _lastAmount = amount);
@@ -614,7 +643,8 @@ class _DashboardPageState extends State<DashboardPage> {
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primaryGreen,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
             ),
             child: const Text('Allocate'),
           ),
@@ -635,7 +665,8 @@ class _DashboardPageState extends State<DashboardPage> {
             const Text('Not Enough Balance', style: TextStyle(fontSize: 18)),
           ],
         ),
-        content: Text(message, style: const TextStyle(fontSize: 15, height: 1.5)),
+        content:
+            Text(message, style: const TextStyle(fontSize: 15, height: 1.5)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),

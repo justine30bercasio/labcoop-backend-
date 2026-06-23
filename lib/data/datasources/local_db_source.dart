@@ -195,7 +195,7 @@ class LocalDbSource {
 
   Future<String> getChildName() async {
     final box = await Hive.openBox('_meta');
-    return box.get('child_name', defaultValue: 'Alex') as String;
+    return box.get('child_name', defaultValue: '') as String;
   }
 
   Future<void> setChildName(String name) async {

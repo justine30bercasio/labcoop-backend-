@@ -20,12 +20,13 @@ class BadgeModel {
   });
 
   factory BadgeModel.fromJson(Map<String, dynamic> json) {
+    int i(v) => v is String ? int.parse(v) : v as int;
     return BadgeModel(
       badgeId: json['badge_id'] as String,
       name: json['name'] as String,
       description: json['description'] as String,
       iconUrl: json['icon_url'] as String,
-      requiredXp: json['required_xp'] as int,
+      requiredXp: i(json['required_xp']),
       isUnlocked: json['is_unlocked'] as bool? ?? false,
       unlockedAt: json['unlocked_at'] != null
           ? DateTime.parse(json['unlocked_at'] as String)

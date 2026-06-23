@@ -18,12 +18,13 @@ class GoalJarModel {
   });
 
   factory GoalJarModel.fromJson(Map<String, dynamic> json) {
+    double n(v) => v is String ? double.parse(v) : (v as num).toDouble();
     return GoalJarModel(
       goalId: json['goal_id'] as String,
       accountId: json['account_id'] as String,
       title: json['title'] as String,
-      targetAmount: (json['target_amount'] as num).toDouble(),
-      currentAllocated: (json['current_allocated'] as num).toDouble(),
+      targetAmount: n(json['target_amount']),
+      currentAllocated: n(json['current_allocated']),
       categoryIcon: json['category_icon'] as String,
     );
   }

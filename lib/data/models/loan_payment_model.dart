@@ -24,14 +24,15 @@ class LoanPaymentModel {
   });
 
   factory LoanPaymentModel.fromJson(Map<String, dynamic> json) {
+    double n(v) => v is String ? double.parse(v) : (v as num).toDouble();
     return LoanPaymentModel(
       id: json['payment_id'] as String,
       loanId: json['loan_id'] as String,
-      amount: (json['amount'] as num).toDouble(),
-      principalPaid: (json['principal_paid'] as num).toDouble(),
-      interestPaid: (json['interest_paid'] as num).toDouble(),
-      balanceBefore: (json['balance_before'] as num).toDouble(),
-      balanceAfter: (json['balance_after'] as num).toDouble(),
+      amount: n(json['amount']),
+      principalPaid: n(json['principal_paid']),
+      interestPaid: n(json['interest_paid']),
+      balanceBefore: n(json['balance_before']),
+      balanceAfter: n(json['balance_after']),
       dueDate: json['due_date'] as String?,
       paidAt: json['paid_at'] as String? ?? DateTime.now().toIso8601String(),
     );

@@ -27,16 +27,18 @@ class LoanProductModel {
   });
 
   factory LoanProductModel.fromJson(Map<String, dynamic> json) {
+    double n(v) => v is String ? double.parse(v) : (v as num).toDouble();
+    int i(v) => v is String ? int.parse(v) : v as int;
     return LoanProductModel(
       id: json['product_id'] as String,
       name: json['name'] as String,
       description: json['description'] as String? ?? '',
-      interestRate: (json['interest_rate'] as num).toDouble(),
+      interestRate: n(json['interest_rate']),
       interestType: json['interest_type'] as String,
-      minAmount: (json['min_amount'] as num).toDouble(),
-      maxAmount: (json['max_amount'] as num).toDouble(),
-      minTerm: json['min_term'] as int,
-      maxTerm: json['max_term'] as int,
+      minAmount: n(json['min_amount']),
+      maxAmount: n(json['max_amount']),
+      minTerm: i(json['min_term']),
+      maxTerm: i(json['max_term']),
       isActive: json['is_active'] == 1,
     );
   }

@@ -26,13 +26,14 @@ class TransactionModel {
   });
 
   factory TransactionModel.fromJson(Map<String, dynamic> json) {
+    double n(v) => v is String ? double.parse(v) : (v as num).toDouble();
     return TransactionModel(
       id: json['id'] as String,
       accountId: json['account_id'] as String,
       type: json['type'] as String,
-      amount: (json['amount'] as num).toDouble(),
-      balanceBefore: (json['balance_before'] as num?)?.toDouble() ?? 0,
-      balanceAfter: (json['balance_after'] as num?)?.toDouble() ?? 0,
+      amount: n(json['amount']),
+      balanceBefore: json['balance_before'] != null ? n(json['balance_before']) : 0,
+      balanceAfter: json['balance_after'] != null ? n(json['balance_after']) : 0,
       description: json['description'] as String? ?? '',
       referenceType: json['reference_type'] as String?,
       referenceId: json['reference_id'] as String?,

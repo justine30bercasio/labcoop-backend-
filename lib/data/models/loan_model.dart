@@ -40,18 +40,20 @@ class LoanModel {
   });
 
   factory LoanModel.fromJson(Map<String, dynamic> json) {
+    double n(v) => v is String ? double.parse(v) : (v as num).toDouble();
+    int i(v) => v is String ? int.parse(v) : v as int;
     return LoanModel(
       id: json['loan_id'] as String,
       accountId: json['account_id'] as String,
       productId: json['product_id'] as String? ?? '',
-      principal: (json['principal'] as num).toDouble(),
-      interestRate: (json['interest_rate'] as num).toDouble(),
+      principal: n(json['principal']),
+      interestRate: n(json['interest_rate']),
       interestType: json['interest_type'] as String? ?? 'flat',
-      termMonths: json['term_months'] as int,
-      monthlyAmortization: (json['monthly_amortization'] as num).toDouble(),
-      totalPayable: (json['total_payable'] as num).toDouble(),
-      amountPaid: (json['amount_paid'] as num?)?.toDouble() ?? 0,
-      remainingBalance: (json['remaining_balance'] as num).toDouble(),
+      termMonths: i(json['term_months']),
+      monthlyAmortization: n(json['monthly_amortization']),
+      totalPayable: n(json['total_payable']),
+      amountPaid: json['amount_paid'] != null ? n(json['amount_paid']) : 0,
+      remainingBalance: n(json['remaining_balance']),
       status: json['status'] as String,
       approvedBy: json['approved_by'] as String?,
       approvedAt: json['approved_at'] as String?,

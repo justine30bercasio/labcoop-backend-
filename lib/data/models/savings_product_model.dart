@@ -22,14 +22,15 @@ class SavingsProductModel {
   });
 
   factory SavingsProductModel.fromJson(Map<String, dynamic> json) {
+    double n(v) => v is String ? double.parse(v) : (v as num).toDouble();
     return SavingsProductModel(
       id: json['product_id'] as String,
       name: json['name'] as String,
       description: json['description'] as String? ?? '',
-      interestRate: (json['interest_rate'] as num).toDouble(),
+      interestRate: n(json['interest_rate']),
       interestFrequency: json['interest_frequency'] as String,
-      minBalance: (json['min_balance'] as num).toDouble(),
-      withdrawalLimit: (json['withdrawal_limit'] as num?)?.toDouble(),
+      minBalance: n(json['min_balance']),
+      withdrawalLimit: json['withdrawal_limit'] != null ? n(json['withdrawal_limit']) : null,
       isActive: json['is_active'] == 1,
     );
   }

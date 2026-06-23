@@ -18,11 +18,12 @@ class ShopItem {
   });
 
   factory ShopItem.fromJson(Map<String, dynamic> json) {
+    int i(v) => v is String ? int.parse(v) : v as int;
     return ShopItem(
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? '',
       emoji: json['emoji'] as String? ?? '',
-      cost: (json['cost'] as num?)?.toInt() ?? 0,
+      cost: json['cost'] != null ? i(json['cost']) : 0,
       isAvatar: json['type'] == 'avatar',
       imageUrl: json['image_url'] as String? ?? '',
     );
@@ -68,10 +69,11 @@ class BorderItem {
   });
 
   factory BorderItem.fromJson(Map<String, dynamic> json) {
+    int i(v) => v is String ? int.parse(v) : v as int;
     return BorderItem(
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? '',
-      cost: (json['cost'] as num?)?.toInt() ?? 0,
+      cost: json['cost'] != null ? i(json['cost']) : 0,
       rarity: json['rarity'] as String? ?? 'Common',
       color1: _parseColor(json['color1'] as String? ?? '#2E7D32'),
       color2: _parseColor(json['color2'] as String? ?? '#2E7D32'),

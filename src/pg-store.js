@@ -281,6 +281,10 @@ class PgStore {
   async query(sql, params = []) {
     const client = await this.pool.connect();
     try {
+      if (params && params.length > 0 && sql.includes('?')) {
+        let idx = 1;
+        sql = sql.replace(/\?/g, () => `$${idx++}`);
+      }
       const result = await client.query(sql, params);
       return result;
     } finally {

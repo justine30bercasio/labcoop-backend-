@@ -289,8 +289,10 @@ form.inline { display:inline; }
 .dt-layout-row:first-child .dt-layout-cell.dt-start { flex:0 0 auto; }
 .dt-layout-row:first-child .dt-layout-cell.dt-end { flex:1; justify-content:flex-end; }
 
-/* Bottom row spacing */
-.dt-layout-row:last-child { padding:10px 0 0; }
+/* Bottom row: info left, paging right */
+.dt-layout-row:last-child { display:grid !important; grid-template-columns:1fr auto; padding:10px 0 0; }
+.dt-layout-row:last-child .dt-layout-cell.dt-layout-start { margin-right:0; justify-self:start; }
+.dt-layout-row:last-child .dt-layout-cell.dt-layout-end { margin-left:0; justify-self:end; }
 
 .dt-search { display:flex; align-items:center; gap:6px; }
 .dt-search label { font-size:12px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; }

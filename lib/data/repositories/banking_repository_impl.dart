@@ -34,13 +34,11 @@ class BankingRepositoryImpl implements BankingRepository {
 
   @override
   Future<List<Transaction>> getTransactions(String accountId, {int limit = 50, int offset = 0}) async {
-    if (await _isOnline) {
-      try {
-        final models = await _remoteSource.fetchTransactions(accountId, limit: limit, offset: offset);
-        await _localSource.saveTransactions(models);
-        return models.map((m) => m.toEntity()).toList();
-      } catch (_) {}
-    }
+    try {
+      final models = await _remoteSource.fetchTransactions(accountId, limit: limit, offset: offset);
+      await _localSource.saveTransactions(models);
+      return models.map((m) => m.toEntity()).toList();
+    } catch (_) {}
 
     final cached = await _localSource.getTransactions(accountId, limit: limit, offset: offset);
     if (cached.isNotEmpty) return cached.map((m) => m.toEntity()).toList();

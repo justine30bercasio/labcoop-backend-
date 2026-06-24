@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../core/network/banking_api_service.dart';
@@ -27,12 +28,76 @@ class BankingPage extends StatefulWidget {
 class _BankingPageState extends State<BankingPage> {
   Map<String, dynamic>? _interestData;
   bool _interestLoading = false;
+  Timer? _withdrawPollTimer;
+  final Map<String, String> _knownStatuses = {};
+  List<dynamic> _withdrawalRequests = [];
+  bool _withdrawLoading = true;
 
   @override
   void initState() {
     super.initState();
     context.read<BankingBloc>().add(LoadTransactions(widget.accountId));
     _loadInterest();
+    _startWithdrawPolling();
+  }
+
+  @override
+  void dispose() {
+    _withdrawPollTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startWithdrawPolling() {
+    _checkWithdrawStatus();
+    _withdrawPollTimer = Timer.periodic(const Duration(seconds: 30), (_) => _checkWithdrawStatus());
+  }
+
+  Future<void> _checkWithdrawStatus() async {
+    try {
+      final requests = await BankingApiService.getWithdrawalRequests(widget.accountId);
+      if (!mounted) return;
+      _withdrawalRequests = requests;
+      _withdrawLoading = false;
+      if (mounted) setState(() {});
+      for (final r in requests) {
+        final id = r['request_id']?.toString() ?? '';
+        final status = r['status']?.toString() ?? '';
+        if (id.isEmpty) continue;
+        final prevStatus = _knownStatuses[id];
+        if (prevStatus == null) {
+          _knownStatuses[id] = status;
+        } else if (prevStatus != status && prevStatus == 'pending') {
+          _knownStatuses[id] = status;
+          if (!mounted) return;
+          String msg;
+          Color bg;
+          switch (status) {
+            case 'approved':
+              msg = 'Withdrawal of PHP ${(r['amount'] ?? 0).toDouble().toStringAsFixed(2)} has been approved!';
+              bg = Colors.green;
+              break;
+            case 'rejected':
+              msg = 'Withdrawal request was rejected.';
+              bg = Colors.red;
+              break;
+            case 'paid':
+              msg = 'Withdrawal of PHP ${(r['amount'] ?? 0).toDouble().toStringAsFixed(2)} has been paid out!';
+              bg = Colors.green;
+              break;
+            default:
+              continue;
+          }
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(msg),
+            backgroundColor: bg,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ));
+        }
+      }
+    } catch (_) {
+      _withdrawLoading = false;
+    }
   }
 
   Future<void> _loadInterest() async {
@@ -59,21 +124,32 @@ class _BankingPageState extends State<BankingPage> {
 
           return BlocBuilder<BankingBloc, BankingState>(
             builder: (context, state) {
-              return SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _balanceCard(balance, unallocated),
-                    const SizedBox(height: 16),
-                    _quickActions(context, balance),
-                    const SizedBox(height: 20),
-                    _interestSection(),
+              return RefreshIndicator(
+                onRefresh: () async {
+                  context.read<BankingBloc>().add(LoadTransactions(widget.accountId));
+                  await _loadInterest();
+                  _knownStatuses.clear();
+                  await _checkWithdrawStatus();
+                },
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _balanceCard(balance, unallocated),
+                      const SizedBox(height: 16),
+                      _quickActions(context, balance),
+                      const SizedBox(height: 20),
+                      _interestSection(),
+                      const SizedBox(height: 24),
+                    _withdrawBanner(),
                     const SizedBox(height: 24),
                     _recentTransactions(state.transactions),
                   ],
                 ),
-              );
+              ),
+            );
             },
           );
         },
@@ -277,6 +353,56 @@ class _BankingPageState extends State<BankingPage> {
         ),
       ),
     );
+  }
+
+  Widget _withdrawBanner() {
+    if (_withdrawLoading) return const SizedBox.shrink();
+    final pending = _withdrawalRequests.where((r) => r['status'] == 'pending').toList();
+    final approved = _withdrawalRequests.where((r) => r['status'] == 'approved').toList();
+    if (pending.isEmpty && approved.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (pending.isNotEmpty)
+          Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            color: Colors.amber.shade50,
+            child: ListTile(
+              leading: const Icon(Icons.hourglass_empty, color: Colors.amber),
+              title: Text('${pending.length} pending withdrawal request${pending.length > 1 ? 's' : ''}'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(context, PageTransition.slideUp(WithdrawalRequestPage(
+                accountId: widget.accountId,
+                currentBalance: _getBalance(),
+              ))),
+            ),
+          ),
+        if (approved.isNotEmpty)
+          Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            color: Colors.green.shade50,
+            child: ListTile(
+              leading: const Icon(Icons.check_circle, color: Colors.green),
+              title: Text('${approved.length} approved withdrawal${approved.length > 1 ? 's' : ''} awaiting payout'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(context, PageTransition.slideUp(WithdrawalRequestPage(
+                accountId: widget.accountId,
+                currentBalance: _getBalance(),
+              ))),
+            ),
+          ),
+      ],
+    );
+  }
+
+  double _getBalance() {
+    try {
+      final s = context.read<SavingsBloc>().state;
+      return s is SavingsLoaded ? s.account.actualBalance : 0.0;
+    } catch (_) {
+      return 0.0;
+    }
   }
 
   String _formatDate(DateTime dt) {

@@ -66,7 +66,7 @@ router.post('/upload', requireRole(2), upload.single('file'), (req, res) => {
   }
 });
 
-router.post('/upload-and-seed', requireRole(3), upload.single('file'), (req, res) => {
+router.post('/upload-and-seed', requireRole(3), upload.single('file'), asyncHandler(async (req, res) => {
   if (!req.file) return res.redirect('/admin?error=No+file+uploaded');
   try {
     const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
@@ -82,7 +82,7 @@ router.post('/upload-and-seed', requireRole(3), upload.single('file'), (req, res
         try {
           switch (sheetName.toLowerCase()) {
             case 'accounts':
-              store.updateAccount(row.account_id || row.accountId, {
+              await store.updateAccount(row.account_id || row.accountId, {
                 child_name: row.child_name || row.childName,
                 actual_balance: Number(row.actual_balance || row.actualBalance || 0),
                 unallocated_balance: Number(row.unallocated_balance || row.unallocatedBalance || 0),
@@ -93,7 +93,7 @@ router.post('/upload-and-seed', requireRole(3), upload.single('file'), (req, res
               break;
             case 'goals':
             case 'goal_jars':
-              store.createGoal({
+              await store.createGoal({
                 account_id: row.account_id || row.accountId,
                 title: row.title,
                 target_amount: Number(row.target_amount || row.targetAmount || 0),
@@ -103,7 +103,7 @@ router.post('/upload-and-seed', requireRole(3), upload.single('file'), (req, res
               goals++;
               break;
             case 'badges':
-              store.unlockBadges(row.account_id || row.accountId, Number(row.current_xp || row.currentXp || 0));
+              await store.unlockBadges(row.account_id || row.accountId, Number(row.current_xp || row.currentXp || 0));
               badges++;
               break;
           }
@@ -117,7 +117,7 @@ router.post('/upload-and-seed', requireRole(3), upload.single('file'), (req, res
   } catch (err) {
     res.redirect(`/admin?error=${encodeURIComponent(err.message)}`);
   }
-});
+}));
 
 router.get('/', requireRole(1), asyncHandler(async (req, res) => {
   const sql = (s, p) => store.query(s, p || []).then(r => r.rows);
@@ -1170,7 +1170,7 @@ router.post('/accounts/update/:id', requireRole(2), asyncHandler(async (req, res
     const ufirst = (first_name || '').trim().toUpperCase();
     const umid = (middle_name || '').trim().toUpperCase();
     const displayName = umid ? `${ufirst} ${umid[0]}. ${ulast}` : `${ufirst} ${ulast}`;
-    store.updateAccount(req.params.id, {
+    await store.updateAccount(req.params.id, {
       child_name: child_name?.trim() ? child_name.trim().toUpperCase() : displayName,
       actual_balance: Number(actual_balance),
       unallocated_balance: Number(unallocated_balance),
@@ -1194,7 +1194,7 @@ router.post('/accounts/toggle/:id', requireRole(2), asyncHandler(async (req, res
   try {
     const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
     if (!account) return res.redirect('/admin/accounts?error=Account+not+found');
-    store.updateAccount(req.params.id, { is_active: Number(account.is_active) === 1 ? 0 : 1 });
+    await store.updateAccount(req.params.id, { is_active: Number(account.is_active) === 1 ? 0 : 1 });
     res.redirect('/admin/accounts?toggled=ok');
   } catch (err) {
     res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
@@ -1205,7 +1205,7 @@ router.post('/accounts/close/:id', requireRole(3), asyncHandler(async (req, res)
   try {
     const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
     if (!account) return res.redirect('/admin/accounts?error=Account+not+found');
-    store.updateAccount(req.params.id, { is_active: -1 });
+    await store.updateAccount(req.params.id, { is_active: -1 });
     res.redirect('/admin/accounts?toggled=ok');
   } catch (err) {
     res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
@@ -1222,7 +1222,7 @@ router.post('/accounts/deposit/:id', requireRole(2), asyncHandler(async (req, re
     if (!account) return res.redirect('/admin/accounts?error=Account+not+found');
     const newBalance = Number(account.actual_balance) + val;
     await store.query('UPDATE accounts SET actual_balance=$1, unallocated_balance=unallocated_balance+$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3', [newBalance, val, req.params.id]);
-    const result = store.addTransaction({
+    const result = await store.addTransaction({
       account_id: req.params.id,
       type: 'deposit',
       amount: val,
@@ -1258,7 +1258,7 @@ router.post('/accounts/withdraw/:id', requireRole(2), asyncHandler(async (req, r
     const newBalance = Math.round((Number(account.actual_balance) - val) * 100) / 100;
     const newUnallocated = Math.round((Number(account.unallocated_balance) - val) * 100) / 100;
     await store.query('UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3', [newBalance, Math.max(0, newUnallocated), req.params.id]);
-    const result = store.addTransaction({
+    const result = await store.addTransaction({
       account_id: req.params.id,
       type: 'withdrawal',
       amount: val,
@@ -1427,7 +1427,7 @@ router.post('/goals/create', requireRole(2), asyncHandler(async (req, res) => {
 
     const account = await one('SELECT * FROM accounts WHERE account_id = $1', [account_id]);
     if (!account) return res.redirect('/admin/goals?error=Account+not+found');
-    store.createGoal({
+    await store.createGoal({
       account_id,
       title: title.trim(),
       target_amount: Number(target_amount) || 0,
@@ -1446,7 +1446,7 @@ router.post('/goals/update/:id', requireRole(2), asyncHandler(async (req, res) =
     const existing = await one('SELECT * FROM goal_jars WHERE goal_id = $1', [req.params.id]);
     if (!existing) return res.redirect('/admin/goals?error=Goal+not+found');
     const { title, target_amount, current_allocated, category_icon } = req.body;
-    store.updateGoal(req.params.id, {
+    await store.updateGoal(req.params.id, {
       title: title?.trim(),
       target_amount: Number(target_amount),
       current_allocated: Number(current_allocated),
@@ -1476,7 +1476,7 @@ router.post('/goals/delete/:id', requireRole(3), asyncHandler(async (req, res) =
 
     const existing = await one('SELECT * FROM goal_jars WHERE goal_id = $1', [req.params.id]);
     if (!existing) return res.redirect('/admin/goals?error=Goal+not+found');
-    store.deleteGoal(req.params.id);
+    await store.deleteGoal(req.params.id);
     res.redirect('/admin/goals?deleted=ok');
   } catch (err) {
     res.redirect(`/admin/goals?error=${encodeURIComponent(err.message)}`);
@@ -1614,7 +1614,7 @@ router.post('/badges/create', requireRole(2), asyncHandler(async (req, res) => {
     if (!account_id || !name) return res.redirect('/admin/badges?error=Account+and+name+required');
     const account = await one('SELECT * FROM accounts WHERE account_id = $1', [account_id]);
     if (!account) return res.redirect('/admin/badges?error=Account+not+found');
-    store.createBadge({
+    await store.createBadge({
       account_id,
       name: name.trim(),
       description: description || '',
@@ -1633,7 +1633,7 @@ router.post('/badges/update/:id', requireRole(2), asyncHandler(async (req, res) 
     const existing = await one('SELECT * FROM badges WHERE badge_id = $1', [req.params.id]);
     if (!existing) return res.redirect('/admin/badges?error=Badge+not+found');
     const { name, description, required_xp, is_unlocked } = req.body;
-    store.updateBadge(req.params.id, {
+    await store.updateBadge(req.params.id, {
       name: name?.trim(),
       description: description || '',
       required_xp: Number(required_xp),
@@ -1651,7 +1651,7 @@ router.post('/badges/toggle/:id', requireRole(2), asyncHandler(async (req, res) 
     const existing = await one('SELECT * FROM badges WHERE badge_id = $1', [req.params.id]);
     if (!existing) return res.redirect('/admin/badges?error=Badge+not+found');
     const newStatus = existing.is_unlocked ? 0 : 1;
-    store.updateBadge(req.params.id, { is_unlocked: newStatus });
+    await store.updateBadge(req.params.id, { is_unlocked: newStatus });
     res.redirect('/admin/badges?toggled=ok');
   } catch (err) {
     res.redirect(`/admin/badges?error=${encodeURIComponent(err.message)}`);
@@ -1663,7 +1663,7 @@ router.post('/badges/delete/:id', requireRole(3), asyncHandler(async (req, res) 
 
     const existing = await one('SELECT * FROM badges WHERE badge_id = $1', [req.params.id]);
     if (!existing) return res.redirect('/admin/badges?error=Badge+not+found');
-    store.deleteBadge(req.params.id);
+    await store.deleteBadge(req.params.id);
     res.redirect('/admin/badges?deleted=ok');
   } catch (err) {
     res.redirect(`/admin/badges?error=${encodeURIComponent(err.message)}`);
@@ -1798,10 +1798,10 @@ router.get('/loans', requireRole(1), asyncHandler(async (req, res) => {
 
 router.post('/loans/approve/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
-    const loan = store.getLoan(req.params.id);
+    const loan = await store.getLoan(req.params.id);
     if (!loan) return res.redirect('/admin/loans?error=Loan+not+found');
     if (loan.status !== 'pending') return res.redirect('/admin/loans?error=Loan+is+not+pending');
-    store.updateLoan(req.params.id, { status: 'approved', approved_by: 'admin', approved_at: new Date().toISOString() });
+    await store.updateLoan(req.params.id, { status: 'approved', approved_by: 'admin', approved_at: new Date().toISOString() });
     try { const audit = require('../services/audit'); await audit.log(req, 'LOAN_APPROVE', 'loan', req.params.id, { amount: loan.principal, member: loan.account_id }); } catch (e) {}
     res.redirect('/admin/loans?approved=ok');
   } catch (err) {
@@ -1811,10 +1811,10 @@ router.post('/loans/approve/:id', requireRole(3), asyncHandler(async (req, res) 
 
 router.post('/loans/reject/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
-    const loan = store.getLoan(req.params.id);
+    const loan = await store.getLoan(req.params.id);
     if (!loan) return res.redirect('/admin/loans?error=Loan+not+found');
     if (loan.status !== 'pending') return res.redirect('/admin/loans?error=Loan+is+not+pending');
-    store.updateLoan(req.params.id, { status: 'rejected' });
+    await store.updateLoan(req.params.id, { status: 'rejected' });
     try { const audit = require('../services/audit'); await audit.log(req, 'LOAN_REJECT', 'loan', req.params.id, { amount: loan.principal, member: loan.account_id }); } catch (e) {}
     res.redirect('/admin/loans?rejected=ok');
   } catch (err) {
@@ -1825,18 +1825,18 @@ router.post('/loans/reject/:id', requireRole(3), asyncHandler(async (req, res) =
 router.post('/loans/disburse/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
 
-    const loan = store.getLoan(req.params.id);
+    const loan = await store.getLoan(req.params.id);
     if (!loan) return res.redirect('/admin/loans?error=Loan+not+found');
     if (loan.status !== 'approved') return res.redirect('/admin/loans?error=Loan+must+be+approved+first');
 
-    const account = store.getAccount(loan.account_id);
+    const account = await store.getAccount(loan.account_id);
     if (!account) return res.redirect('/admin/loans?error=Account+not+found');
 
     const newBalance = Math.round((Number(account.actual_balance) + Number(loan.principal)) * 100) / 100;
     const newUnallocated = Math.round((Number(account.unallocated_balance) + Number(loan.principal)) * 100) / 100;
 
     await store.query('UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=datetime(\'now\') WHERE account_id=$3', [newBalance, newUnallocated, loan.account_id]);
-    store.addTransaction({
+    await store.addTransaction({
       account_id: loan.account_id,
       type: 'loan_disbursement',
       amount: Number(loan.principal),
@@ -1846,7 +1846,7 @@ router.post('/loans/disburse/:id', requireRole(3), asyncHandler(async (req, res)
       balance_before: Number(account.actual_balance),
       balance_after: newBalance,
     });
-    store.updateLoan(req.params.id, { status: 'active', disbursed_at: new Date().toISOString() });
+    await store.updateLoan(req.params.id, { status: 'active', disbursed_at: new Date().toISOString() });
     try {
       const gl = require('../services/gl');
       await gl.postDoubleEntry(loan.loan_id, [
@@ -2222,7 +2222,7 @@ router.post('/loan-products/create', requireRole(3), asyncHandler(async (req, re
   try {
     const { name, description, interest_rate, interest_type, min_amount, max_amount, min_term, max_term } = req.body;
     if (!name) return res.redirect('/admin/loan-products?error=Name+required');
-    store.createLoanProduct({
+    await store.createLoanProduct({
       name: name.trim(),
       description: description || '',
       interest_rate: Number(interest_rate) || 0,
@@ -2241,7 +2241,7 @@ router.post('/loan-products/create', requireRole(3), asyncHandler(async (req, re
 router.post('/loan-products/update/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
     const { name, description, interest_rate, interest_type, min_amount, max_amount, min_term, max_term } = req.body;
-    store.updateLoanProduct(req.params.id, {
+    await store.updateLoanProduct(req.params.id, {
       name: name?.trim(),
       description,
       interest_rate: interest_rate !== undefined ? Number(interest_rate) : undefined,
@@ -2259,9 +2259,9 @@ router.post('/loan-products/update/:id', requireRole(3), asyncHandler(async (req
 
 router.post('/loan-products/toggle/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
-    const product = store.getLoanProduct(req.params.id);
+    const product = await store.getLoanProduct(req.params.id);
     if (!product) return res.redirect('/admin/loan-products?error=Product+not+found');
-    store.updateLoanProduct(req.params.id, { is_active: product.is_active ? 0 : 1 });
+    await store.updateLoanProduct(req.params.id, { is_active: product.is_active ? 0 : 1 });
     res.redirect('/admin/loan-products?toggled=ok');
   } catch (err) {
     res.redirect(`/admin/loan-products?error=${encodeURIComponent(err.message)}`);
@@ -2372,7 +2372,7 @@ router.post('/savings-products/create', requireRole(3), asyncHandler(async (req,
   try {
     const { name, description, interest_rate, interest_frequency, min_balance, withdrawal_limit } = req.body;
     if (!name) return res.redirect('/admin/savings-products?error=Name+required');
-    store.createSavingsProduct({
+    await store.createSavingsProduct({
       name: name.trim(),
       description: description || '',
       interest_rate: Number(interest_rate) || 0,
@@ -2389,7 +2389,7 @@ router.post('/savings-products/create', requireRole(3), asyncHandler(async (req,
 router.post('/savings-products/update/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
     const { name, description, interest_rate, interest_frequency, min_balance, withdrawal_limit } = req.body;
-    store.updateSavingsProduct(req.params.id, {
+    await store.updateSavingsProduct(req.params.id, {
       name: name?.trim(),
       description,
       interest_rate: interest_rate !== undefined ? Number(interest_rate) : undefined,
@@ -2405,9 +2405,9 @@ router.post('/savings-products/update/:id', requireRole(3), asyncHandler(async (
 
 router.post('/savings-products/toggle/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
-    const product = store.getSavingsProduct(req.params.id);
+    const product = await store.getSavingsProduct(req.params.id);
     if (!product) return res.redirect('/admin/savings-products?error=Product+not+found');
-    store.updateSavingsProduct(req.params.id, { is_active: product.is_active ? 0 : 1 });
+    await store.updateSavingsProduct(req.params.id, { is_active: product.is_active ? 0 : 1 });
     res.redirect('/admin/savings-products?toggled=ok');
   } catch (err) {
     res.redirect(`/admin/savings-products?error=${encodeURIComponent(err.message)}`);
@@ -2499,10 +2499,10 @@ router.get('/withdrawal-requests', requireRole(1), asyncHandler(async (req, res)
 
 router.post('/withdrawal-requests/approve/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
-    const reqData = store.getWithdrawalRequest(req.params.id);
+    const reqData = await store.getWithdrawalRequest(req.params.id);
     if (!reqData) return res.redirect('/admin/withdrawal-requests?error=Request+not+found');
     if (reqData.status !== 'pending') return res.redirect('/admin/withdrawal-requests?error=Request+is+not+pending');
-    store.updateWithdrawalRequest(req.params.id, { status: 'approved', resolved_at: new Date().toISOString() });
+    await store.updateWithdrawalRequest(req.params.id, { status: 'approved', resolved_at: new Date().toISOString() });
     res.redirect('/admin/withdrawal-requests?approved=ok');
   } catch (err) {
     res.redirect(`/admin/withdrawal-requests?error=${encodeURIComponent(err.message)}`);
@@ -2511,10 +2511,10 @@ router.post('/withdrawal-requests/approve/:id', requireRole(3), asyncHandler(asy
 
 router.post('/withdrawal-requests/reject/:id', requireRole(3), asyncHandler(async (req, res) => {
   try {
-    const reqData = store.getWithdrawalRequest(req.params.id);
+    const reqData = await store.getWithdrawalRequest(req.params.id);
     if (!reqData) return res.redirect('/admin/withdrawal-requests?error=Request+not+found');
     if (reqData.status !== 'pending') return res.redirect('/admin/withdrawal-requests?error=Request+is+not+pending');
-    store.updateWithdrawalRequest(req.params.id, { status: 'rejected', resolved_at: new Date().toISOString() });
+    await store.updateWithdrawalRequest(req.params.id, { status: 'rejected', resolved_at: new Date().toISOString() });
     res.redirect('/admin/withdrawal-requests?rejected=ok');
   } catch (err) {
     res.redirect(`/admin/withdrawal-requests?error=${encodeURIComponent(err.message)}`);
@@ -2524,11 +2524,11 @@ router.post('/withdrawal-requests/reject/:id', requireRole(3), asyncHandler(asyn
 router.post('/withdrawal-requests/pay/:id', requireRole(2), asyncHandler(async (req, res) => {
   try {
 
-    const reqData = store.getWithdrawalRequest(req.params.id);
+    const reqData = await store.getWithdrawalRequest(req.params.id);
     if (!reqData) return res.redirect('/admin/withdrawal-requests?error=Request+not+found');
     if (reqData.status !== 'approved') return res.redirect('/admin/withdrawal-requests?error=Request+must+be+approved+first');
 
-    const account = store.getAccount(reqData.account_id);
+    const account = await store.getAccount(reqData.account_id);
     if (!account) return res.redirect('/admin/withdrawal-requests?error=Account+not+found');
     if (Number(account.actual_balance) < Number(reqData.amount)) {
       return res.redirect('/admin/withdrawal-requests?error=Insufficient+balance');
@@ -2539,7 +2539,7 @@ router.post('/withdrawal-requests/pay/:id', requireRole(2), asyncHandler(async (
     const newUnallocated = Math.round((Number(account.unallocated_balance) - val) * 100) / 100;
 
     await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3", [newBalance, Math.max(0, newUnallocated), reqData.account_id]);
-    store.addTransaction({
+    await store.addTransaction({
       account_id: reqData.account_id,
       type: 'withdrawal',
       amount: val,
@@ -2547,7 +2547,7 @@ router.post('/withdrawal-requests/pay/:id', requireRole(2), asyncHandler(async (
       balance_before: Number(account.actual_balance),
       balance_after: newBalance,
     });
-    store.updateWithdrawalRequest(req.params.id, { status: 'paid', resolved_at: new Date().toISOString() });
+    await store.updateWithdrawalRequest(req.params.id, { status: 'paid', resolved_at: new Date().toISOString() });
     res.redirect('/admin/withdrawal-requests?paid=ok');
   } catch (err) {
     res.redirect(`/admin/withdrawal-requests?error=${encodeURIComponent(err.message)}`);
@@ -2647,7 +2647,7 @@ router.post('/savings-applications/approve/:id', requireRole(3), asyncHandler(as
 
     // Assign the savings product to the account
     await store.query("UPDATE accounts SET savings_product_id = $1, updated_at = CURRENT_TIMESTAMP WHERE account_id = $2", [app.product_id, app.account_id]);
-    store.updateSavingsApplication(req.params.id, { status: 'approved', resolved_at: new Date().toISOString() });
+    await store.updateSavingsApplication(req.params.id, { status: 'approved', resolved_at: new Date().toISOString() });
     res.redirect('/admin/savings-applications?approved=ok');
   } catch (err) {
     res.redirect(`/admin/savings-applications?error=${encodeURIComponent(err.message)}`);
@@ -2659,7 +2659,7 @@ router.post('/savings-applications/reject/:id', requireRole(3), asyncHandler(asy
     const app = await one('SELECT * FROM savings_applications WHERE application_id = $1', [req.params.id]);
     if (!app) return res.redirect('/admin/savings-applications?error=Application+not+found');
     if (app.status !== 'pending') return res.redirect('/admin/savings-applications?error=Application+is+not+pending');
-    store.updateSavingsApplication(req.params.id, { status: 'rejected', resolved_at: new Date().toISOString() });
+    await store.updateSavingsApplication(req.params.id, { status: 'rejected', resolved_at: new Date().toISOString() });
     res.redirect('/admin/savings-applications?rejected=ok');
   } catch (err) {
     res.redirect(`/admin/savings-applications?error=${encodeURIComponent(err.message)}`);
@@ -2934,7 +2934,7 @@ router.post('/teller/deposit/:id', requireRole(2), asyncHandler(async (req, res)
     if (!account) return res.redirect('/admin/teller?error=Account+not+found');
     const newBalance = Number(account.actual_balance) + val;
     await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=unallocated_balance+$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3", [newBalance, val, req.params.id]);
-    const result = store.addTransaction({
+    const result = await store.addTransaction({
       account_id: req.params.id,
       type: 'deposit',
       amount: val,
@@ -2971,7 +2971,7 @@ router.post('/teller/withdraw/:id', requireRole(2), asyncHandler(async (req, res
     const newBalance = Math.round((Number(account.actual_balance) - val) * 100) / 100;
     const newUnallocated = Math.round((Number(account.unallocated_balance) - val) * 100) / 100;
     await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3", [newBalance, Math.max(0, newUnallocated), req.params.id]);
-    const result = store.addTransaction({
+    const result = await store.addTransaction({
       account_id: req.params.id,
       type: 'withdrawal',
       amount: val,
@@ -3026,7 +3026,7 @@ router.post('/teller/loan-pay/:id', requireRole(2), asyncHandler(async (req, res
     const newStatus = newRemainingBalance <= 0 ? 'paid' : 'active';
 
     // Record loan payment
-    store.addLoanPayment({
+    await store.addLoanPayment({
       loan_id: loan.loan_id,
       amount: val,
       principal_paid: principalPortion,
@@ -3040,7 +3040,7 @@ router.post('/teller/loan-pay/:id', requireRole(2), asyncHandler(async (req, res
     await store.query("UPDATE loans SET amount_paid = $1, remaining_balance = $2, status = $3, updated_at = CURRENT_TIMESTAMP WHERE loan_id = $4", [newAmountPaid, newRemainingBalance, newStatus, loan_id]);
 
     // Record transaction (no balance change since it's over-the-counter collection)
-    const txResult = store.addTransaction({
+    const txResult = await store.addTransaction({
       account_id: accountId,
       type: 'loan_payment',
       amount: val,

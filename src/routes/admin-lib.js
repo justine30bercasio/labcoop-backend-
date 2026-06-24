@@ -52,7 +52,7 @@ function layout(title, active, content, opts = {}) {
       return `<a href="${c.href}"${cc}><span class="icon">${c.icon}</span> <span>${c.label}</span>${badge}</a>`;
     }).join('');
     return `<div class="menu-group${open}" data-key="${g.key}">
-      <div class="menu-parent" onclick="toggleGroup('${g.key}')">
+      <div class="menu-parent" data-toggle-group="${g.key}">
         <span class="icon">${g.icon}</span>
         <span>${g.label}</span>
         <span class="chevron">&#x25BC;</span>
@@ -378,7 +378,7 @@ table.dataTable td.mono { font-family:var(--mono); font-size:12px; }
 </head>
 <body>
 
-<button class="hamburger" id="hamburger" onclick="toggleSidebar()">&#x2630;</button>
+<button class="hamburger" id="hamburger">&#x2630;</button>
 
 <div class="sidebar" id="sidebar">
   <div class="sidebar-brand">
@@ -394,7 +394,7 @@ table.dataTable td.mono { font-family:var(--mono); font-size:12px; }
     ${sidebarNav}
   </div>
   <div class="sidebar-footer">
-    <a href="#" onclick="toggleTheme(event)"><span class="icon">&#x1F319;</span> <span>Dark Mode</span></a>
+    <a href="#" data-action="toggle-theme"><span class="icon">&#x1F319;</span> <span>Dark Mode</span></a>
     <a href="/admin/logout"><span class="icon">&#x1F6AA;</span> <span>Sign Out</span></a>
   </div>
 </div>
@@ -620,6 +620,44 @@ $(document).ready(function(){
     }
   });
 });
+</script>
+
+<script>
+// ── CSP-safe event delegation (replaces all inline onclick/onchange) ──
+(function(){
+  document.addEventListener('click', function(e) {
+    var target = e.target;
+    // Sidebar group toggle
+    var groupBtn = target.closest('[data-toggle-group]');
+    if (groupBtn) { e.preventDefault(); toggleGroup(groupBtn.getAttribute('data-toggle-group')); return; }
+    // Hamburger sidebar toggle
+    if (target.id === 'hamburger') { toggleSidebar(); return; }
+    // Dark mode toggle
+    var themeBtn = target.closest('[data-action="toggle-theme"]');
+    if (themeBtn) { toggleTheme(e); return; }
+    // Teller tab switch
+    var tabBtn = target.closest('.tx-tab[data-tab]');
+    if (tabBtn) {
+      var tab = tabBtn.getAttribute('data-tab');
+      document.querySelectorAll('.tx-tab').forEach(function(t) { t.classList.remove('active'); });
+      document.querySelectorAll('.tx-panel').forEach(function(p) { p.classList.remove('active'); });
+      var tabEl = document.getElementById('tab-' + tab);
+      var panelEl = document.getElementById('panel-' + tab);
+      if (tabEl) tabEl.classList.add('active');
+      if (panelEl) panelEl.classList.add('active');
+      return;
+    }
+    // Print receipt
+    if (target.closest('[data-action="print-receipt"]')) { window.print(); return; }
+    // Close receipt
+    var closeBtn = target.closest('[data-action="close-receipt"]');
+    if (closeBtn) { var r = document.getElementById('rinline'); if (r) r.remove(); return; }
+  });
+  // Auto-submit selects on change
+  document.addEventListener('change', function(e) {
+    if (e.target.hasAttribute('data-auto-submit')) { e.target.form.submit(); }
+  });
+})();
 </script>
 </body>
 </html>`;

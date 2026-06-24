@@ -1335,11 +1335,11 @@ router.get('/goals', requireRole(1), asyncHandler(async (req, res) => {
     <div class="card-body">
     <div style="padding:10px 14px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--border);background:#fafcfa">
       <form method="get" action="/admin/goals" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <select name="account" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" onchange="this.form.submit()">
+        <select name="account" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" data-auto-submit="true">
           <option value="">All Accounts</option>
           ${accounts.map(a => `<option value="${a.account_id}"${a.account_id===filterAccount?' selected':''}>${a.child_name}</option>`).join('')}
         </select>
-        <select name="status" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" onchange="this.form.submit()">
+        <select name="status" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" data-auto-submit="true">
           <option value="">All Status</option>
           <option value="active"${filterStatus==='active'?' selected':''}>Active</option>
           <option value="done"${filterStatus==='done'?' selected':''}>Completed</option>
@@ -1522,11 +1522,11 @@ router.get('/badges', requireRole(1), asyncHandler(async (req, res) => {
     <div class="card-body">
     <div style="padding:10px 14px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--border);background:#fafcfa">
       <form method="get" action="/admin/badges" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <select name="account" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" onchange="this.form.submit()">
+        <select name="account" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" data-auto-submit="true">
           <option value="">All Accounts</option>
           ${accounts.map(a => `<option value="${a.account_id}"${a.account_id===filterAccount?' selected':''}>${a.child_name}</option>`).join('')}
         </select>
-        <select name="status" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" onchange="this.form.submit()">
+        <select name="status" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" data-auto-submit="true">
           <option value="">All Status</option>
           <option value="unlocked"${filterStatus==='unlocked'?' selected':''}>Unlocked</option>
           <option value="locked"${filterStatus==='locked'?' selected':''}>Locked</option>
@@ -1715,11 +1715,11 @@ router.get('/loans', requireRole(1), asyncHandler(async (req, res) => {
       <h3>&#x1F4B0; Loan Applications</h3>
       <div style="display:flex;gap:8px;align-items:center">
         <form method="get" action="/admin/loans" style="display:flex;gap:6px;align-items:center">
-          <select name="account" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" onchange="this.form.submit()">
+          <select name="account" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" data-auto-submit="true">
             <option value="">All Accounts</option>
             ${accounts.map(a => `<option value="${a.account_id}"${a.account_id === filterAccount ? ' selected' : ''}>${a.child_name}</option>`).join('')}
           </select>
-          <select name="status" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" onchange="this.form.submit()">
+          <select name="status" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" data-auto-submit="true">
             <option value="">All Status</option>
             <option value="pending"${filterStatus === 'pending' ? ' selected' : ''}>Pending</option>
             <option value="approved"${filterStatus === 'approved' ? ' selected' : ''}>Approved</option>
@@ -2446,7 +2446,7 @@ router.get('/withdrawal-requests', requireRole(1), asyncHandler(async (req, res)
     <div class="card-header"><h3>&#x1F4B8; Withdrawal Requests</h3>
       <div style="display:flex;gap:8px;align-items-center">
         <form method="get" action="/admin/withdrawal-requests" style="display:flex;gap:6px;align-items:center">
-          <select name="status" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" onchange="this.form.submit()">
+          <select name="status" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" data-auto-submit="true">
             <option value="">All Status</option>
             <option value="pending"${filterStatus === 'pending' ? ' selected' : ''}>Pending</option>
             <option value="approved"${filterStatus === 'approved' ? ' selected' : ''}>Approved</option>
@@ -2591,7 +2591,7 @@ router.get('/savings-applications', requireRole(1), asyncHandler(async (req, res
     <div class="card-header"><h3>&#x1F4B1; Savings Account Applications</h3>
       <div style="display:flex;gap:8px;align-items:center">
         <form method="get" action="/admin/savings-applications" style="display:flex;gap:6px;align-items:center">
-          <select name="status" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" onchange="this.form.submit()">
+          <select name="status" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" data-auto-submit="true">
             <option value="">All Status</option>
             <option value="pending"${filterStatus === 'pending' ? ' selected' : ''}>Pending</option>
             <option value="approved"${filterStatus === 'approved' ? ' selected' : ''}>Approved</option>
@@ -2784,7 +2784,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   function receiptHtml(r) {
     if (!r) return '';
     var isCredit = r.type === 'deposit' || r.type === 'loan_disbursement';
-    return '<div class="receipt-inline" id="rinline"><div class="ri-header"><strong>LABCOOP PASSBOOK</strong><br><span style="font-size:10px;color:#999">Official Transaction Receipt</span></div><div class="ri-body"><div class="ri-row"><span class="ri-label">Receipt No.</span><span class="ri-value">RCP-' + (r.transaction_id || '').slice(0,8).toUpperCase() + '</span></div><div class="ri-row"><span class="ri-label">Date</span><span class="ri-value">' + (r.created_at || '').slice(0,19).replace('T',' ') + '</span></div><div class="ri-row"><span class="ri-label">Member</span><span class="ri-value">' + (r.child_name||'N/A') + ' (' + (r.member_id||'---') + ')</span></div><div class="ri-divider"></div><div class="ri-row"><span class="ri-label">Transaction</span><span class="ri-value" style="text-transform:uppercase">' + r.type.replace(/_/g,' ') + '</span></div><div class="ri-row"><span class="ri-label">Amount</span><span class="ri-value ' + (isCredit ? 'ri-credit' : 'ri-debit') + '">' + (isCredit ? '+' : '-') + ' \u20B1' + Number(r.amount).toFixed(2) + '</span></div><div class="ri-row"><span class="ri-label">Description</span><span class="ri-value">' + (r.description||'-') + '</span></div><div class="ri-divider"></div><div class="ri-row"><span class="ri-label">Balance Before</span><span class="ri-value">\u20B1' + Number(r.balance_before || 0).toFixed(2) + '</span></div><div class="ri-row"><span class="ri-label">Balance After</span><span class="ri-value">\u20B1' + Number(r.balance_after || 0).toFixed(2) + '</span></div></div><div class="ri-footer"><button onclick="window.print()" class="btn btn-outline btn-xs">\uD83D\uDDA8 Print</button> &nbsp; <button onclick="document.getElementById(\'rinline\').remove()" class="btn btn-outline btn-xs">\u2716 Close</button></div></div>';
+    return '<div class="receipt-inline" id="rinline"><div class="ri-header"><strong>LABCOOP PASSBOOK</strong><br><span style="font-size:10px;color:#999">Official Transaction Receipt</span></div><div class="ri-body"><div class="ri-row"><span class="ri-label">Receipt No.</span><span class="ri-value">RCP-' + (r.transaction_id || '').slice(0,8).toUpperCase() + '</span></div><div class="ri-row"><span class="ri-label">Date</span><span class="ri-value">' + (r.created_at || '').slice(0,19).replace('T',' ') + '</span></div><div class="ri-row"><span class="ri-label">Member</span><span class="ri-value">' + (r.child_name||'N/A') + ' (' + (r.member_id||'---') + ')</span></div><div class="ri-divider"></div><div class="ri-row"><span class="ri-label">Transaction</span><span class="ri-value" style="text-transform:uppercase">' + r.type.replace(/_/g,' ') + '</span></div><div class="ri-row"><span class="ri-label">Amount</span><span class="ri-value ' + (isCredit ? 'ri-credit' : 'ri-debit') + '">' + (isCredit ? '+' : '-') + ' \u20B1' + Number(r.amount).toFixed(2) + '</span></div><div class="ri-row"><span class="ri-label">Description</span><span class="ri-value">' + (r.description||'-') + '</span></div><div class="ri-divider"></div><div class="ri-row"><span class="ri-label">Balance Before</span><span class="ri-value">\u20B1' + Number(r.balance_before || 0).toFixed(2) + '</span></div><div class="ri-row"><span class="ri-label">Balance After</span><span class="ri-value">\u20B1' + Number(r.balance_after || 0).toFixed(2) + '</span></div></div><div class="ri-footer"><button data-action="print-receipt" class="btn btn-outline btn-xs">\uD83D\uDDA8 Print</button> &nbsp; <button data-action="close-receipt" class="btn btn-outline btn-xs">\u2716 Close</button></div></div>';
   }
 
   function searchResultItem(a) {
@@ -2838,9 +2838,9 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
         </div>
 
         <div class="tx-tabs">
-          <button class="tx-tab active" onclick="switchTxTab('deposit')" id="tab-deposit">&#x1F4B5; Deposit</button>
-          <button class="tx-tab" onclick="switchTxTab('withdraw')" id="tab-withdraw">&#x1F4B8; Withdraw</button>
-          <button class="tx-tab" onclick="switchTxTab('loan')" id="tab-loan">&#x1F3E6; Loan Pay</button>
+          <button class="tx-tab active" data-tab="deposit" id="tab-deposit">&#x1F4B5; Deposit</button>
+          <button class="tx-tab" data-tab="withdraw" id="tab-withdraw">&#x1F4B8; Withdraw</button>
+          <button class="tx-tab" data-tab="loan" id="tab-loan">&#x1F3E6; Loan Pay</button>
         </div>
 
         <div class="tx-panel active" id="panel-deposit">
@@ -2916,15 +2916,6 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
 
   </div>
   `}
-
-  <script>
-  function switchTxTab(tab) {
-    document.querySelectorAll('.tx-tab').forEach(function(t) { t.classList.remove('active'); });
-    document.querySelectorAll('.tx-panel').forEach(function(p) { p.classList.remove('active'); });
-    document.getElementById('tab-' + tab).classList.add('active');
-    document.getElementById('panel-' + tab).classList.add('active');
-  }
-  </script>
   `;
 
   var toastHtml = toast ? '<div class="toast ' + (toast.startsWith('error:') ? 'error' : 'success') + '">' + (toast.startsWith('error:') ? '&#x274C; ' + toast.slice(6) : '&#x2705; ' + toast.slice(8)) + '</div>' : '';

@@ -34,29 +34,25 @@ router.post('/create-payment',
         depositId
       );
 
-      const piId = result.paymentIntent.data.id;
       const checkoutUrl = result.checkoutUrl;
-      const clientKey = result.clientKey;
+      const sessionId = result.sessionId;
 
       if (!checkoutUrl) {
         return res.status(500).json({
           message: 'Failed to get checkout URL from PayMongo',
-          pi_id: piId,
-          has_client_key: !!clientKey,
+          session_id: sessionId,
         });
       }
 
       await store.query(
         `INSERT INTO online_deposits (deposit_id, account_id, amount, reference_number, sender_name, payment_method, status, admin_notes, created_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [depositId, account_id, Number(amount), `PI-${piId}`, account.child_name || '', 'paymongo_gcash', 'paymongo_pending', JSON.stringify({ payment_intent_id: piId }), new Date().toISOString()]
+        [depositId, account_id, Number(amount), `CS-${sessionId}`, account.child_name || '', 'paymongo_gcash', 'paymongo_pending', JSON.stringify({ session_id: sessionId }), new Date().toISOString()]
       );
 
       res.json({
         deposit_id: depositId,
-        payment_intent_id: piId,
         checkout_url: checkoutUrl,
-        client_key: clientKey,
         amount: Number(amount),
       });
     } catch (err) {

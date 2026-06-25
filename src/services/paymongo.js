@@ -97,12 +97,30 @@ async function createPaymentIntent(amount, description, accountId, depositId) {
 }
 
 async function createGcashCheckout(amount, description, accountId, depositId) {
-  const pi = await createPaymentIntent(amount, description, accountId, depositId);
-  const piId = pi.data.id;
-  const clientKey = pi.data.attributes?.client_key || '';
-  // Use client_key as the checkout URL — PayMongo checkout path
-  const checkoutUrl = clientKey ? `https://checkout.paymongo.com/${clientKey}` : '';
-  return { paymentIntent: pi, checkoutUrl, clientKey };
+  const amountCentavos = Math.round(Number(amount) * 100);
+  const session = await apiRequest('POST', '/checkout_sessions', {
+    data: {
+      attributes: {
+        send_email_receipt: false,
+        show_line_items: true,
+        line_items: [{
+          currency: 'PHP',
+          amount: amountCentavos,
+          description: description || 'LabCoop Savings Deposit',
+          name: 'LabCoop Deposit',
+          quantity: 1,
+        }],
+        payment_method_types: ['gcash'],
+        metadata: {
+          account_id: accountId,
+          deposit_id: depositId,
+        },
+      },
+    },
+  });
+  const checkoutUrl = session.data?.attributes?.checkout_url || '';
+  const sessionId = session.data?.id || '';
+  return { checkoutUrl, sessionId };
 }
 
 function isPaymongoConfigured() {

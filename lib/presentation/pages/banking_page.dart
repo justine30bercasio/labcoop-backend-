@@ -17,6 +17,7 @@ import 'savings_open_page.dart';
 import 'statement_page.dart';
 import 'transaction_history_page.dart';
 import 'withdrawal_request_page.dart';
+import '../../core/helpers/number_helpers.dart';
 
 class BankingPage extends StatefulWidget {
   final String accountId;
@@ -128,6 +129,9 @@ class _BankingPageState extends State<BankingPage> {
               return RefreshIndicator(
                 onRefresh: () async {
                   context.read<BankingBloc>().add(LoadTransactions(widget.accountId));
+                  await context.read<BankingBloc>().stream.firstWhere(
+                    (s) => s.transactionStatus != TransactionStatus.loading,
+                  );
                   await _loadInterest();
                   _knownStatuses.clear();
                   await _checkWithdrawStatus();
@@ -222,8 +226,10 @@ class _BankingPageState extends State<BankingPage> {
                 currentBalance: currentBalance,
               )));
             }),
-            _actionChip(Icons.payments, 'GCash Deposit', AppTheme.primaryGreen, () {
-              Navigator.push(context, PageTransition.slideUp(OnlineDepositPage(accountId: widget.accountId)));
+            _actionChip(Icons.payments, 'GCash Deposit', AppTheme.primaryGreen, () async {
+              await Navigator.push(context, PageTransition.slideUp(OnlineDepositPage(accountId: widget.accountId)));
+              context.read<BankingBloc>().add(LoadTransactions(widget.accountId));
+              _loadInterest();
             }),
           ],
         ),
@@ -339,7 +345,7 @@ class _BankingPageState extends State<BankingPage> {
                 const Divider(),
                 ...(_interestData!['recent_interest'] as List).take(3).map((tx) {
                   final t = tx as Map<String, dynamic>;
-                  final amt = (t['amount'] ?? 0).toDouble();
+                  final amt = parseAmount(t['amount']);
                   final desc = t['description']?.toString() ?? 'Interest';
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),

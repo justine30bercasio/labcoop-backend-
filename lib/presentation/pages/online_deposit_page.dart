@@ -5,6 +5,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../../core/network/banking_api_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/design_system.dart';
+import '../../core/helpers/number_helpers.dart';
 
 class OnlineDepositPage extends StatefulWidget {
   final String accountId;
@@ -276,6 +277,11 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
               },
               child: const Text('Deposit Again'),
             ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Back to Banking'),
+            ),
           ],
         ),
       ),
@@ -437,11 +443,12 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
   }
 
   Widget _depositTile(Map<String, dynamic> d) {
-    final amount = (d['amount'] is num ? (d['amount'] as num).toDouble() : 0.0);
+    final amount = parseAmount(d['amount']);
     final ref = d['reference_number']?.toString() ?? '';
     final sender = d['sender_name']?.toString() ?? '';
     final status = d['status']?.toString() ?? 'pending';
     final createdAt = d['created_at']?.toString() ?? '';
+    final depositId = d['deposit_id']?.toString() ?? '';
 
     Color statusColor;
     String statusLabel;
@@ -487,24 +494,41 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
             if (sender.isNotEmpty) Text('From: $sender', style: AppTextStyle.bodySmall),
           ],
         ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: statusColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(6),
+        trailing: status == 'paymongo_pending'
+            ? IconButton(
+                icon: const Icon(Icons.cancel_outlined, color: Colors.red, size: 20),
+                tooltip: 'Cancel deposit',
+                onPressed: () => _cancelPendingDeposit(depositId),
+              )
+            : Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: statusColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(statusLabel, style: TextStyle(color: statusColor, fontWeight: FontWeight.w600, fontSize: 11)),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(_formatDate(createdAt), style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+                ],
               ),
-              child: Text(statusLabel, style: TextStyle(color: statusColor, fontWeight: FontWeight.w600, fontSize: 11)),
-            ),
-            const SizedBox(height: 2),
-            Text(_formatDate(createdAt), style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
-          ],
-        ),
       ),
     );
+  }
+
+  Future<void> _cancelPendingDeposit(String depositId) async {
+    final ok = await BankingApiService.cancelPaymongoDeposit(depositId);
+    if (!mounted) return;
+    if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deposit cancelled')));
+      _load();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to cancel deposit'), backgroundColor: Colors.red));
+    }
   }
 }
 

@@ -198,4 +198,13 @@ class BankingApiService {
       return null;
     }
   }
+
+  static Future<bool> cancelPaymongoDeposit(String depositId) async {
+    try {
+      await _dio.delete('/api/paymongo/cancel-pending/$depositId');
+      return true;
+    } on DioException {
+      return false;
+    }
+  }
 }

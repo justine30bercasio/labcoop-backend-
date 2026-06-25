@@ -19,7 +19,6 @@ import '../widgets/growth_projection_widget.dart';
 import '../widgets/growable_piggy_widget.dart';
 import '../widgets/savings_tips_widget.dart';
 import '../widgets/challenges_widget.dart';
-import '../widgets/chore_list_widget.dart';
 import '../widgets/staggered_animation.dart';
 import '../widgets/animated_counter.dart';
 import 'add_item_page.dart';
@@ -333,16 +332,6 @@ class _DashboardPageState extends State<DashboardPage> {
                 const SizedBox(height: Spacing.lg),
                 Padding(
                   padding: EdgeInsets.symmetric(horizontal: hp),
-                  child: _buildSectionHeader('Badges', Icons.emoji_events),
-                ),
-                const SizedBox(height: Spacing.sm),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: hp),
-                  child: BadgeGridWidget(badges: badges),
-                ),
-                const SizedBox(height: Spacing.lg),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: hp),
                   child: _buildSectionHeader('Challenges', Icons.flag),
                 ),
                 const SizedBox(height: Spacing.sm),
@@ -351,15 +340,6 @@ class _DashboardPageState extends State<DashboardPage> {
                   child: ChallengesWidget(totalSaved: totalSaved),
                 ),
                 const SizedBox(height: Spacing.lg),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: hp),
-                  child: _buildSectionHeader('Chores', Icons.cleaning_services),
-                ),
-                const SizedBox(height: Spacing.sm),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: hp),
-                  child: const ChoreListWidget(),
-                ),
               ],
             ),
           ),

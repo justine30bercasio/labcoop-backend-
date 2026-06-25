@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../../core/services/notification_service.dart';
 import '../models/savings_account_model.dart';
 import '../models/goal_jar_model.dart';
 import '../models/badge_model.dart';
@@ -55,6 +56,9 @@ class RemoteApiSource {
       accountId: data['account']['account_id'] as String,
       childName: data['account']['child_name'] as String,
     );
+    try {
+      await NotificationService.registerAfterLogin();
+    } catch (_) {}
     return data;
   }
 

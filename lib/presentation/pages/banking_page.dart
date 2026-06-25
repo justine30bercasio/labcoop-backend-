@@ -2,19 +2,20 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../core/network/banking_api_service.dart';
-import '../../core/theme/app_theme.dart';
-import '../../core/theme/design_system.dart';
 import '../../domain/entities/transaction.dart';
 import '../blocs/banking_bloc.dart';
 import '../blocs/savings_bloc.dart';
 import '../blocs/savings_state.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/theme/design_system.dart';
 import 'auto_save_page.dart';
+import 'loan_apply_page.dart';
 import 'loan_products_page.dart';
 import 'my_loans_page.dart';
+import 'online_deposit_page.dart';
 import 'savings_open_page.dart';
 import 'statement_page.dart';
 import 'transaction_history_page.dart';
-import 'loan_apply_page.dart';
 import 'withdrawal_request_page.dart';
 
 class BankingPage extends StatefulWidget {
@@ -220,6 +221,9 @@ class _BankingPageState extends State<BankingPage> {
                 accountId: widget.accountId,
                 currentBalance: currentBalance,
               )));
+            }),
+            _actionChip(Icons.payments, 'GCash Deposit', AppTheme.primaryGreen, () {
+              Navigator.push(context, PageTransition.slideUp(OnlineDepositPage(accountId: widget.accountId)));
             }),
           ],
         ),

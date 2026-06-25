@@ -140,4 +140,58 @@ class BankingApiService {
       return [];
     }
   }
+
+  static Future<Map<String, dynamic>?> submitOnlineDeposit({
+    required String accountId,
+    required double amount,
+    required String referenceNumber,
+    String? senderName,
+    String paymentMethod = 'gcash',
+  }) async {
+    try {
+      final resp = await _dio.post('/api/online-deposits', data: {
+        'account_id': accountId,
+        'amount': amount,
+        'reference_number': referenceNumber,
+        'sender_name': senderName ?? '',
+        'payment_method': paymentMethod,
+      });
+      return resp.data as Map<String, dynamic>;
+    } on DioException {
+      return null;
+    }
+  }
+
+  static Future<List<dynamic>> getOnlineDeposits(String accountId) async {
+    try {
+      final resp = await _dio.get('/api/online-deposits/$accountId');
+      return resp.data as List<dynamic>;
+    } on DioException {
+      return [];
+    }
+  }
+
+  static Future<Map<String, dynamic>?> createPaymongoPayment({
+    required String accountId,
+    required double amount,
+  }) async {
+    try {
+      final resp = await _dio.post('/api/paymongo/create-payment', data: {
+        'account_id': accountId,
+        'amount': amount,
+      });
+      return resp.data as Map<String, dynamic>;
+    } on DioException {
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> getPaymongoPaymentStatus(String depositId) async {
+    try {
+      final resp = await _dio.get('/api/paymongo/payment-status/$depositId');
+      return resp.data as Map<String, dynamic>;
+    } on DioException {
+      return null;
+    }
+  }
 }

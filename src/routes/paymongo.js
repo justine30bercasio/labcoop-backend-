@@ -14,48 +14,53 @@ router.post('/create-payment',
   body('account_id').isString().notEmpty().trim(),
   body('amount').isFloat({ min: 1 }),
   asyncHandler(async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    if (!paymongo.isPaymongoConfigured()) {
-      return res.status(400).json({ message: 'PayMongo not configured. Please set PAYMONGO_SECRET in .env' });
+      if (!paymongo.isPaymongoConfigured()) {
+        return res.status(400).json({ message: 'PayMongo not configured. Please set PAYMONGO_SECRET in .env' });
+      }
+
+      const { account_id, amount } = req.body;
+      const account = await store.getAccount(account_id);
+      if (!account) return res.status(404).json({ message: 'Account not found' });
+
+      const depositId = uuidv4();
+      const paymentIntent = await paymongo.createPaymentIntent(
+        Number(amount),
+        'LabCoop Savings Deposit',
+        account_id,
+        depositId
+      );
+
+      const piId = paymentIntent.data.id;
+      const checkoutUrl = paymentIntent.data.attributes?.next_action?.redirect?.url ||
+        paymentIntent.data.attributes?.next_action?.checkout_url || '';
+
+      if (!checkoutUrl) {
+        return res.status(500).json({ message: 'Failed to get checkout URL from PayMongo' });
+      }
+
+      const clientKey = paymentIntent.data.attributes?.client_key || '';
+
+      await store.query(
+        `INSERT INTO online_deposits (deposit_id, account_id, amount, reference_number, sender_name, payment_method, status, admin_notes, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [depositId, account_id, Number(amount), `PI-${piId}`, account.child_name || '', 'paymongo_gcash', 'paymongo_pending', JSON.stringify({ payment_intent_id: piId }), new Date().toISOString()]
+      );
+
+      res.json({
+        deposit_id: depositId,
+        payment_intent_id: piId,
+        checkout_url: checkoutUrl,
+        client_key: clientKey,
+        amount: Number(amount),
+      });
+    } catch (err) {
+      console.error('PayMongo create-payment error:', err);
+      res.status(500).json({ message: err.message || 'Internal server error' });
     }
-
-    const { account_id, amount } = req.body;
-    const account = await store.getAccount(account_id);
-    if (!account) return res.status(404).json({ message: 'Account not found' });
-
-    const depositId = uuidv4();
-    const paymentIntent = await paymongo.createPaymentIntent(
-      Number(amount),
-      'LabCoop Savings Deposit',
-      account_id,
-      depositId
-    );
-
-    const piId = paymentIntent.data.id;
-    const checkoutUrl = paymentIntent.data.attributes?.next_action?.redirect?.url ||
-      paymentIntent.data.attributes?.next_action?.checkout_url || '';
-
-    if (!checkoutUrl) {
-      return res.status(500).json({ message: 'Failed to get checkout URL from PayMongo' });
-    }
-
-    const clientKey = paymentIntent.data.attributes?.client_key || '';
-
-    await store.query(
-      `INSERT INTO online_deposits (deposit_id, account_id, amount, reference_number, sender_name, payment_method, status, admin_notes, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [depositId, account_id, Number(amount), `PI-${piId}`, account.child_name || '', 'paymongo_gcash', 'paymongo_pending', JSON.stringify({ payment_intent_id: piId }), new Date().toISOString()]
-    );
-
-    res.json({
-      deposit_id: depositId,
-      payment_intent_id: piId,
-      checkout_url: checkoutUrl,
-      client_key: clientKey,
-      amount: Number(amount),
-    });
   })
 );
 

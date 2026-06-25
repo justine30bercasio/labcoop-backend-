@@ -120,7 +120,8 @@ async function createGcashCheckout(amount, description, accountId, depositId) {
   });
   const checkoutUrl = session.data?.attributes?.checkout_url || '';
   const sessionId = session.data?.id || '';
-  return { checkoutUrl, sessionId };
+  const paymentIntentId = session.data?.attributes?.payment_intent?.id || '';
+  return { checkoutUrl, sessionId, paymentIntentId };
 }
 
 async function retrieveCheckoutSession(sessionId) {

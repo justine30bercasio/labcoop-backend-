@@ -36,6 +36,7 @@ router.post('/create-payment',
 
       const checkoutUrl = result.checkoutUrl;
       const sessionId = result.sessionId;
+      const paymentIntentId = result.paymentIntentId;
 
       if (!checkoutUrl) {
         return res.status(500).json({
@@ -44,10 +45,11 @@ router.post('/create-payment',
         });
       }
 
+      const adminNotes = JSON.stringify({ session_id: sessionId, payment_intent_id: paymentIntentId });
       await store.query(
         `INSERT INTO online_deposits (deposit_id, account_id, amount, reference_number, sender_name, payment_method, status, admin_notes, created_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [depositId, account_id, Number(amount), `CS-${sessionId}`, account.child_name || '', 'paymongo_gcash', 'paymongo_pending', JSON.stringify({ session_id: sessionId }), new Date().toISOString()]
+        [depositId, account_id, Number(amount), `CS-${sessionId}`, account.child_name || '', 'paymongo_gcash', 'paymongo_pending', adminNotes, new Date().toISOString()]
       );
 
       res.json({
@@ -70,29 +72,37 @@ router.get('/payment-status/:depositId',
     if (!deposit) return res.status(404).json({ message: 'Deposit not found' });
 
     let paymongoStatus = null;
+    let paymentAmount = 0;
     if (deposit.admin_notes) {
       try {
         const notes = JSON.parse(deposit.admin_notes);
-        if (notes.payment_intent_id) {
-          const pi = await paymongo.retrievePaymentIntent(notes.payment_intent_id);
+        const piId = notes.payment_intent_id;
+        if (piId) {
+          const pi = await paymongo.retrievePaymentIntent(piId);
           paymongoStatus = pi.data.attributes.status;
+          paymentAmount = pi.data.attributes.amount || 0;
         } else if (notes.session_id) {
-          const session = await paymongo.retrieveCheckoutSession(notes.session_id);
-          const attrs = session.data?.attributes || {};
-          if (attrs.payments && attrs.payments.length > 0) {
-            paymongoStatus = 'paid';
-          } else {
-            paymongoStatus = attrs.status || 'pending';
+          try {
+            const session = await paymongo.retrieveCheckoutSession(notes.session_id);
+            const attrs = session.data?.attributes || {};
+            if (attrs.payments && attrs.payments.length > 0) {
+              paymongoStatus = 'paid';
+              paymentAmount = attrs.payments[0]?.attributes?.amount || 0;
+            } else {
+              paymongoStatus = attrs.status || 'pending';
+            }
+          } catch (_) {
+            paymongoStatus = 'unavailable';
           }
         }
       } catch (_) {}
     }
 
     // Auto-approve deposit if PayMongo confirms payment
-    if (paymongoStatus === 'paid' && deposit.status === 'paymongo_pending') {
-      const val = Number(deposit.amount);
+    if ((paymongoStatus === 'paid' || paymongoStatus === 'succeeded') && deposit.status === 'paymongo_pending') {
+      const val = paymentAmount > 0 ? (paymentAmount / 100) : Number(deposit.amount);
       const account = await store.getAccount(deposit.account_id);
-      if (account) {
+      if (account && val > 0) {
         const newBalance = Math.round((Number(account.actual_balance) + val) * 100) / 100;
         const newUnallocated = Math.round((Number(account.unallocated_balance) + val) * 100) / 100;
         await store.query(

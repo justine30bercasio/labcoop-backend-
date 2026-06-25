@@ -123,6 +123,10 @@ async function createGcashCheckout(amount, description, accountId, depositId) {
   return { checkoutUrl, sessionId };
 }
 
+async function retrieveCheckoutSession(sessionId) {
+  return await apiRequest('GET', `/checkout_sessions/${sessionId}`);
+}
+
 function isPaymongoConfigured() {
   return !!PAYMONGO_SECRET;
 }
@@ -132,5 +136,6 @@ module.exports = {
   retrievePaymentIntent,
   createGcashPayment,
   createGcashCheckout,
+  retrieveCheckoutSession,
   isPaymongoConfigured,
 };

@@ -76,6 +76,14 @@ router.get('/payment-status/:depositId',
         if (notes.payment_intent_id) {
           const pi = await paymongo.retrievePaymentIntent(notes.payment_intent_id);
           paymongoStatus = pi.data.attributes.status;
+        } else if (notes.session_id) {
+          const session = await paymongo.retrieveCheckoutSession(notes.session_id);
+          const attrs = session.data?.attributes || {};
+          if (attrs.payments && attrs.payments.length > 0) {
+            paymongoStatus = 'paid';
+          } else {
+            paymongoStatus = attrs.status || 'pending';
+          }
         }
       } catch (_) {}
     }
@@ -141,6 +149,10 @@ webhookRouter.post('/paymongo', express.raw({ type: 'application/json' }), async
       const byPi = await store.query("SELECT * FROM online_deposits WHERE admin_notes LIKE '%' || $1 || '%'", [paymentId]);
       deposit = byPi.rows[0];
     }
+    if (!deposit && metadata.deposit_id) {
+      const byCs = await store.query('SELECT * FROM online_deposits WHERE deposit_id = $1', [metadata.deposit_id]);
+      deposit = byCs.rows[0];
+    }
 
     if (!deposit) {
       console.warn('PayMongo webhook: no matching deposit found for', paymentId);
@@ -197,6 +209,14 @@ webhookRouter.post('/paymongo', express.raw({ type: 'application/json' }), async
       metadata.deposit_id = '';
     }
     await handlePaymentSuccess(piId || paymentId, attrs.amount || 0, metadata);
+  } else if (eventType === 'checkout_session.payment.paid') {
+    const eventData = event.data.attributes.data || {};
+    const sessionAttrs = eventData.attributes || {};
+    const metadata = sessionAttrs.metadata || {};
+    const payments = sessionAttrs.payments || [];
+    const paymentId = payments[0]?.id || eventData.id || '';
+    const amount = payments[0]?.attributes?.amount || sessionAttrs.amount || 0;
+    await handlePaymentSuccess(paymentId, amount, metadata);
   }
 
   res.json({ received: true });

@@ -65,7 +65,8 @@ class _StatementPageState extends State<StatementPage> {
   }
 
   Widget _accountHeader() {
-    final acct = _data!['account'] as Map<String, dynamic>;
+    final rawAcct = _data!['account'];
+    final acct = rawAcct is Map<String, dynamic> ? rawAcct : <String, dynamic>{};
     final name = acct['child_name'] ?? '';
     final memberId = acct['member_id'] ?? '';
     final balance = (acct['balance'] ?? 0).toDouble();
@@ -226,7 +227,8 @@ class _StatementPageState extends State<StatementPage> {
   }
 
   Widget _goalsSection() {
-    final goals = _data!['goals'] as List<dynamic>;
+    final raw = _data!['goals'];
+    final goals = raw is List<dynamic> ? raw : <dynamic>[];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -292,7 +294,8 @@ class _StatementPageState extends State<StatementPage> {
   }
 
   Widget _loansSection() {
-    final loans = _data!['loans'] as List<dynamic>;
+    final raw = _data!['loans'];
+    final loans = raw is List<dynamic> ? raw : <dynamic>[];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

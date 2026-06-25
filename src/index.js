@@ -366,20 +366,6 @@ app.get('/', (req, res) => {
   });
 });
 
-app.get('/api/health', async (req, res) => {
-  let dbOk = false;
-  try {
-    if (isPostgres) {
-      await store.query('SELECT 1');
-    } else {
-      const db = require('./db').getDb();
-      db.prepare('SELECT 1').get();
-    }
-    dbOk = true;
-  } catch (_) {}
-  res.json({ status: 'ok', dbConnected: dbOk, timestamp: new Date().toISOString() });
-});
-
 app.use('/api/auth', loginLimiter, authRouter);
 
 app.use('/api/accounts', authMiddleware, requireOwnership, accountsRouter);

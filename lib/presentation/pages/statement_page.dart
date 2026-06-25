@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/network/banking_api_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/design_system.dart';
+import '../../core/helpers/number_helpers.dart';
 
 class StatementPage extends StatefulWidget {
   final String accountId;
@@ -46,21 +47,23 @@ class _StatementPageState extends State<StatementPage> {
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(child: Text(_error!, style: const TextStyle(color: Colors.red)))
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      _accountHeader(),
-                      const SizedBox(height: 16),
-                      _transactionsSection(),
-                      const SizedBox(height: 16),
-                      _goalsSection(),
-                      const SizedBox(height: 16),
-                      _loansSection(),
-                    ],
-                  ),
-                ),
+              : _data != null
+                  ? RefreshIndicator(
+                      onRefresh: _load,
+                      child: ListView(
+                        padding: const EdgeInsets.all(16),
+                        children: [
+                          _accountHeader(),
+                          const SizedBox(height: 16),
+                          _transactionsSection(),
+                          const SizedBox(height: 16),
+                          _goalsSection(),
+                          const SizedBox(height: 16),
+                          _loansSection(),
+                        ],
+                      ),
+                    )
+                  : Center(child: Text('No data available', style: TextStyle(color: Colors.grey))),
     );
   }
 
@@ -69,8 +72,8 @@ class _StatementPageState extends State<StatementPage> {
     final acct = rawAcct is Map<String, dynamic> ? rawAcct : <String, dynamic>{};
     final name = acct['child_name'] ?? '';
     final memberId = acct['member_id'] ?? '';
-    final balance = (acct['balance'] ?? 0).toDouble();
-    final interestEarned = (acct['interest_earned'] ?? 0).toDouble();
+    final balance = parseAmount(acct['balance']);
+    final interestEarned = parseAmount(acct['interest_earned']);
     final savingsProduct = acct['savings_product'];
 
     return Card(
@@ -106,7 +109,8 @@ class _StatementPageState extends State<StatementPage> {
   }
 
   Widget _transactionsSection() {
-    final txs = _data!['transactions'] as List<dynamic>;
+    final rawTxs = _data!['transactions'];
+    final txs = rawTxs is List<dynamic> ? rawTxs : <dynamic>[];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -123,7 +127,7 @@ class _StatementPageState extends State<StatementPage> {
         if (txs.isEmpty)
           const Card(child: Padding(padding: EdgeInsets.all(24), child: Center(child: Text('No transactions'))))
         else
-          ...txs.map((t) => _txTile(t as Map<String, dynamic>)),
+          ...txs.map((t) => _txTile(t is Map<String, dynamic> ? t : <String, dynamic>{})),
       ],
     );
   }
@@ -131,8 +135,8 @@ class _StatementPageState extends State<StatementPage> {
   Widget _txTile(Map<String, dynamic> t) {
     final type = t['type'] as String? ?? '';
     final isCredit = type == 'deposit' || type == 'interest_credit' || type == 'loan_disbursement' || type == 'interest';
-    final amount = (t['amount'] ?? 0).toDouble();
-    final balanceAfter = (t['balance_after'] ?? 0).toDouble();
+    final amount = parseAmount(t['amount']);
+    final balanceAfter = parseAmount(t['balance_after']);
     final rawDate = t['created_at'] as String? ?? '';
     final dateStr = rawDate.length >= 10 ? rawDate.substring(0, 10) : rawDate;
     final description = t['description'] as String? ?? '';
@@ -245,16 +249,16 @@ class _StatementPageState extends State<StatementPage> {
         if (goals.isEmpty)
           const Card(child: Padding(padding: EdgeInsets.all(24), child: Center(child: Text('No goals'))))
         else
-          ...goals.map((g) => _goalTile(g as Map<String, dynamic>)),
+          ...goals.map((g) => _goalTile(g is Map<String, dynamic> ? g : <String, dynamic>{})),
       ],
     );
   }
 
   Widget _goalTile(Map<String, dynamic> g) {
     final title = g['title'] ?? '';
-    final target = (g['target'] ?? 0).toDouble();
-    final allocated = (g['allocated'] ?? 0).toDouble();
-    final progress = (g['progress'] ?? 0).toDouble();
+    final target = parseAmount(g['target']);
+    final allocated = parseAmount(g['allocated']);
+    final progress = parseAmount(g['progress']);
     final completed = g['completed'] == true;
 
     return Card(
@@ -279,7 +283,7 @@ class _StatementPageState extends State<StatementPage> {
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
-                value: progress.clamp(0, 1),
+                value: progress.clamp(0.0, 1.0),
                 backgroundColor: Colors.grey.shade200,
                 color: completed ? Colors.green : AppTheme.primaryGreen,
                 minHeight: 6,
@@ -312,18 +316,18 @@ class _StatementPageState extends State<StatementPage> {
         if (loans.isEmpty)
           const Card(child: Padding(padding: EdgeInsets.all(24), child: Center(child: Text('No loans'))))
         else
-          ...loans.map((l) => _loanTile(l as Map<String, dynamic>)),
+          ...loans.map((l) => _loanTile(l is Map<String, dynamic> ? l : <String, dynamic>{})),
       ],
     );
   }
 
   Widget _loanTile(Map<String, dynamic> l) {
     final purpose = l['purpose'] ?? '';
-    final principal = (l['principal'] ?? 0).toDouble();
-    final remaining = (l['remaining'] ?? 0).toDouble();
+    final principal = parseAmount(l['principal']);
+    final remaining = parseAmount(l['remaining']);
     final status = l['status'] ?? '';
-    final monthly = (l['monthly'] ?? 0).toDouble();
-    final paid = principal > 0 ? ((principal - remaining) / principal).clamp(0, 1) : 0.0;
+    final monthly = parseAmount(l['monthly']);
+    final paid = principal > 0 ? ((principal - remaining) / principal).clamp(0.0, 1.0) : 0.0;
 
     Color statusColor;
     String statusLabel;

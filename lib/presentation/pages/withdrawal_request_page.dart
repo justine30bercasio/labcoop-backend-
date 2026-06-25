@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/network/banking_api_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/design_system.dart';
+import '../../core/helpers/number_helpers.dart';
 
 class WithdrawalRequestPage extends StatefulWidget {
   final String accountId;
@@ -99,7 +100,7 @@ class _WithdrawalRequestPageState extends State<WithdrawalRequestPage> {
             else if (_requests.isEmpty)
               const Card(child: Padding(padding: EdgeInsets.all(24), child: Center(child: Text('No withdrawal requests'))))
             else
-              ..._requests.map((r) => _requestTile(r as Map<String, dynamic>)),
+              ..._requests.map((r) => _requestTile(r is Map<String, dynamic> ? r : <String, dynamic>{})),
           ],
         ),
       ),
@@ -158,7 +159,7 @@ class _WithdrawalRequestPageState extends State<WithdrawalRequestPage> {
   }
 
   Widget _requestTile(Map<String, dynamic> r) {
-    final amount = (r['amount'] ?? 0).toDouble();
+    final amount = parseAmount(r['amount']);
     final reason = r['reason']?.toString() ?? '';
     final status = r['status']?.toString() ?? 'pending';
     final createdAt = r['created_at']?.toString() ?? '';

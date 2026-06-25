@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../core/constants/app_constants.dart';
@@ -40,6 +41,7 @@ class _DashboardPageState extends State<DashboardPage> {
   int? _lastXp;
   bool _justSaved = false;
   SavingsLoaded? _lastLoadedState;
+  Timer? _autoRefreshTimer;
 
   double get _horizontalPadding {
     final width = MediaQuery.of(context).size.width;
@@ -52,6 +54,15 @@ class _DashboardPageState extends State<DashboardPage> {
   void initState() {
     super.initState();
     context.read<SavingsBloc>().add(LoadSavings(widget.accountId));
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      context.read<SavingsBloc>().add(LoadSavings(widget.accountId));
+    });
+  }
+
+  @override
+  void dispose() {
+    _autoRefreshTimer?.cancel();
+    super.dispose();
   }
 
   @override

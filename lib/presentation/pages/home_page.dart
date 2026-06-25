@@ -118,8 +118,12 @@ class _HomePageState extends State<HomePage> {
             ),
             child: NavigationBar(
               selectedIndex: _currentIndex,
-              onDestinationSelected: (i) =>
-                  setState(() => _currentIndex = i),
+              onDestinationSelected: (i) {
+                setState(() => _currentIndex = i);
+                if (i == 0) {
+                  context.read<SavingsBloc>().add(LoadSavings(_accountId));
+                }
+              },
               backgroundColor: Colors.white,
               elevation: 0,
               indicatorColor: AppTheme.primaryGreen.withValues(alpha: 0.12),

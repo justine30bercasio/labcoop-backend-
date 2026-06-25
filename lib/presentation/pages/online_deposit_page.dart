@@ -1,7 +1,4 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:qr_flutter/qr_flutter.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../../core/network/banking_api_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/design_system.dart';
@@ -22,11 +19,7 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
   List<dynamic> _deposits = [];
   bool _loading = true;
   bool _submitting = false;
-  bool _paymongoMode = true;
-  Timer? _pollTimer;
-
-  String? _checkoutUrl;
-  String? _paymentStatus;
+  bool _showComingSoon = false;
 
   @override
   void initState() {
@@ -39,7 +32,6 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
     _amountCtrl.dispose();
     _refCtrl.dispose();
     _senderCtrl.dispose();
-    _pollTimer?.cancel();
     super.dispose();
   }
 
@@ -53,97 +45,6 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
       if (!mounted) return;
       setState(() => _loading = false);
     }
-  }
-
-  Future<void> _payWithPaymongo() async {
-    final amount = double.tryParse(_amountCtrl.text);
-    if (amount == null || amount <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a valid amount'), backgroundColor: Colors.red));
-      return;
-    }
-    setState(() => _submitting = true);
-    try {
-      final result = await BankingApiService.createPaymongoPayment(
-        accountId: widget.accountId,
-        amount: amount,
-      );
-      if (result != null && result['checkout_url'] != null) {
-        setState(() {
-          _checkoutUrl = result['checkout_url'];
-          _paymentStatus = 'pending';
-        });
-        _startPolling(result['deposit_id']);
-      } else {
-        final msg = result?['message'] ?? 'Payment failed. Check backend logs.';
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg), backgroundColor: Colors.red),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-      );
-    }
-    setState(() => _submitting = false);
-  }
-
-  void _showPaymongoNotConfigured() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('PayMongo Not Configured'),
-        content: const Text('PayMongo payment gateway is not configured. Please use the manual GCash deposit method instead.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
-        ],
-      ),
-    );
-  }
-
-  void _startPolling(String depositId) {
-    _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
-      final status = await BankingApiService.getPaymongoPaymentStatus(depositId);
-      if (!mounted || status == null) return;
-      final appStatus = status['status']?.toString() ?? '';
-      if (appStatus == 'approved') {
-        _pollTimer?.cancel();
-        setState(() => _paymentStatus = 'approved');
-        _showSuccess(status['amount']);
-        _load();
-      }
-    });
-    Future.delayed(const Duration(minutes: 5), () {
-      _pollTimer?.cancel();
-    });
-  }
-
-  void _showSuccess(dynamic amount) {
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Row(children: [
-          Icon(Icons.check_circle, color: Colors.green, size: 28),
-          SizedBox(width: 8),
-          Text('Payment Successful!'),
-        ]),
-        content: Text('PHP ${(amount ?? 0).toStringAsFixed(2)} has been credited to your account.'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              setState(() { _checkoutUrl = null; _paymentStatus = null; });
-              _amountCtrl.clear();
-            },
-            child: const Text('Done'),
-          ),
-        ],
-      ),
-    );
   }
 
   Future<void> _submitManual() async {
@@ -182,16 +83,6 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
     }
   }
 
-  void _openCheckoutUrl() {
-    if (_checkoutUrl == null) return;
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => _CheckoutWebView(checkoutUrl: _checkoutUrl!),
-      ),
-    );
-  }
-
   String _formatDate(String raw) {
     if (raw.length >= 10) return raw.substring(0, 10);
     return raw;
@@ -206,31 +97,9 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            if (_paymentStatus == 'approved')
-              _successBanner()
-            else if (_checkoutUrl != null && _paymentStatus == 'pending')
-              _paymongoCheckoutCard()
-            else
-              _depositForm(),
+            _depositForm(),
             const SizedBox(height: 8),
-            if (_paymongoMode && _checkoutUrl == null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: TextButton.icon(
-                  onPressed: () => setState(() => _paymongoMode = false),
-                  icon: const Icon(Icons.edit_note, size: 16),
-                  label: const Text('Use manual reference number instead', style: TextStyle(fontSize: 12)),
-                ),
-              )
-            else if (!_paymongoMode)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: TextButton.icon(
-                  onPressed: () => setState(() => _paymongoMode = true),
-                  icon: const Icon(Icons.qr_code, size: 16),
-                  label: const Text('Use GCash QR checkout instead', style: TextStyle(fontSize: 12)),
-                ),
-              ),
+            _comingSoonCard(),
             const SizedBox(height: 16),
             Text('Deposit History', style: AppTextStyle.heading3),
             const SizedBox(height: 8),
@@ -257,95 +126,101 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
     );
   }
 
-  Widget _successBanner() {
+  Widget _comingSoonCard() {
     return Card(
-      color: Colors.green.shade50,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            const Icon(Icons.check_circle, color: Colors.green, size: 64),
-            const SizedBox(height: 12),
-            const Text('Payment Successful!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green)),
-            const SizedBox(height: 4),
-            Text('Your GCash deposit via PayMongo has been credited.', style: AppTextStyle.bodySmall),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: () {
-                setState(() { _checkoutUrl = null; _paymentStatus = null; });
-                _amountCtrl.clear();
-              },
-              child: const Text('Deposit Again'),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () => setState(() => _showComingSoon = !_showComingSoon),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.indigo.shade50,
+                border: Border(bottom: BorderSide(color: Colors.indigo.shade100, width: _showComingSoon ? 1 : 0)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.indigo.shade100,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Icon(Icons.auto_awesome, color: Colors.indigo.shade700, size: 18),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Auto-credit Deposit Coming Soon', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.indigo.shade800)),
+                        Text('One-tap GCash via PayMongo', style: TextStyle(fontSize: 11, color: Colors.indigo.shade500)),
+                      ],
+                    ),
+                  ),
+                  Icon(_showComingSoon ? Icons.expand_less : Icons.expand_more, color: Colors.indigo.shade400),
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Back to Banking'),
+          ),
+          if (_showComingSoon)
+            Container(
+              padding: const EdgeInsets.all(16),
+              color: Colors.indigo.shade50,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('We\'re working on instant auto-credit GCash deposits! Here\'s what to expect:', style: TextStyle(fontSize: 13, color: Colors.indigo.shade900)),
+                  const SizedBox(height: 10),
+                  _comingSoonRow(Icons.qr_code, 'QR Code Checkout', 'Scan and pay via GCash app — no reference number needed'),
+                  _comingSoonRow(Icons.bolt, 'Instant Credit', 'Auto-approved in seconds, no admin waiting'),
+                  _comingSoonRow(Icons.history, 'Payment History', 'All transactions tracked in one place'),
+                  _comingSoonRow(Icons.security, 'Secure', 'Powered by PayMongo with bank-grade encryption'),
+                  const SizedBox(height: 10),
+                  Text('Fee: 2.75% + PHP 15 per transaction', style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.indigo.shade400)),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () {},
+                      icon: const Icon(Icons.notifications_outlined, size: 16),
+                      label: const Text('Notify me when available', style: TextStyle(fontSize: 12)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.indigo.shade700,
+                        side: BorderSide(color: Colors.indigo.shade300),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }
 
-  Widget _paymongoCheckoutCard() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            const Row(children: [
-              Icon(Icons.qr_code_scanner, color: AppTheme.primaryGreen),
-              SizedBox(width: 8),
-              Text('Complete Your Payment', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            ]),
-            const SizedBox(height: 4),
-            Text('Scan the QR code with another device or tap the button below to pay via GCash.', style: AppTextStyle.bodySmall),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade200),
-              ),
-              child: QrImageView(
-                data: _checkoutUrl!,
-                version: QrVersions.auto,
-                size: 200,
-                backgroundColor: Colors.white,
+  Widget _comingSoonRow(IconData icon, String title, String desc) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: Colors.indigo.shade400),
+          const SizedBox(width: 8),
+          Expanded(
+            child: RichText(
+              text: TextSpan(
+                style: TextStyle(fontSize: 12, color: Colors.indigo.shade800),
+                children: [
+                  TextSpan(text: '$title: ', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  TextSpan(text: desc),
+                ],
               ),
             ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _openCheckoutUrl,
-                icon: const Icon(Icons.open_in_browser),
-                label: const Text('Pay with GCash'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryGreen,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            const SizedBox(
-              width: 20, height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-            const SizedBox(height: 4),
-              Text('Waiting for payment confirmation...', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-            TextButton(
-              onPressed: () {
-                _pollTimer?.cancel();
-                setState(() { _checkoutUrl = null; _paymentStatus = null; });
-              },
-              child: const Text('Cancel', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -357,39 +232,29 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (_paymongoMode) ...[
-              Row(children: [
-                const Text('\u{1F4B0}', style: TextStyle(fontSize: 24)),
-                const SizedBox(width: 8),
-                Text('GCash via PayMongo', style: AppTextStyle.heading3),
-              ]),
-              const SizedBox(height: 4),
-              Text('Enter the amount and tap "Pay with GCash" to pay securely through PayMongo.', style: AppTextStyle.bodySmall),
-            ] else ...[
-              Row(children: [
-                const Text('\u{1F4B0}', style: TextStyle(fontSize: 24)),
-                const SizedBox(width: 8),
-                Text('Send a GCash Deposit (Manual)', style: AppTextStyle.heading3),
-              ]),
-              const SizedBox(height: 4),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.amber.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.amber.shade200),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Send payment to our GCash account:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                    const SizedBox(height: 4),
-                    Text('\u{1F4F1} GCash Number: 09171234567', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.primaryGreen)),
-                    Text('\u{1F464} Account Name: LabCoop Savings', style: TextStyle(fontSize: 13)),
-                  ],
-                ),
+            Row(children: [
+              const Text('\u{1F4B0}', style: TextStyle(fontSize: 24)),
+              const SizedBox(width: 8),
+              Text('Send a GCash Deposit', style: AppTextStyle.heading3),
+            ]),
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.amber.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.amber.shade200),
               ),
-            ],
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Send payment to our GCash account:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  const SizedBox(height: 4),
+                  Text('\u{1F4F1} GCash Number: 09171234567', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.primaryGreen)),
+                  Text('\u{1F464} Account Name: LabCoop Savings', style: TextStyle(fontSize: 13)),
+                ],
+              ),
+            ),
             const SizedBox(height: 12),
             TextField(
               controller: _amountCtrl,
@@ -401,31 +266,29 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
-            if (!_paymongoMode) ...[
-              const SizedBox(height: 12),
-              TextField(
-                controller: _refCtrl,
-                decoration: InputDecoration(
-                  labelText: 'GCash Reference Number',
-                  hintText: 'e.g. GCASH-1234567890',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _refCtrl,
+              decoration: InputDecoration(
+                labelText: 'GCash Reference Number',
+                hintText: 'e.g. GCASH-1234567890',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _senderCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Sender Name (optional)',
-                  hintText: 'Your GCash registered name',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _senderCtrl,
+              decoration: InputDecoration(
+                labelText: 'Sender Name (optional)',
+                hintText: 'Your GCash registered name',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
-            ],
+            ),
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _submitting ? null : (_paymongoMode ? _payWithPaymongo : _submitManual),
+                onPressed: _submitting ? null : _submitManual,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primaryGreen,
                   foregroundColor: Colors.white,
@@ -433,7 +296,7 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
                 ),
                 child: _submitting
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : Text(_paymongoMode ? 'Pay with GCash' : 'Submit for Approval'),
+                    : const Text('Submit for Approval'),
               ),
             ),
           ],
@@ -529,38 +392,5 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
     } else {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to cancel deposit'), backgroundColor: Colors.red));
     }
-  }
-}
-
-class _CheckoutWebView extends StatefulWidget {
-  final String checkoutUrl;
-  const _CheckoutWebView({required this.checkoutUrl});
-
-  @override
-  State<_CheckoutWebView> createState() => _CheckoutWebViewState();
-}
-
-class _CheckoutWebViewState extends State<_CheckoutWebView> {
-  double _progress = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('GCash Payment'),
-        bottom: _progress < 1.0
-            ? PreferredSize(
-                preferredSize: const Size.fromHeight(2),
-                child: LinearProgressIndicator(value: _progress),
-              )
-            : null,
-      ),
-      body: InAppWebView(
-        initialUrlRequest: URLRequest(url: WebUri(widget.checkoutUrl)),
-        onProgressChanged: (controller, progress) {
-          setState(() => _progress = progress / 100.0);
-        },
-      ),
-    );
   }
 }

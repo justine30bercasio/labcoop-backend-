@@ -416,6 +416,25 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
+app.get('/api/test-paymongo-key', async (req, res) => {
+  const paymongo = require('./services/paymongo');
+  if (!paymongo.isPaymongoConfigured()) {
+    return res.json({ configured: false, message: 'PAYMONGO_SECRET not set' });
+  }
+  try {
+    // Try to retrieve a non-existent payment intent to test the key
+    const result = await paymongo.retrievePaymentIntent('test_0000000000');
+    res.json({ configured: true, apiReachable: true, result: 'Unexpected success' });
+  } catch (e) {
+    // PayMongo returns 404 for non-existent PI, which means key works
+    if (e.message.includes('404') || e.message.includes('not found')) {
+      res.json({ configured: true, apiReachable: true, message: 'Key is valid (got 404 as expected)' });
+    } else {
+      res.json({ configured: true, apiReachable: false, error: e.message });
+    }
+  }
+});
+
 // ── Clear all user data (keep reference tables) — requires admin session ──
 app.post('/reset-database', async (req, res) => {
   if (!req.session || !req.session.adminId) {

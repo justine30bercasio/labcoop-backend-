@@ -88,13 +88,42 @@ router.get('/payment-status/:depositId',
       } catch (_) {}
     }
 
+    // Auto-approve deposit if PayMongo confirms payment
+    if (paymongoStatus === 'paid' && deposit.status === 'paymongo_pending') {
+      const val = Number(deposit.amount);
+      const account = await store.getAccount(deposit.account_id);
+      if (account) {
+        const newBalance = Math.round((Number(account.actual_balance) + val) * 100) / 100;
+        const newUnallocated = Math.round((Number(account.unallocated_balance) + val) * 100) / 100;
+        await store.query(
+          "UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3",
+          [newBalance, newUnallocated, deposit.account_id]
+        );
+        const txId = require('uuid').v4();
+        await store.query(
+          `INSERT INTO transactions (transaction_id, account_id, type, amount, balance_before, balance_after, description, reference_type, reference_id, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+          [txId, deposit.account_id, 'deposit', val, Number(account.actual_balance), newBalance,
+           `GCash deposit via PayMongo`, 'paymongo', deposit.deposit_id, new Date().toISOString()]
+        );
+        await store.query(
+          "UPDATE online_deposits SET status='approved', resolved_at=$1 WHERE deposit_id=$2",
+          [new Date().toISOString(), deposit.deposit_id]
+        );
+        console.log(`PayMongo deposit auto-approved: PHP ${val} -> account ${deposit.account_id}`);
+      }
+    }
+
+    const updated = await store.query('SELECT * FROM online_deposits WHERE deposit_id = $1', [req.params.depositId]);
+    const finalDeposit = updated.rows[0] || deposit;
+
     res.json({
-      deposit_id: deposit.deposit_id,
-      status: deposit.status,
+      deposit_id: finalDeposit.deposit_id,
+      status: finalDeposit.status,
       paymongo_status: paymongoStatus,
-      amount: deposit.amount,
-      created_at: deposit.created_at,
-      resolved_at: deposit.resolved_at,
+      amount: finalDeposit.amount,
+      created_at: finalDeposit.created_at,
+      resolved_at: finalDeposit.resolved_at,
     });
   })
 );

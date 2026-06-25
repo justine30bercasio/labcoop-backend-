@@ -34,12 +34,20 @@ router.post('/create-payment',
         depositId
       );
 
+      console.log('PayMongo response:', JSON.stringify(paymentIntent, null, 2));
       const piId = paymentIntent.data.id;
-      const checkoutUrl = paymentIntent.data.attributes?.next_action?.redirect?.url ||
-        paymentIntent.data.attributes?.next_action?.checkout_url || '';
+      const attrs = paymentIntent.data.attributes || {};
+      const nextAction = attrs.next_action || {};
+      const checkoutUrl = nextAction.redirect?.url || nextAction.checkout_url || attrs.checkout_url || '';
 
       if (!checkoutUrl) {
-        return res.status(500).json({ message: 'Failed to get checkout URL from PayMongo' });
+        return res.status(500).json({
+          message: 'Failed to get checkout URL from PayMongo',
+          attrs_keys: Object.keys(attrs),
+          has_next_action: !!attrs.next_action,
+          next_action_type: nextAction.type,
+          pi_id: piId,
+        });
       }
 
       const clientKey = paymentIntent.data.attributes?.client_key || '';

@@ -2607,11 +2607,60 @@ router.get('/online-deposits', requireRole(1), asyncHandler(async (req, res) => 
     return `<a href="/admin/online-deposits${s ? '?status=' + s : ''}" class="btn ${active} btn-xs">${label}</a>`;
   }).join(' ');
 
+  const featureStatusHtml = `
+    <div class="feature-status-card" style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;padding:16px;margin-bottom:16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleFeatureDetails()">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="background:#c7d2fe;border-radius:6px;padding:6px;line-height:1;">&#x2728;</span>
+          <div>
+            <strong style="color:#4338ca;font-size:14px;">Auto-Credit Deposit Coming Soon</strong>
+            <div style="color:#6366f1;font-size:11px;">One-tap GCash via PayMongo</div>
+          </div>
+        </div>
+        <span id="featureToggleIcon" style="color:#6366f1;font-size:18px;">&#x25BC;</span>
+      </div>
+      <div id="featureDetails" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid #c7d2fe;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+          <div style="background:white;border-radius:6px;padding:10px;border:1px solid #e0e7ff;">
+            <div style="color:#4338ca;font-weight:600;font-size:12px;">&#x1F4F1; QR Code Checkout</div>
+            <div style="color:#6366f1;font-size:11px;">Scan & pay via GCash app — no reference number needed</div>
+          </div>
+          <div style="background:white;border-radius:6px;padding:10px;border:1px solid #e0e7ff;">
+            <div style="color:#4338ca;font-weight:600;font-size:12px;">&#x26A1; Instant Credit</div>
+            <div style="color:#6366f1;font-size:11px;">Auto-approved in seconds, no admin approval needed</div>
+          </div>
+          <div style="background:white;border-radius:6px;padding:10px;border:1px solid #e0e7ff;">
+            <div style="color:#4338ca;font-weight:600;font-size:12px;">&#x1F4CB; Payment History</div>
+            <div style="color:#6366f1;font-size:11px;">All transactions tracked in one place</div>
+          </div>
+          <div style="background:white;border-radius:6px;padding:10px;border:1px solid #e0e7ff;">
+            <div style="color:#4338ca;font-weight:600;font-size:12px;">&#x1F512; Secure</div>
+            <div style="color:#6366f1;font-size:11px;">Powered by PayMongo with bank-grade encryption</div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="color:#6366f1;font-size:11px;">Fee: 2.75% + PHP 15 per transaction</span>
+          <span style="background:#dbeafe;color:#2563eb;border-radius:4px;padding:2px 8px;font-size:11px;">Awaiting BSP docs</span>
+        </div>
+      </div>
+    </div>
+    <script>
+      function toggleFeatureDetails() {
+        const details = document.getElementById('featureDetails');
+        const icon = document.getElementById('featureToggleIcon');
+        const isOpen = details.style.display === 'block';
+        details.style.display = isOpen ? 'none' : 'block';
+        icon.innerHTML = isOpen ? '&#x25BC;' : '&#x25B2;';
+      }
+    </script>
+  `;
+
   const content = `
     <div class="page-header">
       <h2><span class="icon">&#x1F4B0;</span> Online Deposits (GCash)</h2>
       <div class="header-actions">${filterHtml}</div>
     </div>
+    ${featureStatusHtml}
     <div class="table-container">
       <table class="data-table">
         <thead><tr>

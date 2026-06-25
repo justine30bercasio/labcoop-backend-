@@ -21,6 +21,9 @@ function getDb() {
     try { db.exec("ALTER TABLE admin_users ADD COLUMN email TEXT DEFAULT ''"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS online_deposits (deposit_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, amount DECIMAL(12,2) NOT NULL, reference_number VARCHAR(255) DEFAULT '', sender_name VARCHAR(255) DEFAULT '', payment_method VARCHAR(50) DEFAULT 'gcash', status VARCHAR(20) DEFAULT 'pending', admin_notes TEXT DEFAULT '', created_at TEXT, resolved_at TEXT)"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS fcm_tokens (token_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, fcm_token TEXT NOT NULL, device_platform VARCHAR(20) DEFAULT '', created_at TEXT, updated_at TEXT)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '')"); } catch (_) {}
+    try { db.exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('gcash_number', '09171234567')"); } catch (_) {}
+    try { db.exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('gcash_name', 'LabCoop Savings')"); } catch (_) {}
     const count = db.prepare("SELECT COUNT(*) as c FROM gl_accounts").get();
     if (count.c === 0) {
       const insert = db.prepare('INSERT INTO gl_accounts (code, name, type) VALUES (?,?,?)');
@@ -696,6 +699,15 @@ function deleteBadge(badgeId) {
   getDb().prepare('DELETE FROM badges WHERE badge_id = ?').run(badgeId);
 }
 
+function getSetting(key) {
+  const row = getDb().prepare('SELECT value FROM settings WHERE key = ?').get(key);
+  return row ? row.value : null;
+}
+
+function setSetting(key, value) {
+  getDb().prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value);
+}
+
 function getFcmToken(accountId) {
   return getDb().prepare('SELECT * FROM fcm_tokens WHERE account_id = ? ORDER BY updated_at DESC').get(accountId) || null;
 }
@@ -852,6 +864,8 @@ module.exports = {
   updateOnlineDeposit,
   getInterestSummary,
   creditInterest,
+  getSetting,
+  setSetting,
   getFcmToken,
   getFcmTokens,
   registerFcmToken,

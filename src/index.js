@@ -220,6 +220,7 @@ const loansRouter = require('./routes/loans');
 const bankingFeaturesRouter = require('./routes/banking-features');
 const fcmRouter = require('./routes/fcm');
 const paymongoRouter = require('./routes/paymongo');
+const settingsRouter = require('./routes/settings');
 const { webhookRouter } = require('./routes/paymongo');
 const { startScheduler } = require('./services/scheduler');
 const { authMiddleware, requireOwnership } = require('./middleware/auth');
@@ -470,6 +471,7 @@ app.use('/api', authMiddleware, requireOwnership, loansRouter);
 app.use('/api', authMiddleware, requireOwnership, bankingFeaturesRouter);
 app.use('/api/fcm', fcmRouter);
 app.use('/api/paymongo', paymongoRouter);
+app.use('/api/settings', authMiddleware, requireOwnership, settingsRouter);
 app.use('/admin', adminAuthRouter);
 app.use('/admin', adminRouter);
 

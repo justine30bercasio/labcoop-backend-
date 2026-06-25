@@ -274,6 +274,12 @@ class PgStore {
         created_at TEXT,
         updated_at TEXT
       );
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL DEFAULT ''
+      );
+      INSERT INTO settings (key, value) VALUES ('gcash_number', '09171234567') ON CONFLICT (key) DO NOTHING;
+      INSERT INTO settings (key, value) VALUES ('gcash_name', 'LabCoop Savings') ON CONFLICT (key) DO NOTHING;
     `;
     await this.pool.query(schema);
     // Migrations for existing tables
@@ -1213,6 +1219,18 @@ class PgStore {
 
   async close() {
     await this.pool.end();
+  }
+
+  async getSetting(key) {
+    const res = await this.query('SELECT value FROM settings WHERE key = $1', [key]);
+    return res.rows[0] ? res.rows[0].value : null;
+  }
+
+  async setSetting(key, value) {
+    await this.query(
+      'INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2',
+      [key, value]
+    );
   }
 
   getPool() {

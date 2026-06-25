@@ -22,12 +22,12 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
   List<dynamic> _deposits = [];
   bool _loading = true;
   bool _submitting = false;
-  bool _paymongoMode = false;
+  bool _paymongoMode = true;
   Timer? _pollTimer;
 
   String? _checkoutUrl;
   String? _paymentStatus;
-  bool _showComingSoon = false;
+
 
   @override
   void initState() {
@@ -214,7 +214,24 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
             else
               _depositForm(),
             const SizedBox(height: 8),
-            _comingSoonCard(),
+            if (_paymongoMode && _checkoutUrl == null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: TextButton.icon(
+                  onPressed: () => setState(() => _paymongoMode = false),
+                  icon: const Icon(Icons.edit_note, size: 16),
+                  label: const Text('Use manual reference number instead', style: TextStyle(fontSize: 12)),
+                ),
+              )
+            else if (!_paymongoMode)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: TextButton.icon(
+                  onPressed: () => setState(() => _paymongoMode = true),
+                  icon: const Icon(Icons.qr_code, size: 16),
+                  label: const Text('Use GCash QR checkout instead', style: TextStyle(fontSize: 12)),
+                ),
+              ),
             const SizedBox(height: 16),
             Text('Deposit History', style: AppTextStyle.heading3),
             const SizedBox(height: 8),
@@ -330,105 +347,6 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _comingSoonCard() {
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          InkWell(
-            onTap: () => setState(() => _showComingSoon = !_showComingSoon),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.indigo.shade50,
-                border: Border(bottom: BorderSide(color: Colors.indigo.shade100, width: _showComingSoon ? 1 : 0)),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: Colors.indigo.shade100,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Icon(Icons.auto_awesome, color: Colors.indigo.shade700, size: 18),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Auto-credit Deposit Coming Soon', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.indigo.shade800)),
-                        Text('One-tap GCash via PayMongo', style: TextStyle(fontSize: 11, color: Colors.indigo.shade500)),
-                      ],
-                    ),
-                  ),
-                  Icon(_showComingSoon ? Icons.expand_less : Icons.expand_more, color: Colors.indigo.shade400),
-                ],
-              ),
-            ),
-          ),
-          if (_showComingSoon)
-            Container(
-              padding: const EdgeInsets.all(16),
-              color: Colors.indigo.shade50,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('We\'re working on instant auto-credit GCash deposits! Here\'s what to expect:', style: TextStyle(fontSize: 13, color: Colors.indigo.shade900)),
-                  const SizedBox(height: 10),
-                  _comingSoonRow(Icons.qr_code, 'QR Code Checkout', 'Scan and pay via GCash app — no reference number needed'),
-                  _comingSoonRow(Icons.bolt, 'Instant Credit', 'Auto-approved in seconds, no admin waiting'),
-                  _comingSoonRow(Icons.history, 'Payment History', 'All transactions tracked in one place'),
-                  _comingSoonRow(Icons.security, 'Secure', 'Powered by PayMongo with bank-grade encryption'),
-                  const SizedBox(height: 10),
-                  Text('Fee: 2.75% + PHP 15 per transaction', style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.indigo.shade400)),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () {},
-                      icon: const Icon(Icons.notifications_outlined, size: 16),
-                      label: const Text('Notify me when available', style: TextStyle(fontSize: 12)),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.indigo.shade700,
-                        side: BorderSide(color: Colors.indigo.shade300),
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _comingSoonRow(IconData icon, String title, String desc) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 16, color: Colors.indigo.shade400),
-          const SizedBox(width: 8),
-          Expanded(
-            child: RichText(
-              text: TextSpan(
-                style: TextStyle(fontSize: 12, color: Colors.indigo.shade800),
-                children: [
-                  TextSpan(text: '$title: ', style: const TextStyle(fontWeight: FontWeight.w600)),
-                  TextSpan(text: desc),
-                ],
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

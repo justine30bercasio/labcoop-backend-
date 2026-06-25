@@ -2007,6 +2007,9 @@ router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {
     { key: 'DB_TYPE', val: isPostgres ? 'PostgreSQL (Aiven)' : 'SQLite (better-sqlite3)' },
   ];
 
+  const gcashNumber = await store.getSetting('gcash_number');
+  const gcashName = await store.getSetting('gcash_name');
+
   const tip = isPostgres ? '' : `<div class="card" style="margin-top:20px"><div class="card-body-padded"><b>&#x26A0; SQLite:</b> Database file is <code>${(dbSize / 1024).toFixed(1)} KB</code> on disk at <code>backend/labcoop.db</code></div></div>`;
 
   const content = `
@@ -2035,6 +2038,34 @@ router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {
   </div>
 
   <div class="card">
+    <div class="card-header"><h3>&#x1F4B1; GCash Settings</h3></div>
+    <div class="card-body">
+      <form id="gcashForm" onsubmit="return saveGcash()" style="display:flex;flex-direction:column;gap:12px">
+        <div><label style="font-weight:600;display:block;margin-bottom:4px">GCash Number</label>
+        <input type="text" id="gcashNumber" value="${gcashNumber || '09171234567'}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px"></div>
+        <div><label style="font-weight:600;display:block;margin-bottom:4px">GCash Account Name</label>
+        <input type="text" id="gcashName" value="${gcashName || 'LabCoop Savings'}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px"></div>
+        <div><button type="submit" class="btn btn-primary">Save GCash Settings</button> <span id="gcashMsg" style="color:green;margin-left:12px"></span></div>
+      </form>
+    </div>
+  </div>
+  <script>
+  function saveGcash(){
+    var num = document.getElementById('gcashNumber').value.trim();
+    var name = document.getElementById('gcashName').value.trim();
+    if(!num || !name){ document.getElementById('gcashMsg').textContent='Both fields required'; return false; }
+    fetch('/admin/settings/gcash', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ gcash_number: num, gcash_name: name })
+    }).then(function(r){ return r.json(); }).then(function(d){
+      document.getElementById('gcashMsg').textContent = d.success ? 'Saved!' : 'Error: '+d.message;
+    }).catch(function(e){ document.getElementById('gcashMsg').textContent='Error: '+e.message; });
+    return false;
+  }
+  </script>
+
+  <div class="card">
     <div class="card-header"><h3>&#x1F527; Tools</h3></div>
     <div class="card-body-padded" style="display:flex;gap:12px;flex-wrap:wrap">
       <a href="/api/excel/export/all" class="btn btn-secondary">&#x1F4E5; Export All Data</a>
@@ -2048,6 +2079,15 @@ router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {
   res.type('html').send(layout('Settings', 'settings', content, {
     subtitle: 'System information and configuration',
   }));
+}));
+
+router.post('/settings/gcash', requireRole(3), asyncHandler(async (req, res) => {
+  if (!req.body.gcash_number || !req.body.gcash_name) {
+    return res.status(400).json({ success: false, message: 'Both gcash_number and gcash_name are required' });
+  }
+  await store.setSetting('gcash_number', req.body.gcash_number.trim());
+  await store.setSetting('gcash_name', req.body.gcash_name.trim());
+  res.json({ success: true });
 }));
 
 router.get('/reset-data/confirm', requireRole(4), asyncHandler(async (req, res) => {

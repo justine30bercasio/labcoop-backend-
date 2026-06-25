@@ -420,7 +420,14 @@ app.get('/api/health', async (req, res) => {
     }
     dbOk = true;
   } catch (_) {}
-  res.json({ status: 'ok', dbConnected: dbOk, timestamp: new Date().toISOString() });
+  const paymongoConfigured = !!(process.env.PAYMONGO_SECRET);
+  res.json({
+    status: 'ok',
+    dbConnected: dbOk,
+    paymongoConfigured,
+    paymongoKeyLength: process.env.PAYMONGO_SECRET ? process.env.PAYMONGO_SECRET.length : 0,
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // ── Clear all user data (keep reference tables) — requires admin session ──

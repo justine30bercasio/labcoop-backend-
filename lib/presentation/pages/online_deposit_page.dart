@@ -61,21 +61,31 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
       return;
     }
     setState(() => _submitting = true);
-    final result = await BankingApiService.createPaymongoPayment(
-      accountId: widget.accountId,
-      amount: amount,
-    );
-    setState(() => _submitting = false);
-    if (!mounted) return;
-    if (result != null && result['checkout_url'] != null) {
-      setState(() {
-        _checkoutUrl = result['checkout_url'];
-        _paymentStatus = 'pending';
-      });
-      _startPolling(result['deposit_id']);
-    } else {
-      _showPaymongoNotConfigured();
+    try {
+      final result = await BankingApiService.createPaymongoPayment(
+        accountId: widget.accountId,
+        amount: amount,
+      );
+      if (result != null && result['checkout_url'] != null) {
+        setState(() {
+          _checkoutUrl = result['checkout_url'];
+          _paymentStatus = 'pending';
+        });
+        _startPolling(result['deposit_id']);
+      } else {
+        final msg = result?['message'] ?? 'Payment failed. Check backend logs.';
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: Colors.red),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
     }
+    setState(() => _submitting = false);
   }
 
   void _showPaymongoNotConfigured() {
@@ -228,7 +238,18 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
             else if (_deposits.isEmpty)
               const Card(child: Padding(padding: EdgeInsets.all(24), child: Center(child: Text('No deposits yet'))))
             else
-              ..._deposits.map((d) => _depositTile(d as Map<String, dynamic>)),
+              ..._deposits.map((d) {
+                try {
+                  return _depositTile(d as Map<String, dynamic>);
+                } catch (e) {
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      title: Text('Error rendering deposit: $e', style: const TextStyle(color: Colors.red, fontSize: 12)),
+                    ),
+                  );
+                }
+              }),
           ],
         ),
       ),
@@ -416,7 +437,7 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
   }
 
   Widget _depositTile(Map<String, dynamic> d) {
-    final amount = (d['amount'] ?? 0).toDouble();
+    final amount = (d['amount'] is num ? (d['amount'] as num).toDouble() : 0.0);
     final ref = d['reference_number']?.toString() ?? '';
     final sender = d['sender_name']?.toString() ?? '';
     final status = d['status']?.toString() ?? 'pending';

@@ -181,8 +181,12 @@ class BankingApiService {
         'amount': amount,
       });
       return resp.data as Map<String, dynamic>;
-    } on DioException {
-      return null;
+    } on DioException catch (e) {
+      if (e.response?.data is Map) {
+        return e.response!.data as Map<String, dynamic>;
+      }
+      final errMsg = e.error?.toString() ?? e.message ?? 'Unknown error';
+      return {'message': errMsg};
     }
   }
 

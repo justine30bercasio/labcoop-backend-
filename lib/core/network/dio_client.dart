@@ -57,14 +57,7 @@ class DioClient {
           } else if (error.response != null &&
               error.response!.statusCode != null &&
               error.response!.statusCode! >= 500) {
-            handler.next(DioException(
-              requestOptions: error.requestOptions,
-              error: ServerException(
-                message: 'Server error. Please try again later.',
-                statusCode: error.response!.statusCode,
-              ),
-              type: error.type,
-            ));
+            handler.next(error);
           } else {
             handler.next(error);
           }

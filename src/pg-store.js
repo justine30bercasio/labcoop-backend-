@@ -233,6 +233,18 @@ class PgStore {
         description TEXT DEFAULT '',
         created_at TEXT
       );
+      CREATE TABLE IF NOT EXISTS online_deposits (
+        deposit_id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL,
+        amount DECIMAL(12,2) NOT NULL,
+        reference_number VARCHAR(255) DEFAULT '',
+        sender_name VARCHAR(255) DEFAULT '',
+        payment_method VARCHAR(50) DEFAULT 'gcash',
+        status VARCHAR(20) DEFAULT 'pending',
+        admin_notes TEXT DEFAULT '',
+        created_at TEXT,
+        resolved_at TEXT
+      );
       CREATE TABLE IF NOT EXISTS audit_log (
         log_id TEXT PRIMARY KEY,
         admin_id TEXT,
@@ -253,6 +265,14 @@ class PgStore {
         email TEXT DEFAULT '',
         is_active INTEGER DEFAULT 1,
         created_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS fcm_tokens (
+        token_id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+        fcm_token TEXT NOT NULL,
+        device_platform VARCHAR(20) DEFAULT '',
+        created_at TEXT,
+        updated_at TEXT
       );
     `;
     await this.pool.query(schema);
@@ -978,6 +998,61 @@ class PgStore {
     return r.rows[0] || null;
   }
 
+  async getOnlineDeposits(accountId) {
+    if (accountId) {
+      const r = await this.query('SELECT * FROM online_deposits WHERE account_id = $1 ORDER BY created_at DESC', [accountId]);
+      return r.rows;
+    }
+    const r = await this.query('SELECT d.*, a.child_name FROM online_deposits d LEFT JOIN accounts a ON d.account_id = a.account_id ORDER BY d.created_at DESC');
+    return r.rows;
+  }
+
+  async getOnlineDeposit(depositId) {
+    const r = await this.query('SELECT * FROM online_deposits WHERE deposit_id = $1', [depositId]);
+    return r.rows[0] || null;
+  }
+
+  async createOnlineDeposit(fields) {
+    const deposit = {
+      deposit_id: uuidv4(),
+      account_id: fields.account_id,
+      amount: Number(fields.amount),
+      reference_number: fields.reference_number || '',
+      sender_name: fields.sender_name || '',
+      payment_method: fields.payment_method || 'gcash',
+      status: 'pending',
+      admin_notes: '',
+      created_at: new Date().toISOString(),
+    };
+    await this.query(
+      `INSERT INTO online_deposits (deposit_id, account_id, amount, reference_number, sender_name, payment_method, status, admin_notes, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [deposit.deposit_id, deposit.account_id, deposit.amount, deposit.reference_number, deposit.sender_name, deposit.payment_method, deposit.status, deposit.admin_notes, deposit.created_at]
+    );
+    return deposit;
+  }
+
+  async updateOnlineDeposit(depositId, fields) {
+    const allowed = ['status', 'admin_notes', 'resolved_at'];
+    const setClauses = [];
+    const values = [];
+    let idx = 1;
+    for (const key of allowed) {
+      if (fields[key] !== undefined) {
+        setClauses.push(`${key} = $${idx++}`);
+        values.push(fields[key]);
+      }
+    }
+    if (setClauses.length === 0) {
+      const r = await this.query('SELECT * FROM online_deposits WHERE deposit_id = $1', [depositId]);
+      return r.rows[0] || null;
+    }
+    values.push(depositId);
+    await this.query(`UPDATE online_deposits SET ${setClauses.join(', ')} WHERE deposit_id = $${idx}`, values);
+    const r = await this.query('SELECT * FROM online_deposits WHERE deposit_id = $1', [depositId]);
+    return r.rows[0] || null;
+  }
+
   async getInterestSummary(accountId) {
     const account = await this.getAccount(accountId);
     if (!account) return null;
@@ -1073,6 +1148,50 @@ class PgStore {
 
   async deleteQuizQuestion(id) {
     await this.query('DELETE FROM quiz_questions WHERE id = $1', [id]);
+  }
+
+  async getFcmToken(accountId) {
+    const res = await this.query('SELECT * FROM fcm_tokens WHERE account_id = $1 ORDER BY updated_at DESC', [accountId]);
+    return res.rows[0] || null;
+  }
+
+  async getFcmTokens(accountId) {
+    const res = await this.query('SELECT * FROM fcm_tokens WHERE account_id = $1', [accountId]);
+    return res.rows;
+  }
+
+  async registerFcmToken(accountId, fcmToken, devicePlatform) {
+    const existing = await this.query(
+      'SELECT * FROM fcm_tokens WHERE account_id = $1 AND fcm_token = $2',
+      [accountId, fcmToken]
+    );
+    if (existing.rows.length > 0) {
+      await this.query(
+        'UPDATE fcm_tokens SET updated_at = $1 WHERE token_id = $2',
+        [new Date().toISOString(), existing.rows[0].token_id]
+      );
+      return existing.rows[0];
+    }
+    const token = {
+      token_id: uuidv4(),
+      account_id: accountId,
+      fcm_token: fcmToken,
+      device_platform: devicePlatform || '',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    await this.query(
+      'INSERT INTO fcm_tokens (token_id, account_id, fcm_token, device_platform, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6)',
+      [token.token_id, token.account_id, token.fcm_token, token.device_platform, token.created_at, token.updated_at]
+    );
+    return token;
+  }
+
+  async unregisterFcmToken(accountId, fcmToken) {
+    await this.query(
+      'DELETE FROM fcm_tokens WHERE account_id = $1 AND fcm_token = $2',
+      [accountId, fcmToken]
+    );
   }
 
   async transaction(fn) {

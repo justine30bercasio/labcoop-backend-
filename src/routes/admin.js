@@ -9,6 +9,7 @@ const bcrypt = require('bcryptjs');
 const { getDb, store, isPostgres } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const { layout } = require('./admin-lib');
+const notifs = require('../services/notifications');
 
 const _p = (...p) => p.length === 1 && Array.isArray(p[0]) ? p[0] : p;
 const sql = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows);
@@ -146,6 +147,7 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
   const pendingLoans = Number((await one("SELECT COUNT(*) as c FROM loans WHERE status='pending'")).c);
   const pendingWithdrawals = Number((await one("SELECT COUNT(*) as c FROM withdrawal_requests WHERE status='pending'")).c);
   const pendingSavingsApps = Number((await one("SELECT COUNT(*) as c FROM savings_applications WHERE status='pending'")).c);
+  const pendingOnlineDeposits = Number((await one("SELECT COUNT(*) as c FROM online_deposits WHERE status='pending'")).c);
   const activeLoanProducts = Number(loanProducts[0]?.c || 0);
   const shopItemsCount = Number(shopItems[0]?.c || 0);
   const loanStats = loans[0] || {};
@@ -178,7 +180,7 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
   const cashOut = transactions.filter(t => ['withdrawal','loan_payment'].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
   const netFlow = cashIn - cashOut;
 
-  const pendingTotal = pendingLoans + pendingWithdrawals + pendingSavingsApps;
+  const pendingTotal = pendingLoans + pendingWithdrawals + pendingSavingsApps + pendingOnlineDeposits;
 
   // ── SVG chart builders ──
 
@@ -278,10 +280,11 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
   ${pendingTotal > 0 ? `
   <div class="pending-alert">
     <span class="pa-icon">&#x26A0;&#xFE0F;</span>
-    <span class="pa-text">${pendingLoans} pending loan${pendingLoans !== 1 ? 's' : ''} &middot; ${pendingWithdrawals} withdrawal${pendingWithdrawals !== 1 ? 's' : ''} &middot; ${pendingSavingsApps} savings app${pendingSavingsApps !== 1 ? 's' : ''}</span>
+    <span class="pa-text">${pendingLoans} loan${pendingLoans !== 1 ? 's' : ''} &middot; ${pendingWithdrawals} withdrawal${pendingWithdrawals !== 1 ? 's' : ''} &middot; ${pendingSavingsApps} savings app${pendingSavingsApps !== 1 ? 's' : ''} &middot; ${pendingOnlineDeposits} deposit${pendingOnlineDeposits !== 1 ? 's' : ''}</span>
     ${pendingLoans > 0 ? `<a href="/admin/loans?status=pending" class="btn btn-amber btn-xs">Review Loans</a>` : ''}
     ${pendingWithdrawals > 0 ? `<a href="/admin/withdrawal-requests?status=pending" class="btn btn-amber btn-xs">Review Withdrawals</a>` : ''}
     ${pendingSavingsApps > 0 ? `<a href="/admin/savings-applications?status=pending" class="btn btn-amber btn-xs">Review Apps</a>` : ''}
+    ${pendingOnlineDeposits > 0 ? `<a href="/admin/online-deposits?status=pending" class="btn btn-amber btn-xs">Review Deposits</a>` : ''}
   </div>` : ''}
 
   <!-- Quick Actions -->
@@ -292,6 +295,7 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
     <a href="/admin/loans" class="quick-action-btn"><span class="qa-icon">&#x1F4B0;</span><span class="qa-label">Loans${pendingLoans > 0 ? `<span class="qa-badge">${pendingLoans}</span>` : ''}</span></a>
     <a href="/admin/withdrawal-requests" class="quick-action-btn"><span class="qa-icon">&#x1F4B8;</span><span class="qa-label">Withdrawals${pendingWithdrawals > 0 ? `<span class="qa-badge">${pendingWithdrawals}</span>` : ''}</span></a>
     <a href="/admin/savings-applications" class="quick-action-btn"><span class="qa-icon">&#x1F4B1;</span><span class="qa-label">Savings Apps${pendingSavingsApps > 0 ? `<span class="qa-badge">${pendingSavingsApps}</span>` : ''}</span></a>
+    <a href="/admin/online-deposits" class="quick-action-btn"><span class="qa-icon">&#x1F4B0;</span><span class="qa-label">Deposits${pendingOnlineDeposits > 0 ? `<span class="qa-badge">${pendingOnlineDeposits}</span>` : ''}</span></a>
     <a href="/admin/gl/trial-balance" class="quick-action-btn"><span class="qa-icon">&#x2696;</span><span class="qa-label">GL Reports</span></a>
     <a href="/admin/audit" class="quick-action-btn"><span class="qa-icon">&#x1F4DC;</span><span class="qa-label">Audit</span></a>
     <a href="/api/excel/export/all" class="quick-action-btn"><span class="qa-icon">&#x1F4E5;</span><span class="qa-label">Export</span></a>
@@ -597,6 +601,7 @@ td.mono { font-family:var(--mono); font-size:12px; }
     <a href="/admin/accounts"><span class="icon">&#x1F465;</span> <span>Accounts</span></a>
     <a href="/admin/loans"><span class="icon">&#x1F4B0;</span> <span>Loans</span></a>
     <a href="/admin/withdrawal-requests"><span class="icon">&#x1F4B8;</span> <span>Withdrawals</span></a>
+    <a href="/admin/online-deposits"><span class="icon">&#x1F4B0;</span> <span>Online Deposits</span></a>
     <a href="/admin/savings-applications"><span class="icon">&#x1F4B1;</span> <span>Savings Apps</span></a>
     <a href="/admin/loan-products"><span class="icon">&#x1F3ED;</span> <span>Loan Products</span></a>
     <a href="/admin/savings-products"><span class="icon">&#x1F4E6;</span> <span>Savings Products</span></a>
@@ -2503,6 +2508,7 @@ router.post('/withdrawal-requests/approve/:id', requireRole(3), asyncHandler(asy
     if (!reqData) return res.redirect('/admin/withdrawal-requests?error=Request+not+found');
     if (reqData.status !== 'pending') return res.redirect('/admin/withdrawal-requests?error=Request+is+not+pending');
     await store.updateWithdrawalRequest(req.params.id, { status: 'approved', resolved_at: new Date().toISOString() });
+    notifs.notifyWithdrawalApproved(reqData.account_id, reqData.amount, reqData.reason).catch(() => {});
     res.redirect('/admin/withdrawal-requests?approved=ok');
   } catch (err) {
     res.redirect(`/admin/withdrawal-requests?error=${encodeURIComponent(err.message)}`);
@@ -2515,6 +2521,7 @@ router.post('/withdrawal-requests/reject/:id', requireRole(3), asyncHandler(asyn
     if (!reqData) return res.redirect('/admin/withdrawal-requests?error=Request+not+found');
     if (reqData.status !== 'pending') return res.redirect('/admin/withdrawal-requests?error=Request+is+not+pending');
     await store.updateWithdrawalRequest(req.params.id, { status: 'rejected', resolved_at: new Date().toISOString() });
+    notifs.notifyWithdrawalRejected(reqData.account_id, reqData.amount, reqData.reason).catch(() => {});
     res.redirect('/admin/withdrawal-requests?rejected=ok');
   } catch (err) {
     res.redirect(`/admin/withdrawal-requests?error=${encodeURIComponent(err.message)}`);
@@ -2548,9 +2555,120 @@ router.post('/withdrawal-requests/pay/:id', requireRole(2), asyncHandler(async (
       balance_after: newBalance,
     });
     await store.updateWithdrawalRequest(req.params.id, { status: 'paid', resolved_at: new Date().toISOString() });
+    notifs.notifyWithdrawalPaid(reqData.account_id, reqData.amount).catch(() => {});
     res.redirect('/admin/withdrawal-requests?paid=ok');
   } catch (err) {
     res.redirect(`/admin/withdrawal-requests?error=${encodeURIComponent(err.message)}`);
+  }
+}));
+
+// ── Online Deposits (GCash) Management ──
+
+router.get('/online-deposits', requireRole(1), asyncHandler(async (req, res) => {
+  const deposits = await store.getOnlineDeposits(null);
+  const pendingCount = deposits.filter(d => d.status === 'pending').length;
+  const filterStatus = req.query.status || '';
+  const filtered = filterStatus ? deposits.filter(d => d.status === filterStatus) : deposits;
+
+  let rows = '';
+  for (const d of filtered) {
+    const statusClass = d.status === 'approved' ? 'badge-green' : d.status === 'rejected' ? 'badge-red' : 'badge-yellow';
+    const resolved = d.resolved_at ? new Date(d.resolved_at).toLocaleDateString() : '—';
+    rows += `
+    <tr>
+      <td><span class="date-cell">${new Date(d.created_at).toLocaleDateString()}</span></td>
+      <td>${d.child_name || '—'}</td>
+      <td>₱${Number(d.amount).toFixed(2)}</td>
+      <td>${d.reference_number || '—'}</td>
+      <td>${d.sender_name || '—'}</td>
+      <td>${d.payment_method || 'gcash'}</td>
+      <td><span class="badge ${statusClass}">${d.status}</span></td>
+      <td>${d.admin_notes || '—'}</td>
+      <td>${resolved}</td>
+      <td class="actions-cell">
+        ${d.status === 'pending' ? `
+          <form method="POST" action="/admin/online-deposits/approve/${d.deposit_id}" style="display:inline">
+            <input type="hidden" name="admin_notes" value="Approved via admin">
+            <button type="submit" class="btn btn-green btn-xs" onclick="return confirm('Confirm deposit of ₱${Number(d.amount).toFixed(2)}?')">Approve</button>
+          </form>
+          <form method="POST" action="/admin/online-deposits/reject/${d.deposit_id}" style="display:inline">
+            <input type="hidden" name="admin_notes" value="Rejected by admin">
+            <button type="submit" class="btn btn-red btn-xs" onclick="return confirm('Reject this deposit?')">Reject</button>
+          </form>
+        ` : '—'}
+      </td>
+    </tr>`;
+  }
+  if (!rows) rows = '<tr><td colspan="10" class="empty-state">No online deposits found</td></tr>';
+
+  const filterHtml = ['', 'pending', 'approved', 'rejected'].map(s => {
+    const label = s || 'All';
+    const active = filterStatus === s ? 'btn-primary' : 'btn-outline';
+    return `<a href="/admin/online-deposits${s ? '?status=' + s : ''}" class="btn ${active} btn-xs">${label}</a>`;
+  }).join(' ');
+
+  const content = `
+    <div class="page-header">
+      <h2><span class="icon">&#x1F4B0;</span> Online Deposits (GCash)</h2>
+      <div class="header-actions">${filterHtml}</div>
+    </div>
+    <div class="table-container">
+      <table class="data-table">
+        <thead><tr>
+          <th>Date</th><th>Child</th><th>Amount</th><th>Reference #</th><th>Sender</th><th>Method</th><th>Status</th><th>Notes</th><th>Resolved</th><th>Actions</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+  res.type('html').send(layout('Online Deposits', 'online-deposits', content, {
+    toast: req.query.paid === 'ok' ? 'Deposit approved successfully' : req.query.error ? 'Error: ' + req.query.error : '',
+    subtitle: `${pendingCount} pending`,
+    counts: { 'online-deposits': pendingCount },
+  }));
+}));
+
+router.post('/online-deposits/approve/:id', requireRole(2), asyncHandler(async (req, res) => {
+  try {
+    const deposit = await store.getOnlineDeposit(req.params.id);
+    if (!deposit) return res.redirect('/admin/online-deposits?error=Deposit+not+found');
+    if (deposit.status !== 'pending') return res.redirect('/admin/online-deposits?error=Deposit+already+resolved');
+
+    const account = await store.getAccount(deposit.account_id);
+    if (!account) return res.redirect('/admin/online-deposits?error=Account+not+found');
+
+    const val = Number(deposit.amount);
+    const newBalance = Math.round((Number(account.actual_balance) + val) * 100) / 100;
+    const newUnallocated = Math.round((Number(account.unallocated_balance) + val) * 100) / 100;
+
+    await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3", [newBalance, newUnallocated, deposit.account_id]);
+    await store.addTransaction({
+      account_id: deposit.account_id,
+      type: 'deposit',
+      amount: val,
+      description: `GCash deposit: ${deposit.reference_number || 'No ref'} (${deposit.sender_name || 'Unknown sender'})`,
+      balance_before: Number(account.actual_balance),
+      balance_after: newBalance,
+    });
+    await store.updateOnlineDeposit(req.params.id, { status: 'approved', admin_notes: req.body.admin_notes || 'Approved via admin', resolved_at: new Date().toISOString() });
+    notifs.notifyDepositApproved(deposit.account_id, val, deposit.reference_number).catch(() => {});
+    res.redirect('/admin/online-deposits?paid=ok');
+  } catch (err) {
+    res.redirect(`/admin/online-deposits?error=${encodeURIComponent(err.message)}`);
+  }
+}));
+
+router.post('/online-deposits/reject/:id', requireRole(2), asyncHandler(async (req, res) => {
+  try {
+    const deposit = await store.getOnlineDeposit(req.params.id);
+    if (!deposit) return res.redirect('/admin/online-deposits?error=Deposit+not+found');
+    if (deposit.status !== 'pending') return res.redirect('/admin/online-deposits?error=Deposit+already+resolved');
+
+    await store.updateOnlineDeposit(req.params.id, { status: 'rejected', admin_notes: req.body.admin_notes || 'Rejected by admin', resolved_at: new Date().toISOString() });
+    notifs.notifyDepositRejected(deposit.account_id, deposit.amount, deposit.reference_number).catch(() => {});
+    res.redirect('/admin/online-deposits');
+  } catch (err) {
+    res.redirect(`/admin/online-deposits?error=${encodeURIComponent(err.message)}`);
   }
 }));
 

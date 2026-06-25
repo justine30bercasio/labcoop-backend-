@@ -19,6 +19,8 @@ function getDb() {
     `);
     // Migrate existing admin_users table — add email column if missing
     try { db.exec("ALTER TABLE admin_users ADD COLUMN email TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS online_deposits (deposit_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, amount DECIMAL(12,2) NOT NULL, reference_number VARCHAR(255) DEFAULT '', sender_name VARCHAR(255) DEFAULT '', payment_method VARCHAR(50) DEFAULT 'gcash', status VARCHAR(20) DEFAULT 'pending', admin_notes TEXT DEFAULT '', created_at TEXT, resolved_at TEXT)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS fcm_tokens (token_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, fcm_token TEXT NOT NULL, device_platform VARCHAR(20) DEFAULT '', created_at TEXT, updated_at TEXT)"); } catch (_) {}
     const count = db.prepare("SELECT COUNT(*) as c FROM gl_accounts").get();
     if (count.c === 0) {
       const insert = db.prepare('INSERT INTO gl_accounts (code, name, type) VALUES (?,?,?)');
@@ -470,6 +472,52 @@ function updateSavingsApplication(applicationId, fields) {
   return getDb().prepare('SELECT * FROM savings_applications WHERE application_id = ?').get(applicationId);
 }
 
+// ── Online Deposits (GCash) ──
+
+function getOnlineDeposits(accountId) {
+  if (accountId) return getDb().prepare('SELECT * FROM online_deposits WHERE account_id = ? ORDER BY created_at DESC').all(accountId);
+  return getDb().prepare('SELECT d.*, a.child_name FROM online_deposits d LEFT JOIN accounts a ON d.account_id = a.account_id ORDER BY d.created_at DESC').all();
+}
+
+function getOnlineDeposit(depositId) {
+  return getDb().prepare('SELECT * FROM online_deposits WHERE deposit_id = ?').get(depositId) || null;
+}
+
+function createOnlineDeposit(fields) {
+  const deposit = {
+    deposit_id: uuidv4(),
+    account_id: fields.account_id,
+    amount: Number(fields.amount),
+    reference_number: fields.reference_number || '',
+    sender_name: fields.sender_name || '',
+    payment_method: fields.payment_method || 'gcash',
+    status: 'pending',
+    admin_notes: '',
+    created_at: new Date().toISOString(),
+  };
+  getDb().prepare(`
+    INSERT INTO online_deposits (deposit_id, account_id, amount, reference_number, sender_name, payment_method, status, admin_notes, created_at)
+    VALUES (@deposit_id, @account_id, @amount, @reference_number, @sender_name, @payment_method, @status, @admin_notes, @created_at)
+  `).run(deposit);
+  return deposit;
+}
+
+function updateOnlineDeposit(depositId, fields) {
+  const allowed = ['status', 'admin_notes', 'resolved_at'];
+  const setClauses = [];
+  const values = [];
+  for (const key of allowed) {
+    if (fields[key] !== undefined) {
+      setClauses.push(`${key} = ?`);
+      values.push(fields[key]);
+    }
+  }
+  if (setClauses.length === 0) return getDb().prepare('SELECT * FROM online_deposits WHERE deposit_id = ?').get(depositId);
+  values.push(depositId);
+  getDb().prepare(`UPDATE online_deposits SET ${setClauses.join(', ')} WHERE deposit_id = ?`).run(...values);
+  return getDb().prepare('SELECT * FROM online_deposits WHERE deposit_id = ?').get(depositId);
+}
+
 // ── Enhanced Account Summary / Interest ──
 
 function getInterestSummary(accountId) {
@@ -648,6 +696,38 @@ function deleteBadge(badgeId) {
   getDb().prepare('DELETE FROM badges WHERE badge_id = ?').run(badgeId);
 }
 
+function getFcmToken(accountId) {
+  return getDb().prepare('SELECT * FROM fcm_tokens WHERE account_id = ? ORDER BY updated_at DESC').get(accountId) || null;
+}
+
+function getFcmTokens(accountId) {
+  return getDb().prepare('SELECT * FROM fcm_tokens WHERE account_id = ?').all(accountId);
+}
+
+function registerFcmToken(accountId, fcmToken, devicePlatform) {
+  const existing = getDb().prepare('SELECT * FROM fcm_tokens WHERE account_id = ? AND fcm_token = ?').get(accountId, fcmToken);
+  if (existing) {
+    getDb().prepare("UPDATE fcm_tokens SET updated_at = ? WHERE token_id = ?").run(new Date().toISOString(), existing.token_id);
+    return existing;
+  }
+  const token = {
+    token_id: uuidv4(),
+    account_id: accountId,
+    fcm_token: fcmToken,
+    device_platform: devicePlatform || '',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  getDb().prepare('INSERT INTO fcm_tokens (token_id, account_id, fcm_token, device_platform, created_at, updated_at) VALUES (?,?,?,?,?,?)').run(
+    token.token_id, token.account_id, token.fcm_token, token.device_platform, token.created_at, token.updated_at
+  );
+  return token;
+}
+
+function unregisterFcmToken(accountId, fcmToken) {
+  getDb().prepare('DELETE FROM fcm_tokens WHERE account_id = ? AND fcm_token = ?').run(accountId, fcmToken);
+}
+
 function query(sql, params) {
   const db = getDb();
   const adaptedSql = sql.replace(/\$(\d+)/g, '?');
@@ -766,8 +846,16 @@ module.exports = {
   getSavingsApplications,
   createSavingsApplication,
   updateSavingsApplication,
+  getOnlineDeposits,
+  getOnlineDeposit,
+  createOnlineDeposit,
+  updateOnlineDeposit,
   getInterestSummary,
   creditInterest,
+  getFcmToken,
+  getFcmTokens,
+  registerFcmToken,
+  unregisterFcmToken,
   query,
   getQuizQuestions,
   getQuizQuestion,

@@ -330,4 +330,36 @@ router.get('/transactions/:txId/receipt',
   })
 );
 
+// ── Online Deposits (GCash / Digital Payments) ──
+
+router.post('/online-deposits',
+  body('account_id').isString().notEmpty().trim(),
+  body('amount').isString().notEmpty().trim(),
+  body('reference_number').isString().notEmpty().trim(),
+  asyncHandler(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const { account_id, amount, reference_number, sender_name } = req.body;
+    const account = await store.getAccount(account_id);
+    if (!account) return res.status(404).json({ message: 'Account not found' });
+
+    const deposit = await store.createOnlineDeposit({
+      account_id,
+      amount: Number(amount),
+      reference_number,
+      sender_name: sender_name || '',
+    });
+    res.status(201).json(deposit);
+  })
+);
+
+router.get('/online-deposits/:accountId',
+  param('accountId').isString().notEmpty().trim(),
+  asyncHandler(async (req, res) => {
+    const deposits = await store.getOnlineDeposits(req.params.accountId);
+    res.json(deposits);
+  })
+);
+
 module.exports = router;

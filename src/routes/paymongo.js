@@ -27,30 +27,24 @@ router.post('/create-payment',
       if (!account) return res.status(404).json({ message: 'Account not found' });
 
       const depositId = uuidv4();
-      const paymentIntent = await paymongo.createPaymentIntent(
+      const result = await paymongo.createGcashCheckout(
         Number(amount),
         'LabCoop Savings Deposit',
         account_id,
         depositId
       );
 
-      console.log('PayMongo response:', JSON.stringify(paymentIntent, null, 2));
-      const piId = paymentIntent.data.id;
-      const attrs = paymentIntent.data.attributes || {};
-      const nextAction = attrs.next_action || {};
-      const checkoutUrl = nextAction.redirect?.url || nextAction.checkout_url || attrs.checkout_url || '';
+      const piId = result.paymentIntent.data.id;
+      const checkoutUrl = result.checkoutUrl;
+      const clientKey = result.clientKey;
 
       if (!checkoutUrl) {
         return res.status(500).json({
           message: 'Failed to get checkout URL from PayMongo',
-          attrs_keys: Object.keys(attrs),
-          has_next_action: !!attrs.next_action,
-          next_action_type: nextAction.type,
           pi_id: piId,
+          has_client_key: !!clientKey,
         });
       }
-
-      const clientKey = paymentIntent.data.attributes?.client_key || '';
 
       await store.query(
         `INSERT INTO online_deposits (deposit_id, account_id, amount, reference_number, sender_name, payment_method, status, admin_notes, created_at)

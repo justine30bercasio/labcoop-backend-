@@ -61,7 +61,7 @@ async function createGcashPayment(amount, description, accountId, depositId) {
         currency: 'PHP',
         payment_method_allowed: ['gcash'],
         description: description || 'LabCoop Savings Deposit',
-        statement_descriptor: 'LabCoop Deposit',
+        statement_descriptor: 'LabCoop',
         metadata: {
           account_id: accountId,
           deposit_id: depositId,
@@ -70,26 +70,6 @@ async function createGcashPayment(amount, description, accountId, depositId) {
     },
   });
   return paymentIntent;
-}
-
-async function attachPaymentMethod(paymentIntentId) {
-  const paymentMethod = await apiRequest('POST', '/payment_methods', {
-    data: {
-      attributes: {
-        type: 'gcash',
-        details: {},
-      },
-    },
-  });
-  const attached = await apiRequest('POST', `/payment_intents/${paymentIntentId}/attach`, {
-    data: {
-      attributes: {
-        payment_method: paymentMethod.data.id,
-        client_key: process.env.PAYMONGO_PUBLIC || '',
-      },
-    },
-  });
-  return attached;
 }
 
 async function retrievePaymentIntent(paymentIntentId) {
@@ -116,6 +96,15 @@ async function createPaymentIntent(amount, description, accountId, depositId) {
   return result;
 }
 
+async function createGcashCheckout(amount, description, accountId, depositId) {
+  const pi = await createPaymentIntent(amount, description, accountId, depositId);
+  const piId = pi.data.id;
+  const clientKey = pi.data.attributes?.client_key || '';
+  // Use client_key as the checkout URL — PayMongo checkout path
+  const checkoutUrl = clientKey ? `https://checkout.paymongo.com/${clientKey}` : '';
+  return { paymentIntent: pi, checkoutUrl, clientKey };
+}
+
 function isPaymongoConfigured() {
   return !!PAYMONGO_SECRET;
 }
@@ -124,6 +113,6 @@ module.exports = {
   createPaymentIntent,
   retrievePaymentIntent,
   createGcashPayment,
-  attachPaymentMethod,
+  createGcashCheckout,
   isPaymongoConfigured,
 };

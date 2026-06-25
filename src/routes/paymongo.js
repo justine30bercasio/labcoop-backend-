@@ -127,6 +127,20 @@ router.get('/payment-status/:depositId',
     });
   })
 );
+ 
+// Allow user to cancel/delete a paymongo_pending deposit
+router.delete('/cancel-pending/:depositId',
+  authMiddleware,
+  asyncHandler(async (req, res) => {
+    const result = await store.query('SELECT * FROM online_deposits WHERE deposit_id = $1', [req.params.depositId]);
+    const deposit = result.rows[0];
+    if (!deposit) return res.status(404).json({ message: 'Deposit not found' });
+    if (deposit.account_id !== req.accountId) return res.status(403).json({ message: 'Forbidden' });
+    if (deposit.status !== 'paymongo_pending') return res.status(400).json({ message: 'Deposit is not pending' });
+    await store.query('DELETE FROM online_deposits WHERE deposit_id = $1', [req.params.depositId]);
+    res.json({ success: true });
+  })
+);
 
 module.exports = router;
 

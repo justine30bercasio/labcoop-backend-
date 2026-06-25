@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/network/banking_api_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/design_system.dart';
+import '../../core/helpers/number_helpers.dart';
 
 class AutoSavePage extends StatefulWidget {
   final String accountId;
@@ -46,7 +47,7 @@ class _AutoSavePageState extends State<AutoSavePage> {
 
     final order = await BankingApiService.createStandingOrder(
       accountId: widget.accountId,
-      amount: (result['amount'] as num).toDouble(),
+      amount: parseAmount(result['amount']),
       frequency: result['frequency'] as String,
       description: result['description'] as String?,
     );
@@ -133,14 +134,14 @@ class _AutoSavePageState extends State<AutoSavePage> {
                   : ListView.builder(
                       padding: const EdgeInsets.all(16),
                       itemCount: _orders.length,
-                      itemBuilder: (context, index) => _orderCard(_orders[index] as Map<String, dynamic>),
+                      itemBuilder: (context, index) => _orderCard(_orders[index] is Map<String, dynamic> ? _orders[index] as Map<String, dynamic> : <String, dynamic>{}),
                     ),
             ),
     );
   }
 
   Widget _orderCard(Map<String, dynamic> order) {
-    final amount = (order['amount'] ?? 0).toDouble();
+    final amount = parseAmount(order['amount']);
     final frequency = order['frequency']?.toString() ?? '';
     final nextRun = order['next_run']?.toString() ?? '';
     final description = order['description']?.toString() ?? '';

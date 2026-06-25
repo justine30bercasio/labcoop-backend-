@@ -27,12 +27,24 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
 
   String? _checkoutUrl;
   String? _paymentStatus;
+  String _gcashNumber = '09171234567';
+  String _gcashName = 'LabCoop Savings';
 
 
   @override
   void initState() {
     super.initState();
     _load();
+    _loadGcashSettings();
+  }
+
+  Future<void> _loadGcashSettings() async {
+    final settings = await BankingApiService.getGcashSettings();
+    if (!mounted) return;
+    setState(() {
+      _gcashNumber = settings['gcash_number']?.toString() ?? '09171234567';
+      _gcashName = settings['gcash_name']?.toString() ?? 'LabCoop Savings';
+    });
   }
 
   @override
@@ -385,8 +397,8 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
                   children: [
                     Text('Send payment to our GCash account:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                     const SizedBox(height: 4),
-                    Text('\u{1F4F1} GCash Number: 09171234567', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.primaryGreen)),
-                    Text('\u{1F464} Account Name: LabCoop Savings', style: TextStyle(fontSize: 13)),
+                    Text('\u{1F4F1} GCash Number: $_gcashNumber', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.primaryGreen)),
+                    Text('\u{1F464} Account Name: $_gcashName', style: TextStyle(fontSize: 13)),
                   ],
                 ),
               ),

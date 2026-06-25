@@ -207,4 +207,13 @@ class BankingApiService {
       return false;
     }
   }
+
+  static Future<Map<String, dynamic>> getGcashSettings() async {
+    try {
+      final res = await _dio.get('/api/settings/gcash');
+      return res.data is Map<String, dynamic> ? res.data as Map<String, dynamic> : {};
+    } catch (_) {
+      return {'gcash_number': '09171234567', 'gcash_name': 'LabCoop Savings'};
+    }
+  }
 }

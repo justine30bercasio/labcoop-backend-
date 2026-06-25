@@ -5,6 +5,7 @@ import '../../core/network/banking_api_service.dart';
 import '../../domain/entities/transaction.dart';
 import '../blocs/banking_bloc.dart';
 import '../blocs/savings_bloc.dart';
+import '../blocs/savings_event.dart';
 import '../blocs/savings_state.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/design_system.dart';
@@ -128,6 +129,7 @@ class _BankingPageState extends State<BankingPage> {
             builder: (context, state) {
               return RefreshIndicator(
                 onRefresh: () async {
+                  context.read<SavingsBloc>().add(LoadSavings(widget.accountId));
                   context.read<BankingBloc>().add(LoadTransactions(widget.accountId));
                   await context.read<BankingBloc>().stream.firstWhere(
                     (s) => s.transactionStatus != TransactionStatus.loading,
@@ -228,6 +230,7 @@ class _BankingPageState extends State<BankingPage> {
             }),
             _actionChip(Icons.payments, 'GCash Deposit', AppTheme.primaryGreen, () async {
               await Navigator.push(context, PageTransition.slideUp(OnlineDepositPage(accountId: widget.accountId)));
+              context.read<SavingsBloc>().add(LoadSavings(widget.accountId));
               context.read<BankingBloc>().add(LoadTransactions(widget.accountId));
               _loadInterest();
             }),

@@ -2045,23 +2045,31 @@ router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {
         <input type="text" id="gcashNumber" value="${gcashNumber || '09171234567'}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px"></div>
         <div><label style="font-weight:600;display:block;margin-bottom:4px">GCash Account Name</label>
         <input type="text" id="gcashName" value="${gcashName || 'LabCoop Savings'}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px"></div>
-        <div><button type="submit" class="btn btn-primary">Save GCash Settings</button> <span id="gcashMsg" style="color:green;margin-left:12px"></span></div>
+        <div><button type="submit" class="btn btn-primary">Save GCash Settings</button></div>
       </form>
     </div>
   </div>
   <script>
+  function showGcashToast(msg, isError){
+    var t = document.createElement('div');
+    t.className = 'toast ' + (isError ? 'error' : 'success');
+    t.textContent = (isError ? '\u274C ' : '\u2705 ') + msg;
+    t.style.cssText = 'position:fixed;top:20px;right:20px;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:500;z-index:999;box-shadow:0 4px 24px rgba(0,0,0,0.08);animation:slideIn 0.3s ease;max-width:420px;' + (isError ? 'background:#fce4ec;color:#b71c1c;border:1px solid #ef9a9a' : 'background:#e8f5e9;color:#1B5E20;border:1px solid #a5d6a7');
+    document.body.appendChild(t);
+    setTimeout(function(){t.style.opacity='0';t.style.transition='opacity 0.5s';setTimeout(function(){t.remove()},500)},4000);
+  }
   document.getElementById('gcashForm').addEventListener('submit', function(e){
     e.preventDefault();
     var num = document.getElementById('gcashNumber').value.trim();
     var name = document.getElementById('gcashName').value.trim();
-    if(!num || !name){ document.getElementById('gcashMsg').textContent='Both fields required'; return; }
+    if(!num || !name){ showGcashToast('Both fields required', true); return; }
     fetch('/admin/settings/gcash', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({ gcash_number: num, gcash_name: name })
     }).then(function(r){ return r.json(); }).then(function(d){
-      document.getElementById('gcashMsg').textContent = d.success ? 'Saved!' : 'Error: '+(d.message||'unknown');
-    }).catch(function(e){ document.getElementById('gcashMsg').textContent='Error: '+e.message; });
+      showGcashToast(d.success ? 'GCash settings saved!' : d.message||'Error', !d.success);
+    }).catch(function(e){ showGcashToast(e.message, true); });
   });
   </script>
 

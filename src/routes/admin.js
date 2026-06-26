@@ -2040,7 +2040,7 @@ router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {
   <div class="card">
     <div class="card-header"><h3>&#x1F4B1; GCash Settings</h3></div>
     <div class="card-body">
-      <form id="gcashForm" onsubmit="return saveGcash()" style="display:flex;flex-direction:column;gap:12px">
+      <form id="gcashForm" style="display:flex;flex-direction:column;gap:12px">
         <div><label style="font-weight:600;display:block;margin-bottom:4px">GCash Number</label>
         <input type="text" id="gcashNumber" value="${gcashNumber || '09171234567'}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px"></div>
         <div><label style="font-weight:600;display:block;margin-bottom:4px">GCash Account Name</label>
@@ -2050,19 +2050,19 @@ router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {
     </div>
   </div>
   <script>
-  function saveGcash(){
+  document.getElementById('gcashForm').addEventListener('submit', function(e){
+    e.preventDefault();
     var num = document.getElementById('gcashNumber').value.trim();
     var name = document.getElementById('gcashName').value.trim();
-    if(!num || !name){ document.getElementById('gcashMsg').textContent='Both fields required'; return false; }
+    if(!num || !name){ document.getElementById('gcashMsg').textContent='Both fields required'; return; }
     fetch('/admin/settings/gcash', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({ gcash_number: num, gcash_name: name })
     }).then(function(r){ return r.json(); }).then(function(d){
-      document.getElementById('gcashMsg').textContent = d.success ? 'Saved!' : 'Error: '+d.message;
+      document.getElementById('gcashMsg').textContent = d.success ? 'Saved!' : 'Error: '+(d.message||'unknown');
     }).catch(function(e){ document.getElementById('gcashMsg').textContent='Error: '+e.message; });
-    return false;
-  }
+  });
   </script>
 
   <div class="card">

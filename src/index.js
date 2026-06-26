@@ -253,6 +253,7 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", 'code.jquery.com', 'cdn.datatables.net'],
+      scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", 'cdn.datatables.net'],
       imgSrc: ["'self'", "data:"],
       fontSrc: ["'self'"],

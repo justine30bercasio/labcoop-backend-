@@ -216,4 +216,16 @@ class BankingApiService {
       return {'gcash_number': '09171234567', 'gcash_name': 'LabCoop Savings'};
     }
   }
+
+  static Future<bool> updateGcashSettings(String number, String name) async {
+    try {
+      await _dio.put('/api/settings/gcash', data: {
+        'gcash_number': number,
+        'gcash_name': name,
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 }

@@ -15,6 +15,7 @@ import '../blocs/savings_bloc.dart';
 import '../blocs/savings_state.dart';
 import '../widgets/animated_counter.dart';
 import '../widgets/app_card.dart';
+import '../../core/network/banking_api_service.dart';
 import 'login_page.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -283,6 +284,18 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
         }),
         const SizedBox(height: Spacing.sm),
         _actionButton(Icons.logout, 'Logout', Colors.red.shade400, () async {
+          final confirm = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Logout'),
+              content: const Text('This will clear all local data. Continue?'),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Logout')),
+              ],
+            ),
+          );
+          if (confirm != true) return;
           await const FlutterSecureStorage().deleteAll();
           await LocalDbSource().clearAll();
           if (!context.mounted) return;
@@ -894,7 +907,11 @@ class _SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<_SettingsPage> {
   final _source = LocalDbSource();
   final _nameController = TextEditingController();
-  bool _saved = false;
+  final _gcashNumberCtrl = TextEditingController();
+  final _gcashNameCtrl = TextEditingController();
+  bool _nameSaved = false;
+  bool _loadingGcash = true;
+  bool _gcashSaving = false;
 
   @override
   void initState() {
@@ -906,21 +923,57 @@ class _SettingsPageState extends State<_SettingsPage> {
     final state = context.read<SavingsBloc>().state;
     final name = state is SavingsLoaded ? state.account.childName : await _source.getChildName();
     _nameController.text = name;
+
+    final gcash = await BankingApiService.getGcashSettings();
+    if (!mounted) return;
+    setState(() {
+      _gcashNumberCtrl.text = gcash['gcash_number']?.toString() ?? '09171234567';
+      _gcashNameCtrl.text = gcash['gcash_name']?.toString() ?? 'LabCoop Savings';
+      _loadingGcash = false;
+    });
   }
 
-  Future<void> _save() async {
+  Future<void> _saveName() async {
     final newName = _nameController.text.trim();
     if (newName.isEmpty) return;
     await _source.setChildName(newName);
-    setState(() => _saved = true);
+    setState(() => _nameSaved = true);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Name saved!'), backgroundColor: AppTheme.primaryGreen),
+      );
+    }
     Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) setState(() => _saved = false);
+      if (mounted) setState(() => _nameSaved = false);
     });
+  }
+
+  Future<void> _saveGcash() async {
+    final number = _gcashNumberCtrl.text.trim();
+    final name = _gcashNameCtrl.text.trim();
+    if (number.isEmpty || name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill in both GCash fields'), backgroundColor: Colors.red),
+      );
+      return;
+    }
+    setState(() => _gcashSaving = true);
+    final ok = await BankingApiService.updateGcashSettings(number, name);
+    if (!mounted) return;
+    setState(() => _gcashSaving = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(ok ? 'GCash settings saved!' : 'Failed to save GCash settings'),
+        backgroundColor: ok ? AppTheme.primaryGreen : Colors.red,
+      ),
+    );
   }
 
   @override
   void dispose() {
     _nameController.dispose();
+    _gcashNumberCtrl.dispose();
+    _gcashNameCtrl.dispose();
     super.dispose();
   }
 
@@ -928,9 +981,10 @@ class _SettingsPageState extends State<_SettingsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Icon(Icons.person, size: 64, color: AppTheme.primaryGreen),
             const SizedBox(height: 24),
@@ -949,17 +1003,68 @@ class _SettingsPageState extends State<_SettingsPage> {
               width: double.infinity,
               height: 56,
               child: ElevatedButton.icon(
-                onPressed: _save,
-                icon: Icon(_saved ? Icons.check : Icons.save),
-                label: Text(_saved ? 'Saved!' : 'Save'),
+                onPressed: _saveName,
+                icon: Icon(_nameSaved ? Icons.check : Icons.save),
+                label: Text(_nameSaved ? 'Saved!' : 'Save Name'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _saved ? AppTheme.primaryGreen : AppTheme.accentAmber,
-                  foregroundColor: _saved ? Colors.white : AppTheme.textDark,
+                  backgroundColor: _nameSaved ? AppTheme.primaryGreen : AppTheme.accentAmber,
+                  foregroundColor: _nameSaved ? Colors.white : AppTheme.textDark,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ),
             ),
+            const SizedBox(height: 32),
+            const Divider(),
+            const SizedBox(height: 16),
+            const Text('\u{1F4B1} GCash Settings',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            if (_loadingGcash)
+              const Center(child: CircularProgressIndicator())
+            else ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _gcashNumberCtrl,
+                decoration: InputDecoration(
+                  labelText: 'GCash Number',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                  prefixIcon: const Icon(Icons.phone_android, color: AppTheme.primaryGreen),
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+                keyboardType: TextInputType.phone,
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _gcashNameCtrl,
+                decoration: InputDecoration(
+                  labelText: 'GCash Account Name',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                  prefixIcon: const Icon(Icons.person_outline, color: AppTheme.primaryGreen),
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton.icon(
+                  onPressed: _gcashSaving ? null : _saveGcash,
+                  icon: _gcashSaving
+                      ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.save),
+                  label: Text(_gcashSaving ? 'Saving...' : 'Save GCash Settings'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryGreen,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

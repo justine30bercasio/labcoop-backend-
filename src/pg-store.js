@@ -105,6 +105,31 @@ class PgStore {
         notes TEXT DEFAULT '',
         created_at TEXT
       );
+      CREATE TABLE IF NOT EXISTS eoy_logs (
+        eoy_id TEXT PRIMARY KEY,
+        year INTEGER NOT NULL UNIQUE,
+        total_income DECIMAL(12,2) DEFAULT 0,
+        total_expense DECIMAL(12,2) DEFAULT 0,
+        net_profit DECIMAL(12,2) DEFAULT 0,
+        tx_count INTEGER DEFAULT 0,
+        archived INTEGER DEFAULT 0,
+        closed_by TEXT,
+        created_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS archived_transactions (
+        archive_id TEXT PRIMARY KEY,
+        transaction_id TEXT,
+        trn_number INTEGER,
+        account_id TEXT,
+        type VARCHAR(50),
+        amount DECIMAL(12,2),
+        description TEXT,
+        reference_type VARCHAR(50),
+        reference_id TEXT,
+        original_created_at TEXT,
+        archived_at TEXT,
+        year INTEGER
+      );
       CREATE TABLE IF NOT EXISTS shop_items (
         id TEXT PRIMARY KEY,
         name VARCHAR(255) NOT NULL,

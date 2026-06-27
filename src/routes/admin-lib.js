@@ -11,6 +11,7 @@ function layout(title, active, content, opts = {}) {
       { icon: '<i class="fas fa-arrows-spin"></i>', label: 'Transactions', href: '/admin/transactions', key: 'transactions' },
       { icon: '<i class="fas fa-calendar-check"></i>', label: 'End of Day', href: '/admin/eod', key: 'eod' },
       { icon: '<i class="fas fa-file-invoice"></i>', label: 'Statements', href: '/admin/statements', key: 'statements' },
+      { icon: '<i class="fas fa-calendar-alt"></i>', label: 'Year-End', href: '/admin/eoy', key: 'eoy' },
     ]},
     { icon: '<i class="fas fa-boxes-stacked"></i>', label: 'Products', key: 'products', children: [
       { icon: '<i class="fas fa-hand-holding-hand"></i>', label: 'Loan Products', href: '/admin/loan-products', key: 'loan-products' },

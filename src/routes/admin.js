@@ -4345,6 +4345,149 @@ router.get('/statements', requireRole(1), asyncHandler(async (req, res) => {
   res.type('html').send(layout('Member Statements', 'statements', content, { subtitle: 'Monthly statement of account' }));
 }));
 
+// ── End of Year (EOY) — P&L Close + Archive ──
+router.get('/eoy', requireRole(1), asyncHandler(async (req, res) => {
+  const sql = (q, p) => store.query(q, p || []).then(r => r.rows);
+  const one = (q, p) => store.query(q, p || []).then(r => r.rows[0]);
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const selYear = parseInt(req.query.year) || currentYear;
+  const gl = require('../services/gl');
+
+  const closed = await one("SELECT * FROM eoy_logs WHERE year = $1", [selYear]);
+
+  const txCount = Number((await one("SELECT COUNT(*) as c FROM transactions WHERE created_at LIKE $1", [selYear + '%'])).c || 0);
+  const totalDeposits = Number((await one("SELECT COALESCE(SUM(amount),0) as s FROM transactions WHERE type='deposit' AND created_at LIKE $1", [selYear + '%'])).s || 0);
+  const totalWithdrawals = Number((await one("SELECT COALESCE(SUM(amount),0) as s FROM transactions WHERE type='withdrawal' AND created_at LIKE $1", [selYear + '%'])).s || 0);
+  const memberCount = Number((await one("SELECT COUNT(*) as c FROM accounts")).c);
+
+  let income = [], expense = [], totalIncome = 0, totalExpense = 0, netProfit = 0;
+  try {
+    const pnl = await gl.getProfitAndLoss(selYear + '-01-01', selYear + '-12-31');
+    income = pnl.income; expense = pnl.expense; totalIncome = pnl.totalIncome; totalExpense = pnl.totalExpense; netProfit = pnl.netProfit;
+  } catch (e) {}
+
+  const prevCloses = await sql("SELECT * FROM eoy_logs ORDER BY year DESC");
+  const archivedCount = Number((await one("SELECT COUNT(*) as c FROM archived_transactions WHERE year = $1", [selYear])).c || 0);
+
+  const content = `
+  <div class="card">
+    <div class="card-body-padded" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap">
+      <div class="field" style="flex:0 0 160px"><label>Year</label>
+        <select id="eoyYear" onchange="location.href='/admin/eoy?year='+this.value">
+          ${Array.from({length: 10}, (_, i) => { const y = currentYear - i; return '<option value="' + y + '" ' + (selYear === y ? 'selected' : '') + '>' + y + '</option>'; }).join('')}
+        </select>
+      </div>
+      <div style="flex:1;text-align:right">
+        <span class="badge ${closed ? 'badge-green' : selYear === currentYear ? 'badge-yellow' : 'badge-gray'}" style="font-size:14px;padding:6px 16px">
+          <i class="fas ${closed ? 'fa-check-circle' : 'fa-clock'}"></i>
+          ${closed ? 'CLOSED on ' + (closed.created_at||'').slice(0,10) : selYear === currentYear ? 'CURRENT YEAR' : 'PAST YEAR'}
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-exchange-alt"></i></div><div class="stat-value">${txCount}</div><div class="stat-label">Transactions</div></div>
+    <div class="stat-card" style="border-left:4px solid #16a34a"><div class="stat-icon"><i class="fas fa-arrow-up"></i></div><div class="stat-value" style="color:#16a34a">${fmt(totalDeposits)}</div><div class="stat-label">Total Deposits</div></div>
+    <div class="stat-card" style="border-left:4px solid #ef4444"><div class="stat-icon"><i class="fas fa-arrow-down"></i></div><div class="stat-value" style="color:#ef4444">${fmt(totalWithdrawals)}</div><div class="stat-label">Total Withdrawals</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-users"></i></div><div class="stat-value">${memberCount}</div><div class="stat-label">Members</div></div>
+    <div class="stat-card" style="border-left:4px solid #8b5cf6"><div class="stat-icon"><i class="fas fa-file-invoice-dollar"></i></div><div class="stat-value" style="color:#8b5cf6">${fmt(totalIncome)}</div><div class="stat-label">Gross Income</div></div>
+    <div class="stat-card" style="border-left:4px solid ${netProfit >= 0 ? '#16a34a' : '#ef4444'}"><div class="stat-icon"><i class="fas fa-chart-line"></i></div><div class="stat-value" style="color:${netProfit >= 0 ? '#16a34a' : '#ef4444'}">${fmt(Math.abs(netProfit))}</div><div class="stat-label">${netProfit >= 0 ? 'Net Profit' : 'Net Loss'}</div></div>
+  </div>
+  <div class="stats-grid" style="grid-template-columns:1fr 1fr">
+    <div class="card" style="padding:0">
+      <div class="card-header"><h3><i class="fas fa-arrow-trend-up" style="color:#16a34a"></i> Income (${income.length})</h3></div>
+      <div class="card-body" style="padding:0">
+      <table><tr><th>Account</th><th>Amount</th></tr>
+        ${income.map(i => '<tr><td>' + i.code + ' — ' + i.name + '</td><td class="mono" style="color:#16a34a">' + fmt(i.amount) + '</td></tr>').join('')}
+        <tr style="font-weight:700;background:var(--bg-muted)"><td>TOTAL INCOME</td><td class="mono" style="color:#16a34a">${fmt(totalIncome)}</td></tr>
+      </table></div>
+    </div>
+    <div class="card" style="padding:0">
+      <div class="card-header"><h3><i class="fas fa-arrow-trend-down" style="color:#ef4444"></i> Expenses (${expense.length})</h3></div>
+      <div class="card-body" style="padding:0">
+      <table><tr><th>Account</th><th>Amount</th></tr>
+        ${expense.map(e => '<tr><td>' + e.code + ' — ' + e.name + '</td><td class="mono" style="color:#dc2626">' + fmt(e.amount) + '</td></tr>').join('')}
+        <tr style="font-weight:700;background:var(--bg-muted)"><td>TOTAL EXPENSES</td><td class="mono" style="color:#dc2626">${fmt(totalExpense)}</td></tr>
+      </table></div>
+    </div>
+  </div>
+  ${!closed && selYear <= currentYear ? `
+  <div class="card" style="border:2px solid #8b5cf6">
+    <div class="card-header"><h3><i class="fas fa-file-export"></i> Year-End Close — ${selYear}</h3></div>
+    <div class="card-body-padded">
+      <p style="margin-bottom:12px;color:var(--text-muted)">Closing the year will:
+        <ul style="margin:8px 0 12px 20px;line-height:1.8">
+          <li>Post <b>P&L closing entries</b> — zero out income/expense, transfer net profit to Retained Earnings</li>
+          <li><b>Archive</b> <b>${txCount}</b> transactions (preserved in archived_transactions table)</li>
+          <li>Record the close in <b>eoy_logs</b></li>
+          <li>TRN# sequence automatically resets each year</li>
+        </ul>
+      </p>
+      <form method="post" action="/admin/eoy/close" onsubmit="return confirm('Close year ${selYear}? This will archive ${txCount} transactions and post P&L close of ${fmt(netProfit)} to Retained Earnings. Irreversible.')">
+        <input type="hidden" name="year" value="${selYear}">
+        <button type="submit" class="btn btn-secondary"><i class="fas fa-lock"></i> Close Year ${selYear}</button>
+        ${selYear === currentYear ? '<span style="margin-left:12px;color:var(--amber);font-size:12px"><i class="fas fa-exclamation-triangle"></i> Current year — do this only after Dec 31</span>' : ''}
+      </form>
+    </div>
+  </div>` : closed ? `
+  <div class="card" style="border:2px solid #16a34a">
+    <div class="card-header"><h3><i class="fas fa-check-circle" style="color:#16a34a"></i> ${selYear} Already Closed</h3><span class="count">${closed.closed_by || 'System'}</span></div>
+    <div class="card-body-padded" style="display:flex;gap:16px;flex-wrap:wrap">
+      <div><b>Net Profit:</b> ${fmt(Number(closed.net_profit))}</div>
+      <div><b>Transactions:</b> ${closed.tx_count}</div>
+      <div><b>Archived:</b> ${Number(closed.archived) ? 'Yes' : 'No'}</div>
+      <div><b>Closed on:</b> ${(closed.created_at||'').slice(0,10)}</div>
+    </div>
+  </div>` : ''}
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-history"></i> Previous Year Closes</h3></div>
+    <div class="card-body" style="padding:0">
+    <table>
+      <tr><th>Year</th><th>Net Profit</th><th>Transactions</th><th>Archived</th><th>Closed By</th><th>Date</th></tr>
+      ${prevCloses.map(c => '<tr><td class="mono" style="font-weight:600">' + c.year + '</td><td class="mono" style="color:' + (Number(c.net_profit) >= 0 ? '#16a34a' : '#dc2626') + '">' + fmt(Number(c.net_profit)) + '</td><td>' + c.tx_count + '</td><td>' + (Number(c.archived) ? '<i class="fas fa-check" style="color:#16a34a"></i>' : '<i class="fas fa-times"></i>') + '</td><td>' + (c.closed_by||'-') + '</td><td class="mono" style="font-size:11px">' + (c.created_at||'').slice(0,10) + '</td></tr>').join('')}
+    </table></div>
+  </div>`;
+  res.type('html').send(layout('Year-End Close', 'eoy', content, { subtitle: 'P&L close, archive, and retained earnings' }));
+}));
+
+router.post('/eoy/close', requireRole(3), asyncHandler(async (req, res) => {
+  const { v4: uuidv4 } = require('uuid');
+  const year = parseInt(req.body.year);
+  if (!year) return res.redirect('/admin/eoy?error=Year+required');
+  const sql = (q, p) => store.query(q, p || []).then(r => r.rows);
+  const one = (q, p) => store.query(q, p || []).then(r => r.rows[0]);
+  const gl = require('../services/gl');
+  const existing = await one("SELECT * FROM eoy_logs WHERE year = $1", [year]);
+  if (existing) return res.redirect('/admin/eoy?year=' + year + '&error=Year+already+closed');
+
+  const fromDate = year + '-01-01', toDate = year + '-12-31';
+  const pnl = await gl.getProfitAndLoss(fromDate, toDate);
+  const closeTxId = 'eoy-' + uuidv4().slice(0,8);
+  const entries = [];
+  for (const inc of pnl.income) { if (inc.amount > 0) entries.push({ account_code: inc.code, debit: inc.amount, credit: 0, description: 'P&L close ' + year }); }
+  for (const exp of pnl.expense) { if (exp.amount > 0) entries.push({ account_code: exp.code, debit: 0, credit: exp.amount, description: 'P&L close ' + year }); }
+  if (pnl.netProfit >= 0) entries.push({ account_code: '3100', debit: 0, credit: pnl.netProfit, description: 'Net profit ' + year });
+  else entries.push({ account_code: '3100', debit: Math.abs(pnl.netProfit), credit: 0, description: 'Net loss ' + year });
+  await gl.postDoubleEntry(closeTxId, entries);
+
+  const txs = await sql("SELECT * FROM transactions WHERE created_at LIKE $1", [year + '%']);
+  for (const tx of txs) {
+    await store.query(
+      `INSERT INTO archived_transactions (archive_id, transaction_id, trn_number, account_id, type, amount, description, reference_type, reference_id, original_created_at, archived_at, year)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      [uuidv4(), tx.transaction_id, tx.trn_number || null, tx.account_id, tx.type, tx.amount, tx.description, tx.reference_type, tx.reference_id, tx.created_at, new Date().toISOString(), year]
+    );
+  }
+
+  await store.query(
+    `INSERT INTO eoy_logs (eoy_id, year, total_income, total_expense, net_profit, tx_count, archived, closed_by, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,1,$7,$8)`,
+    [uuidv4(), year, pnl.totalIncome, pnl.totalExpense, pnl.netProfit, txs.length, req.session.adminName || 'admin', new Date().toISOString()]
+  );
+  res.redirect('/admin/eoy?year=' + year + '&closed=1');
+}));
+
 // ── Clear All User Data (keep reference tables) ──
 router.get('/reset-database/confirm', requireRole(4), asyncHandler(async (req, res) => {
   const err = req.query.error ? req.query.error : '';

@@ -93,6 +93,18 @@ class PgStore {
         value INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (name, year)
       );
+      CREATE TABLE IF NOT EXISTS eod_logs (
+        eod_id TEXT PRIMARY KEY,
+        date TEXT NOT NULL UNIQUE,
+        opening_cash DECIMAL(12,2) DEFAULT 0,
+        total_collections DECIMAL(12,2) DEFAULT 0,
+        total_disbursements DECIMAL(12,2) DEFAULT 0,
+        closing_cash DECIMAL(12,2) DEFAULT 0,
+        tx_count INTEGER DEFAULT 0,
+        closed_by TEXT,
+        notes TEXT DEFAULT '',
+        created_at TEXT
+      );
       CREATE TABLE IF NOT EXISTS shop_items (
         id TEXT PRIMARY KEY,
         name VARCHAR(255) NOT NULL,

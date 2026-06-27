@@ -4052,6 +4052,299 @@ router.get('/reports/loan-portfolio', requireRole(2), asyncHandler(async (req, r
   res.type('html').send(layout('Loan Portfolio Report', 'loan-portfolio', content, { subtitle: 'Full loan portfolio breakdown' }));
 }));
 
+// ── End of Day (EOD) — MBwin Standard ──
+router.get('/eod', requireRole(1), asyncHandler(async (req, res) => {
+  const date = req.query.date || new Date().toISOString().slice(0, 10);
+  const sql = (q, p) => store.query(q, p || []).then(r => r.rows);
+  const one = (q, p) => store.query(q, p || []).then(r => r.rows[0]);
+  const { v4: uuidv4 } = require('uuid');
+
+  // Check if today is already closed
+  const closed = await one("SELECT * FROM eod_logs WHERE date = $1", [date]);
+
+  // Today's transactions
+  const txs = await sql(`SELECT t.*, a.child_name, a.member_id FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id WHERE DATE(t.created_at) = $1 ORDER BY t.created_at ASC`, [date]);
+  const totalCollections = txs.filter(t => ['deposit','loan_payment','interest_income'].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
+  const totalDisbursements = txs.filter(t => ['withdrawal','loan_disbursement','penalty','fee'].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
+  const txCount = txs.length;
+
+  // Previous day's closing cash = today's opening cash
+  const prevClosed = await one("SELECT * FROM eod_logs WHERE date < $1 ORDER BY date DESC LIMIT 1", [date]);
+  const openingCash = prevClosed ? Number(prevClosed.closing_cash) : 0;
+  const closingCash = openingCash + totalCollections - totalDisbursements;
+
+  // Last 30 EOD closes
+  const history = await sql("SELECT * FROM eod_logs ORDER BY date DESC LIMIT 30");
+
+  // Quick stats
+  const totalMembers = Number((await one("SELECT COUNT(*) as c FROM accounts WHERE is_active=1")).c);
+  const activeLoans = Number((await one("SELECT COUNT(*) as c FROM loans WHERE status='active' OR status='overdue'")).c);
+
+  const toast = req.query.closed ? 'success:Day closed successfully.'
+    : req.query.error ? `error:${req.query.error}`
+    : '';
+
+  const fmtPct = v => (v >= 0 ? '+' : '') + v.toFixed(2);
+
+  const content = `
+  <div class="card">
+    <div class="card-body-padded" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap">
+      <div class="field" style="flex:0 0 200px"><label>Date</label>
+        <input type="date" id="eodDate" value="${date}" onchange="location.href='/admin/eod?date='+this.value" ${closed ? 'disabled' : ''}>
+      </div>
+      <div style="flex:1;text-align:right">
+        <span class="badge ${closed ? 'badge-green' : 'badge-yellow'}" style="font-size:14px;padding:6px 16px">
+          <i class="fas ${closed ? 'fa-check-circle' : 'fa-clock'}"></i> ${closed ? 'CLOSED' : 'OPEN'}
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+    <div class="stat-card" style="border-left:4px solid #3b82f6"><div class="stat-icon"><i class="fas fa-sun"></i></div><div class="stat-value">${fmt(openingCash)}</div><div class="stat-label">Opening Cash</div></div>
+    <div class="stat-card" style="border-left:4px solid #16a34a"><div class="stat-icon"><i class="fas fa-arrow-up"></i></div><div class="stat-value" style="color:#16a34a">${fmt(totalCollections)}</div><div class="stat-label">Collections</div></div>
+    <div class="stat-card" style="border-left:4px solid #ef4444"><div class="stat-icon"><i class="fas fa-arrow-down"></i></div><div class="stat-value" style="color:#ef4444">${fmt(totalDisbursements)}</div><div class="stat-label">Disbursements</div></div>
+    <div class="stat-card" style="border-left:4px solid #8b5cf6"><div class="stat-icon"><i class="fas fa-check-double"></i></div><div class="stat-value">${fmt(closingCash)}</div><div class="stat-label">Closing Cash</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-exchange-alt"></i></div><div class="stat-value">${txCount}</div><div class="stat-label">Transactions</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-users"></i></div><div class="stat-value">${totalMembers}</div><div class="stat-label">Active Members</div></div>
+  </div>
+
+  ${!closed ? `
+  <div class="card" style="border:2px solid var(--accent)">
+    <div class="card-header"><h3><i class="fas fa-lock"></i> Close Day — ${date}</h3></div>
+    <div class="card-body-padded">
+      <p style="margin-bottom:12px;color:var(--text-muted)">Sealing this day will prevent further editing. Generate the final collection report and cash position.</p>
+      <form method="post" action="/admin/eod/close" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap">
+        <input type="hidden" name="date" value="${date}">
+        <input type="hidden" name="opening_cash" value="${openingCash}">
+        <input type="hidden" name="total_collections" value="${totalCollections}">
+        <input type="hidden" name="total_disbursements" value="${totalDisbursements}">
+        <input type="hidden" name="closing_cash" value="${closingCash}">
+        <input type="hidden" name="tx_count" value="${txCount}">
+        <div class="field" style="flex:1"><label>Closing Notes</label><input type="text" name="notes" placeholder="Optional notes for this day" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px"></div>
+        <button type="submit" class="btn btn-secondary" onclick="return confirm('Seal end of day for ${date}? Closing cash: ${fmt(closingCash)}')"><i class="fas fa-lock"></i> Close Day</button>
+      </form>
+    </div>
+  </div>` : `
+  <div class="card" style="border:2px solid #16a34a;background:var(--card)">
+    <div class="card-header"><h3><i class="fas fa-check-circle" style="color:#16a34a"></i> Day Closed — ${date}</h3><span class="count">Closed by ${closed.closed_by || 'System'}</span></div>
+    <div class="card-body-padded" style="display:flex;gap:16px;flex-wrap:wrap">
+      <div><b>Opening:</b> ${fmt(Number(closed.opening_cash))}</div>
+      <div><b>Collections:</b> <span style="color:#16a34a">${fmt(Number(closed.total_collections))}</span></div>
+      <div><b>Disbursements:</b> <span style="color:#ef4444">${fmt(Number(closed.total_disbursements))}</span></div>
+      <div><b>Closing:</b> ${fmt(Number(closed.closing_cash))}</div>
+      <div><b>Transactions:</b> ${closed.tx_count}</div>
+      ${closed.notes ? '<div><b>Notes:</b> ' + closed.notes + '</div>' : ''}
+    </div>
+  </div>`}
+
+  <div class="stats-grid" style="grid-template-columns:2fr 1fr">
+    <div class="card" style="padding:0">
+      <div class="card-header"><h3><i class="fas fa-list"></i> Today's Transactions (${txCount})</h3>
+        <span class="count"><a href="/admin/reports/daily-collection?date=${date}"><i class="fas fa-external-link-alt"></i> Full Report</a></span>
+      </div>
+      <div class="card-body" style="padding:0;max-height:400px;overflow-y:auto">
+      <table>
+        <tr><th>TRN#</th><th>Time</th><th>Member</th><th>Type</th><th>Amount</th></tr>
+        ${txs.slice(0, 50).map(t => {
+          const isCredit = ['deposit','loan_payment','interest_income'].includes(t.type);
+          return '<tr>' +
+            '<td class="mono" style="font-size:11px;font-weight:600">' + fmtTrn(t) + '</td>' +
+            '<td class="mono" style="font-size:11px">' + (t.created_at||'').slice(11,19) + '</td>' +
+            '<td style="font-size:12px">' + (t.child_name||'') + '</td>' +
+            '<td><span class="badge ' + (isCredit ? 'badge-green' : 'badge-red') + '" style="font-size:10px">' + t.type.replace(/_/g,' ') + '</span></td>' +
+            '<td class="mono" style="font-weight:600;color:' + (isCredit ? '#16a34a' : '#dc2626') + '">' + (isCredit ? '+' : '-') + fmt(t.amount) + '</td>' +
+          '</tr>';
+        }).join('')}
+        ${txCount === 0 ? '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)"><i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;opacity:0.4"></i> No transactions yet today.</td></tr>' : ''}
+      </table></div>
+    </div>
+    <div class="card" style="padding:0">
+      <div class="card-header"><h3><i class="fas fa-history"></i> Last 30 Day Closes</h3></div>
+      <div class="card-body" style="padding:0;max-height:400px;overflow-y:auto">
+      <table>
+        <tr><th>Date</th><th>Closing Cash</th><th>Tx</th></tr>
+        ${history.map(h => '<tr>' +
+          '<td class="mono" style="font-size:12px;font-weight:600">' + h.date + '</td>' +
+          '<td class="mono">' + fmt(Number(h.closing_cash)) + '</td>' +
+          '<td>' + h.tx_count + '</td>' +
+        '</tr>').join('')}
+        ${history.length === 0 ? '<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--text-muted)">No days closed yet.</td></tr>' : ''}
+      </table></div>
+      <div class="card-body-padded" style="border-top:1px solid var(--border)">
+        <a href="/admin/eod/history" class="btn btn-outline btn-sm"><i class="fas fa-calendar-alt"></i> Full History</a>
+        <a href="/admin/reports/daily-collection?date=${date}&print=1" class="btn btn-outline btn-sm" target="_blank"><i class="fas fa-print"></i> Print Collection Report</a>
+      </div>
+    </div>
+  </div>`;
+  res.type('html').send(layout('End of Day', 'eod', content, { subtitle: date === new Date().toISOString().slice(0,10) ? 'Today\'s operations' : date, toast }));
+}));
+
+router.post('/eod/close', requireRole(2), asyncHandler(async (req, res) => {
+  const { v4: uuidv4 } = require('uuid');
+  const { date, opening_cash, total_collections, total_disbursements, closing_cash, tx_count, notes } = req.body;
+  if (!date) return res.redirect('/admin/eod?error=Date+required');
+  const existing = await store.query("SELECT * FROM eod_logs WHERE date = $1", [date]);
+  if (existing.rows.length > 0) return res.redirect('/admin/eod?error=Day+already+closed');
+  await store.query(
+    `INSERT INTO eod_logs (eod_id, date, opening_cash, total_collections, total_disbursements, closing_cash, tx_count, closed_by, notes, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [uuidv4(), date, Number(opening_cash||0), Number(total_collections||0), Number(total_disbursements||0), Number(closing_cash||0), Number(tx_count||0), req.session.adminName || 'admin', notes || '', new Date().toISOString()]
+  );
+  res.redirect('/admin/eod?date=' + date + '&closed=1');
+}));
+
+// ── EOD Full History ──
+router.get('/eod/history', requireRole(1), asyncHandler(async (req, res) => {
+  const sql = (q, p) => store.query(q, p || []).then(r => r.rows);
+  const logs = await sql("SELECT * FROM eod_logs ORDER BY date DESC LIMIT 365");
+  const totalTx = logs.reduce((s, l) => s + Number(l.tx_count), 0);
+  const totalCol = logs.reduce((s, l) => s + Number(l.total_collections), 0);
+  const totalDis = logs.reduce((s, l) => s + Number(l.total_disbursements), 0);
+  const content = `
+  <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-calendar-alt"></i></div><div class="stat-value">${logs.length}</div><div class="stat-label">Days Closed</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-exchange-alt"></i></div><div class="stat-value">${totalTx}</div><div class="stat-label">Total Transactions</div></div>
+    <div class="stat-card" style="border-left:4px solid #16a34a"><div class="stat-icon"><i class="fas fa-arrow-up"></i></div><div class="stat-value" style="color:#16a34a">${fmt(totalCol)}</div><div class="stat-label">Total Collections</div></div>
+    <div class="stat-card" style="border-left:4px solid #ef4444"><div class="stat-icon"><i class="fas fa-arrow-down"></i></div><div class="stat-value" style="color:#ef4444">${fmt(totalDis)}</div><div class="stat-label">Total Disbursements</div></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-history"></i> Full EOD History</h3></div>
+    <div class="card-body" style="padding:0">
+    <table>
+      <tr><th>Date</th><th>Opening</th><th>Collections</th><th>Disbursements</th><th>Closing Cash</th><th>Tx Count</th><th>Closed By</th><th>Notes</th></tr>
+      ${logs.map(l => `
+      <tr>
+        <td class="mono" style="font-weight:600">${l.date}</td>
+        <td class="mono">${fmt(Number(l.opening_cash))}</td>
+        <td class="mono" style="color:#16a34a">${fmt(Number(l.total_collections))}</td>
+        <td class="mono" style="color:#dc2626">${fmt(Number(l.total_disbursements))}</td>
+        <td class="mono" style="font-weight:600">${fmt(Number(l.closing_cash))}</td>
+        <td>${l.tx_count}</td>
+        <td>${l.closed_by || '-'}</td>
+        <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted)">${l.notes || '-'}</td>
+      </tr>`).join('')}
+      ${logs.length === 0 ? '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-muted)"><i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;opacity:0.4"></i> No days closed yet.</td></tr>' : ''}
+    </table></div>
+  </div>`;
+  res.type('html').send(layout('EOD History', 'eod', content, { subtitle: logs.length + ' days recorded' }));
+}));
+
+// ── End of Month — Member Statements ──
+router.get('/statements', requireRole(1), asyncHandler(async (req, res) => {
+  const sql = (q, p) => store.query(q, p || []).then(r => r.rows);
+  const one = (q, p) => store.query(q, p || []).then(r => r.rows[0]);
+  const year = req.query.year || new Date().getFullYear();
+  const month = req.query.month || new Date().getMonth() + 1;
+  const memberId = req.query.member_id || '';
+  const fromDate = year + '-' + String(month).padStart(2, '0') + '-01';
+  const lastDay = new Date(Number(year), Number(month), 0).getDate();
+  const toDate = year + '-' + String(month).padStart(2, '0') + '-' + String(lastDay).padStart(2, '0');
+
+  const members = await sql("SELECT account_id, child_name, member_id FROM accounts WHERE is_active = 1 ORDER BY child_name");
+
+  let statements;
+  if (memberId) {
+    statements = await sql(`
+      SELECT t.*, a.child_name, a.member_id FROM transactions t
+      JOIN accounts a ON t.account_id = a.account_id
+      WHERE a.member_id = $1 AND DATE(t.created_at) >= $2 AND DATE(t.created_at) <= $3
+      ORDER BY t.created_at ASC
+    `, [memberId, fromDate, toDate]);
+  } else {
+    statements = [];
+  }
+
+  // Balance before month
+  let openingBalance = 0;
+  if (memberId && statements.length > 0) {
+    const balBefore = await one(`
+      SELECT COALESCE(SUM(CASE WHEN type IN ('deposit','interest_credit','loan_disbursement','interest') THEN amount
+        WHEN type IN ('withdrawal','loan_payment','fee') THEN -amount ELSE 0 END), 0) as bal
+      FROM transactions t JOIN accounts a ON t.account_id = a.account_id
+      WHERE a.member_id = $1 AND DATE(t.created_at) < $2
+    `, [memberId, fromDate]);
+    openingBalance = Number(balBefore?.bal || 0);
+  }
+
+  let runningBalance = openingBalance;
+  const totalIn = statements.filter(t => ['deposit','interest_credit','interest','loan_disbursement'].includes(t.type)).reduce((s, t) => s + Number(t.amount), 0);
+  const totalOut = statements.filter(t => ['withdrawal','loan_payment','fee'].includes(t.type)).reduce((s, t) => s + Number(t.amount), 0);
+  const closingBalance = openingBalance + totalIn - totalOut;
+
+  const content = `
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-file-invoice"></i> Generate Monthly Statement</h3></div>
+    <div class="card-body-padded">
+    <form method="get" action="/admin/statements" style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end">
+      <div class="field"><label>Member</label>
+        <select name="member_id" required>
+          <option value="">Select member...</option>
+          ${members.map(m => '<option value="' + m.member_id + '" ' + (memberId === m.member_id ? 'selected' : '') + '>' + (m.child_name||'') + ' (' + m.member_id + ')</option>').join('')}
+        </select>
+      </div>
+      <div class="field"><label>Year</label><input type="number" name="year" value="${year}" min="2020" max="2030"></div>
+      <div class="field"><label>Month</label>
+        <select name="month">
+          ${Array.from({length:12}, (_, i) => '<option value="' + (i+1) + '" ' + (Number(month) === i+1 ? 'selected' : '') + '>' + new Date(2000, i).toLocaleString('en', {month:'long'}) + '</option>').join('')}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-secondary"><i class="fas fa-search"></i> Generate</button>
+    </form>
+    </div>
+  </div>
+  ${memberId && statements.length >= 0 ? `
+  <div class="card" style="border:2px solid var(--accent)">
+    <div class="card-header">
+      <h3><i class="fas fa-file-invoice"></i> Statement of Account</h3>
+      <span class="count">${new Date(year, month-1).toLocaleString('en', {month:'long', year:'numeric'})}</span>
+    </div>
+    <div class="card-body-padded" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
+      <div><b>Member:</b> ${statements[0]?.child_name || '-'}</div>
+      <div><b>Member ID:</b> ${memberId}</div>
+      <div><b>Opening Balance:</b> ${fmt(openingBalance)}</div>
+      <div><b>Total Deposits:</b> <span style="color:#16a34a">${fmt(totalIn)}</span></div>
+      <div><b>Total Withdrawals:</b> <span style="color:#dc2626">${fmt(totalOut)}</span></div>
+      <div><b>Closing Balance:</b> <b>${fmt(closingBalance)}</b></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-list"></i> Transaction Details</h3>
+      <span class="count">
+        <a href="/admin/statements?member_id=${memberId}&year=${year}&month=${month}&export=csv"><i class="fas fa-file-csv"></i> CSV</a>
+        <a href="/admin/statements?member_id=${memberId}&year=${year}&month=${month}&print=1" target="_blank"><i class="fas fa-print"></i> Print</a>
+      </span>
+    </div>
+    <div class="card-body" style="padding:0">
+    <table>
+      <tr><th>Date</th><th>TRN#</th><th>Description</th><th>Debit</th><th>Credit</th><th>Balance</th></tr>
+      <tr style="font-weight:600;background:var(--bg-muted)">
+        <td colspan="5">Opening Balance</td><td class="mono">${fmt(openingBalance)}</td>
+      </tr>
+      ${statements.map(t => {
+        const amt = Number(t.amount);
+        const isCredit = ['deposit','interest_credit','interest','loan_disbursement'].includes(t.type);
+        runningBalance += isCredit ? amt : -amt;
+        return '<tr>' +
+          '<td class="mono" style="font-size:11px">' + (t.created_at||'').slice(0,10) + '</td>' +
+          '<td class="mono" style="font-size:11px;font-weight:600">' + fmtTrn(t) + '</td>' +
+          '<td style="font-size:12px">' + (t.description||t.type.replace(/_/g,' ')) + '</td>' +
+          '<td class="mono" style="color:#dc2626">' + (!isCredit ? fmt(amt) : '') + '</td>' +
+          '<td class="mono" style="color:#16a34a">' + (isCredit ? fmt(amt) : '') + '</td>' +
+          '<td class="mono" style="font-weight:600">' + fmt(runningBalance) + '</td>' +
+        '</tr>';
+      }).join('')}
+      <tr style="font-weight:700;background:var(--bg-muted)">
+        <td colspan="3">TOTAL</td>
+        <td class="mono" style="color:#dc2626">${fmt(totalOut)}</td>
+        <td class="mono" style="color:#16a34a">${fmt(totalIn)}</td>
+        <td class="mono">${fmt(closingBalance)}</td>
+      </tr>
+    </table></div>
+  </div>` : memberId ? '<div class="card"><div class="card-body-padded" style="text-align:center;color:var(--text-muted);padding:40px"><i class="fas fa-inbox" style="font-size:48px;opacity:0.3;display:block;margin-bottom:12px"></i> No transactions for this period.</div></div>' : ''}`;
+  res.type('html').send(layout('Member Statements', 'statements', content, { subtitle: 'Monthly statement of account' }));
+}));
+
 // ── Clear All User Data (keep reference tables) ──
 router.get('/reset-database/confirm', requireRole(4), asyncHandler(async (req, res) => {
   const err = req.query.error ? req.query.error : '';

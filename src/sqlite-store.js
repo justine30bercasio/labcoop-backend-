@@ -26,6 +26,7 @@ function getDb() {
     try { db.exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('gcash_name', 'LabCoop Savings')"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS transactions (transaction_id TEXT PRIMARY KEY, trn_number INTEGER UNIQUE, account_id TEXT NOT NULL, goal_id TEXT, type VARCHAR(50) NOT NULL, amount DECIMAL(12,2) NOT NULL, balance_before DECIMAL(12,2), balance_after DECIMAL(12,2), description TEXT DEFAULT '', reference_type VARCHAR(50), reference_id TEXT, created_at TEXT)"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS sequences (name TEXT NOT NULL, year INTEGER NOT NULL, value INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (name, year))"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS eod_logs (eod_id TEXT PRIMARY KEY, date TEXT NOT NULL UNIQUE, opening_cash DECIMAL(12,2) DEFAULT 0, total_collections DECIMAL(12,2) DEFAULT 0, total_disbursements DECIMAL(12,2) DEFAULT 0, closing_cash DECIMAL(12,2) DEFAULT 0, tx_count INTEGER DEFAULT 0, closed_by TEXT, notes TEXT DEFAULT '', created_at TEXT)"); } catch (_) {}
     try { db.exec("ALTER TABLE transactions ADD COLUMN trn_number INTEGER"); } catch (_) {}
     const count = db.prepare("SELECT COUNT(*) as c FROM gl_accounts").get();
     if (count.c === 0) {

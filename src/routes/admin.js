@@ -4549,7 +4549,7 @@ async function enableForeignKeys() {
 
 router.get('/backup', requireRole(1), asyncHandler(async (req, res) => {
   const tables = await getAllTables();
-  const toast = req.query.restored === 'ok' ? 'success:Data restored successfully.'
+  const toast = req.query.restored === 'ok' ? 'success:Data restored successfully. A snapshot of your previous data is saved in Backup History.'
     : req.query.failed ? `error:${req.query.failed}`
     : '';
   const lastBackup = (await store.query("SELECT * FROM backup_logs WHERE status = 'completed' ORDER BY created_at DESC LIMIT 1")).rows[0];
@@ -4703,21 +4703,30 @@ router.post('/backup/restore', requireRole(3), multer({ dest: path.join(__dirnam
     const rows = backup.data[t];
     if (!Array.isArray(rows)) return null;
     totalRows += rows.length;
-    return { table: t, count: rows.length, sample: rows.slice(0, 3) };
+    const sample = rows.slice(0, 3);
+    const cols = sample.length > 0 ? Object.keys(sample[0]) : [];
+    const visibleCols = cols.slice(0, 5);
+    const extraCols = cols.length - 5;
+    return { table: t, count: rows.length, sample, cols, visibleCols, extraCols };
   }).filter(Boolean);
 
   const fileSize = req.file.size;
   const filename = req.file.originalname;
 
   const previewHtml = preview.map(p => `
-    <div style="margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600;padding:6px 0">
-        <span>${p.table} <span style="font-weight:400;color:var(--text-muted)">(${p.count} rows)</span></span>
+    <div style="margin-bottom:16px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;background:var(--bg-muted)">
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:600;padding:0 0 8px 0;border-bottom:1px solid var(--border)">
+        <span><i class="fas fa-table"></i> ${p.table} <span style="font-weight:400;color:var(--text-muted)">(${p.count.toLocaleString()} rows)</span></span>
+        <span style="font-size:11px;color:var(--text-muted)">${p.cols.length} columns</span>
       </div>
-      <div class="preview-table" style="${p.count > 10 ? 'max-height:120px' : ''}">
-      <table>
-        <tr>${p.sample.length > 0 ? Object.keys(p.sample[0]).map(k => '<th>' + k + '</th>').join('') : '<th>No data</th>'}</tr>
-        ${p.sample.map(row => '<tr>' + Object.values(row).map(v => '<td>' + (v === null ? '<span style="color:var(--text-muted)">NULL</span>' : String(v).length > 30 ? String(v).slice(0,30) + '...' : String(v)) + '</td>').join('') + '</tr>').join('')}
+      <div style="overflow-x:auto;margin-top:8px">
+      <table style="font-size:11px;white-space:nowrap;min-width:100%">
+        ${p.sample.length > 0 ? '<tr>' + p.visibleCols.map(k => '<th style="padding:4px 8px;font-size:10px;text-transform:uppercase;color:var(--text-muted)">' + k + '</th>').join('') + (p.extraCols > 0 ? '<th style="padding:4px 8px;font-size:10px;color:var(--text-muted)">+' + p.extraCols + ' more</th>' : '') + '</tr>' : ''}
+        ${p.sample.map(row => '<tr>' + p.visibleCols.map(k => {
+          const v = row[k];
+          const s = v === null ? '<span style="color:var(--text-muted);font-style:italic">NULL</span>' : String(v).length > 25 ? String(v).slice(0,25) + '...' : String(v);
+          return '<td style="padding:4px 8px;max-width:160px;overflow:hidden;text-overflow:ellipsis">' + s + '</td>';
+        }).join('') + (p.extraCols > 0 ? '<td style="padding:4px 8px;color:var(--text-muted)"><i class="fas fa-ellipsis-h"></i></td>' : '') + '</tr>').join('')}
       </table>
       </div>
     </div>
@@ -4733,14 +4742,34 @@ router.post('/backup/restore', requireRole(3), multer({ dest: path.join(__dirnam
         <div class="stat-card"><div class="stat-icon"><i class="fas fa-file"></i></div><div class="stat-value">${fmtSize(fileSize)}</div><div class="stat-label">File Size</div></div>
         <div class="stat-card"><div class="stat-icon"><i class="fas fa-check-circle" style="color:${originalChecksum ? '#16a34a' : '#94a3b8'}"></i></div><div class="stat-value">${originalChecksum ? 'Verified' : 'No checksum'}</div><div class="stat-label">Integrity</div></div>
       </div>
-      <p style="color:var(--amber);font-weight:600;margin-bottom:12px"><i class="fas fa-exclamation-triangle"></i> Restoring will <b>overwrite existing data</b> in the selected tables. This is irreversible. FK constraints are temporarily disabled for safe restore.</p>
+      <p style="color:var(--amber);font-weight:600;margin-bottom:12px"><i class="fas fa-exclamation-triangle"></i> Restoring will <b>overwrite existing data</b> in the selected tables. FK constraints are temporarily disabled for safe restore. <span style="font-weight:400;color:var(--text-muted)">A snapshot of current data is auto-saved before restore so you can roll back.</span></p>
       ${previewHtml}
-      <form method="post" action="/admin/backup/restore/confirm" style="display:flex;gap:12px;margin-top:12px">
+      <form id="restoreConfirmForm" method="post" action="/admin/backup/restore/confirm" style="display:flex;gap:12px;margin-top:12px">
         <input type="hidden" name="filepath" value="${filePath}">
         <input type="hidden" name="tables" value="${tableNames.join(',')}">
-        <button type="submit" class="btn btn-secondary" onclick="return confirm('Are you ABSOLUTELY SURE? This will overwrite ${totalRows} records across ${tableNames.length} tables. This is irreversible.')"><i class="fas fa-exclamation-triangle"></i> Confirm Restore</button>
+        <button type="submit" class="btn btn-secondary" id="confirmRestoreBtn" onclick="event.preventDefault();confirmRestore()"><i class="fas fa-exclamation-triangle"></i> Confirm &amp; Restore</button>
         <a href="/admin/backup" class="btn btn-cancel">Cancel</a>
       </form>
+      <div id="restoreProgress" style="display:none;margin-top:16px">
+        <div style="display:flex;align-items:center;gap:12px;padding:16px;background:var(--bg-muted);border-radius:var(--radius-sm);border:1px solid var(--border)">
+          <div class="spinner" style="width:24px;height:24px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0"></div>
+          <div>
+            <div style="font-weight:600;font-size:14px">Restoring backup…</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:2px">This may take a while for large datasets. Page will redirect when done.</div>
+          </div>
+        </div>
+      </div>
+      <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+      <script>
+      function confirmRestore() {
+        var total = ${totalRows};
+        if (!confirm('Are you ABSOLUTELY SURE? OVERWRITE ' + total.toLocaleString() + ' records across ' + ${tableNames.length} + ' tables? This is IRREVERSIBLE.')) return;
+        document.getElementById('confirmRestoreBtn').disabled = true;
+        document.getElementById('confirmRestoreBtn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Restoring…';
+        document.getElementById('restoreProgress').style.display = 'block';
+        document.getElementById('restoreConfirmForm').submit();
+      }
+      </script>
     </div>
   </div>`;
   res.type('html').send(layout('Restore Preview', 'backup', content, { subtitle: 'Review before committing' }));
@@ -4761,6 +4790,26 @@ router.post('/backup/restore/confirm', requireRole(3), asyncHandler(async (req, 
     return res.redirect('/admin/backup?failed=Invalid+backup+file');
   }
   try {
+    // ── Auto-snapshot current data before restore ──
+    const snapshotTables = await getAllTables();
+    const snapshot = { manifest: { app: 'LabCoop', version: '1.0.0', generated_at: new Date().toISOString(), tables: snapshotTables, total_tables: snapshotTables.length, total_rows: 0, note: 'auto-backup before restore' }, data: {} };
+    for (const st of snapshotTables) {
+      try {
+        const dump = await dumpTable(st);
+        snapshot.data[st] = dump;
+        snapshot.manifest.total_rows += dump.length;
+      } catch (_) {}
+    }
+    const snapshotJson = JSON.stringify(snapshot, null, 2);
+    const snapshotFile = path.join(__dirname, '..', 'uploads', 'pre_restore_' + new Date().toISOString().replace(/[:.]/g, '-') + '.json');
+    fs.writeFileSync(snapshotFile, snapshotJson, 'utf8');
+    const snapshotChecksum = sha256(snapshotJson);
+    await store.query(
+      'INSERT INTO backup_logs (backup_id, filename, file_size, checksum, table_count, row_count, status, notes, created_by, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+      [uuidv4(), path.basename(snapshotFile), Buffer.byteLength(snapshotJson, 'utf8'), snapshotChecksum, snapshotTables.length, snapshot.manifest.total_rows, 'pre_restore_snapshot', 'Auto-saved before restore', req.session.adminName || 'admin', new Date().toISOString()]
+    );
+
+    // ── Perform restore ──
     await disableForeignKeys();
     for (const t of tables) {
       const rows = backup.data[t];

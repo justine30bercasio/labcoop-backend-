@@ -4,5 +4,6 @@ node_modules/
 *.log
 tmp/
 temp/
+uploads/
 check-db.js
 clean-db.js

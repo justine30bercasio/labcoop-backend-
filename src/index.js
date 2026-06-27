@@ -173,6 +173,12 @@ async function ensureDb() {
         q.map(v => typeof v === 'string' ? v : JSON.stringify(v))
       );
     }
+    await store.query(
+      `INSERT INTO savings_products (product_id, name, description, interest_rate, interest_frequency, min_balance, is_active, created_at)
+       VALUES ('sp_regular', 'Regular Savings', 'Default savings account with automatic interest', 0.02, 'monthly', 0, 1, $1)
+       ON CONFLICT (product_id) DO UPDATE SET interest_rate = 0.02`,
+      [new Date().toISOString()]
+    );
     console.log('Seed data ensured.');
   } catch (err) {
     console.error('Seed failed:', err.message);
@@ -196,12 +202,29 @@ async function ensureAdmin() {
   }
 }
 
+async function ensureSavingsProduct() {
+  try {
+    const existing = await store.query("SELECT * FROM savings_products WHERE product_id = 'sp_regular'");
+    if (!existing.rows.length) {
+      await store.query(
+        `INSERT INTO savings_products (product_id, name, description, interest_rate, interest_frequency, min_balance, is_active, created_at)
+         VALUES ('sp_regular', 'Regular Savings', 'Default savings account with automatic interest', 0.02, 'monthly', 0, 1, $1)`,
+        [new Date().toISOString()]
+      );
+      console.log('Default savings product created: sp_regular (2% monthly)');
+    }
+  } catch (err) {
+    console.error('Savings product seed failed (non-fatal):', err.message);
+  }
+}
+
 (async () => {
   if (isPostgres) {
     await store._ensureSchema();
   }
   await ensureDb();
   await ensureAdmin();
+  await ensureSavingsProduct();
   startServer();
 })();
 const accountsRouter = require('./routes/accounts');

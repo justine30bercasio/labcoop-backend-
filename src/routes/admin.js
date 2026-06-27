@@ -2017,6 +2017,10 @@ router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {
   const gcashNumber = await store.getSetting('gcash_number');
   const gcashName = await store.getSetting('gcash_name');
 
+  const savingsProduct = await one("SELECT * FROM savings_products WHERE product_id = 'sp_regular'");
+  const savingsRate = savingsProduct ? (parseFloat(savingsProduct.interest_rate) * 100).toFixed(1) : '2.0';
+  const savingsFrequency = savingsProduct?.interest_frequency || 'monthly';
+
   const tip = isPostgres ? '' : `<div class="card" style="margin-top:20px"><div class="card-body-padded"><b>&#x26A0; SQLite:</b> Database file is <code>${(dbSize / 1024).toFixed(1)} KB</code> on disk at <code>backend/labcoop.db</code></div></div>`;
 
   const content = `
@@ -2045,7 +2049,31 @@ router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {
   </div>
 
   <div class="card">
-    <div class="card-header"><h3>&#x1F4B1; GCash Settings</h3></div>
+    <div class="card-header"><h3><i class="fas fa-piggy-bank"></i> Savings Interest Rate</h3></div>
+    <div class="card-body-padded">
+      <form id="savingsRateForm" style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end">
+        <div class="field"><label><i class="fas fa-percent"></i> Interest Rate (%)</label>
+          <input type="number" id="savingsRate" value="${savingsRate}" min="0" max="100" step="0.1" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px">
+        </div>
+        <div class="field"><label><i class="fas fa-calendar"></i> Frequency</label>
+          <select id="savingsFrequency" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px">
+            <option value="daily" ${savingsFrequency === 'daily' ? 'selected' : ''}>Daily</option>
+            <option value="monthly" ${savingsFrequency === 'monthly' ? 'selected' : ''}>Monthly</option>
+            <option value="yearly" ${savingsFrequency === 'yearly' ? 'selected' : ''}>Yearly</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-secondary"><i class="fas fa-floppy-disk"></i> Save Rate</button>
+      </form>
+      <p style="margin-top:10px;font-size:12px;color:var(--text-muted)">
+        <i class="fas fa-info-circle"></i> Applies to all children without a specific savings product assigned.
+        Interest is calculated as: balance &times; rate. Current scheduler runs hourly.
+        <a href="/admin/savings-products" style="margin-left:6px"><i class="fas fa-external-link-alt"></i> Manage products</a>
+      </p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-mobile-alt"></i> GCash Settings</h3></div>
     <div class="card-body">
       <form id="gcashForm" style="display:flex;flex-direction:column;gap:12px">
         <div><label style="font-weight:600;display:block;margin-bottom:4px">GCash Number</label>
@@ -2078,6 +2106,19 @@ router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {
       showGcashToast(d.success ? 'GCash settings saved!' : d.message||'Error', !d.success);
     }).catch(function(e){ showGcashToast(e.message, true); });
   });
+  document.getElementById('savingsRateForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var rate = parseFloat(document.getElementById('savingsRate').value);
+    var freq = document.getElementById('savingsFrequency').value;
+    if(isNaN(rate) || rate < 0){ showGcashToast('Enter a valid interest rate', true); return; }
+    fetch('/admin/settings/savings-rate', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ rate: rate / 100, frequency: freq })
+    }).then(function(r){ return r.json(); }).then(function(d){
+      showGcashToast(d.success ? 'Savings rate updated!' : d.message||'Error', !d.success);
+    }).catch(function(e){ showGcashToast(e.message, true); });
+  });
   </script>
 
   <div class="card">
@@ -2103,6 +2144,29 @@ router.post('/settings/gcash', requireRole(3), asyncHandler(async (req, res) => 
   await store.setSetting('gcash_number', req.body.gcash_number.trim());
   await store.setSetting('gcash_name', req.body.gcash_name.trim());
   res.json({ success: true });
+}));
+
+router.post('/settings/savings-rate', requireRole(3), asyncHandler(async (req, res) => {
+  const rate = parseFloat(req.body.rate);
+  const frequency = req.body.frequency || 'monthly';
+  if (isNaN(rate) || rate < 0 || rate > 1) {
+    return res.status(400).json({ success: false, message: 'Rate must be between 0 and 1 (0% to 100%)' });
+  }
+  if (!['daily', 'monthly', 'yearly'].includes(frequency)) {
+    return res.status(400).json({ success: false, message: 'Invalid frequency' });
+  }
+  await store.query(
+    'UPDATE savings_products SET interest_rate = $1, interest_frequency = $2 WHERE product_id = $3',
+    [rate, frequency, 'sp_regular']
+  );
+  if ((await store.query("SELECT COUNT(*) as c FROM savings_products WHERE product_id = 'sp_regular'")).rows[0].c === '0') {
+    await store.query(
+      `INSERT INTO savings_products (product_id, name, description, interest_rate, interest_frequency, min_balance, is_active, created_at)
+       VALUES ('sp_regular', 'Regular Savings', 'Default savings account with automatic interest', $1, $2, 0, 1, $3)`,
+      [rate, frequency, new Date().toISOString()]
+    );
+  }
+  res.json({ success: true, rate, frequency });
 }));
 
 router.get('/reset-data/confirm', requireRole(4), asyncHandler(async (req, res) => {

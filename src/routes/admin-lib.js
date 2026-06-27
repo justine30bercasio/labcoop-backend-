@@ -14,17 +14,23 @@ function layout(title, active, content, opts = {}) {
       { icon: '<i class="fas fa-hand-holding-hand"></i>', label: 'Loan Products', href: '/admin/loan-products', key: 'loan-products' },
       { icon: '<i class="fas fa-piggy-bank"></i>', label: 'Savings Products', href: '/admin/savings-products', key: 'savings-products' },
     ]},
-    { icon: '<i class="fas fa-chart-simple"></i>', label: 'Reports & Audit', key: 'reports', children: [
-      { icon: '<i class="fas fa-file-lines"></i>', label: 'Audit Reports', href: '/admin/audit', key: 'audit' },
-      { icon: '<i class="fas fa-clock"></i>', label: 'Loan Aging', href: '/admin/reports/loan-aging', key: 'loan-aging' },
+    { icon: '<i class="fas fa-piggy-bank"></i>', label: 'Savings Reports', key: 'savings-reports', children: [
+      { icon: '<i class="fas fa-coins"></i>', label: 'Deposit Summary', href: '/admin/reports/deposit-summary', key: 'deposit-summary' },
       { icon: '<i class="fas fa-calendar-day"></i>', label: 'Daily Collection', href: '/admin/reports/daily-collection', key: 'daily-collection' },
-      { icon: '<i class="fas fa-piggy-bank"></i>', label: 'Deposit Summary', href: '/admin/reports/deposit-summary', key: 'deposit-summary' },
-      { icon: '<i class="fas fa-sack-dollar"></i>', label: 'Loan Portfolio', href: '/admin/reports/loan-portfolio', key: 'loan-portfolio' },
       { icon: '<i class="fas fa-user"></i>', label: 'Member Ledger', href: '/admin/reports/member-ledger', key: 'member-ledger' },
+      { icon: '<i class="fas fa-file-lines"></i>', label: 'Audit Reports', href: '/admin/audit', key: 'audit' },
+    ]},
+    { icon: '<i class="fas fa-scale-balanced"></i>', label: 'Financial Reports', key: 'fin-reports', children: [
       { icon: '<i class="fas fa-scale-balanced"></i>', label: 'Trial Balance', href: '/admin/gl/trial-balance', key: 'gl' },
       { icon: '<i class="fas fa-file-invoice"></i>', label: 'Balance Sheet', href: '/admin/gl/balance-sheet', key: 'gl' },
       { icon: '<i class="fas fa-chart-line"></i>', label: 'P&L', href: '/admin/gl/profit-and-loss', key: 'gl' },
       { icon: '<i class="fas fa-book"></i>', label: 'Ledger', href: '/admin/gl/ledger', key: 'gl' },
+    ]},
+    { icon: '<i class="fas fa-sack-dollar"></i>', style: 'opacity:0.55', label: 'Loan Reports (Future)', key: 'loan-reports', children: [
+      { icon: '<i class="fas fa-clock"></i>', label: 'Loan Aging', href: '/admin/reports/loan-aging', key: 'loan-aging' },
+      { icon: '<i class="fas fa-chart-pie"></i>', label: 'Loan Portfolio', href: '/admin/reports/loan-portfolio', key: 'loan-portfolio' },
+    ]},
+    { icon: '<i class="fas fa-clipboard-list"></i>', label: 'Audit & Admin', key: 'audit-admin', children: [
       { icon: '<i class="fas fa-clipboard-list"></i>', label: 'Audit Log', href: '/admin/audit-log', key: 'audit-log' },
       { icon: '<i class="fas fa-user-shield"></i>', label: 'Admin Users', href: '/admin/users', key: 'users' },
     ]},
@@ -56,7 +62,8 @@ function layout(title, active, content, opts = {}) {
       const badge = counts && counts[c.key] !== undefined ? `<span class="badge-count">${counts[c.key]}</span>` : '';
       return `<a href="${c.href}"${cc}><span class="icon">${c.icon}</span> <span>${c.label}</span>${badge}</a>`;
     }).join('');
-    return `<div class="menu-group${open}" data-key="${g.key}">
+    const styleAttr = g.style ? ` style="${g.style}"` : '';
+    return `<div class="menu-group${open}" data-key="${g.key}"${styleAttr}>
       <div class="menu-parent" data-toggle-group="${g.key}">
         <span class="icon">${g.icon}</span>
         <span>${g.label}</span>

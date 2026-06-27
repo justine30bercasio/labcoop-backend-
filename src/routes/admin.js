@@ -4504,13 +4504,13 @@ router.post('/eoy/close', requireRole(3), asyncHandler(async (req, res) => {
 const BACKUP_TABLES = [
   'accounts', 'transactions', 'goal_jars', 'badges', 'loans', 'loan_payments',
   'coop_goals', 'coop_contributions', 'savings_applications', 'standing_orders',
-  'withdrawal_requests', 'online_deposits', 'quiz_scores', 'settings', 'eod_logs',
+  'withdrawal_requests', 'online_deposits', 'settings', 'eod_logs',
 ];
 
 const BACKUP_TABLE_ORDER = [
   'accounts', 'goal_jars', 'badges', 'loans', 'loan_payments', 'settings',
   'savings_applications', 'standing_orders', 'coop_goals', 'coop_contributions',
-  'withdrawal_requests', 'online_deposits', 'quiz_scores', 'eod_logs', 'transactions',
+  'withdrawal_requests', 'online_deposits', 'eod_logs', 'transactions',
 ];
 
 // Helper: collect all data from a table
@@ -4764,7 +4764,6 @@ router.post('/backup/restore/confirm', requireRole(3), asyncHandler(async (req, 
       if (t === 'standing_orders') await store.query('DELETE FROM standing_orders');
       if (t === 'withdrawal_requests') await store.query('DELETE FROM withdrawal_requests');
       if (t === 'online_deposits') await store.query('DELETE FROM online_deposits');
-      if (t === 'quiz_scores') await store.query('DELETE FROM quiz_scores');
       if (t === 'eod_logs') await store.query('DELETE FROM eod_logs');
       if (t === 'settings') await store.query('DELETE FROM settings');
 

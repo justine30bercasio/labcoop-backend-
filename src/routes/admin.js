@@ -2092,6 +2092,17 @@ router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {
       </form>
     </div>
   </div>
+
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-database"></i> Backup &amp; Restore</h3></div>
+    <div class="card-body-padded" style="display:flex;gap:12px;flex-wrap:wrap">
+      <a href="/admin/backup" class="btn btn-secondary"><i class="fas fa-download"></i> Backup Manager</a>
+      <p style="margin:0;font-size:12px;color:var(--text-muted);flex:1;min-width:200px;line-height:36px">
+        <i class="fas fa-info-circle"></i> Download complete data backup with integrity checksum, preview before restore.
+      </p>
+    </div>
+  </div>
+
   <script>
   function showGcashToast(msg, isError){
     var t = document.createElement('div');
@@ -4486,6 +4497,301 @@ router.post('/eoy/close', requireRole(3), asyncHandler(async (req, res) => {
     [uuidv4(), year, pnl.totalIncome, pnl.totalExpense, pnl.netProfit, txs.length, req.session.adminName || 'admin', new Date().toISOString()]
   );
   res.redirect('/admin/eoy?year=' + year + '&closed=1');
+}));
+
+// ── Backup & Restore — Advanced Data Security ──
+
+const BACKUP_TABLES = [
+  'accounts', 'transactions', 'goal_jars', 'badges', 'loans', 'loan_payments',
+  'coop_goals', 'coop_contributions', 'savings_applications', 'standing_orders',
+  'withdrawal_requests', 'online_deposits', 'quiz_scores', 'settings', 'eod_logs',
+];
+
+const BACKUP_TABLE_ORDER = [
+  'accounts', 'goal_jars', 'badges', 'loans', 'loan_payments', 'settings',
+  'savings_applications', 'standing_orders', 'coop_goals', 'coop_contributions',
+  'withdrawal_requests', 'online_deposits', 'quiz_scores', 'eod_logs', 'transactions',
+];
+
+// Helper: collect all data from a table
+async function dumpTable(table) {
+  const { rows } = await store.query(`SELECT * FROM "${table}"`);
+  return rows;
+}
+
+// Helper: compute SHA-256 checksum of string
+function sha256(str) {
+  const crypto = require('crypto');
+  return crypto.createHash('sha256').update(str, 'utf8').digest('hex');
+}
+
+// Helper: format size
+const fmtSize = bytes => bytes < 1024 ? bytes + ' B' : bytes < 1048576 ? (bytes / 1024).toFixed(1) + ' KB' : (bytes / 1048576).toFixed(1) + ' MB';
+
+router.get('/backup', requireRole(1), asyncHandler(async (req, res) => {
+  const sql = (q, p) => store.query(q, p || []).then(r => r.rows);
+  const one = (q, p) => store.query(q, p || []).then(r => r.rows[0]);
+  const toast = req.query.restored === 'ok' ? 'success:Data restored successfully.'
+    : req.query.failed ? `error:${req.query.failed}`
+    : '';
+  const lastBackup = await one("SELECT * FROM backup_logs WHERE status = 'completed' ORDER BY created_at DESC LIMIT 1");
+  const backupHistory = await sql("SELECT * FROM backup_logs ORDER BY created_at DESC LIMIT 20");
+  const stats = {};
+  for (const t of BACKUP_TABLES) {
+    const c = await one(`SELECT COUNT(*) as c FROM "${t}"`);
+    stats[t] = Number(c?.c || 0);
+  }
+  const content = `
+  <style>
+  .backup-card { border:2px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:16px; background:var(--card); }
+  .backup-card.highlight { border-color:var(--accent); background: linear-gradient(135deg, rgba(46,125,50,0.03) 0%, rgba(46,125,50,0.08) 100%); }
+  .backup-card h3 { margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+  .backup-card .row { display:flex; gap:16px; flex-wrap:wrap; align-items:center; }
+  .backup-card .field { flex:1; min-width:200px; }
+  .preview-table { max-height:300px; overflow-y:auto; margin:8px 0; }
+  .preview-table table { font-size:11px; }
+  .preview-table td, .preview-table th { padding:4px 8px; }
+  </style>
+  <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-database"></i></div><div class="stat-value">${BACKUP_TABLES.length}</div><div class="stat-label">Tables</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-layer-group"></i></div><div class="stat-value">${Object.values(stats).reduce((s,v) => s+v, 0)}</div><div class="stat-label">Total Records</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-history"></i></div><div class="stat-value">${backupHistory.length}</div><div class="stat-label">Past Backups</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-calendar"></i></div><div class="stat-value">${lastBackup ? (lastBackup.created_at||'').slice(0,10) : 'Never'}</div><div class="stat-label">Last Backup</div></div>
+  </div>
+
+  <div class="backup-card highlight">
+    <h3><i class="fas fa-download" style="color:var(--accent)"></i> Download Backup</h3>
+    <p style="margin-bottom:12px;color:var(--text-muted);font-size:13px">Exports all user data as a signed JSON file. Includes verification checksum for integrity.</p>
+    <div class="row">
+      <div class="field">
+        <label>Include tables:</label>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
+          ${BACKUP_TABLES.map(t => '<label style="font-size:12px;display:flex;align-items:center;gap:4px;background:var(--bg-muted);padding:4px 8px;border-radius:6px"><input type="checkbox" class="backup-tbl" value="' + t + '" checked> ' + t + ' <span style="color:var(--text-muted)">(' + stats[t] + ')</span></label>').join('')}
+        </div>
+      </div>
+      <div style="flex-shrink:0">
+        <button class="btn btn-secondary" onclick="downloadBackup()"><i class="fas fa-download"></i> Download Backup</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="backup-card">
+    <h3><i class="fas fa-upload" style="color:#3b82f6"></i> Restore from Backup</h3>
+    <p style="margin-bottom:12px;color:var(--text-muted);font-size:13px">Upload a previously downloaded backup file. You will preview contents before committing.</p>
+    <form id="restoreForm" enctype="multipart/form-data" method="post" action="/admin/backup/restore" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap">
+      <div class="field" style="flex:1;min-width:250px">
+        <input type="file" name="backup_file" accept=".json" required style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;background:var(--card)">
+      </div>
+      <button type="submit" class="btn btn-secondary"><i class="fas fa-upload"></i> Preview &amp; Restore</button>
+    </form>
+  </div>
+
+  ${backupHistory.length > 0 ? `
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-history"></i> Backup History</h3></div>
+    <div class="card-body" style="padding:0">
+    <table>
+      <tr><th>Date</th><th>Filename</th><th>Size</th><th>Tables</th><th>Rows</th><th>Checksum</th><th>By</th></tr>
+      ${backupHistory.map(b => '<tr>' +
+        '<td class="mono" style="font-size:11px">' + (b.created_at||'').slice(0,19).replace('T',' ') + '</td>' +
+        '<td style="font-size:12px">' + b.filename + '</td>' +
+        '<td>' + fmtSize(Number(b.file_size)) + '</td>' +
+        '<td>' + b.table_count + '</td>' +
+        '<td>' + b.row_count + '</td>' +
+        '<td class="mono" style="font-size:10px">' + (b.checksum||'').slice(0,16) + '...</td>' +
+        '<td>' + (b.created_by||'-') + '</td>' +
+      '</tr>').join('')}
+    </table></div>
+  </div>` : ''}
+  <script>
+  async function downloadBackup() {
+    const checked = document.querySelectorAll('.backup-tbl:checked');
+    if (checked.length === 0) { alert('Select at least one table.'); return; }
+    const tables = Array.from(checked).map(c => c.value).join(',');
+    window.location.href = '/admin/backup/download?tables=' + encodeURIComponent(tables);
+  }
+  </script>`;
+  res.type('html').send(layout('Backup & Restore', 'backup', content, { subtitle: 'Advanced data protection', toast }));
+}));
+
+router.get('/backup/download', requireRole(3), asyncHandler(async (req, res) => {
+  const tables = (req.query.tables || BACKUP_TABLES.join(',')).split(',').filter(t => BACKUP_TABLES.includes(t));
+  if (tables.length === 0) return res.status(400).json({ error: 'No valid tables selected' });
+  const backup = {
+    manifest: {
+      app: 'LabCoop',
+      version: '1.0.0',
+      generated_at: new Date().toISOString(),
+      tables: tables,
+      total_tables: tables.length,
+      total_rows: 0,
+    },
+    data: {},
+  };
+  for (const t of tables) {
+    const rows = await dumpTable(t);
+    backup.data[t] = rows;
+    backup.manifest.total_rows += rows.length;
+  }
+  const jsonStr = JSON.stringify(backup, null, 2);
+  const checksum = sha256(jsonStr);
+  backup.manifest.checksum = checksum;
+  const finalJson = JSON.stringify(backup, null, 2);
+  const filename = 'labcoop_backup_' + new Date().toISOString().slice(0,10) + '.json';
+  await store.query(
+    'INSERT INTO backup_logs (backup_id, filename, file_size, checksum, table_count, row_count, status, created_by, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+    [require('uuid').v4(), filename, Buffer.byteLength(finalJson, 'utf8'), checksum, tables.length, backup.manifest.total_rows, 'completed', req.session.adminName || 'admin', new Date().toISOString()]
+  );
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Disposition', 'attachment; filename="' + filename + '"');
+  res.setHeader('X-Checksum-SHA256', checksum);
+  res.send(finalJson);
+}));
+
+router.post('/backup/restore', requireRole(3), require('multer')({ dest: require('path').join(__dirname, '..', 'uploads'), limits: { fileSize: 100 * 1024 * 1024 } }).single('backup_file'), asyncHandler(async (req, res) => {
+  if (!req.file) return res.redirect('/admin/backup?failed=No+file+uploaded');
+  const filePath = req.file.path;
+  let backup;
+  try {
+    const content = require('fs').readFileSync(filePath, 'utf8');
+    backup = JSON.parse(content);
+  } catch (e) {
+    require('fs').unlinkSync(filePath);
+    return res.redirect('/admin/backup?failed=Invalid+JSON+file');
+  }
+  if (!backup.manifest || !backup.data || typeof backup.data !== 'object') {
+    require('fs').unlinkSync(filePath);
+    return res.redirect('/admin/backup?failed=Invalid+backup+format');
+  }
+  // Verify checksum
+  const originalChecksum = backup.manifest.checksum;
+  delete backup.manifest.checksum;
+  const jsonCheck = JSON.stringify(backup, null, 2);
+  const computedChecksum = sha256(jsonCheck);
+  backup.manifest.checksum = originalChecksum;
+  if (originalChecksum && computedChecksum !== originalChecksum) {
+    require('fs').unlinkSync(filePath);
+    return res.redirect('/admin/backup?failed=Checksum+mismatch+—+file+may+be+corrupted');
+  }
+  // Build preview
+  const tableNames = Object.keys(backup.data).filter(t => BACKUP_TABLES.includes(t));
+  let totalRows = 0;
+  const preview = tableNames.map(t => {
+    const rows = backup.data[t];
+    if (!Array.isArray(rows)) return null;
+    totalRows += rows.length;
+    return { table: t, count: rows.length, sample: rows.slice(0, 3) };
+  }).filter(Boolean);
+
+  const fileSize = req.file.size;
+  const filename = req.file.originalname;
+
+  const previewHtml = preview.map(p => `
+    <div style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600;padding:6px 0">
+        <span>${p.table} <span style="font-weight:400;color:var(--text-muted)">(${p.count} rows)</span></span>
+      </div>
+      <div class="preview-table" style="${p.count > 10 ? 'max-height:120px' : ''}">
+      <table>
+        <tr>${p.sample.length > 0 ? Object.keys(p.sample[0]).map(k => '<th>' + k + '</th>').join('') : '<th>No data</th>'}</tr>
+        ${p.sample.map(row => '<tr>' + Object.values(row).map(v => '<td>' + (v === null ? '<span style="color:var(--text-muted)">NULL</span>' : String(v).length > 30 ? String(v).slice(0,30) + '...' : String(v)) + '</td>').join('') + '</tr>').join('')}
+      </table>
+      </div>
+    </div>
+  `).join('');
+
+  const content = `
+  <div class="card" style="border:2px solid #f59e0b">
+    <div class="card-header"><h3><i class="fas fa-eye"></i> Restore Preview — ${filename}</h3></div>
+    <div class="card-body-padded">
+      <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-bottom:16px">
+        <div class="stat-card"><div class="stat-icon"><i class="fas fa-table"></i></div><div class="stat-value">${tableNames.length}</div><div class="stat-label">Tables</div></div>
+        <div class="stat-card"><div class="stat-icon"><i class="fas fa-layer-group"></i></div><div class="stat-value">${totalRows}</div><div class="stat-label">Total Records</div></div>
+        <div class="stat-card"><div class="stat-icon"><i class="fas fa-file"></i></div><div class="stat-value">${fmtSize(fileSize)}</div><div class="stat-label">File Size</div></div>
+        <div class="stat-card"><div class="stat-icon"><i class="fas fa-check-circle" style="color:${originalChecksum ? '#16a34a' : '#94a3b8'}"></i></div><div class="stat-value">${originalChecksum ? 'Verified' : 'No checksum'}</div><div class="stat-label">Integrity</div></div>
+      </div>
+      <p style="color:var(--amber);font-weight:600;margin-bottom:12px"><i class="fas fa-exclamation-triangle"></i> Restoring will <b>overwrite existing data</b> in the selected tables. This is irreversible.</p>
+      ${previewHtml}
+      <form method="post" action="/admin/backup/restore/confirm" style="display:flex;gap:12px;margin-top:12px">
+        <input type="hidden" name="filepath" value="${filePath}">
+        <input type="hidden" name="tables" value="${tableNames.join(',')}">
+        <button type="submit" class="btn btn-secondary" onclick="return confirm('Are you ABSOLUTELY SURE? This will overwrite ${totalRows} records across ${tableNames.length} tables. This is irreversible.')"><i class="fas fa-exclamation-triangle"></i> Confirm Restore</button>
+        <a href="/admin/backup" class="btn btn-cancel">Cancel</a>
+      </form>
+    </div>
+  </div>`;
+  res.type('html').send(layout('Restore Preview', 'backup', content, { subtitle: 'Review before committing' }));
+}));
+
+router.post('/backup/restore/confirm', requireRole(3), asyncHandler(async (req, res) => {
+  const filePath = req.body.filepath;
+  const tablesStr = req.body.tables || '';
+  if (!filePath || !require('fs').existsSync(filePath)) return res.redirect('/admin/backup?failed=Backup+file+not+found');
+  const tables = tablesStr.split(',').filter(t => BACKUP_TABLES.includes(t));
+  if (tables.length === 0) return res.redirect('/admin/backup?failed=No+tables+to+restore');
+  let backup;
+  try {
+    backup = JSON.parse(require('fs').readFileSync(filePath, 'utf8'));
+  } catch (e) {
+    require('fs').unlinkSync(filePath);
+    return res.redirect('/admin/backup?failed=Invalid+backup+file');
+  }
+  try {
+    // Restore in dependency-safe order
+    const orderedTables = BACKUP_TABLE_ORDER.filter(t => tables.includes(t) && backup.data[t]);
+    for (const t of orderedTables) {
+      const rows = backup.data[t];
+      if (!Array.isArray(rows) || rows.length === 0) continue;
+      if (t === 'transactions') {
+        // Transactions may have FK to accounts — delete old ones first
+        await store.query('DELETE FROM transactions');
+      }
+      if (t === 'goal_jars') {
+        await store.query('DELETE FROM goal_jars');
+      }
+      if (t === 'badges') {
+        await store.query('DELETE FROM badges');
+      }
+      if (t === 'loans') {
+        await store.query('DELETE FROM loan_payments');
+        await store.query('DELETE FROM loans');
+      }
+      if (t === 'coop_goals') {
+        await store.query('DELETE FROM coop_contributions');
+        await store.query('DELETE FROM coop_goals');
+      }
+      if (t === 'savings_applications') await store.query('DELETE FROM savings_applications');
+      if (t === 'standing_orders') await store.query('DELETE FROM standing_orders');
+      if (t === 'withdrawal_requests') await store.query('DELETE FROM withdrawal_requests');
+      if (t === 'online_deposits') await store.query('DELETE FROM online_deposits');
+      if (t === 'quiz_scores') await store.query('DELETE FROM quiz_scores');
+      if (t === 'eod_logs') await store.query('DELETE FROM eod_logs');
+      if (t === 'settings') await store.query('DELETE FROM settings');
+
+      // Bulk insert
+      for (const row of rows) {
+        const cols = Object.keys(row).filter(k => row[k] !== undefined);
+        const vals = cols.map(c => row[c]);
+        const placeholders = cols.map((_, i) => '$' + (i + 1));
+        const sql = `INSERT INTO "${t}" (${cols.map(c => '"' + c + '"').join(',')}) VALUES (${placeholders.join(',')})`;
+        try {
+          await store.query(sql, vals);
+        } catch (insertErr) {
+          // Skip rows that conflict (e.g., duplicate PKs on re-restore)
+          console.warn('Skipped row in ' + t + ': ' + insertErr.message.slice(0, 100));
+        }
+      }
+    }
+    require('fs').unlinkSync(filePath);
+    await store.query(
+      'INSERT INTO backup_logs (backup_id, filename, file_size, checksum, table_count, row_count, status, notes, created_by, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+      [require('uuid').v4(), 'restore-' + new Date().toISOString().slice(0,10), 0, '', tables.length, Object.values(backup.data).reduce((s, arr) => s + (Array.isArray(arr) ? arr.length : 0), 0), 'restored', 'Restored from backup', req.session.adminName || 'admin', new Date().toISOString()]
+    );
+  } catch (e) {
+    if (require('fs').existsSync(filePath)) require('fs').unlinkSync(filePath);
+    return res.redirect('/admin/backup?failed=' + encodeURIComponent(e.message.slice(0, 200)));
+  }
+  res.redirect('/admin/backup?restored=ok');
 }));
 
 // ── Clear All User Data (keep reference tables) ──

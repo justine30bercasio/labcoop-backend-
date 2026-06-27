@@ -36,6 +36,7 @@ function layout(title, active, content, opts = {}) {
     { icon: '<i class="fas fa-clipboard-list"></i>', label: 'Audit & Admin', key: 'audit-admin', children: [
       { icon: '<i class="fas fa-clipboard-list"></i>', label: 'Audit Log', href: '/admin/audit-log', key: 'audit-log' },
       { icon: '<i class="fas fa-user-shield"></i>', label: 'Admin Users', href: '/admin/users', key: 'users' },
+      { icon: '<i class="fas fa-database"></i>', label: 'Backup & Restore', href: '/admin/backup', key: 'backup' },
     ]},
     { icon: '<i class="fas fa-gamepad"></i>', label: 'Gamification', key: 'gamification', children: [
       { icon: '<i class="fas fa-store"></i>', label: 'Shop', href: '/admin/shop', key: 'shop' },

@@ -130,6 +130,18 @@ class PgStore {
         archived_at TEXT,
         year INTEGER
       );
+      CREATE TABLE IF NOT EXISTS backup_logs (
+        backup_id TEXT PRIMARY KEY,
+        filename TEXT NOT NULL,
+        file_size INTEGER DEFAULT 0,
+        checksum TEXT,
+        table_count INTEGER DEFAULT 0,
+        row_count INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'completed',
+        notes TEXT DEFAULT '',
+        created_by TEXT,
+        created_at TEXT
+      );
       CREATE TABLE IF NOT EXISTS shop_items (
         id TEXT PRIMARY KEY,
         name VARCHAR(255) NOT NULL,

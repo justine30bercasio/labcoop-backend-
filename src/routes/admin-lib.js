@@ -16,6 +16,11 @@ function layout(title, active, content, opts = {}) {
     ]},
     { icon: '<i class="fas fa-chart-simple"></i>', label: 'Reports & Audit', key: 'reports', children: [
       { icon: '<i class="fas fa-file-lines"></i>', label: 'Audit Reports', href: '/admin/audit', key: 'audit' },
+      { icon: '<i class="fas fa-clock"></i>', label: 'Loan Aging', href: '/admin/reports/loan-aging', key: 'loan-aging' },
+      { icon: '<i class="fas fa-calendar-day"></i>', label: 'Daily Collection', href: '/admin/reports/daily-collection', key: 'daily-collection' },
+      { icon: '<i class="fas fa-piggy-bank"></i>', label: 'Deposit Summary', href: '/admin/reports/deposit-summary', key: 'deposit-summary' },
+      { icon: '<i class="fas fa-sack-dollar"></i>', label: 'Loan Portfolio', href: '/admin/reports/loan-portfolio', key: 'loan-portfolio' },
+      { icon: '<i class="fas fa-user"></i>', label: 'Member Ledger', href: '/admin/reports/member-ledger', key: 'member-ledger' },
       { icon: '<i class="fas fa-scale-balanced"></i>', label: 'Trial Balance', href: '/admin/gl/trial-balance', key: 'gl' },
       { icon: '<i class="fas fa-file-invoice"></i>', label: 'Balance Sheet', href: '/admin/gl/balance-sheet', key: 'gl' },
       { icon: '<i class="fas fa-chart-line"></i>', label: 'P&L', href: '/admin/gl/profit-and-loss', key: 'gl' },
@@ -673,4 +678,69 @@ function h(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
 }
 
-module.exports = { layout, h };
+function printLayout(title, content, opts = {}) {
+  const { subtitle } = opts;
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${h(title)} — LabCoop</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+<style>
+  @media print { @page { size: landscape; margin: 10mm; } body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #fff; color: #1a1a2e; padding: 20px; }
+  .print-header { border-bottom: 3px solid #2563eb; padding-bottom: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: end; }
+  .print-header h1 { font-size: 22px; color: #1e3a5f; }
+  .print-header .subtitle { color: #64748b; font-size: 13px; margin-top: 4px; }
+  .print-header .meta { text-align: right; font-size: 11px; color: #94a3b8; }
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .stat-card { background: #f8fafc; border-radius: 8px; padding: 14px; text-align: center; border: 1px solid #e2e8f0; }
+  .stat-card .stat-icon { font-size: 22px; color: #2563eb; margin-bottom: 4px; }
+  .stat-card .stat-value { font-size: 20px; font-weight: 700; color: #1e3a5f; }
+  .stat-card .stat-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+  .card { border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
+  .card-header { background: #f8fafc; padding: 10px 14px; font-weight: 600; font-size: 13px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+  .card-header h3 { font-size: 14px; }
+  .card-body { padding: 0; }
+  .card-body-padded { padding: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { background: #f1f5f9; color: #475569; font-weight: 600; padding: 8px 10px; text-align: left; border-bottom: 2px solid #e2e8f0; }
+  td { padding: 7px 10px; border-bottom: 1px solid #f1f5f9; }
+  .mono { font-family: 'Cascadia Code', 'Fira Code', monospace; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .badge-green { background: #dcfce7; color: #166534; }
+  .badge-red { background: #fee2e2; color: #991b1b; }
+  .badge-blue { background: #dbeafe; color: #1e40af; }
+  .badge-yellow { background: #fef9c3; color: #854d0e; }
+  .badge-orange { background: #ffedd5; color: #9a3412; }
+  .badge-gray { background: #f1f5f9; color: #475569; }
+  .count { font-size: 12px; color: #94a3b8; font-weight: 400; }
+  canvas { max-height: 200px; }
+  .text-right { text-align: right; }
+  .text-center { text-align: center; }
+</style>
+</head>
+<body>
+  <div class="print-header">
+    <div>
+      <h1><i class="fas fa-building-columns" style="color:#2563eb;margin-right:8px"></i>${h(title)}</h1>
+      ${subtitle ? '<div class="subtitle">' + subtitle + '</div>' : ''}
+    </div>
+    <div class="meta">
+      <div>LabCoop Microbanking System</div>
+      <div>Generated: ${new Date().toLocaleString()}</div>
+    </div>
+  </div>
+  ${content}
+  <div style="text-align:center;margin-top:30px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:10px;color:#94a3b8">
+    LabCoop — Confidential — Generated on ${new Date().toISOString().slice(0,10)}
+  </div>
+  <script>document.querySelectorAll('.btn,.sidebar,.no-print').forEach(e => e && e.remove());</script>
+</body>
+</html>`;
+}
+
+module.exports = { layout, printLayout, h };

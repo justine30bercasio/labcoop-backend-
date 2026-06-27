@@ -8,7 +8,7 @@ const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 const { getDb, store, isPostgres } = require('../db');
 const { asyncHandler } = require('../async-handler');
-const { layout } = require('./admin-lib');
+const { layout, printLayout } = require('./admin-lib');
 const notifs = require('../services/notifications');
 
 const _p = (...p) => p.length === 1 && Array.isArray(p[0]) ? p[0] : p;
@@ -3435,6 +3435,546 @@ router.get('/audit/csv', requireRole(1), asyncHandler(async (req, res) => {
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', 'attachment; filename="labcoop_audit_' + new Date().toISOString().slice(0,10) + '.csv"');
   res.send(csv);
+}));
+
+// ── MBwin-Style Advanced Reports ──
+
+// ── 1. Loan Aging Report ──
+router.get('/reports/loan-aging', requireRole(2), asyncHandler(async (req, res) => {
+  const asOf = req.query.as_of || new Date().toISOString().slice(0, 10);
+  const loans = await store.query(`
+    SELECT l.*, a.name as child_name, a.member_id
+    FROM loans l JOIN accounts a ON l.account_id = a.id
+    WHERE l.status = 'active' OR l.status = 'overdue'
+    ORDER BY l.due_date ASC
+  `);
+  let today = new Date(asOf);
+  let totalPortfolio = 0, totalPrincipal = 0, totalInterest = 0;
+  const agingBuckets = [
+    { label: 'Current', range: [0, 0], icon: 'fa-check-circle', color: '#16a34a', loans: [], total: 0 },
+    { label: '1-30 Days', range: [1, 30], icon: 'fa-exclamation-triangle', color: '#f59e0b', loans: [], total: 0 },
+    { label: '31-60 Days', range: [31, 60], icon: 'fa-exclamation-circle', color: '#f97316', loans: [], total: 0 },
+    { label: '61-90 Days', range: [61, 90], icon: 'fa-times-circle', color: '#ef4444', loans: [], total: 0 },
+    { label: '91-120 Days', range: [91, 120], icon: 'fa-skull', color: '#dc2626', loans: [], total: 0 },
+    { label: '120+ Days', range: [121, 9999], icon: 'fa-biohazard', color: '#7c3aed', loans: [], total: 0 },
+  ];
+  loans.rows.forEach(l => {
+    const due = new Date(l.due_date);
+    const daysOverdue = Math.max(0, Math.floor((today - due) / (1000 * 60 * 60 * 24)));
+    const principal = parseFloat(l.amount) || 0;
+    const interest = parseFloat(l.interest) || 0;
+    totalPortfolio += principal + interest;
+    totalPrincipal += principal;
+    totalInterest += interest;
+    let bucket = agingBuckets.find(b => daysOverdue >= b.range[0] && daysOverdue <= b.range[1]);
+    if (!bucket) bucket = agingBuckets[agingBuckets.length - 1];
+    bucket.loans.push({ ...l, daysOverdue, principal, interest });
+    bucket.total += principal + interest;
+  });
+  const provisionRate = [0, 0.02, 0.05, 0.10, 0.20, 0.50];
+  let totalProvision = 0;
+  agingBuckets.forEach((b, i) => {
+    b.provision = b.total * provisionRate[i];
+    totalProvision += b.provision;
+  });
+  const chartData = agingBuckets.map(b => ({ label: b.label, total: b.total, color: b.color }));
+  const content = `
+  <div class="card">
+    <div class="card-body-padded" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap">
+      <div class="field" style="flex:0 0 200px"><label>As of Date</label>
+        <input type="date" id="agingAsOf" value="${asOf}" onchange="location.href='/admin/reports/loan-aging?as_of='+this.value">
+      </div>
+      <div style="flex:1;text-align:right">
+        <a href="/admin/reports/loan-aging?as_of=${asOf}&export=csv" class="btn btn-outline btn-sm"><i class="fas fa-file-csv"></i> Export CSV</a>
+        <a href="/admin/reports/loan-aging?as_of=${asOf}&print=1" class="btn btn-outline btn-sm" target="_blank"><i class="fas fa-print"></i> Print</a>
+      </div>
+    </div>
+  </div>
+  <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-sack-dollar"></i></div><div class="stat-value">${fmt(totalPortfolio)}</div><div class="stat-label">Portfolio at Risk</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-coins"></i></div><div class="stat-value">${fmt(totalPrincipal)}</div><div class="stat-label">Total Principal</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-percent"></i></div><div class="stat-value">${(totalPrincipal ? ((totalPortfolio - totalPrincipal) / totalPrincipal * 100).toFixed(2) : 0)}%</div><div class="stat-label">Interest Ratio</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-shield-halved"></i></div><div class="stat-value">${fmt(totalProvision)}</div><div class="stat-label">Required Provision</div></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-chart-pie"></i> Aging Distribution</h3></div>
+    <div class="card-body"><canvas id="agingPieChart" height="120"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-table"></i> Aging Summary</h3><span class="count">${loans.rows.length} loans</span></div>
+    <div class="card-body" style="padding:0">
+    <table>
+      <tr><th>Aging Bucket</th><th>Loan Count</th><th>Total Amount</th><th>% of Portfolio</th><th>Provision Rate</th><th>Provision Amount</th></tr>
+      ${agingBuckets.map((b, i) => `
+      <tr ${i === 0 ? '' : 'style="border-top:2px solid var(--border)"'}>
+        <td><span style="display:inline-flex;align-items:center;gap:8px;font-weight:600"><i class="fas ${b.icon}" style="color:${b.color}"></i> ${b.label}</span></td>
+        <td><b>${b.loans.length}</b></td>
+        <td class="mono">${fmt(b.total)}</td>
+        <td>${totalPortfolio ? (b.total / totalPortfolio * 100).toFixed(1) : 0}%</td>
+        <td>${(provisionRate[i] * 100).toFixed(0)}%</td>
+        <td class="mono" style="color:${b.provision > 0 ? '#dc2626' : '#16a34a'}">${fmt(b.provision)}</td>
+      </tr>`).join('')}
+      <tr style="font-weight:700;background:var(--bg-muted)">
+        <td>TOTAL</td><td>${loans.rows.length}</td>
+        <td class="mono">${fmt(totalPortfolio)}</td><td>100%</td><td></td>
+        <td class="mono" style="color:#dc2626">${fmt(totalProvision)}</td>
+      </tr>
+    </table></div>
+  </div>
+  ${agingBuckets.slice(1).filter(b => b.loans.length > 0).map(b => `
+  <div class="card">
+    <div class="card-header"><h3><i class="fas ${b.icon}" style="color:${b.color}"></i> ${b.label} Overdue — ${b.loans.length} loans</h3><span class="count">${fmt(b.total)}</span></div>
+    <div class="card-body" style="padding:0">
+    <table>
+      <tr><th>Member</th><th>Loan ID</th><th>Principal</th><th>Interest</th><th>Due Date</th><th>Days Overdue</th><th>Balance</th></tr>
+      ${b.loans.map(l => `
+      <tr>
+        <td><b>${l.child_name || 'Unknown'}</b><br><span class="mono" style="font-size:11px;color:var(--text-muted)">${l.member_id || ''}</span></td>
+        <td class="mono" style="font-size:11px">${l.id?.slice(0,8)||''}</td>
+        <td class="mono">${fmt(l.principal)}</td>
+        <td class="mono">${fmt(l.interest)}</td>
+        <td class="mono">${(l.due_date||'').slice(0,10)}</td>
+        <td><span class="badge ${l.daysOverdue > 90 ? 'badge-red' : l.daysOverdue > 30 ? 'badge-orange' : 'badge-yellow'}">${l.daysOverdue} days</span></td>
+        <td class="mono" style="font-weight:600">${fmt(l.principal + l.interest)}</td>
+      </tr>`).join('')}
+    </table></div>
+  </div>`).join('')}
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-file-export"></i> Export Options</h3></div>
+    <div class="card-body-padded" style="display:flex;gap:12px">
+      <a href="/admin/reports/loan-aging?as_of=${asOf}&export=csv" class="btn btn-outline"><i class="fas fa-file-csv"></i> Download CSV</a>
+      <button class="btn btn-outline" onclick="window.open('/admin/reports/loan-aging?as_of=${asOf}&print=1')"><i class="fas fa-print"></i> Print View</button>
+    </div>
+  </div>
+  <script>
+  new Chart(document.getElementById('agingPieChart'), {
+    type: 'doughnut',
+    data: { labels: ${JSON.stringify(chartData.map(d => d.label))}, datasets: [{ data: ${JSON.stringify(chartData.map(d => d.total))}, backgroundColor: ${JSON.stringify(chartData.map(d => d.color))} }] },
+    options: { responsive: true, plugins: { legend: { position: 'right', labels: { color: getComputedStyle(document.body).getPropertyValue('--text-color').trim() || '#fff', font: { size: 11 } } } } }
+  });
+  </script>`;
+  if (req.query.export === 'csv') {
+    let csv = 'Aging Bucket,Loan Count,Total Amount,% of Portfolio,Provision Rate,Provision Amount\n';
+    agingBuckets.forEach((b, i) => {
+      csv += `"${b.label}",${b.loans.length},${b.total.toFixed(2)},${totalPortfolio ? (b.total/totalPortfolio*100).toFixed(1) : 0},"${(provisionRate[i]*100).toFixed(0)}%",${b.provision.toFixed(2)}\n`;
+    });
+    csv += `"TOTAL",${loans.rows.length},${totalPortfolio.toFixed(2)},100%,"",${totalProvision.toFixed(2)}\n`;
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="loan_aging_' + asOf + '.csv"');
+    return res.send(csv);
+  }
+  if (req.query.print) return res.type('html').send(printLayout('Loan Aging Report', content, { subtitle: 'As of ' + asOf }));
+  res.type('html').send(layout('Loan Aging Report', 'loan-aging', content, { subtitle: 'As of ' + asOf }));
+}));
+
+// ── 2. Daily Collection Report ──
+router.get('/reports/daily-collection', requireRole(2), asyncHandler(async (req, res) => {
+  const date = req.query.date || new Date().toISOString().slice(0, 10);
+  const { rows } = await store.query(`
+    SELECT t.*, a.name as child_name, a.member_id
+    FROM transactions t
+    JOIN accounts a ON t.account_id = a.id
+    WHERE t.type IN ('deposit','loan_payment','interest_income','penalty')
+      AND DATE(t.created_at) = $1
+    ORDER BY t.created_at ASC
+  `, [date]);
+  const summary = { deposit: 0, loan_payment: 0, interest_income: 0, penalty: 0, count: 0 };
+  rows.forEach(r => {
+    const amt = parseFloat(r.amount) || 0;
+    if (summary[r.type] !== undefined) summary[r.type] += amt;
+    summary.count++;
+  });
+  summary.total = summary.deposit + summary.loan_payment + summary.interest_income + summary.penalty;
+  const content = `
+  <div class="card">
+    <div class="card-body-padded" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap">
+      <div class="field" style="flex:0 0 200px"><label>Collection Date</label>
+        <input type="date" id="collDate" value="${date}" onchange="location.href='/admin/reports/daily-collection?date='+this.value">
+      </div>
+      <div style="flex:1;text-align:right">
+        <a href="/admin/reports/daily-collection?date=${date}&export=csv" class="btn btn-outline btn-sm"><i class="fas fa-file-csv"></i> Export CSV</a>
+        <a href="/admin/reports/daily-collection?date=${date}&print=1" class="btn btn-outline btn-sm" target="_blank"><i class="fas fa-print"></i> Print</a>
+      </div>
+    </div>
+  </div>
+  <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-coins"></i></div><div class="stat-value">${fmt(summary.total)}</div><div class="stat-label">Total Collections</div></div>
+    <div class="stat-card" style="border-left:4px solid #16a34a"><div class="stat-icon"><i class="fas fa-piggy-bank"></i></div><div class="stat-value">${fmt(summary.deposit)}</div><div class="stat-label">Deposits</div></div>
+    <div class="stat-card" style="border-left:4px solid #3b82f6"><div class="stat-icon"><i class="fas fa-hand-holding-dollar"></i></div><div class="stat-value">${fmt(summary.loan_payment)}</div><div class="stat-label">Loan Payments</div></div>
+    <div class="stat-card" style="border-left:4px solid #f59e0b"><div class="stat-icon"><i class="fas fa-percent"></i></div><div class="stat-value">${fmt(summary.interest_income)}</div><div class="stat-label">Interest Income</div></div>
+    <div class="stat-card" style="border-left:4px solid #ef4444"><div class="stat-icon"><i class="fas fa-exclamation-triangle"></i></div><div class="stat-value">${fmt(summary.penalty)}</div><div class="stat-label">Penalties</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-exchange-alt"></i></div><div class="stat-value">${summary.count}</div><div class="stat-label">Transactions</div></div>
+  </div>
+  ${summary.count > 0 ? `
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-list"></i> Transaction Details</h3><span class="count">${summary.count} entries</span></div>
+    <div class="card-body" style="padding:0">
+    <table>
+      <tr><th>Time</th><th>Member</th><th>Reference</th><th>Type</th><th>Amount</th><th>Method</th><th>Description</th></tr>
+      ${rows.map(r => `
+      <tr>
+        <td class="mono" style="font-size:11px">${r.created_at.slice(11,19)}</td>
+        <td><b>${r.child_name || 'Unknown'}</b><br><span style="font-size:11px;color:var(--text-muted)">${r.member_id || ''}</span></td>
+        <td class="mono" style="font-size:11px">${(r.reference_id||'').slice(0,8)}</td>
+        <td><span class="badge ${r.type === 'deposit' ? 'badge-green' : r.type === 'loan_payment' ? 'badge-blue' : r.type === 'interest_income' ? 'badge-yellow' : 'badge-red'}">${r.type.replace(/_/g,' ')}</span></td>
+        <td class="mono" style="font-weight:600">${fmt(r.amount)}</td>
+        <td style="font-size:11px">${r.payment_method || 'cash'}</td>
+        <td style="font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.description || ''}</td>
+      </tr>`).join('')}
+      <tr style="font-weight:700;background:var(--bg-muted)">
+        <td colspan="4">TOTAL</td><td class="mono">${fmt(summary.total)}</td><td colspan="2"></td>
+      </tr>
+    </table></div>
+  </div>` : '<div class="card"><div class="card-body-padded" style="text-align:center;color:var(--text-muted);padding:40px"><i class="fas fa-inbox" style="font-size:48px;opacity:0.3;display:block;margin-bottom:12px"></i> No collections recorded for this date.</div></div>'}
+  <div class="stats-grid" style="grid-template-columns:1fr 1fr">
+    <div class="card" style="padding:0">
+      <div class="card-header"><h3><i class="fas fa-chart-pie"></i> Collection Mix</h3></div>
+      <div class="card-body"><canvas id="collPieChart" height="120"></canvas></div>
+    </div>
+    <div class="card" style="padding:0">
+      <div class="card-header"><h3><i class="fas fa-chart-bar"></i> Breakdown</h3></div>
+      <div class="card-body"><canvas id="collBarChart" height="120"></canvas></div>
+    </div>
+  </div>
+  <script>
+  new Chart(document.getElementById('collPieChart'), {
+    type: 'doughnut',
+    data: { labels: ['Deposits','Loan Payments','Interest','Penalties'], datasets: [{ data: [${summary.deposit},${summary.loan_payment},${summary.interest_income},${summary.penalty}], backgroundColor: ['#16a34a','#3b82f6','#f59e0b','#ef4444'] }] },
+    options: { responsive: true, plugins: { legend: { position: 'right', labels: { color: getComputedStyle(document.body).getPropertyValue('--text-color').trim() || '#fff', font: { size: 11 } } } } }
+  });
+  new Chart(document.getElementById('collBarChart'), {
+    type: 'bar',
+    data: { labels: ['Deposits','Loan Payments','Interest','Penalties'], datasets: [{ label: 'Amount', data: [${summary.deposit},${summary.loan_payment},${summary.interest_income},${summary.penalty}], backgroundColor: ['#16a34a','#3b82f6','#f59e0b','#ef4444'] }] },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { callback: v => '₱'+v.toLocaleString() } } } }
+  });
+  </script>`;
+  if (req.query.export === 'csv') {
+    let csv = 'Time,Member,Reference,Type,Amount,Method,Description\n';
+    rows.forEach(r => {
+      csv += `"${r.created_at}",${r.child_name||''},${r.reference_id||''},${r.type},${r.amount},${r.payment_method||'cash'},"${(r.description||'').replace(/"/g,'""')}"\n`;
+    });
+    csv += `"TOTAL","","","",${summary.total},"",""\n`;
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="daily_collection_' + date + '.csv"');
+    return res.send(csv);
+  }
+  if (req.query.print) return res.type('html').send(printLayout('Daily Collection Report', content, { subtitle: date }));
+  res.type('html').send(layout('Daily Collection Report', 'daily-collection', content, { subtitle: date }));
+}));
+
+// ── 3. Deposit Summary Report ──
+router.get('/reports/deposit-summary', requireRole(2), asyncHandler(async (req, res) => {
+  const from = req.query.from || new Date(Date.now() - 30*86400000).toISOString().slice(0, 10);
+  const to = req.query.to || new Date().toISOString().slice(0, 10);
+  const { rows } = await store.query(`
+    SELECT DATE(created_at) as d, COUNT(*) as cnt, SUM(CAST(amount AS DECIMAL(20,2))) as total
+    FROM transactions WHERE type = 'deposit' AND DATE(created_at) >= $1 AND DATE(created_at) <= $2
+    GROUP BY DATE(created_at) ORDER BY d ASC
+  `, [from, to]);
+  const totalDeposits = rows.reduce((s, r) => s + parseFloat(r.total || 0), 0);
+  const totalCount = rows.reduce((s, r) => s + parseInt(r.cnt || 0), 0);
+  const avgPerDay = rows.length ? totalDeposits / rows.length : 0;
+  const labels = JSON.stringify(rows.map(r => r.d.slice(5)));
+  const values = JSON.stringify(rows.map(r => parseFloat(r.total || 0)));
+  const counts = JSON.stringify(rows.map(r => parseInt(r.cnt || 0)));
+  // Top depositors
+  const { rows: top } = await store.query(`
+    SELECT a.name, a.member_id, SUM(CAST(t.amount AS DECIMAL(20,2))) as total, COUNT(*) as cnt
+    FROM transactions t JOIN accounts a ON t.account_id = a.id
+    WHERE t.type = 'deposit' AND DATE(t.created_at) >= $1 AND DATE(t.created_at) <= $2
+    GROUP BY a.name, a.member_id ORDER BY total DESC LIMIT 10
+  `, [from, to]);
+  const content = `
+  <div class="card">
+    <div class="card-body-padded" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap">
+      <div class="field" style="flex:0 0 160px"><label>From</label><input type="date" id="depFrom" value="${from}" onchange="filterDep()"></div>
+      <div class="field" style="flex:0 0 160px"><label>To</label><input type="date" id="depTo" value="${to}" onchange="filterDep()"></div>
+      <script>function filterDep(){const f=document.getElementById('depFrom').value,t=document.getElementById('depTo').value;location.href='/admin/reports/deposit-summary?from='+f+'&to='+t}</script>
+      <div style="flex:1;text-align:right">
+        <a href="/admin/reports/deposit-summary?from=${from}&to=${to}&export=csv" class="btn btn-outline btn-sm"><i class="fas fa-file-csv"></i> Export CSV</a>
+        <a href="/admin/reports/deposit-summary?from=${from}&to=${to}&print=1" class="btn btn-outline btn-sm" target="_blank"><i class="fas fa-print"></i> Print</a>
+      </div>
+    </div>
+  </div>
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-piggy-bank"></i></div><div class="stat-value">${fmt(totalDeposits)}</div><div class="stat-label">Total Deposits</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-calculator"></i></div><div class="stat-value">${fmt(avgPerDay)}</div><div class="stat-label">Avg/Day</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-exchange-alt"></i></div><div class="stat-value">${totalCount}</div><div class="stat-label">Transactions</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-users"></i></div><div class="stat-value">${top.length}</div><div class="stat-label">Top Depositors</div></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-chart-area"></i> Daily Deposit Trend</h3></div>
+    <div class="card-body"><canvas id="depTrendChart" height="100"></canvas></div>
+  </div>
+  <div class="stats-grid" style="grid-template-columns:1fr 1fr">
+    <div class="card" style="padding:0">
+      <div class="card-header"><h3><i class="fas fa-trophy"></i> Top Depositors</h3></div>
+      <div class="card-body" style="padding:0">
+      <table>
+        <tr><th>#</th><th>Member</th><th>Deposits</th><th>Count</th></tr>
+        ${top.map((m, i) => `
+        <tr>
+          <td>${i + 1}</td>
+          <td><b>${m.name || 'Unknown'}</b><br><span style="font-size:11px;color:var(--text-muted)">${m.member_id || ''}</span></td>
+          <td class="mono" style="font-weight:600">${fmt(m.total)}</td>
+          <td>${m.cnt}</td>
+        </tr>`).join('')}
+      </table></div>
+    </div>
+    <div class="card" style="padding:0">
+      <div class="card-header"><h3><i class="fas fa-table"></i> Daily Breakdown</h3></div>
+      <div class="card-body" style="padding:0">
+      <table>
+        <tr><th>Date</th><th>Count</th><th>Amount</th></tr>
+        ${rows.map(r => `
+        <tr>
+          <td class="mono">${r.d}</td>
+          <td>${r.cnt}</td>
+          <td class="mono">${fmt(r.total)}</td>
+        </tr>`).join('')}
+        <tr style="font-weight:700;background:var(--bg-muted)">
+          <td>TOTAL</td><td>${totalCount}</td><td class="mono">${fmt(totalDeposits)}</td>
+        </tr>
+      </table></div>
+    </div>
+  </div>
+  <script>
+  new Chart(document.getElementById('depTrendChart'), {
+    type: 'line',
+    data: { labels: ${labels}, datasets: [
+      { label: 'Amount', data: ${values}, borderColor: '#16a34a', backgroundColor: 'rgba(22,163,74,0.1)', fill: true, tension: 0.3, yAxisID: 'y' },
+      { label: 'Count', data: ${counts}, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.3, yAxisID: 'y1' }
+    ]},
+    options: {
+      responsive: true, interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { labels: { color: getComputedStyle(document.body).getPropertyValue('--text-color').trim() || '#fff', font: { size: 11 } } } },
+      scales: {
+        y: { type: 'linear', display: true, position: 'left', beginAtZero: true, ticks: { callback: v => '₱'+v.toLocaleString(), color: '#16a34a' } },
+        y1: { type: 'linear', display: true, position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, ticks: { color: '#3b82f6' } }
+      }
+    }
+  });
+  </script>`;
+  if (req.query.export === 'csv') {
+    let csv = 'Date,Count,Amount\n';
+    rows.forEach(r => { csv += `${r.d},${r.cnt},${r.total}\n`; });
+    csv += `TOTAL,${totalCount},${totalDeposits.toFixed(2)}\n`;
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="deposit_summary_' + from + '_to_' + to + '.csv"');
+    return res.send(csv);
+  }
+  if (req.query.print) return res.type('html').send(printLayout('Deposit Summary Report', content, { subtitle: from + ' to ' + to }));
+  res.type('html').send(layout('Deposit Summary Report', 'deposit-summary', content, { subtitle: from + ' to ' + to }));
+}));
+
+// ── 4. Member Ledger Report ──
+router.get('/reports/member-ledger', requireRole(2), asyncHandler(async (req, res) => {
+  const q = req.query.q || '';
+  const memberId = req.query.member_id || '';
+  const from = req.query.from || '';
+  const to = req.query.to || '';
+  let where = ['1=1'];
+  let params = [];
+  if (q) { where.push('(a.name ILIKE $' + (params.length+1) + ' OR a.member_id ILIKE $' + (params.length+1) + ')'); params.push('%' + q + '%'); }
+  if (memberId) { where.push('a.member_id = $' + (params.length+1)); params.push(memberId); }
+  if (from) { where.push('DATE(t.created_at) >= $' + (params.length+1)); params.push(from); }
+  if (to) { where.push('DATE(t.created_at) <= $' + (params.length+1)); params.push(to); }
+  const { rows: members } = await store.query('SELECT DISTINCT a.id, a.name, a.member_id FROM accounts a JOIN transactions t ON a.id = t.account_id WHERE a.is_archived = 0 ORDER BY a.name ASC');
+  const searchResults = q || memberId ? await store.query(`
+    SELECT t.*, a.name as child_name, a.member_id, a.balance
+    FROM transactions t JOIN accounts a ON t.account_id = a.id
+    WHERE ${where.join(' AND ')}
+    ORDER BY t.created_at DESC LIMIT 500
+  `, params) : { rows: [] };
+  let memberSummary = null;
+  if (searchResults.rows.length > 0) {
+    const first = searchResults.rows[0];
+    memberSummary = {
+      name: first.child_name,
+      memberId: first.member_id,
+      balance: first.balance,
+      totalIn: searchResults.rows.filter(r => r.type === 'deposit').reduce((s, r) => s + parseFloat(r.amount || 0), 0),
+      totalOut: searchResults.rows.filter(r => ['withdrawal','loan_payment','penalty'].includes(r.type)).reduce((s, r) => s + parseFloat(r.amount || 0), 0),
+      count: searchResults.rows.length
+    };
+  }
+  const content = `
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-search"></i> Search Member Ledger</h3></div>
+    <div class="card-body-padded">
+    <form method="get" action="/admin/reports/member-ledger" style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:10px;align-items:end">
+      <div class="field"><label><i class="fas fa-user"></i> Search Member</label><input type="text" name="q" placeholder="Name or ID..." value="${q}"></div>
+      <div class="field"><label><i class="fas fa-calendar"></i> From</label><input type="date" name="from" value="${from}"></div>
+      <div class="field"><label><i class="fas fa-calendar"></i> To</label><input type="date" name="to" value="${to}"></div>
+      <div class="field"><label>&nbsp;</label>
+        <select name="member_id">
+          <option value="">All Members</option>
+          ${members.map(m => '<option value="' + m.member_id + '" ' + (memberId === m.member_id ? 'selected' : '') + '>' + (m.name||'') + ' (' + m.member_id + ')</option>').join('')}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-secondary"><i class="fas fa-search"></i> Search</button>
+    </form>
+    </div>
+  </div>
+  ${memberSummary ? `
+  <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-user"></i></div><div class="stat-value">${memberSummary.name}</div><div class="stat-label">${memberSummary.memberId}</div></div>
+    <div class="stat-card" style="border-left:4px solid #16a34a"><div class="stat-icon"><i class="fas fa-piggy-bank"></i></div><div class="stat-value">${fmt(memberSummary.totalIn)}</div><div class="stat-label">Total Deposits</div></div>
+    <div class="stat-card" style="border-left:4px solid #ef4444"><div class="stat-icon"><i class="fas fa-arrow-right-from-bracket"></i></div><div class="stat-value">${fmt(memberSummary.totalOut)}</div><div class="stat-label">Total Withdrawals/Charges</div></div>
+    <div class="stat-card" style="border-left:4px solid #3b82f6"><div class="stat-icon"><i class="fas fa-wallet"></i></div><div class="stat-value">${fmt(memberSummary.balance)}</div><div class="stat-label">Current Balance</div></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-list"></i> Transaction History (${memberSummary.count})</h3>
+      <span class="count">
+        <a href="/admin/reports/member-ledger?q=${q}&member_id=${memberId}&from=${from}&to=${to}&export=csv" style="margin-right:12px"><i class="fas fa-file-csv"></i> CSV</a>
+        <a href="/admin/reports/member-ledger?q=${q}&member_id=${memberId}&from=${from}&to=${to}&print=1" target="_blank"><i class="fas fa-print"></i> Print</a>
+      </span>
+    </div>
+    <div class="card-body" style="padding:0">
+    <table>
+      <tr><th>Date</th><th>Type</th><th>Description</th><th>Amount</th><th>Reference</th></tr>
+      ${searchResults.rows.map(r => {
+        const amt = parseFloat(r.amount || 0);
+        const isCredit = ['deposit','interest_income','loan'].includes(r.type);
+        return '<tr>' +
+          '<td class="mono" style="font-size:11px">' + r.created_at.slice(0,19).replace('T',' ') + '</td>' +
+          '<td><span class="badge ' + (isCredit ? 'badge-green' : 'badge-red') + '">' + r.type.replace(/_/g,' ') + '</span></td>' +
+          '<td style="font-size:12px">' + (r.description || '') + '</td>' +
+          '<td class="mono" style="font-weight:600;color:' + (isCredit ? '#16a34a' : '#dc2626') + '">' + (isCredit ? '+' : '-') + fmt(amt) + '</td>' +
+          '<td class="mono" style="font-size:11px;color:var(--text-muted)">' + (r.reference_id||'').slice(0,8) + '</td>' +
+        '</tr>';
+      }).join('')}
+    </table></div>
+  </div>` : (q || memberId ? '<div class="card"><div class="card-body-padded" style="text-align:center;color:var(--text-muted);padding:40px"><i class="fas fa-search" style="font-size:48px;opacity:0.3;display:block;margin-bottom:12px"></i> No results found.</div></div>' : '<div class="card"><div class="card-body-padded" style="text-align:center;color:var(--text-muted);padding:40px"><i class="fas fa-hand-point-left" style="font-size:48px;opacity:0.3;display:block;margin-bottom:12px"></i> Search for a member to view ledger.</div></div>')}
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-database"></i> Quick Member Select</h3></div>
+    <div class="card-body-padded" style="display:flex;flex-wrap:wrap;gap:6px">
+      ${members.slice(0, 50).map(m => '<a href="/admin/reports/member-ledger?q=' + encodeURIComponent(m.name||'') + '" class="btn btn-outline btn-xs">' + (m.name||'') + '</a>').join('')}
+      ${members.length > 50 ? '<span style="color:var(--text-muted);font-size:12px;padding:4px">...and ' + (members.length-50) + ' more. Use search above.</span>' : ''}
+    </div>
+  </div>`;
+  if (req.query.export === 'csv' && searchResults.rows.length) {
+    let csv = 'Date,Type,Description,Amount,Reference\n';
+    searchResults.rows.forEach(r => {
+      const isCredit = ['deposit','interest_income','loan'].includes(r.type);
+      csv += `${r.created_at},${r.type},"${(r.description||'').replace(/"/g,'""')}",${isCredit ? '' : '-'}${r.amount},${r.reference_id||''}\n`;
+    });
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="member_ledger_' + (q||'export') + '.csv"');
+    return res.send(csv);
+  }
+  if (req.query.print && searchResults.rows.length) return res.type('html').send(printLayout('Member Ledger: ' + (memberSummary?.name || ''), content, { subtitle: '' }));
+  res.type('html').send(layout('Member Ledger', 'member-ledger', content, { subtitle: 'Per-member transaction history' }));
+}));
+
+// ── 5. Loan Portfolio Report ──
+router.get('/reports/loan-portfolio', requireRole(2), asyncHandler(async (req, res) => {
+  const { rows: loans } = await store.query(`
+    SELECT l.*, a.name as child_name, a.member_id
+    FROM loans l JOIN accounts a ON l.account_id = a.id
+    ORDER BY l.created_at DESC
+  `);
+  const stats = { total: 0, active: 0, paid: 0, overdue: 0, rejected: 0, totalAmount: 0, totalPaid: 0, totalOutstanding: 0, totalInterest: 0 };
+  const byMonth = {};
+  loans.forEach(l => {
+    const amt = parseFloat(l.amount) || 0;
+    const interest = parseFloat(l.interest) || 0;
+    stats.total++;
+    stats.totalAmount += amt;
+    stats.totalInterest += interest;
+    if (l.status === 'active' || l.status === 'overdue') stats.totalOutstanding += amt + interest;
+    if (l.status === 'paid') stats.totalPaid += amt + interest;
+    if (l.status === 'active') stats.active++;
+    else if (l.status === 'paid') stats.paid++;
+    else if (l.status === 'overdue') stats.overdue++;
+    else if (l.status === 'rejected') stats.rejected++;
+    const month = (l.created_at||'').slice(0,7);
+    if (month) { byMonth[month] = (byMonth[month] || 0) + amt; }
+  });
+  const monthLabels = JSON.stringify(Object.keys(byMonth).sort());
+  const monthValues = JSON.stringify(Object.keys(byMonth).sort().map(m => byMonth[m]));
+  const statusLabels = JSON.stringify(['Active','Overdue','Paid','Rejected']);
+  const statusValues = JSON.stringify([stats.active, stats.overdue, stats.paid, stats.rejected]);
+  const statusColors = JSON.stringify(['#3b82f6','#ef4444','#16a34a','#6b7280']);
+  const outstandingRatio = stats.totalAmount ? ((stats.totalAmount - stats.totalPaid) / stats.totalAmount * 100).toFixed(1) : 0;
+
+  const content = `
+  <div class="card">
+    <div class="card-body-padded" style="display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap">
+      <a href="/admin/reports/loan-portfolio?export=csv" class="btn btn-outline btn-sm"><i class="fas fa-file-csv"></i> Export CSV</a>
+      <a href="/admin/reports/loan-portfolio?print=1" class="btn btn-outline btn-sm" target="_blank"><i class="fas fa-print"></i> Print</a>
+    </div>
+  </div>
+  <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-sack-dollar"></i></div><div class="stat-value">${stats.total}</div><div class="stat-label">Total Loans</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-coins"></i></div><div class="stat-value">${fmt(stats.totalAmount)}</div><div class="stat-label">Total Amount Loaned</div></div>
+    <div class="stat-card" style="border-left:4px solid #16a34a"><div class="stat-icon"><i class="fas fa-check-circle"></i></div><div class="stat-value">${fmt(stats.totalPaid)}</div><div class="stat-label">Total Paid</div></div>
+    <div class="stat-card" style="border-left:4px solid #ef4444"><div class="stat-icon"><i class="fas fa-clock"></i></div><div class="stat-value">${fmt(stats.totalOutstanding)}</div><div class="stat-label">Outstanding</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-percent"></i></div><div class="stat-value">${outstandingRatio}%</div><div class="stat-label">Outstanding Ratio</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-percent"></i></div><div class="stat-value">${stats.totalAmount ? (stats.totalInterest / stats.totalAmount * 100).toFixed(2) : 0}%</div><div class="stat-label">Avg Interest Rate</div></div>
+  </div>
+  <div class="stats-grid" style="grid-template-columns:1fr 1fr">
+    <div class="card" style="padding:0">
+      <div class="card-header"><h3><i class="fas fa-chart-pie"></i> Loan Status</h3></div>
+      <div class="card-body"><canvas id="portfolioPie" height="120"></canvas></div>
+    </div>
+    <div class="card" style="padding:0">
+      <div class="card-header"><h3><i class="fas fa-chart-bar"></i> Monthly Disbursement</h3></div>
+      <div class="card-body"><canvas id="portfolioBar" height="120"></canvas></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-list"></i> All Loans (${stats.total})</h3><span class="count">
+      <span class="badge badge-blue">${stats.active} Active</span>
+      <span class="badge badge-red">${stats.overdue} Overdue</span>
+      <span class="badge badge-green">${stats.paid} Paid</span>
+    </span></div>
+    <div class="card-body" style="padding:0">
+    <table>
+      <tr><th>Member</th><th>Amount</th><th>Interest</th><th>Total Due</th><th>Issued</th><th>Due Date</th><th>Status</th></tr>
+      ${loans.map(l => {
+        const amt = parseFloat(l.amount) || 0;
+        const interest = parseFloat(l.interest) || 0;
+        const total = amt + interest;
+        const s = l.status;
+        const badgeClass = s === 'paid' ? 'badge-green' : s === 'active' ? 'badge-blue' : s === 'overdue' ? 'badge-red' : 'badge-gray';
+        return '<tr>' +
+          '<td><b>' + (l.child_name||'') + '</b><br><span class="mono" style="font-size:11px;color:var(--text-muted)">' + (l.member_id||'') + '</span></td>' +
+          '<td class="mono">' + fmt(amt) + '</td>' +
+          '<td class="mono">' + fmt(interest) + '</td>' +
+          '<td class="mono" style="font-weight:600">' + fmt(total) + '</td>' +
+          '<td class="mono" style="font-size:11px">' + (l.created_at||'').slice(0,10) + '</td>' +
+          '<td class="mono" style="font-size:11px">' + (l.due_date||'').slice(0,10) + '</td>' +
+          '<td><span class="badge ' + badgeClass + '">' + s + '</span></td>' +
+        '</tr>';
+      }).join('')}
+    </table></div>
+  </div>
+  <script>
+  new Chart(document.getElementById('portfolioPie'), {
+    type: 'doughnut',
+    data: { labels: ${statusLabels}, datasets: [{ data: ${statusValues}, backgroundColor: ${statusColors} }] },
+    options: { responsive: true, plugins: { legend: { position: 'right', labels: { color: getComputedStyle(document.body).getPropertyValue('--text-color').trim() || '#fff', font: { size: 11 } } } } }
+  });
+  new Chart(document.getElementById('portfolioBar'), {
+    type: 'bar',
+    data: { labels: ${monthLabels}, datasets: [{ label: 'Amount Loaned', data: ${monthValues}, backgroundColor: '#3b82f6' }] },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { callback: v => '₱'+v.toLocaleString() } } } }
+  });
+  </script>`;
+  if (req.query.export === 'csv') {
+    let csv = 'Member,Amount,Interest,Total Due,Issued,Due Date,Status\n';
+    loans.forEach(l => {
+      const amt = parseFloat(l.amount) || 0;
+      const interest = parseFloat(l.interest) || 0;
+      csv += `"${l.child_name||''}","${l.member_id||''}",${amt},${interest},${amt+interest},${l.created_at.slice(0,10)},${l.due_date.slice(0,10)},${l.status}\n`;
+    });
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="loan_portfolio_' + new Date().toISOString().slice(0,10) + '.csv"');
+    return res.send(csv);
+  }
+  if (req.query.print) return res.type('html').send(printLayout('Loan Portfolio Report', content, { subtitle: '' }));
+  res.type('html').send(layout('Loan Portfolio Report', 'loan-portfolio', content, { subtitle: 'Full loan portfolio breakdown' }));
 }));
 
 // ── Clear All User Data (keep reference tables) ──

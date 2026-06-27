@@ -166,7 +166,6 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
     const wds = dayTxs.filter(t => t.type === 'withdrawal').reduce((s,t) => s + Number(t.amount), 0);
     dayDeposits.push(deps); dayWithdrawals.push(wds); dayCounts.push(dayTxs.length);
   }
-  const maxDaily = Math.max(...dayDeposits.concat(dayWithdrawals), 1);
 
   const topAccounts = [...accounts].sort((a,b) => Number(b.actual_balance) - Number(a.actual_balance)).slice(0, 8);
   const topBalances = topAccounts.map(a => Number(a.actual_balance));
@@ -182,58 +181,13 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
 
   const pendingTotal = pendingLoans + pendingWithdrawals + pendingSavingsApps + pendingOnlineDeposits;
 
-  // ── SVG chart builders ──
+  // Compute trend percentages
+  const weekAgoDeps = dayDeposits.slice(0, 3).reduce((s, v) => s + v, 0);
+  const weekRecentDeps = dayDeposits.slice(3).reduce((s, v) => s + v, 0);
+  const depositTrend = weekRecentDeps > weekAgoDeps ? 'up' : weekRecentDeps < weekAgoDeps ? 'down' : 'flat';
+  const depositTrendPct = weekAgoDeps > 0 ? ((weekRecentDeps - weekAgoDeps) / weekAgoDeps * 100).toFixed(1) : '0';
 
-  function barChart(data, labels, colors, opts) {
-    const h = opts?.height || 160;
-    const w = opts?.width || '100%';
-    const barW = Math.max(8, Math.min(28, Math.floor(260 / data.length)));
-    const gap = 4;
-    const max = Math.max(...data, 1);
-    const bars = data.map((v, i) => {
-      const bh = Math.max(2, (v / max) * (h - 28));
-      const x = i * (barW + gap) + 8;
-      return `<rect x="${x}" y="${h - 16 - bh}" width="${barW}" height="${bh}" fill="${colors[i % colors.length]}" rx="2"><title>${labels[i]}: &#x20B1;${v.toFixed(0)}</title></rect>`;
-    }).join('');
-    const labelsEl = labels.map((l, i) => {
-      const x = i * (barW + gap) + 8 + barW / 2;
-      return `<text x="${x}" y="${h - 2}" text-anchor="middle" font-size="8" fill="#94a3b8" transform="rotate(-20,${x},${h-2})">${l.split(' ')[0]}</text>`;
-    }).join('');
-    return `<svg width="${w}" height="${h}" viewBox="0 0 ${data.length * (barW + gap) + 16} ${h}" style="display:block;margin:0 auto">${bars}${labelsEl}</svg>`;
-  }
-
-  function pieChart(values, labels, colors, total) {
-    const cx = 60, cy = 60, r = 48, ir = 28;
-    const t = total || values.reduce((s,v) => s + v, 0) || 1;
-    let offset = 0;
-    const circ = 2 * Math.PI * r;
-    const slices = values.map((v, i) => {
-      const pct = v / t;
-      const len = circ * pct;
-      const o = offset; offset += len;
-      // Simple approach: use stroke-dasharray
-      if (pct < 0.001) return '';
-      const dash = `${len} ${circ - len}`;
-      return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${colors[i % colors.length]}" stroke-width="${r - ir}" stroke-dasharray="${dash}" stroke-dashoffset="${-o}" transform="rotate(-90,${cx},${cy})"><title>${labels[i]}: ${(pct*100).toFixed(1)}%</title></circle>`;
-    }).join('');
-    return `<svg width="180" height="120" viewBox="0 0 120 120"><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#e2e8f0" stroke-width="${r - ir}"/>${slices}<text x="${cx}" y="${cy - 4}" text-anchor="middle" font-size="16" font-weight="700" fill="var(--text)">${t.toFixed(0)}</text><text x="${cx}" y="${cy + 12}" text-anchor="middle" font-size="8" fill="#94a3b8">total</text></svg>`;
-  }
-
-  function hBar(data, labels, colors, max) {
-    const m = max || Math.max(...data, 1);
-    const h = 20;
-    const labelW = 80;
-    const barArea = 160;
-    const bars = data.map((v, i) => {
-      const bw = Math.max(4, (v / m) * (barArea - 10));
-      return `<g transform="translate(${labelW + 4}, ${i * (h + 4) + 4})">
-        <rect x="0" y="0" width="${bw}" height="16" fill="${colors[i % colors.length]}" rx="3"><title>${v}</title></rect>
-        <text x="${bw + 4}" y="12" font-size="10" font-weight="600" fill="var(--text)">${v > 999 ? (v/1000).toFixed(1) + 'k' : v}</text>
-      </g>`;
-    }).join('');
-    const lbls = labels.map((l, i) => `<text x="0" y="${i * (h + 4) + 16}" font-size="11" fill="#94a3b8" text-anchor="end">${l}</text>`).join('');
-    return `<svg width="${labelW + barArea + 40}" height="${data.length * (h + 4) + 8}" viewBox="0 0 ${labelW + barArea + 40} ${data.length * (h + 4) + 8}">${lbls}${bars}</svg>`;
-  }
+  const memberGrowth = accounts.length;
 
   // ── Build HTML ──
 
@@ -241,13 +195,13 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
   <style>
   .dash-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; }
   .dash-grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:20px; }
-  .dash-grid-full { grid-column:1/-1; }
+  .dash-grid-4 { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:16px; margin-bottom:20px; }
   .section-title { font-size:11px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.8px; margin-bottom:12px; display:flex; align-items:center; gap:6px; padding-top:8px; }
   .section-title:after { content:''; flex:1; height:1px; background:var(--border); margin-left:8px; }
   .quick-actions { display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:8px; margin-bottom:20px; }
   .quick-action-btn { display:flex; flex-direction:column; align-items:center; gap:5px; padding:12px 6px; background:var(--card); border:1px solid var(--border); border-radius:var(--radius); text-decoration:none; color:var(--text); font-size:10px; font-weight:500; transition:all 0.2s; position:relative; }
   .quick-action-btn:hover { border-color:var(--accent); transform:translateY(-3px); box-shadow:0 4px 16px rgba(46,125,50,0.15); }
-  .quick-action-btn .qa-icon { font-size:20px; }
+  .quick-action-btn .qa-icon { font-size:18px; }
   .quick-action-btn .qa-badge { position:absolute; top:-4px; right:-4px; background:var(--red); color:#fff; font-size:9px; padding:1px 5px; border-radius:8px; min-width:18px; text-align:center; }
   .pending-alert { background:linear-gradient(135deg,#fff8e1,#fff3cd); border:1px solid #ffe082; border-radius:var(--radius); padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; animation:slideDown 0.3s ease; }
   @keyframes slideDown { from{opacity:0;transform:translateY(-12px)} to{opacity:1;transform:translateY(0)} }
@@ -256,7 +210,6 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
   .chart-card { background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); border:1px solid var(--border); padding:16px; }
   .chart-card .chart-title { font-size:12px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; }
   .chart-card .chart-title .chart-badge { font-size:18px; font-weight:700; color:var(--text); text-transform:none; letter-spacing:0; }
-  .chart-card svg { max-width:100%; }
   .mini-legend { display:flex; gap:12px; margin-top:6px; font-size:10px; color:var(--text-muted); flex-wrap:wrap; }
   .mini-legend span { display:flex; align-items:center; gap:4px; }
   .mini-legend .dot { width:8px; height:8px; border-radius:2px; display:inline-block; }
@@ -265,22 +218,19 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
   .insight-banner .ib-text { flex:1; font-size:13px; color:#1B5E20; }
   .insight-banner .ib-stat { font-size:22px; font-weight:700; color:#1B5E20; text-align:center; }
   .insight-banner .ib-stat small { display:block; font-size:10px; font-weight:400; opacity:0.7; }
-  .insight-red { background:linear-gradient(135deg,#fce4ec,#f8bbd0); border-color:#ef9a9a; }
-  .insight-red .ib-text, .insight-red .ib-stat { color:#b71c1c; }
-  .insight-amber { background:linear-gradient(135deg,#fff8e1,#ffecb3); border-color:#ffe082; }
-  .insight-amber .ib-text, .insight-amber .ib-stat { color:#e65100; }
-  .trend-up { color:#16a34a; }
-  .trend-down { color:#dc2626; }
+  .trend-up { color:#16a34a; } .trend-down { color:#dc2626; } .trend-flat { color:var(--text-muted); }
   .dash-table-wrap { max-height:260px; overflow-y:auto; }
   .dash-table-wrap::-webkit-scrollbar { width:4px; }
   .dash-table-wrap::-webkit-scrollbar-thumb { background:#e2e8f0; border-radius:2px; }
   .no-data { padding:24px; text-align:center; color:var(--text-muted); font-size:13px; }
+  .chart-container { position:relative; height:180px; width:100%; }
+  .chart-container-sm { position:relative; height:150px; width:100%; }
   </style>
 
   ${pendingTotal > 0 ? `
   <div class="pending-alert">
-    <span class="pa-icon">&#x26A0;&#xFE0F;</span>
-    <span class="pa-text">${pendingLoans} loan${pendingLoans !== 1 ? 's' : ''} &middot; ${pendingWithdrawals} withdrawal${pendingWithdrawals !== 1 ? 's' : ''} &middot; ${pendingSavingsApps} savings app${pendingSavingsApps !== 1 ? 's' : ''} &middot; ${pendingOnlineDeposits} deposit${pendingOnlineDeposits !== 1 ? 's' : ''}</span>
+    <span class="pa-icon"><i class="fas fa-triangle-exclamation" style="color:#F57F17"></i></span>
+    <span class="pa-text">${pendingLoans} loan pending &middot; ${pendingWithdrawals} withdrawal pending &middot; ${pendingSavingsApps} savings app pending &middot; ${pendingOnlineDeposits} deposit pending</span>
     ${pendingLoans > 0 ? `<a href="/admin/loans?status=pending" class="btn btn-amber btn-xs">Review Loans</a>` : ''}
     ${pendingWithdrawals > 0 ? `<a href="/admin/withdrawal-requests?status=pending" class="btn btn-amber btn-xs">Review Withdrawals</a>` : ''}
     ${pendingSavingsApps > 0 ? `<a href="/admin/savings-applications?status=pending" class="btn btn-amber btn-xs">Review Apps</a>` : ''}
@@ -288,57 +238,56 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
   </div>` : ''}
 
   <!-- Quick Actions -->
-  <div class="section-title">Quick Actions</div>
+  <div class="section-title"><i class="fas fa-bolt"></i> Quick Actions</div>
   <div class="quick-actions">
-    <a href="/admin/teller" class="quick-action-btn"><span class="qa-icon">&#x1F3E6;</span><span class="qa-label">Teller</span></a>
-    <a href="/admin/accounts" class="quick-action-btn"><span class="qa-icon">&#x2795;</span><span class="qa-label">New Account</span></a>
-    <a href="/admin/loans" class="quick-action-btn"><span class="qa-icon">&#x1F4B0;</span><span class="qa-label">Loans${pendingLoans > 0 ? `<span class="qa-badge">${pendingLoans}</span>` : ''}</span></a>
-    <a href="/admin/withdrawal-requests" class="quick-action-btn"><span class="qa-icon">&#x1F4B8;</span><span class="qa-label">Withdrawals${pendingWithdrawals > 0 ? `<span class="qa-badge">${pendingWithdrawals}</span>` : ''}</span></a>
-    <a href="/admin/savings-applications" class="quick-action-btn"><span class="qa-icon">&#x1F4B1;</span><span class="qa-label">Savings Apps${pendingSavingsApps > 0 ? `<span class="qa-badge">${pendingSavingsApps}</span>` : ''}</span></a>
-    <a href="/admin/online-deposits" class="quick-action-btn"><span class="qa-icon">&#x1F4B0;</span><span class="qa-label">Deposits${pendingOnlineDeposits > 0 ? `<span class="qa-badge">${pendingOnlineDeposits}</span>` : ''}</span></a>
-    <a href="/admin/gl/trial-balance" class="quick-action-btn"><span class="qa-icon">&#x2696;</span><span class="qa-label">GL Reports</span></a>
-    <a href="/admin/audit" class="quick-action-btn"><span class="qa-icon">&#x1F4DC;</span><span class="qa-label">Audit</span></a>
-    <a href="/api/excel/export/all" class="quick-action-btn"><span class="qa-icon">&#x1F4E5;</span><span class="qa-label">Export</span></a>
+    <a href="/admin/teller" class="quick-action-btn"><span class="qa-icon"><i class="fas fa-hand-holding-dollar"></i></span><span class="qa-label">Teller</span></a>
+    <a href="/admin/accounts" class="quick-action-btn"><span class="qa-icon"><i class="fas fa-user-plus"></i></span><span class="qa-label">New Account</span></a>
+    <a href="/admin/loans" class="quick-action-btn"><span class="qa-icon"><i class="fas fa-sack-dollar"></i></span><span class="qa-label">Loans${pendingLoans > 0 ? `<span class="qa-badge">${pendingLoans}</span>` : ''}</span></a>
+    <a href="/admin/withdrawal-requests" class="quick-action-btn"><span class="qa-icon"><i class="fas fa-money-bill-transfer"></i></span><span class="qa-label">Withdrawals${pendingWithdrawals > 0 ? `<span class="qa-badge">${pendingWithdrawals}</span>` : ''}</span></a>
+    <a href="/admin/savings-applications" class="quick-action-btn"><span class="qa-icon"><i class="fas fa-piggy-bank"></i></span><span class="qa-label">Savings Apps${pendingSavingsApps > 0 ? `<span class="qa-badge">${pendingSavingsApps}</span>` : ''}</span></a>
+    <a href="/admin/online-deposits" class="quick-action-btn"><span class="qa-icon"><i class="fas fa-circle-dollar"></i></span><span class="qa-label">Deposits${pendingOnlineDeposits > 0 ? `<span class="qa-badge">${pendingOnlineDeposits}</span>` : ''}</span></a>
+    <a href="/admin/gl/trial-balance" class="quick-action-btn"><span class="qa-icon"><i class="fas fa-scale-balanced"></i></span><span class="qa-label">GL Reports</span></a>
+    <a href="/admin/audit" class="quick-action-btn"><span class="qa-icon"><i class="fas fa-file-lines"></i></span><span class="qa-label">Audit</span></a>
+    <a href="/api/excel/export/all" class="quick-action-btn"><span class="qa-icon"><i class="fas fa-download"></i></span><span class="qa-label">Export</span></a>
   </div>
 
   <!-- Insight Banner -->
   ${accounts.length > 0 ? `
   <div class="insight-banner">
-    <span class="ib-icon">&#x1F4CA;</span>
+    <span class="ib-icon"><i class="fas fa-chart-line"></i></span>
     <div class="ib-text">
       <strong>System Summary</strong> &mdash;
-      ${accounts.length} member${accounts.length !== 1 ? 's' : ''} with &#x20B1;${totalBalance.toFixed(2)} total savings
-      ${accounts.length > 0 ? `&middot; Avg &#x20B1;${(totalBalance / accounts.length).toFixed(0)}/member` : ''}
-      &middot; ${transactions.length} recent transactions
+      ${accounts.length} member${accounts.length !== 1 ? 's' : ''} &middot; &#x20B1;${totalBalance.toFixed(2)} total savings
+      &middot; Avg &#x20B1;${(totalBalance / accounts.length).toFixed(0)}/member
+      &middot; ${transactions.length} transactions
+      &middot; <span class="${depositTrend === 'up' ? 'trend-up' : depositTrend === 'down' ? 'trend-down' : 'trend-flat'}"><i class="fas fa-arrow-${depositTrend === 'up' ? 'up' : depositTrend === 'down' ? 'down' : 'right'}"></i> ${depositTrendPct}% deposit trend</span>
     </div>
     <div class="ib-stat">${netFlow >= 0 ? '+' : ''}&#x20B1;${netFlow.toFixed(0)}<small>Net Cash Flow</small></div>
   </div>` : ''}
 
-  <!-- Stats Row -->
+  <!-- Stats Row with FA icons -->
   <div class="stats-grid">
-    <div class="stat-card"><div class="stat-icon">&#x1F464;</div><div class="stat-value">${accounts.length}</div><div class="stat-label">Total Members</div><div class="stat-sub">${accounts.filter(a => Number(a.actual_balance) > 0).length} active savers</div></div>
-    <div class="stat-card" style="border-left:3px solid var(--accent)"><div class="stat-icon">&#x1F4B0;</div><div class="stat-value">&#x20B1;${totalBalance.toFixed(0)}</div><div class="stat-label">Total Deposits</div><div class="stat-sub">&#x20B1;${(totalBalance / (accounts.length || 1)).toFixed(0)} avg per member</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F4B3;</div><div class="stat-value">${transactions.length}</div><div class="stat-label">Transactions</div><div class="stat-sub">${dayCounts[6] || 0} today</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F3AF;</div><div class="stat-value">${goals.length}</div><div class="stat-label">Goal Jars</div><div class="stat-sub">${completedGoals} completed (${goals.length > 0 ? (completedGoals / goals.length * 100).toFixed(0) : 0}%)</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F3C6;</div><div class="stat-value">${unlockedBadges}<span style="font-size:13px;color:var(--text-muted)">/${totalBadges}</span></div><div class="stat-label">Badges Unlocked</div><div class="stat-bar"><div class="stat-bar-fill" style="width:${totalBadges > 0 ? (unlockedBadges/totalBadges*100).toFixed(0) : 0}%;background:var(--purple)"></div></div></div>
-    <div class="stat-card"><div class="stat-icon">&#x2728;</div><div class="stat-value">${totalXp.toLocaleString()}</div><div class="stat-label">Total XP Earned</div><div class="stat-sub">${accounts.length > 0 ? (totalXp / accounts.length).toFixed(0) : 0} avg per member</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F4B0;</div><div class="stat-value">${Number(loanStats.total_loans || 0)}</div><div class="stat-label">Loan Portfolio</div><div class="stat-sub">&#x20B1;${Number(loanStats.outstanding || 0).toFixed(0)} outstanding</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F4CA;</div><div class="stat-value">${activeLoanProducts + shopItemsCount}</div><div class="stat-label">Active Products</div><div class="stat-sub">${activeLoanProducts} loan &middot; ${shopItemsCount} shop</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-users" style="color:var(--blue)"></i></div><div class="stat-value">${accounts.length}</div><div class="stat-label">Total Members</div><div class="stat-sub">${accounts.filter(a => Number(a.actual_balance) > 0).length} active savers</div></div>
+    <div class="stat-card" style="border-left:3px solid var(--accent)"><div class="stat-icon"><i class="fas fa-piggy-bank" style="color:var(--accent)"></i></div><div class="stat-value">&#x20B1;${totalBalance.toFixed(0)}</div><div class="stat-label">Total Deposits</div><div class="stat-sub">&#x20B1;${(totalBalance / (accounts.length || 1)).toFixed(0)} avg/member</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-arrows-spin" style="color:var(--purple)"></i></div><div class="stat-value">${transactions.length}</div><div class="stat-label">Transactions</div><div class="stat-sub">${dayCounts[6] || 0} today</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-bullseye" style="color:var(--amber)"></i></div><div class="stat-value">${goals.length}</div><div class="stat-label">Goal Jars</div><div class="stat-sub">${completedGoals} completed (${goals.length > 0 ? (completedGoals / goals.length * 100).toFixed(0) : 0}%)</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-medal" style="color:var(--purple)"></i></div><div class="stat-value">${unlockedBadges}<span style="font-size:13px;color:var(--text-muted)">/${totalBadges}</span></div><div class="stat-label">Badges Unlocked</div><div class="stat-bar"><div class="stat-bar-fill" style="width:${totalBadges > 0 ? (unlockedBadges/totalBadges*100).toFixed(0) : 0}%;background:var(--purple)"></div></div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-star" style="color:var(--amber)"></i></div><div class="stat-value">${totalXp.toLocaleString()}</div><div class="stat-label">Total XP Earned</div><div class="stat-sub">${accounts.length > 0 ? (totalXp / accounts.length).toFixed(0) : 0} avg/member</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-sack-dollar" style="color:var(--teal)"></i></div><div class="stat-value">${Number(loanStats.total_loans || 0)}</div><div class="stat-label">Loan Portfolio</div><div class="stat-sub">&#x20B1;${Number(loanStats.outstanding || 0).toFixed(0)} outstanding</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-boxes-stacked" style="color:var(--pink)"></i></div><div class="stat-value">${activeLoanProducts + shopItemsCount}</div><div class="stat-label">Active Products</div><div class="stat-sub">${activeLoanProducts} loan &middot; ${shopItemsCount} shop</div></div>
   </div>
 
-  <!-- Charts Row -->
-  <div class="section-title">Analytics</div>
+  <!-- Charts Row - Chart.js -->
+  <div class="section-title"><i class="fas fa-chart-simple"></i> Analytics</div>
   <div class="dash-grid">
     <div class="chart-card">
       <div class="chart-title">Daily Transaction Volume <span class="chart-badge">&#x20B1;${(dayDeposits.reduce((s,v) => s+v, 0) + dayWithdrawals.reduce((s,v) => s+v, 0)).toFixed(0)}</span></div>
-      ${dayDeposits.reduce((s,v) => s+v, 0) + dayWithdrawals.reduce((s,v) => s+v, 0) > 0 ? barChart(dayDeposits, dayLabels, ['#22c55e','#3b82f6']) : '<div class="no-data">No transaction data in the last 7 days</div>'}
-      <div class="mini-legend"><span><span class="dot" style="background:#22c55e"></span> Deposits (&#x20B1;${dayDeposits.reduce((s,v) => s+v, 0).toFixed(0)})</span><span><span class="dot" style="background:#3b82f6"></span> Withdrawals (&#x20B1;${dayWithdrawals.reduce((s,v) => s+v, 0).toFixed(0)})</span></div>
+      <div class="chart-container"><canvas id="dailyVolumeChart"></canvas></div>
     </div>
-
     <div class="chart-card">
       <div class="chart-title">Balance Distribution <span class="chart-badge">${topAccounts.length} members</span></div>
-      <div style="display:flex;align-items:center;gap:8px">
-        ${topAccounts.length > 0 ? pieChart(topBalances, topAccounts.map(a => a.child_name), pieColors, balanceTotal) : '<div class="no-data" style="flex:1">No accounts</div>'}
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="width:140px;height:140px"><canvas id="balanceDistChart"></canvas></div>
         <div style="flex:1;min-width:0">
           ${topAccounts.slice(0, 5).map((a, i) => `
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:11px">
@@ -355,14 +304,13 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
   <div class="dash-grid-3">
     <div class="chart-card">
       <div class="chart-title">XP Leaderboard</div>
-      ${xpTop.length > 0 ? hBar(xpTop.map(a => Number(a.current_xp)), xpTop.map(a => a.child_name), ['#f59e0b','#3b82f6','#22c55e','#8b5cf6','#ef4444','#06b6d4'], maxXp) : '<div class="no-data">No XP data</div>'}
+      <div class="chart-container-sm"><canvas id="xpChart"></canvas></div>
     </div>
-
     <div class="chart-card">
       <div class="chart-title">Cash Flow <span class="chart-badge">${netFlow >= 0 ? '+' : ''}&#x20B1;${netFlow.toFixed(0)}</span></div>
       <div style="display:flex;gap:16px;align-items:center;padding:8px 0">
         <div style="text-align:center;flex:1"><div style="font-size:24px;font-weight:700;color:#16a34a">&#x20B1;${cashIn.toFixed(0)}</div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Cash In</div></div>
-        <div style="width:40px;height:40px;border-radius:50%;background:${netFlow >= 0 ? '#e8f5e9' : '#fce4ec'};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${netFlow >= 0 ? '&#x2191;' : '&#x2193;'}</div>
+        <div style="width:40px;height:40px;border-radius:50%;background:${netFlow >= 0 ? '#e8f5e9' : '#fce4ec'};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0"><i class="fas fa-arrow-${netFlow >= 0 ? 'up' : 'down'}" style="color:${netFlow >= 0 ? '#16a34a' : '#dc2626'}"></i></div>
         <div style="text-align:center;flex:1"><div style="font-size:24px;font-weight:700;color:#dc2626">&#x20B1;${cashOut.toFixed(0)}</div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Cash Out</div></div>
       </div>
       <div style="height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;display:flex">
@@ -371,41 +319,27 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
       </div>
       <div class="mini-legend" style="margin-top:4px"><span style="color:#16a34a">${(cashIn + cashOut > 0 ? (cashIn / (cashIn + cashOut) * 100).toFixed(0) : 0)}% deposits</span><span style="color:#dc2626">${(cashIn + cashOut > 0 ? (cashOut / (cashIn + cashOut) * 100).toFixed(0) : 0)}% withdrawals</span></div>
     </div>
-
     <div class="chart-card">
       <div class="chart-title">Transaction Activity</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0">
-        ${['deposit','withdrawal','loan_disbursement','loan_payment','interest_credit','allocation'].map(type => {
-          const count = transactions.filter(t => t.type === type).length;
-          const total = transactions.filter(t => t.type === type).reduce((s,t) => s + Number(t.amount), 0);
-          if (count === 0) return '';
-          const colors = {deposit:'#22c55e',withdrawal:'#ef4444',loan_disbursement:'#f59e0b',loan_payment:'#3b82f6',interest_credit:'#8b5cf6',allocation:'#06b6d4'};
-          return `<div style="flex:1;min-width:80px;background:${colors[type]}15;border:1px solid ${colors[type]}30;border-radius:8px;padding:8px 10px;text-align:center">
-            <div style="font-size:11px;font-weight:600;color:${colors[type]}">${type.replace(/_/g,' ')}</div>
-            <div style="font-size:13px;font-weight:700;color:var(--text)">${count}</div>
-            <div style="font-size:9px;color:var(--text-muted)">&#x20B1;${total.toFixed(0)}</div>
-          </div>`;
-        }).filter(Boolean).join('') || '<div class="no-data">No activity</div>'}
-      </div>
+      <div class="chart-container-sm"><canvas id="activityChart"></canvas></div>
     </div>
   </div>
 
   <!-- Excel Import + Tables -->
-  <div class="section-title">Data Management</div>
+  <div class="section-title"><i class="fas fa-database"></i> Data Management</div>
   <div class="dash-grid">
     <div class="card">
-      <div class="card-header"><h3>&#x1F4C4; Excel Import</h3></div>
+      <div class="card-header"><h3><i class="fas fa-file-excel"></i> Excel Import</h3></div>
       <div class="card-body-padded">
       <form method="post" enctype="multipart/form-data" style="display:flex;gap:8px;flex-wrap:wrap">
         <input type="file" name="file" accept=".xlsx,.xls,.csv" required style="flex:1;min-width:140px;padding:6px;border:2px solid var(--border);border-radius:6px;font-size:12px">
-        <button type="submit" formaction="/admin/upload" class="btn btn-secondary btn-xs">Parse</button>
-        <button type="submit" formaction="/admin/upload-and-seed" class="btn btn-primary btn-xs">Parse &amp; Seed</button>
+        <button type="submit" formaction="/admin/upload" class="btn btn-secondary btn-xs"><i class="fas fa-file-import"></i> Parse</button>
+        <button type="submit" formaction="/admin/upload-and-seed" class="btn btn-primary btn-xs"><i class="fas fa-seedling"></i> Parse &amp; Seed</button>
       </form>
       </div>
     </div>
-
     <div class="card">
-      <div class="card-header"><h3>&#x1F91D; Co-op Goals</h3><span class="count">${completedCoopGoals}/${totalCoopGoals}</span></div>
+      <div class="card-header"><h3><i class="fas fa-handshake"></i> Co-op Goals</h3><span class="count">${completedCoopGoals}/${totalCoopGoals}</span></div>
       <div class="card-body dash-table-wrap">
       ${totalCoopGoals === 0 ? '<div class="no-data">No co-op goals</div>' : `<table><tr><th>Goal</th><th>Progress</th><th>Status</th></tr>
       ${coopGoals.slice(0, 5).map(g => {
@@ -418,10 +352,10 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
     </div>
   </div>
 
-  <div class="section-title">Members & Activity</div>
+  <div class="section-title"><i class="fas fa-users"></i> Members & Activity</div>
   <div class="dash-grid">
     <div class="card">
-      <div class="card-header"><h3>&#x1F464; Members</h3><span class="count">${accounts.length} total</span><a href="/admin/accounts" class="btn btn-outline btn-xs">Manage</a></div>
+      <div class="card-header"><h3><i class="fas fa-users"></i> Members</h3><span class="count">${accounts.length} total</span><a href="/admin/accounts" class="btn btn-outline btn-xs"><i class="fas fa-gear"></i> Manage</a></div>
       <div class="card-body dash-table-wrap">
       <table><tr><th>Name</th><th>Balance</th><th>XP</th><th>Goals</th></tr>
       ${accounts.length === 0 ? '<tr><td colspan="4" class="no-data">No accounts</td></tr>' : accounts.map(a => {
@@ -434,9 +368,8 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
       </tr>`;}).join('')}
       </table></div>
     </div>
-
     <div class="card">
-      <div class="card-header"><h3>&#x1F4B3; Recent Transactions</h3><span class="count">recent ${Math.min(transactions.length, 8)}</span><a href="/admin/transactions" class="btn btn-outline btn-xs">View All</a></div>
+      <div class="card-header"><h3><i class="fas fa-arrows-spin"></i> Recent Transactions</h3><span class="count">recent ${Math.min(transactions.length, 8)}</span><a href="/admin/transactions" class="btn btn-outline btn-xs"><i class="fas fa-eye"></i> View All</a></div>
       <div class="card-body dash-table-wrap">
       ${transactions.length === 0 ? '<div class="no-data">No transactions</div>' : `<table><tr><th>Child</th><th>Type</th><th>Amount</th><th>Date</th></tr>
       ${transactions.slice(0, 8).map(t => {
@@ -453,11 +386,85 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
       </div>
     </div>
   </div>
+
+  <script>
+  document.addEventListener('DOMContentLoaded', function() {
+    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    var textColor = isDark ? '#94a3b8' : '#64748b';
+    var gridColor = isDark ? '#2a3a2e' : '#e2e8f0';
+
+    Chart.defaults.color = textColor;
+    Chart.defaults.font.family = "'Inter', -apple-system, sans-serif";
+
+    // Daily Volume Chart
+    var ctx1 = document.getElementById('dailyVolumeChart');
+    if (ctx1) {
+      new Chart(ctx1, {
+        type: 'bar',
+        data: {
+          labels: ${JSON.stringify(dayLabels)},
+          datasets: [
+            { label: 'Deposits', data: ${JSON.stringify(dayDeposits)}, backgroundColor: 'rgba(34,197,94,0.7)', borderColor: '#22c55e', borderWidth: 1, borderRadius: 3 },
+            { label: 'Withdrawals', data: ${JSON.stringify(dayWithdrawals)}, backgroundColor: 'rgba(59,130,246,0.7)', borderColor: '#3b82f6', borderWidth: 1, borderRadius: 3 }
+          ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: 'top', labels: { boxWidth: 12, padding: 8, font: { size: 11 } } } },
+          scales: { x: { grid: { color: gridColor } }, y: { grid: { color: gridColor }, ticks: { callback: function(v) { return '₱' + v.toLocaleString(); } } } } }
+      });
+    }
+
+    // Balance Distribution Doughnut
+    var ctx2 = document.getElementById('balanceDistChart');
+    if (ctx2) {
+      new Chart(ctx2, {
+        type: 'doughnut',
+        data: {
+          labels: ${JSON.stringify(topAccounts.map(a => a.child_name))},
+          datasets: [{ data: ${JSON.stringify(topBalances)}, backgroundColor: ${JSON.stringify(pieColors)}, borderWidth: 2, borderColor: isDark ? '#1a231c' : '#fff' }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { display: false } } }
+      });
+    }
+
+    // XP Leaderboard Horizontal Bar
+    var ctx3 = document.getElementById('xpChart');
+    if (ctx3) {
+      new Chart(ctx3, {
+        type: 'bar',
+        data: {
+          labels: ${JSON.stringify(xpTop.map(a => a.child_name))},
+          datasets: [{ label: 'XP', data: ${JSON.stringify(xpTop.map(a => Number(a.current_xp)))}, backgroundColor: ['rgba(245,158,11,0.7)','rgba(59,130,246,0.7)','rgba(34,197,94,0.7)','rgba(139,92,246,0.7)','rgba(239,68,68,0.7)','rgba(6,182,212,0.7)'], borderRadius: 3 }]
+        },
+        options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+          scales: { x: { grid: { color: gridColor } }, y: { grid: { display: false } } } }
+      });
+    }
+
+    // Transaction Activity Doughnut
+    var ctx4 = document.getElementById('activityChart');
+    if (ctx4) {
+      var activityTypes = ${JSON.stringify(['deposit','withdrawal','loan_disbursement','loan_payment','interest_credit','allocation'])};
+      var activityCounts = activityTypes.map(function(t) { return transactions.filter(function(x) { return x.type === t; }).length; });
+      var activityColors = ['rgba(34,197,94,0.7)','rgba(239,68,68,0.7)','rgba(245,158,11,0.7)','rgba(59,130,246,0.7)','rgba(139,92,246,0.7)','rgba(6,182,212,0.7)'];
+      new Chart(ctx4, {
+        type: 'doughnut',
+        data: {
+          labels: activityTypes.map(function(t) { return t.replace(/_/g,' '); }),
+          datasets: [{ data: activityCounts, backgroundColor: activityColors, borderWidth: 2, borderColor: isDark ? '#1a231c' : '#fff' }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '55%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 6, font: { size: 10 } } } } }
+      });
+    }
+  });
+  </script>
   `;
 
-  res.type('html').send(layout('Dashboard', 'dashboard', content, {
+  // Inject transaction data as a global variable for the chart script
+  const chartDataScript = `<script>var transactions = ${JSON.stringify(transactions.map(t => ({ type: t.type, amount: t.amount })))};<\/script>`;
+
+  res.type('html').send(layout('Dashboard', 'dashboard', chartDataScript + content, {
     subtitle: now.toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
-    headerActions: '<a href="/admin/gl/trial-balance" class="btn btn-outline btn-sm">&#x2696; Trial Balance</a><a href="/api/excel/export/all" class="btn btn-secondary btn-sm">&#x1F4E5; Export</a>',
+    headerActions: '<a href="/admin/gl/trial-balance" class="btn btn-outline btn-sm"><i class="fas fa-scale-balanced"></i> Trial Balance</a><a href="/api/excel/export/all" class="btn btn-secondary btn-sm"><i class="fas fa-download"></i> Export</a>',
   }));
 }));
 

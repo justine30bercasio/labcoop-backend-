@@ -507,7 +507,7 @@ function createOnlineDeposit(fields) {
 
 function updateOnlineDeposit(depositId, fields) {
   const allowed = ['status', 'admin_notes', 'resolved_at'];
-  const setClauses = [];
+  const setClauses = []; 
   const values = [];
   for (const key of allowed) {
     if (fields[key] !== undefined) {

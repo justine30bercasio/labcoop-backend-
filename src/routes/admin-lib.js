@@ -2,35 +2,35 @@ function layout(title, active, content, opts = {}) {
   const { toast, counts, subtitle, headerActions } = opts;
 
   const menuGroups = [
-    { icon: '&#x1F4CA;', label: 'Dashboard', key: 'dashboard', href: '/admin' },
-    { icon: '&#x1F3E6;', label: 'Banking', key: 'banking', children: [
-      { icon: '&#x1F3E6;', label: 'Teller Counter', href: '/admin/teller', key: 'teller' },
-      { icon: '&#x1F465;', label: 'Accounts', href: '/admin/accounts', key: 'accounts' },
-      { icon: '&#x1F4B0;', label: 'Loans', href: '/admin/loans', key: 'loans' },
-      { icon: '&#x1F4B8;', label: 'Withdrawals', href: '/admin/withdrawal-requests', key: 'withdrawal-requests' },
-      { icon: '&#x1F4B3;', label: 'Transactions', href: '/admin/transactions', key: 'transactions' },
+    { icon: '<i class="fas fa-chart-pie"></i>', label: 'Dashboard', key: 'dashboard', href: '/admin' },
+    { icon: '<i class="fas fa-building-columns"></i>', label: 'Banking', key: 'banking', children: [
+      { icon: '<i class="fas fa-hand-holding-dollar"></i>', label: 'Teller Counter', href: '/admin/teller', key: 'teller' },
+      { icon: '<i class="fas fa-users"></i>', label: 'Accounts', href: '/admin/accounts', key: 'accounts' },
+      { icon: '<i class="fas fa-sack-dollar"></i>', label: 'Loans', href: '/admin/loans', key: 'loans' },
+      { icon: '<i class="fas fa-money-bill-transfer"></i>', label: 'Withdrawals', href: '/admin/withdrawal-requests', key: 'withdrawal-requests' },
+      { icon: '<i class="fas fa-arrows-spin"></i>', label: 'Transactions', href: '/admin/transactions', key: 'transactions' },
     ]},
-    { icon: '&#x1F4E6;', label: 'Products', key: 'products', children: [
-      { icon: '&#x1F3ED;', label: 'Loan Products', href: '/admin/loan-products', key: 'loan-products' },
-      { icon: '&#x1F4E6;', label: 'Savings Products', href: '/admin/savings-products', key: 'savings-products' },
+    { icon: '<i class="fas fa-boxes-stacked"></i>', label: 'Products', key: 'products', children: [
+      { icon: '<i class="fas fa-hand-holding-hand"></i>', label: 'Loan Products', href: '/admin/loan-products', key: 'loan-products' },
+      { icon: '<i class="fas fa-piggy-bank"></i>', label: 'Savings Products', href: '/admin/savings-products', key: 'savings-products' },
     ]},
-    { icon: '&#x1F4CA;', label: 'Reports & Audit', key: 'reports', children: [
-      { icon: '&#x1F4DC;', label: 'Audit Reports', href: '/admin/audit', key: 'audit' },
-      { icon: '&#x2696;', label: 'Trial Balance', href: '/admin/gl/trial-balance', key: 'gl' },
-      { icon: '&#x1F4C8;', label: 'Balance Sheet', href: '/admin/gl/balance-sheet', key: 'gl' },
-      { icon: '&#x1F4C9;', label: 'P&L', href: '/admin/gl/profit-and-loss', key: 'gl' },
-      { icon: '&#x1F4CB;', label: 'Ledger', href: '/admin/gl/ledger', key: 'gl' },
-      { icon: '&#x1F4DD;', label: 'Audit Log', href: '/admin/audit-log', key: 'audit-log' },
-      { icon: '&#x1F465;', label: 'Admin Users', href: '/admin/users', key: 'users' },
+    { icon: '<i class="fas fa-chart-simple"></i>', label: 'Reports & Audit', key: 'reports', children: [
+      { icon: '<i class="fas fa-file-lines"></i>', label: 'Audit Reports', href: '/admin/audit', key: 'audit' },
+      { icon: '<i class="fas fa-scale-balanced"></i>', label: 'Trial Balance', href: '/admin/gl/trial-balance', key: 'gl' },
+      { icon: '<i class="fas fa-file-invoice"></i>', label: 'Balance Sheet', href: '/admin/gl/balance-sheet', key: 'gl' },
+      { icon: '<i class="fas fa-chart-line"></i>', label: 'P&L', href: '/admin/gl/profit-and-loss', key: 'gl' },
+      { icon: '<i class="fas fa-book"></i>', label: 'Ledger', href: '/admin/gl/ledger', key: 'gl' },
+      { icon: '<i class="fas fa-clipboard-list"></i>', label: 'Audit Log', href: '/admin/audit-log', key: 'audit-log' },
+      { icon: '<i class="fas fa-user-shield"></i>', label: 'Admin Users', href: '/admin/users', key: 'users' },
     ]},
-    { icon: '&#x1F3C6;', label: 'Gamification', key: 'gamification', children: [
-      { icon: '&#x1F6D2;', label: 'Shop', href: '/admin/shop', key: 'shop' },
-      { icon: '&#x1F4DD;', label: 'Quiz', href: '/admin/quiz', key: 'quiz' },
-      { icon: '&#x1F3AF;', label: 'Goals', href: '/admin/goals', key: 'goals' },
-      { icon: '&#x1F3C6;', label: 'Badges', href: '/admin/badges', key: 'badges' },
-      { icon: '&#x1F4B1;', label: 'Savings Apps', href: '/admin/savings-applications', key: 'savings-applications' },
+    { icon: '<i class="fas fa-gamepad"></i>', label: 'Gamification', key: 'gamification', children: [
+      { icon: '<i class="fas fa-store"></i>', label: 'Shop', href: '/admin/shop', key: 'shop' },
+      { icon: '<i class="fas fa-circle-question"></i>', label: 'Quiz', href: '/admin/quiz', key: 'quiz' },
+      { icon: '<i class="fas fa-bullseye"></i>', label: 'Goals', href: '/admin/goals', key: 'goals' },
+      { icon: '<i class="fas fa-medal"></i>', label: 'Badges', href: '/admin/badges', key: 'badges' },
+      { icon: '<i class="fas fa-piggy-bank"></i>', label: 'Savings Apps', href: '/admin/savings-applications', key: 'savings-applications' },
     ]},
-    { icon: '&#x2699;', label: 'Settings', key: 'settings', href: '/admin/settings' },
+    { icon: '<i class="fas fa-gear"></i>', label: 'Settings', key: 'settings', href: '/admin/settings' },
   ];
 
   function isActive(key) {
@@ -71,6 +71,8 @@ function layout(title, active, content, opts = {}) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LabCoop — ${title}</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <style>
 :root {
   --sidebar: #0d2818; --sidebar-hover: #143020; --sidebar-active: #1a5c2a;
@@ -78,7 +80,7 @@ function layout(title, active, content, opts = {}) {
   --bg: #f0f4f8; --card: #fff; --border: #e2e8f0;
   --text: #1e293b; --text-muted: #64748b;
   --accent: #2E7D32; --accent-hover: #1B5E20;
-  --green: #22c55e; --blue: #3b82f6; --amber: #f59e0b; --purple: #8b5cf6; --red: #ef4444;
+  --green: #22c55e; --blue: #3b82f6; --amber: #f59e0b; --purple: #8b5cf6; --red: #ef4444; --teal: #14b8a6; --pink: #ec4899;
   --radius: 12px; --radius-sm: 8px;
   --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
   --shadow-lg: 0 4px 24px rgba(0,0,0,0.08);
@@ -117,13 +119,15 @@ body { font-family:var(--font); background:var(--bg); color:var(--text); display
 .sidebar-nav a { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:var(--radius-sm); color:var(--sidebar-text); text-decoration:none; font-size:13px; font-weight:500; transition:all var(--transition); white-space:nowrap; }
 .sidebar-nav a:hover { background:var(--sidebar-hover); color:var(--sidebar-text-active); }
 .sidebar-nav a.active { background:var(--sidebar-active); color:#fff; font-weight:600; box-shadow:inset 2px 0 0 var(--accent); }
-.sidebar-nav a .icon { font-size:15px; width:20px; text-align:center; flex-shrink:0; }
+.sidebar-nav a .icon { font-size:15px; width:22px; text-align:center; flex-shrink:0; }
+.sidebar-nav a .icon i { font-size:15px; vertical-align:middle; }
 .sidebar-nav a .badge-count { margin-left:auto; background:rgba(255,255,255,0.1); padding:0 7px; border-radius:10px; font-size:10px; font-weight:600; line-height:18px; }
 
 .menu-group { margin-bottom:1px; }
 .menu-parent { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:var(--radius-sm); color:var(--sidebar-text); font-size:13px; font-weight:500; cursor:pointer; transition:all var(--transition); white-space:nowrap; user-select:none; }
 .menu-parent:hover { background:var(--sidebar-hover); color:var(--sidebar-text-active); }
-.menu-parent .icon { font-size:15px; width:20px; text-align:center; flex-shrink:0; }
+.menu-parent .icon { font-size:15px; width:22px; text-align:center; flex-shrink:0; }
+.menu-parent .icon i { font-size:15px; vertical-align:middle; }
 .menu-parent .chevron { margin-left:auto; font-size:8px; transition:transform var(--transition); opacity:0.5; }
 .menu-group.open .menu-parent .chevron { transform:rotate(180deg); opacity:0.8; }
 .menu-group.open .menu-parent { color:var(--sidebar-text-active); }
@@ -133,12 +137,14 @@ body { font-family:var(--font); background:var(--bg); color:var(--text); display
 .sub-menu a { padding:7px 12px 7px 20px; font-size:12.5px; color:var(--sidebar-text); border-left:1px solid rgba(255,255,255,0.06); margin-left:10px; border-radius:0 var(--radius-sm) var(--radius-sm) 0; position:relative; }
 .sub-menu a:hover { color:var(--sidebar-text-active); border-left-color:var(--accent); }
 .sub-menu a.active { color:#fff; font-weight:600; border-left-color:var(--accent); background:linear-gradient(90deg,rgba(46,125,50,0.15) 0%,transparent 100%); }
-.sub-menu a .icon { font-size:12px; width:16px; }
+.sub-menu a .icon { font-size:12px; width:18px; text-align:center; }
+.sub-menu a .icon i { font-size:12px; vertical-align:middle; }
 
 .sidebar-footer { padding:8px; border-top:1px solid rgba(255,255,255,0.05); flex-shrink:0; }
 .sidebar-footer a { display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:var(--radius-sm); color:var(--sidebar-text); text-decoration:none; font-size:12px; transition:all var(--transition); white-space:nowrap; }
 .sidebar-footer a:hover { background:var(--sidebar-hover); color:var(--sidebar-text-active); }
-.sidebar-footer a .icon { font-size:13px; width:20px; text-align:center; flex-shrink:0; }
+.sidebar-footer a .icon { font-size:13px; width:22px; text-align:center; flex-shrink:0; }
+.sidebar-footer a .icon i { font-size:13px; vertical-align:middle; }
 
 .main { margin-left:240px; flex:1; padding:24px 28px; max-width:100%; transition:margin-left var(--transition); }
 .page-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:12px; }
@@ -378,12 +384,12 @@ table.dataTable td.mono { font-family:var(--mono); font-size:12px; }
 </head>
 <body>
 
-<button class="hamburger" id="hamburger">&#x2630;</button>
+<button class="hamburger" id="hamburger"><i class="fas fa-bars"></i></button>
 
 <div class="sidebar" id="sidebar">
   <div class="sidebar-brand">
     <div class="brand-row">
-      <span class="brand-icon">&#x1F3E6;</span>
+      <span class="brand-icon"><i class="fas fa-building-columns"></i></span>
       <div>
         <span class="brand-name">LabCoop</span>
         <span class="brand-sub">Admin Dashboard</span>
@@ -394,8 +400,8 @@ table.dataTable td.mono { font-family:var(--mono); font-size:12px; }
     ${sidebarNav}
   </div>
   <div class="sidebar-footer">
-    <a href="#" data-action="toggle-theme"><span class="icon">&#x1F319;</span> <span>Dark Mode</span></a>
-    <a href="/admin/logout"><span class="icon">&#x1F6AA;</span> <span>Sign Out</span></a>
+    <a href="#" data-action="toggle-theme"><span class="icon"><i class="fas fa-moon"></i></span> <span>Dark Mode</span></a>
+    <a href="/admin/logout"><span class="icon"><i class="fas fa-right-from-bracket"></i></span> <span>Sign Out</span></a>
   </div>
 </div>
 
@@ -463,7 +469,7 @@ function toggleTheme(e){
 </script>
 <div id="confirm-modal" class="confirm-overlay" role="dialog" aria-modal="true" style="display:none">
   <div class="confirm-modal">
-    <div class="confirm-icon">&#x26A0;&#xFE0F;</div>
+    <div class="confirm-icon"><i class="fas fa-triangle-exclamation" style="font-size:42px;color:var(--red)"></i></div>
     <div class="confirm-msg" id="confirm-msg">Are you sure?</div>
     <div class="confirm-actions">
       <button class="btn btn-cancel" id="confirm-cancel">Cancel</button>

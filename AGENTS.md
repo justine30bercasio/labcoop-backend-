@@ -51,7 +51,7 @@ Build a gamified cooperative passbook for children with team savings, virtual pe
 ## Progress
 ### Done
 - Core architecture: domain entities (savings, goals, badges, pet, town buildings, quiz), data layer (Hive local DB, remote API, repository), presentation (BLoC, pages, widgets)
-- Dashboard: savings overview, XP bar, piggy widget, goal jars, badges, chore list, challenges, savings tips, streak, growth projection
+- Dashboard: savings overview, XP bar, piggy widget, goal jars, badges, challenges, savings tips, streak, growth projection
 - Co-op team goals: shared progress bars, team member display, invite codes
 - Virtual pet piggy: 7 evolution stages, happiness, feeding, rename, evolution popup
 - Dream Town builder: 10 purchasable buildings with passive bonuses, town map grid

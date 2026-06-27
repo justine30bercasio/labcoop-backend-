@@ -239,17 +239,6 @@ class LocalDbSource {
     await box.put('challenges', jsonEncode(challenges));
   }
 
-  Future<List<Map<String, dynamic>>> getChores() async {
-    final box = await _openBox('_meta');
-    final raw = box.get('chores') as String?;
-    if (raw == null) return [];
-    return (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
-  }
-
-  Future<void> saveChores(List<Map<String, dynamic>> chores) async {
-    final box = await _openBox('_meta');
-    await box.put('chores', jsonEncode(chores));
-  }
 
   Future<Map<String, dynamic>> getPetData() async {
     final box = await _openBox('_meta');

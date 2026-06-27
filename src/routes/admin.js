@@ -15,6 +15,13 @@ const _p = (...p) => p.length === 1 && Array.isArray(p[0]) ? p[0] : p;
 const sql = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows);
 const one = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows[0]);
 const fmt = v => '₱' + Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtTrn = (tx, fallback) => {
+  if (tx && tx.trn_number) {
+    const y = new Date(tx.created_at || Date.now()).getFullYear();
+    return 'TXN-' + y + '-' + String(tx.trn_number).padStart(6, '0');
+  }
+  return fallback || '-';
+};
 
 const router = express.Router();
 
@@ -3071,7 +3078,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   function receiptHtml(r) {
     if (!r) return '';
     var isCredit = r.type === 'deposit' || r.type === 'loan_disbursement';
-    return '<div class="receipt-inline" id="rinline"><div class="ri-header"><strong>LABCOOP PASSBOOK</strong><br><span style="font-size:10px;color:#999">Official Transaction Receipt</span></div><div class="ri-body"><div class="ri-row"><span class="ri-label">Receipt No.</span><span class="ri-value">RCP-' + (r.transaction_id || '').slice(0,8).toUpperCase() + '</span></div><div class="ri-row"><span class="ri-label">Date</span><span class="ri-value">' + (r.created_at || '').slice(0,19).replace('T',' ') + '</span></div><div class="ri-row"><span class="ri-label">Member</span><span class="ri-value">' + (r.child_name||'N/A') + ' (' + (r.member_id||'---') + ')</span></div><div class="ri-divider"></div><div class="ri-row"><span class="ri-label">Transaction</span><span class="ri-value" style="text-transform:uppercase">' + r.type.replace(/_/g,' ') + '</span></div><div class="ri-row"><span class="ri-label">Amount</span><span class="ri-value ' + (isCredit ? 'ri-credit' : 'ri-debit') + '">' + (isCredit ? '+' : '-') + ' \u20B1' + Number(r.amount).toFixed(2) + '</span></div><div class="ri-row"><span class="ri-label">Description</span><span class="ri-value">' + (r.description||'-') + '</span></div><div class="ri-divider"></div><div class="ri-row"><span class="ri-label">Balance Before</span><span class="ri-value">\u20B1' + Number(r.balance_before || 0).toFixed(2) + '</span></div><div class="ri-row"><span class="ri-label">Balance After</span><span class="ri-value">\u20B1' + Number(r.balance_after || 0).toFixed(2) + '</span></div></div><div class="ri-footer"><button data-action="print-receipt" class="btn btn-outline btn-xs">\uD83D\uDDA8 Print</button> &nbsp; <button data-action="close-receipt" class="btn btn-outline btn-xs">\u2716 Close</button></div></div>';
+    return '<div class="receipt-inline" id="rinline"><div class="ri-header"><strong>LABCOOP PASSBOOK</strong><br><span style="font-size:10px;color:#999">Official Transaction Receipt</span></div><div class="ri-body"><div class="ri-row"><span class="ri-label">TRN#</span><span class="ri-value">' + fmtTrn(r, 'TXN-' + (r.transaction_id || '').slice(0,8).toUpperCase()) + '</span></div><div class="ri-row"><span class="ri-label">Date</span><span class="ri-value">' + (r.created_at || '').slice(0,19).replace('T',' ') + '</span></div><div class="ri-row"><span class="ri-label">Member</span><span class="ri-value">' + (r.child_name||'N/A') + ' (' + (r.member_id||'---') + ')</span></div><div class="ri-divider"></div><div class="ri-row"><span class="ri-label">Transaction</span><span class="ri-value" style="text-transform:uppercase">' + r.type.replace(/_/g,' ') + '</span></div><div class="ri-row"><span class="ri-label">Amount</span><span class="ri-value ' + (isCredit ? 'ri-credit' : 'ri-debit') + '">' + (isCredit ? '+' : '-') + ' \u20B1' + Number(r.amount).toFixed(2) + '</span></div><div class="ri-row"><span class="ri-label">Description</span><span class="ri-value">' + (r.description||'-') + '</span></div><div class="ri-divider"></div><div class="ri-row"><span class="ri-label">Ext. Ref</span><span class="ri-value" style="font-size:11px">' + (r.reference_id ? (r.reference_type ? r.reference_type + ':' : '') + r.reference_id : '-') + '</span></div><div class="ri-divider"></div><div class="ri-row"><span class="ri-label">Balance Before</span><span class="ri-value">\u20B1' + Number(r.balance_before || 0).toFixed(2) + '</span></div><div class="ri-row"><span class="ri-label">Balance After</span><span class="ri-value">\u20B1' + Number(r.balance_after || 0).toFixed(2) + '</span></div></div><div class="ri-footer"><button data-action="print-receipt" class="btn btn-outline btn-xs">\uD83D\uDDA8 Print</button> &nbsp; <button data-action="close-receipt" class="btn btn-outline btn-xs">\u2716 Close</button></div></div>';
   }
 
   function searchResultItem(a) {
@@ -3481,10 +3488,11 @@ router.get('/audit/csv', requireRole(1), asyncHandler(async (req, res) => {
     ${wc} ORDER BY t.created_at DESC
   `, params);
 
-  let csv = 'Receipt No,Date & Time,Member Name,Member ID,Type,Amount,Balance Before,Balance After,Description,Reference\n';
+  let csv = 'TRN#,Date & Time,Member Name,Member ID,Type,Amount,Balance Before,Balance After,Description,Ext. Ref\n';
   csv += rows.map(r => {
+    const trn = fmtTrn(r, r.transaction_id);
     return [
-      r.transaction_id,
+      trn,
       r.created_at,
       '"' + (r.child_name||'').replace(/"/g,'""') + '"',
       r.member_id||'',
@@ -3675,15 +3683,15 @@ router.get('/reports/daily-collection', requireRole(2), asyncHandler(async (req,
     <div class="card-header"><h3><i class="fas fa-list"></i> Transaction Details</h3><span class="count">${summary.count} entries</span></div>
     <div class="card-body" style="padding:0">
     <table>
-      <tr><th>Time</th><th>Member</th><th>Reference</th><th>Type</th><th>Amount</th><th>Method</th><th>Description</th></tr>
+      <tr><th>Time</th><th>Member</th><th>TRN#</th><th>Type</th><th>Amount</th><th>Ext. Ref</th><th>Description</th></tr>
       ${rows.map(r => `
       <tr>
-        <td class="mono" style="font-size:11px">${r.created_at.slice(11,19)}</td>
+        <td class="mono" style="font-size:11px">${(r.created_at||'').slice(11,19)}</td>
         <td><b>${r.child_name || 'Unknown'}</b><br><span style="font-size:11px;color:var(--text-muted)">${r.member_id || ''}</span></td>
-        <td class="mono" style="font-size:11px">${(r.reference_id||'').slice(0,8)}</td>
+        <td class="mono" style="font-size:11px;font-weight:600">${fmtTrn(r)}</td>
         <td><span class="badge ${r.type === 'deposit' ? 'badge-green' : r.type === 'loan_payment' ? 'badge-blue' : r.type === 'interest_income' ? 'badge-yellow' : 'badge-red'}">${r.type.replace(/_/g,' ')}</span></td>
         <td class="mono" style="font-weight:600">${fmt(r.amount)}</td>
-        <td style="font-size:11px">${r.payment_method || 'cash'}</td>
+        <td class="mono" style="font-size:10px;color:var(--text-muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.reference_id || '-'}</td>
         <td style="font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.description || ''}</td>
       </tr>`).join('')}
       <tr style="font-weight:700;background:var(--bg-muted)">
@@ -3714,11 +3722,11 @@ router.get('/reports/daily-collection', requireRole(2), asyncHandler(async (req,
   });
   </script>`;
   if (req.query.export === 'csv') {
-    let csv = 'Time,Member,Reference,Type,Amount,Method,Description\n';
+    let csv = 'TRN#,Time,Member,Type,Amount,Ext. Ref,Description\n';
     rows.forEach(r => {
-      csv += `"${r.created_at}",${r.child_name||''},${r.reference_id||''},${r.type},${r.amount},${r.payment_method||'cash'},"${(r.description||'').replace(/"/g,'""')}"\n`;
+      csv += `"${fmtTrn(r)}","${r.created_at}","${r.child_name||''}",${r.type},${r.amount},"${r.reference_id||''}","${(r.description||'').replace(/"/g,'""')}"\n`;
     });
-    csv += `"TOTAL","","","",${summary.total},"",""\n`;
+    csv += `"TOTAL","","",,${summary.total},"",""\n`;
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="daily_collection_' + date + '.csv"');
     return res.send(csv);
@@ -3898,16 +3906,17 @@ router.get('/reports/member-ledger', requireRole(2), asyncHandler(async (req, re
     </div>
     <div class="card-body" style="padding:0">
     <table>
-      <tr><th>Date</th><th>Type</th><th>Description</th><th>Amount</th><th>Reference</th></tr>
+      <tr><th>Date</th><th>TRN#</th><th>Type</th><th>Description</th><th>Amount</th><th>Ext. Ref</th></tr>
       ${searchResults.rows.map(r => {
         const amt = parseFloat(r.amount || 0);
         const isCredit = ['deposit','interest_income','loan'].includes(r.type);
         return '<tr>' +
-          '<td class="mono" style="font-size:11px">' + r.created_at.slice(0,19).replace('T',' ') + '</td>' +
+          '<td class="mono" style="font-size:11px">' + (r.created_at||'').slice(0,19).replace('T',' ') + '</td>' +
+          '<td class="mono" style="font-size:11px;font-weight:600">' + fmtTrn(r) + '</td>' +
           '<td><span class="badge ' + (isCredit ? 'badge-green' : 'badge-red') + '">' + r.type.replace(/_/g,' ') + '</span></td>' +
           '<td style="font-size:12px">' + (r.description || '') + '</td>' +
           '<td class="mono" style="font-weight:600;color:' + (isCredit ? '#16a34a' : '#dc2626') + '">' + (isCredit ? '+' : '-') + fmt(amt) + '</td>' +
-          '<td class="mono" style="font-size:11px;color:var(--text-muted)">' + (r.reference_id||'').slice(0,8) + '</td>' +
+          '<td class="mono" style="font-size:10px;color:var(--text-muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (r.reference_id || '-') + '</td>' +
         '</tr>';
       }).join('')}
     </table></div>
@@ -3920,10 +3929,10 @@ router.get('/reports/member-ledger', requireRole(2), asyncHandler(async (req, re
     </div>
   </div>`;
   if (req.query.export === 'csv' && searchResults.rows.length) {
-    let csv = 'Date,Type,Description,Amount,Reference\n';
+    let csv = 'TRN#,Date,Type,Description,Amount,Ext. Ref\n';
     searchResults.rows.forEach(r => {
       const isCredit = ['deposit','interest_income','loan'].includes(r.type);
-      csv += `${r.created_at},${r.type},"${(r.description||'').replace(/"/g,'""')}",${isCredit ? '' : '-'}${r.amount},${r.reference_id||''}\n`;
+      csv += `"${fmtTrn(r)}","${r.created_at}",${r.type},"${(r.description||'').replace(/"/g,'""')}",${isCredit ? '' : '-'}${r.amount},"${r.reference_id||''}"\n`;
     });
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="member_ledger_' + (q||'export') + '.csv"');

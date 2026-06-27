@@ -24,6 +24,9 @@ function getDb() {
     try { db.exec("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '')"); } catch (_) {}
     try { db.exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('gcash_number', '09171234567')"); } catch (_) {}
     try { db.exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('gcash_name', 'LabCoop Savings')"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS transactions (transaction_id TEXT PRIMARY KEY, trn_number INTEGER UNIQUE, account_id TEXT NOT NULL, goal_id TEXT, type VARCHAR(50) NOT NULL, amount DECIMAL(12,2) NOT NULL, balance_before DECIMAL(12,2), balance_after DECIMAL(12,2), description TEXT DEFAULT '', reference_type VARCHAR(50), reference_id TEXT, created_at TEXT)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS sequences (name TEXT NOT NULL, year INTEGER NOT NULL, value INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (name, year))"); } catch (_) {}
+    try { db.exec("ALTER TABLE transactions ADD COLUMN trn_number INTEGER"); } catch (_) {}
     const count = db.prepare("SELECT COUNT(*) as c FROM gl_accounts").get();
     if (count.c === 0) {
       const insert = db.prepare('INSERT INTO gl_accounts (code, name, type) VALUES (?,?,?)');
@@ -206,8 +209,21 @@ function addTransaction(tx) {
     balanceAfter = Math.round((currentBalance - Number(tx.amount)) * 100) / 100;
   }
 
+  const year = new Date().getFullYear();
+  const seq = getDb().transaction(() => {
+    const existing = getDb().prepare('SELECT value FROM sequences WHERE name = ? AND year = ?').get('trn', year);
+    if (!existing) {
+      getDb().prepare('INSERT INTO sequences (name, year, value) VALUES (?, ?, 1)').run('trn', year);
+      return 1;
+    }
+    getDb().prepare('UPDATE sequences SET value = value + 1 WHERE name = ? AND year = ?').run('trn', year);
+    return existing.value + 1;
+  })();
+  const trnNumber = seq;
+
   const newTx = {
     transaction_id: uuidv4(),
+    trn_number: trnNumber,
     account_id: tx.account_id,
     goal_id: tx.goal_id || null,
     type: tx.type,
@@ -220,8 +236,8 @@ function addTransaction(tx) {
     created_at: new Date().toISOString(),
   };
   getDb().prepare(`
-    INSERT INTO transactions (transaction_id, account_id, goal_id, type, amount, balance_before, balance_after, description, reference_type, reference_id, created_at)
-    VALUES (@transaction_id, @account_id, @goal_id, @type, @amount, @balance_before, @balance_after, @description, @reference_type, @reference_id, @created_at)
+    INSERT INTO transactions (transaction_id, trn_number, account_id, goal_id, type, amount, balance_before, balance_after, description, reference_type, reference_id, created_at)
+    VALUES (@transaction_id, @trn_number, @account_id, @goal_id, @type, @amount, @balance_before, @balance_after, @description, @reference_type, @reference_id, @created_at)
   `).run(newTx);
   return newTx;
 }

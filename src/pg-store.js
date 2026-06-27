@@ -75,6 +75,7 @@ class PgStore {
       );
       CREATE TABLE IF NOT EXISTS transactions (
         transaction_id TEXT PRIMARY KEY,
+        trn_number INTEGER UNIQUE,
         account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
         goal_id TEXT REFERENCES goal_jars(goal_id) ON DELETE SET NULL,
         type VARCHAR(50) NOT NULL,
@@ -85,6 +86,12 @@ class PgStore {
         reference_type VARCHAR(50),
         reference_id TEXT,
         created_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS sequences (
+        name TEXT NOT NULL,
+        year INTEGER NOT NULL,
+        value INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (name, year)
       );
       CREATE TABLE IF NOT EXISTS shop_items (
         id TEXT PRIMARY KEY,
@@ -283,6 +290,7 @@ class PgStore {
     `;
     await this.pool.query(schema);
     // Migrations for existing tables
+    await this.pool.query("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS trn_number INTEGER").catch(() => {});
     await this.pool.query("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS email TEXT DEFAULT ''").catch(() => {});
     await this._seedGlAccounts();
   }
@@ -574,8 +582,17 @@ class PgStore {
     } else if (['withdrawal', 'loan_payment', 'fee'].includes(tx.type)) {
       balanceAfter = Math.round((currentBalance - Number(tx.amount)) * 100) / 100;
     }
+    const year = new Date().getFullYear();
+    const seq = await this.query(
+      `INSERT INTO sequences (name, year, value) VALUES ('trn', $1, 1)
+       ON CONFLICT (name, year) DO UPDATE SET value = sequences.value + 1
+       RETURNING value`,
+      [year]
+    );
+    const trnNumber = Number(seq.rows[0].value);
     const newTx = {
       transaction_id: uuidv4(),
+      trn_number: trnNumber,
       account_id: tx.account_id,
       goal_id: tx.goal_id || null,
       type: tx.type,
@@ -588,10 +605,10 @@ class PgStore {
       created_at: new Date().toISOString(),
     };
     await this.query(`
-      INSERT INTO transactions (transaction_id, account_id, goal_id, type, amount, balance_before, balance_after, description, reference_type, reference_id, created_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      INSERT INTO transactions (transaction_id, trn_number, account_id, goal_id, type, amount, balance_before, balance_after, description, reference_type, reference_id, created_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
     `, [
-      newTx.transaction_id, newTx.account_id, newTx.goal_id,
+      newTx.transaction_id, newTx.trn_number, newTx.account_id, newTx.goal_id,
       newTx.type, newTx.amount, newTx.balance_before, newTx.balance_after,
       newTx.description, newTx.reference_type, newTx.reference_id, newTx.created_at,
     ]);

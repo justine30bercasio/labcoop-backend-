@@ -257,7 +257,7 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", 'cdn.datatables.net', 'cdnjs.cloudflare.com'],
       imgSrc: ["'self'", 'data:', 'https://*'],
       fontSrc: ["'self'", 'cdnjs.cloudflare.com', 'data:'],
-      connectSrc: ["'self'"],
+      connectSrc: ["'self'", 'cdn.jsdelivr.net'],
       formAction: ["'self'"],
     },
   },

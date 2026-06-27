@@ -14,6 +14,7 @@ const notifs = require('../services/notifications');
 const _p = (...p) => p.length === 1 && Array.isArray(p[0]) ? p[0] : p;
 const sql = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows);
 const one = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows[0]);
+const fmt = v => '₱' + Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const router = express.Router();
 
@@ -3508,7 +3509,7 @@ router.get('/reports/loan-aging', requireRole(2), asyncHandler(async (req, res) 
   const asOf = req.query.as_of || new Date().toISOString().slice(0, 10);
   const loans = await store.query(`
     SELECT l.*, a.name as child_name, a.member_id
-    FROM loans l JOIN accounts a ON l.account_id = a.id
+    FROM loans l JOIN accounts a ON l.account_id = a.account_id
     WHERE l.status = 'active' OR l.status = 'overdue'
     ORDER BY l.due_date ASC
   `);
@@ -3635,9 +3636,9 @@ router.get('/reports/loan-aging', requireRole(2), asyncHandler(async (req, res) 
 router.get('/reports/daily-collection', requireRole(2), asyncHandler(async (req, res) => {
   const date = req.query.date || new Date().toISOString().slice(0, 10);
   const { rows } = await store.query(`
-    SELECT t.*, a.name as child_name, a.member_id
+    SELECT t.*, a.child_name as child_name, a.member_id
     FROM transactions t
-    JOIN accounts a ON t.account_id = a.id
+    JOIN accounts a ON t.account_id = a.account_id
     WHERE t.type IN ('deposit','loan_payment','interest_income','penalty')
       AND DATE(t.created_at) = $1
     ORDER BY t.created_at ASC
@@ -3738,15 +3739,16 @@ router.get('/reports/deposit-summary', requireRole(2), asyncHandler(async (req, 
   const totalDeposits = rows.reduce((s, r) => s + parseFloat(r.total || 0), 0);
   const totalCount = rows.reduce((s, r) => s + parseInt(r.cnt || 0), 0);
   const avgPerDay = rows.length ? totalDeposits / rows.length : 0;
-  const labels = JSON.stringify(rows.map(r => r.d.slice(5)));
+  const fmtDate = d => d instanceof Date ? d.toISOString().slice(0,10) : String(d || '').slice(0,10);
+  const labels = JSON.stringify(rows.map(r => fmtDate(r.d).slice(5)));
   const values = JSON.stringify(rows.map(r => parseFloat(r.total || 0)));
   const counts = JSON.stringify(rows.map(r => parseInt(r.cnt || 0)));
   // Top depositors
   const { rows: top } = await store.query(`
-    SELECT a.name, a.member_id, SUM(CAST(t.amount AS DECIMAL(20,2))) as total, COUNT(*) as cnt
-    FROM transactions t JOIN accounts a ON t.account_id = a.id
+    SELECT a.child_name as name, a.member_id, SUM(CAST(t.amount AS DECIMAL(20,2))) as total, COUNT(*) as cnt
+    FROM transactions t JOIN accounts a ON t.account_id = a.account_id
     WHERE t.type = 'deposit' AND DATE(t.created_at) >= $1 AND DATE(t.created_at) <= $2
-    GROUP BY a.name, a.member_id ORDER BY total DESC LIMIT 10
+    GROUP BY a.child_name, a.member_id ORDER BY total DESC LIMIT 10
   `, [from, to]);
   const content = `
   <div class="card">
@@ -3792,7 +3794,7 @@ router.get('/reports/deposit-summary', requireRole(2), asyncHandler(async (req, 
         <tr><th>Date</th><th>Count</th><th>Amount</th></tr>
         ${rows.map(r => `
         <tr>
-          <td class="mono">${r.d}</td>
+          <td class="mono">${fmtDate(r.d)}</td>
           <td>${r.cnt}</td>
           <td class="mono">${fmt(r.total)}</td>
         </tr>`).join('')}
@@ -3821,7 +3823,7 @@ router.get('/reports/deposit-summary', requireRole(2), asyncHandler(async (req, 
   </script>`;
   if (req.query.export === 'csv') {
     let csv = 'Date,Count,Amount\n';
-    rows.forEach(r => { csv += `${r.d},${r.cnt},${r.total}\n`; });
+    rows.forEach(r => { csv += `${fmtDate(r.d)},${r.cnt},${r.total}\n`; });
     csv += `TOTAL,${totalCount},${totalDeposits.toFixed(2)}\n`;
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="deposit_summary_' + from + '_to_' + to + '.csv"');
@@ -3839,14 +3841,14 @@ router.get('/reports/member-ledger', requireRole(2), asyncHandler(async (req, re
   const to = req.query.to || '';
   let where = ['1=1'];
   let params = [];
-  if (q) { where.push('(a.name ILIKE $' + (params.length+1) + ' OR a.member_id ILIKE $' + (params.length+1) + ')'); params.push('%' + q + '%'); }
+  if (q) { where.push('(LOWER(a.child_name) LIKE LOWER($' + (params.length+1) + ') OR LOWER(a.member_id) LIKE LOWER($' + (params.length+1) + '))'); params.push('%' + q + '%'); }
   if (memberId) { where.push('a.member_id = $' + (params.length+1)); params.push(memberId); }
   if (from) { where.push('DATE(t.created_at) >= $' + (params.length+1)); params.push(from); }
   if (to) { where.push('DATE(t.created_at) <= $' + (params.length+1)); params.push(to); }
-  const { rows: members } = await store.query('SELECT DISTINCT a.id, a.name, a.member_id FROM accounts a JOIN transactions t ON a.id = t.account_id WHERE a.is_archived = 0 ORDER BY a.name ASC');
+  const { rows: members } = await store.query('SELECT DISTINCT a.account_id, a.child_name as name, a.member_id FROM accounts a JOIN transactions t ON a.account_id = t.account_id WHERE a.is_active = 1 ORDER BY a.child_name ASC');
   const searchResults = q || memberId ? await store.query(`
-    SELECT t.*, a.name as child_name, a.member_id, a.balance
-    FROM transactions t JOIN accounts a ON t.account_id = a.id
+    SELECT t.*, a.child_name as child_name, a.member_id, a.actual_balance as balance
+    FROM transactions t JOIN accounts a ON t.account_id = a.account_id
     WHERE ${where.join(' AND ')}
     ORDER BY t.created_at DESC LIMIT 500
   `, params) : { rows: [] };
@@ -3935,7 +3937,7 @@ router.get('/reports/member-ledger', requireRole(2), asyncHandler(async (req, re
 router.get('/reports/loan-portfolio', requireRole(2), asyncHandler(async (req, res) => {
   const { rows: loans } = await store.query(`
     SELECT l.*, a.name as child_name, a.member_id
-    FROM loans l JOIN accounts a ON l.account_id = a.id
+    FROM loans l JOIN accounts a ON l.account_id = a.account_id
     ORDER BY l.created_at DESC
   `);
   const stats = { total: 0, active: 0, paid: 0, overdue: 0, rejected: 0, totalAmount: 0, totalPaid: 0, totalOutstanding: 0, totalInterest: 0 };

@@ -57,9 +57,15 @@ Build a gamified cooperative passbook for children with team savings, virtual pe
 - Dream Town builder: 10 purchasable buildings with passive bonuses, town map grid
 - Financial literacy quiz: 15 questions across 4 categories, streak, high scores
 - Rare unlocks: 6 milestones in Profile and Rewards
+- MBwin-style advanced reports: Loan Aging (with provision calc), Daily Collection, Deposit Summary, Member Ledger, Loan Portfolio — all with Chart.js, CSV export, print view
+- Configurable savings interest rate via admin Settings page (default 2% monthly)
+- Auto-seeded `sp_regular` savings product so all children earn interest by default
+- Sidebar reorganized: Savings Reports → Financial Reports → Loan Reports (Future) → Audit & Admin
+- CSP connect-src fixed to allow Chart.js source maps
 
 ### Removed
 - Battle system (Flame game engine + 3D arena) — removed 2026-06-15 per user request
+- Chores module — removed 2026-06-27 per user request
 
 ### In Progress
 - (none — awaiting user direction)

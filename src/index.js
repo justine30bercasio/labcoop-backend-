@@ -252,11 +252,11 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", 'code.jquery.com', 'cdn.datatables.net'],
+      scriptSrc: ["'self'", "'unsafe-inline'", 'code.jquery.com', 'cdn.datatables.net', 'cdn.jsdelivr.net'],
       scriptSrcAttr: ["'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'", 'cdn.datatables.net'],
-      imgSrc: ["'self'", "data:"],
-      fontSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", 'cdn.datatables.net', 'cdnjs.cloudflare.com'],
+      imgSrc: ["'self'", 'data:', 'https://*'],
+      fontSrc: ["'self'", 'cdnjs.cloudflare.com', 'data:'],
       connectSrc: ["'self'"],
       formAction: ["'self'"],
     },

@@ -4505,12 +4505,18 @@ const BACKUP_TABLES = [
   'accounts', 'transactions', 'goal_jars', 'badges', 'loans', 'loan_payments',
   'coop_goals', 'coop_contributions', 'savings_applications', 'standing_orders',
   'withdrawal_requests', 'online_deposits', 'settings', 'eod_logs',
+  'archived_transactions', 'eoy_logs', 'gl_entries',
+  'loan_products', 'savings_products', 'shop_items', 'quiz_questions',
 ];
 
 const BACKUP_TABLE_ORDER = [
-  'accounts', 'goal_jars', 'badges', 'loans', 'loan_payments', 'settings',
+  'loan_products', 'savings_products', 'shop_items', 'quiz_questions',
+  'accounts', 'settings',
+  'goal_jars', 'badges', 'loans', 'loan_payments',
   'savings_applications', 'standing_orders', 'coop_goals', 'coop_contributions',
-  'withdrawal_requests', 'online_deposits', 'eod_logs', 'transactions',
+  'withdrawal_requests', 'online_deposits',
+  'eod_logs', 'eoy_logs', 'archived_transactions',
+  'transactions', 'gl_entries',
 ];
 
 // Helper: collect all data from a table
@@ -4765,6 +4771,13 @@ router.post('/backup/restore/confirm', requireRole(3), asyncHandler(async (req, 
       if (t === 'withdrawal_requests') await store.query('DELETE FROM withdrawal_requests');
       if (t === 'online_deposits') await store.query('DELETE FROM online_deposits');
       if (t === 'eod_logs') await store.query('DELETE FROM eod_logs');
+      if (t === 'eoy_logs') await store.query('DELETE FROM eoy_logs');
+      if (t === 'archived_transactions') await store.query('DELETE FROM archived_transactions');
+      if (t === 'gl_entries') await store.query('DELETE FROM gl_entries');
+      if (t === 'loan_products') await store.query('DELETE FROM loan_products');
+      if (t === 'savings_products') await store.query('DELETE FROM savings_products');
+      if (t === 'shop_items') await store.query('DELETE FROM shop_items');
+      if (t === 'quiz_questions') await store.query('DELETE FROM quiz_questions');
       if (t === 'settings') await store.query('DELETE FROM settings');
 
       // Bulk insert

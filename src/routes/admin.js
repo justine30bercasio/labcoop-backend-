@@ -4501,23 +4501,21 @@ router.post('/eoy/close', requireRole(3), asyncHandler(async (req, res) => {
 
 // ── Backup & Restore — Advanced Data Security ──
 
-const BACKUP_TABLES = [
-  'accounts', 'transactions', 'goal_jars', 'badges', 'loans', 'loan_payments',
-  'coop_goals', 'coop_contributions', 'savings_applications', 'standing_orders',
-  'withdrawal_requests', 'online_deposits', 'settings', 'eod_logs',
-  'archived_transactions', 'eoy_logs', 'gl_entries',
-  'loan_products', 'savings_products', 'shop_items', 'quiz_questions',
-];
+// System tables excluded from backup/restore
+const SYSTEM_TABLES = new Set(['sequences', 'audit_log', 'admin_users', 'fcm_tokens', 'gl_accounts', 'backup_logs']);
 
-const BACKUP_TABLE_ORDER = [
-  'loan_products', 'savings_products', 'shop_items', 'quiz_questions',
-  'accounts', 'settings',
-  'goal_jars', 'badges', 'loans', 'loan_payments',
-  'savings_applications', 'standing_orders', 'coop_goals', 'coop_contributions',
-  'withdrawal_requests', 'online_deposits',
-  'eod_logs', 'eoy_logs', 'archived_transactions',
-  'transactions', 'gl_entries',
-];
+// Dynamically discover all user tables from the database schema
+async function getAllTables() {
+  let tables;
+  if (isPostgres) {
+    const r = await store.query("SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' ORDER BY table_name");
+    tables = r.rows.map(t => t.table_name);
+  } else {
+    const r = await store.query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name", []);
+    tables = r.rows.map(t => t.name);
+  }
+  return tables.filter(t => !SYSTEM_TABLES.has(t));
+}
 
 // Helper: collect all data from a table
 async function dumpTable(table) {
@@ -4527,26 +4525,41 @@ async function dumpTable(table) {
 
 // Helper: compute SHA-256 checksum of string
 function sha256(str) {
-  const crypto = require('crypto');
   return crypto.createHash('sha256').update(str, 'utf8').digest('hex');
 }
 
 // Helper: format size
 const fmtSize = bytes => bytes < 1024 ? bytes + ' B' : bytes < 1048576 ? (bytes / 1024).toFixed(1) + ' KB' : (bytes / 1048576).toFixed(1) + ' MB';
 
+// Temporarily disable FK checks so restore order doesn't matter
+async function disableForeignKeys() {
+  if (isPostgres) {
+    await store.query("SET session_replication_role = 'replica'");
+  } else {
+    await store.query('PRAGMA foreign_keys = OFF');
+  }
+}
+async function enableForeignKeys() {
+  if (isPostgres) {
+    await store.query("SET session_replication_role = 'origin'");
+  } else {
+    await store.query('PRAGMA foreign_keys = ON');
+  }
+}
+
 router.get('/backup', requireRole(1), asyncHandler(async (req, res) => {
-  const sql = (q, p) => store.query(q, p || []).then(r => r.rows);
-  const one = (q, p) => store.query(q, p || []).then(r => r.rows[0]);
+  const tables = await getAllTables();
   const toast = req.query.restored === 'ok' ? 'success:Data restored successfully.'
     : req.query.failed ? `error:${req.query.failed}`
     : '';
-  const lastBackup = await one("SELECT * FROM backup_logs WHERE status = 'completed' ORDER BY created_at DESC LIMIT 1");
-  const backupHistory = await sql("SELECT * FROM backup_logs ORDER BY created_at DESC LIMIT 20");
+  const lastBackup = (await store.query("SELECT * FROM backup_logs WHERE status = 'completed' ORDER BY created_at DESC LIMIT 1")).rows[0];
+  const backupHistory = (await store.query("SELECT * FROM backup_logs ORDER BY created_at DESC LIMIT 20")).rows;
   const stats = {};
-  for (const t of BACKUP_TABLES) {
-    const c = await one(`SELECT COUNT(*) as c FROM "${t}"`);
+  for (const t of tables) {
+    const c = (await store.query(`SELECT COUNT(*) as c FROM "${t}"`)).rows[0];
     stats[t] = Number(c?.c || 0);
   }
+  const totalRows = Object.values(stats).reduce((s, v) => s + v, 0);
   const content = `
   <style>
   .backup-card { border:2px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:16px; background:var(--card); }
@@ -4559,24 +4572,25 @@ router.get('/backup', requireRole(1), asyncHandler(async (req, res) => {
   .preview-table td, .preview-table th { padding:4px 8px; }
   </style>
   <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
-    <div class="stat-card"><div class="stat-icon"><i class="fas fa-database"></i></div><div class="stat-value">${BACKUP_TABLES.length}</div><div class="stat-label">Tables</div></div>
-    <div class="stat-card"><div class="stat-icon"><i class="fas fa-layer-group"></i></div><div class="stat-value">${Object.values(stats).reduce((s,v) => s+v, 0)}</div><div class="stat-label">Total Records</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-database"></i></div><div class="stat-value">${tables.length}</div><div class="stat-label">Tables</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-layer-group"></i></div><div class="stat-value">${totalRows}</div><div class="stat-label">Total Records</div></div>
     <div class="stat-card"><div class="stat-icon"><i class="fas fa-history"></i></div><div class="stat-value">${backupHistory.length}</div><div class="stat-label">Past Backups</div></div>
     <div class="stat-card"><div class="stat-icon"><i class="fas fa-calendar"></i></div><div class="stat-value">${lastBackup ? (lastBackup.created_at||'').slice(0,10) : 'Never'}</div><div class="stat-label">Last Backup</div></div>
   </div>
 
   <div class="backup-card highlight">
     <h3><i class="fas fa-download" style="color:var(--accent)"></i> Download Backup</h3>
-    <p style="margin-bottom:12px;color:var(--text-muted);font-size:13px">Exports all user data as a signed JSON file. Includes verification checksum for integrity.</p>
+    <p style="margin-bottom:12px;color:var(--text-muted);font-size:13px">Exports all user data as a signed JSON file. Includes verification checksum for integrity. <b>Auto-discovers all tables</b> — no manual list to maintain.</p>
     <div class="row">
       <div class="field">
-        <label>Include tables:</label>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
-          ${BACKUP_TABLES.map(t => '<label style="font-size:12px;display:flex;align-items:center;gap:4px;background:var(--bg-muted);padding:4px 8px;border-radius:6px"><input type="checkbox" class="backup-tbl" value="' + t + '" checked> ' + t + ' <span style="color:var(--text-muted)">(' + stats[t] + ')</span></label>').join('')}
+        <label>Include tables (${tables.length} total):</label>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;max-height:200px;overflow-y:auto;padding:4px">
+          ${tables.map(t => '<label style="font-size:12px;display:flex;align-items:center;gap:4px;background:var(--bg-muted);padding:4px 8px;border-radius:6px"><input type="checkbox" class="backup-tbl" value="' + t + '" checked> ' + t + ' <span style="color:var(--text-muted)">(' + stats[t] + ')</span></label>').join('')}
         </div>
       </div>
       <div style="flex-shrink:0">
         <button class="btn btn-secondary" onclick="downloadBackup()"><i class="fas fa-download"></i> Download Backup</button>
+        <button class="btn btn-outline" style="margin-top:8px;display:block" onclick="document.querySelectorAll('.backup-tbl').forEach(c=>c.checked=true)">Select All</button>
       </div>
     </div>
   </div>
@@ -4617,11 +4631,12 @@ router.get('/backup', requireRole(1), asyncHandler(async (req, res) => {
     window.location.href = '/admin/backup/download?tables=' + encodeURIComponent(tables);
   }
   </script>`;
-  res.type('html').send(layout('Backup & Restore', 'backup', content, { subtitle: 'Advanced data protection', toast }));
+  res.type('html').send(layout('Backup & Restore', 'backup', content, { subtitle: 'Dynamic schema discovery', toast }));
 }));
 
 router.get('/backup/download', requireRole(3), asyncHandler(async (req, res) => {
-  const tables = (req.query.tables || BACKUP_TABLES.join(',')).split(',').filter(t => BACKUP_TABLES.includes(t));
+  const allTables = await getAllTables();
+  const tables = (req.query.tables || allTables.join(',')).split(',').filter(t => allTables.includes(t));
   if (tables.length === 0) return res.status(400).json({ error: 'No valid tables selected' });
   const backup = {
     manifest: {
@@ -4631,6 +4646,7 @@ router.get('/backup/download', requireRole(3), asyncHandler(async (req, res) => 
       tables: tables,
       total_tables: tables.length,
       total_rows: 0,
+      db_type: isPostgres ? 'postgresql' : 'sqlite',
     },
     data: {},
   };
@@ -4644,9 +4660,10 @@ router.get('/backup/download', requireRole(3), asyncHandler(async (req, res) => 
   backup.manifest.checksum = checksum;
   const finalJson = JSON.stringify(backup, null, 2);
   const filename = 'labcoop_backup_' + new Date().toISOString().slice(0,10) + '.json';
+  const fileSize = Buffer.byteLength(finalJson, 'utf8');
   await store.query(
     'INSERT INTO backup_logs (backup_id, filename, file_size, checksum, table_count, row_count, status, created_by, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
-    [require('uuid').v4(), filename, Buffer.byteLength(finalJson, 'utf8'), checksum, tables.length, backup.manifest.total_rows, 'completed', req.session.adminName || 'admin', new Date().toISOString()]
+    [uuidv4(), filename, fileSize, checksum, tables.length, backup.manifest.total_rows, 'completed', req.session.adminName || 'admin', new Date().toISOString()]
   );
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Content-Disposition', 'attachment; filename="' + filename + '"');
@@ -4654,19 +4671,18 @@ router.get('/backup/download', requireRole(3), asyncHandler(async (req, res) => 
   res.send(finalJson);
 }));
 
-router.post('/backup/restore', requireRole(3), require('multer')({ dest: require('path').join(__dirname, '..', 'uploads'), limits: { fileSize: 100 * 1024 * 1024 } }).single('backup_file'), asyncHandler(async (req, res) => {
+router.post('/backup/restore', requireRole(3), multer({ dest: path.join(__dirname, '..', 'uploads'), limits: { fileSize: 100 * 1024 * 1024 } }).single('backup_file'), asyncHandler(async (req, res) => {
   if (!req.file) return res.redirect('/admin/backup?failed=No+file+uploaded');
   const filePath = req.file.path;
   let backup;
   try {
-    const content = require('fs').readFileSync(filePath, 'utf8');
-    backup = JSON.parse(content);
+    backup = JSON.parse(fs.readFileSync(filePath, 'utf8'));
   } catch (e) {
-    require('fs').unlinkSync(filePath);
+    fs.unlinkSync(filePath);
     return res.redirect('/admin/backup?failed=Invalid+JSON+file');
   }
   if (!backup.manifest || !backup.data || typeof backup.data !== 'object') {
-    require('fs').unlinkSync(filePath);
+    fs.unlinkSync(filePath);
     return res.redirect('/admin/backup?failed=Invalid+backup+format');
   }
   // Verify checksum
@@ -4676,11 +4692,12 @@ router.post('/backup/restore', requireRole(3), require('multer')({ dest: require
   const computedChecksum = sha256(jsonCheck);
   backup.manifest.checksum = originalChecksum;
   if (originalChecksum && computedChecksum !== originalChecksum) {
-    require('fs').unlinkSync(filePath);
+    fs.unlinkSync(filePath);
     return res.redirect('/admin/backup?failed=Checksum+mismatch+—+file+may+be+corrupted');
   }
-  // Build preview
-  const tableNames = Object.keys(backup.data).filter(t => BACKUP_TABLES.includes(t));
+  // Match backup tables against current schema
+  const allTables = await getAllTables();
+  const tableNames = Object.keys(backup.data).filter(t => allTables.includes(t));
   let totalRows = 0;
   const preview = tableNames.map(t => {
     const rows = backup.data[t];
@@ -4716,7 +4733,7 @@ router.post('/backup/restore', requireRole(3), require('multer')({ dest: require
         <div class="stat-card"><div class="stat-icon"><i class="fas fa-file"></i></div><div class="stat-value">${fmtSize(fileSize)}</div><div class="stat-label">File Size</div></div>
         <div class="stat-card"><div class="stat-icon"><i class="fas fa-check-circle" style="color:${originalChecksum ? '#16a34a' : '#94a3b8'}"></i></div><div class="stat-value">${originalChecksum ? 'Verified' : 'No checksum'}</div><div class="stat-label">Integrity</div></div>
       </div>
-      <p style="color:var(--amber);font-weight:600;margin-bottom:12px"><i class="fas fa-exclamation-triangle"></i> Restoring will <b>overwrite existing data</b> in the selected tables. This is irreversible.</p>
+      <p style="color:var(--amber);font-weight:600;margin-bottom:12px"><i class="fas fa-exclamation-triangle"></i> Restoring will <b>overwrite existing data</b> in the selected tables. This is irreversible. FK constraints are temporarily disabled for safe restore.</p>
       ${previewHtml}
       <form method="post" action="/admin/backup/restore/confirm" style="display:flex;gap:12px;margin-top:12px">
         <input type="hidden" name="filepath" value="${filePath}">
@@ -4732,75 +4749,47 @@ router.post('/backup/restore', requireRole(3), require('multer')({ dest: require
 router.post('/backup/restore/confirm', requireRole(3), asyncHandler(async (req, res) => {
   const filePath = req.body.filepath;
   const tablesStr = req.body.tables || '';
-  if (!filePath || !require('fs').existsSync(filePath)) return res.redirect('/admin/backup?failed=Backup+file+not+found');
-  const tables = tablesStr.split(',').filter(t => BACKUP_TABLES.includes(t));
+  if (!filePath || !fs.existsSync(filePath)) return res.redirect('/admin/backup?failed=Backup+file+not+found');
+  const allTables = await getAllTables();
+  const tables = tablesStr.split(',').filter(t => allTables.includes(t));
   if (tables.length === 0) return res.redirect('/admin/backup?failed=No+tables+to+restore');
   let backup;
   try {
-    backup = JSON.parse(require('fs').readFileSync(filePath, 'utf8'));
+    backup = JSON.parse(fs.readFileSync(filePath, 'utf8'));
   } catch (e) {
-    require('fs').unlinkSync(filePath);
+    fs.unlinkSync(filePath);
     return res.redirect('/admin/backup?failed=Invalid+backup+file');
   }
   try {
-    // Restore in dependency-safe order
-    const orderedTables = BACKUP_TABLE_ORDER.filter(t => tables.includes(t) && backup.data[t]);
-    for (const t of orderedTables) {
+    await disableForeignKeys();
+    for (const t of tables) {
       const rows = backup.data[t];
       if (!Array.isArray(rows) || rows.length === 0) continue;
-      if (t === 'transactions') {
-        // Transactions may have FK to accounts — delete old ones first
-        await store.query('DELETE FROM transactions');
-      }
-      if (t === 'goal_jars') {
-        await store.query('DELETE FROM goal_jars');
-      }
-      if (t === 'badges') {
-        await store.query('DELETE FROM badges');
-      }
-      if (t === 'loans') {
-        await store.query('DELETE FROM loan_payments');
-        await store.query('DELETE FROM loans');
-      }
-      if (t === 'coop_goals') {
-        await store.query('DELETE FROM coop_contributions');
-        await store.query('DELETE FROM coop_goals');
-      }
-      if (t === 'savings_applications') await store.query('DELETE FROM savings_applications');
-      if (t === 'standing_orders') await store.query('DELETE FROM standing_orders');
-      if (t === 'withdrawal_requests') await store.query('DELETE FROM withdrawal_requests');
-      if (t === 'online_deposits') await store.query('DELETE FROM online_deposits');
-      if (t === 'eod_logs') await store.query('DELETE FROM eod_logs');
-      if (t === 'eoy_logs') await store.query('DELETE FROM eoy_logs');
-      if (t === 'archived_transactions') await store.query('DELETE FROM archived_transactions');
-      if (t === 'gl_entries') await store.query('DELETE FROM gl_entries');
-      if (t === 'loan_products') await store.query('DELETE FROM loan_products');
-      if (t === 'savings_products') await store.query('DELETE FROM savings_products');
-      if (t === 'shop_items') await store.query('DELETE FROM shop_items');
-      if (t === 'quiz_questions') await store.query('DELETE FROM quiz_questions');
-      if (t === 'settings') await store.query('DELETE FROM settings');
-
+      // Clear existing data
+      await store.query(`DELETE FROM "${t}"`);
       // Bulk insert
       for (const row of rows) {
         const cols = Object.keys(row).filter(k => row[k] !== undefined);
         const vals = cols.map(c => row[c]);
         const placeholders = cols.map((_, i) => '$' + (i + 1));
-        const sql = `INSERT INTO "${t}" (${cols.map(c => '"' + c + '"').join(',')}) VALUES (${placeholders.join(',')})`;
+        const insertSql = `INSERT INTO "${t}" (${cols.map(c => '"' + c + '"').join(',')}) VALUES (${placeholders.join(',')})`;
         try {
-          await store.query(sql, vals);
+          await store.query(insertSql, vals);
         } catch (insertErr) {
-          // Skip rows that conflict (e.g., duplicate PKs on re-restore)
           console.warn('Skipped row in ' + t + ': ' + insertErr.message.slice(0, 100));
         }
       }
     }
-    require('fs').unlinkSync(filePath);
+    await enableForeignKeys();
+    fs.unlinkSync(filePath);
+    const totalRestored = Object.values(backup.data).reduce((s, arr) => s + (Array.isArray(arr) ? arr.length : 0), 0);
     await store.query(
       'INSERT INTO backup_logs (backup_id, filename, file_size, checksum, table_count, row_count, status, notes, created_by, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
-      [require('uuid').v4(), 'restore-' + new Date().toISOString().slice(0,10), 0, '', tables.length, Object.values(backup.data).reduce((s, arr) => s + (Array.isArray(arr) ? arr.length : 0), 0), 'restored', 'Restored from backup', req.session.adminName || 'admin', new Date().toISOString()]
+      [uuidv4(), 'restore-' + new Date().toISOString().slice(0,10), 0, '', tables.length, totalRestored, 'restored', 'Restored from backup', req.session.adminName || 'admin', new Date().toISOString()]
     );
   } catch (e) {
-    if (require('fs').existsSync(filePath)) require('fs').unlinkSync(filePath);
+    await enableForeignKeys().catch(() => {});
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     return res.redirect('/admin/backup?failed=' + encodeURIComponent(e.message.slice(0, 200)));
   }
   res.redirect('/admin/backup?restored=ok');

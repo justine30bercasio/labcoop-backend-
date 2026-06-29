@@ -51,6 +51,7 @@ class PgStore {
       ALTER TABLE accounts ADD COLUMN IF NOT EXISTS photo_2x2_url TEXT DEFAULT '';
       ALTER TABLE accounts ADD COLUMN IF NOT EXISTS birth_cert_url TEXT DEFAULT '';
       ALTER TABLE accounts ADD COLUMN IF NOT EXISTS id_photo_url TEXT DEFAULT '';
+      ALTER TABLE accounts ADD COLUMN IF NOT EXISTS profile_pic_url TEXT DEFAULT '';
       CREATE TABLE IF NOT EXISTS goal_jars (
         goal_id TEXT PRIMARY KEY,
         account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
@@ -440,13 +441,14 @@ class PgStore {
       photo_2x2_url: fields.photo_2x2_url || '',
       birth_cert_url: fields.birth_cert_url || '',
       id_photo_url: fields.id_photo_url || '',
+      profile_pic_url: fields.profile_pic_url || '',
       is_active: fields.is_active ?? 1,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
     await this.query(`
-      INSERT INTO accounts (account_id, child_name, member_id, password, password_changed, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, age, gender, savings_schedule, photo_2x2_url, birth_cert_url, id_photo_url, is_active, created_at, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+      INSERT INTO accounts (account_id, child_name, member_id, password, password_changed, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, age, gender, savings_schedule, photo_2x2_url, birth_cert_url, id_photo_url, profile_pic_url, is_active, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
     `, [
       account.account_id, account.child_name, account.member_id,
       account.password, account.password_changed, account.actual_balance,
@@ -454,6 +456,7 @@ class PgStore {
       account.last_name, account.first_name, account.middle_name,
       account.birthday, account.age, account.gender, account.savings_schedule,
       account.photo_2x2_url, account.birth_cert_url, account.id_photo_url,
+      account.profile_pic_url,
       account.is_active, account.created_at, account.updated_at,
     ]);
     return account;
@@ -472,7 +475,7 @@ class PgStore {
   }
 
   async updateAccount(accountId, fields) {
-    const allowed = ['actual_balance', 'unallocated_balance', 'current_xp', 'child_name', 'parent_phone', 'last_name', 'first_name', 'middle_name', 'birthday', 'age', 'gender', 'savings_schedule', 'photo_2x2_url', 'birth_cert_url', 'id_photo_url', 'is_active'];
+    const allowed = ['actual_balance', 'unallocated_balance', 'current_xp', 'child_name', 'parent_phone', 'last_name', 'first_name', 'middle_name', 'birthday', 'age', 'gender', 'savings_schedule', 'photo_2x2_url', 'birth_cert_url', 'id_photo_url', 'profile_pic_url', 'is_active'];
     const setClauses = [];
     const values = [];
     let idx = 1;

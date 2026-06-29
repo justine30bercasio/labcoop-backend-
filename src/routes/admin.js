@@ -1036,10 +1036,20 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
     : q.updated ? 'success:Account updated.'
     : q.deleted ? 'success:Account deleted.'
     : q.toggled ? 'success:Account status changed.'
+    : q.uploaded ? 'success:Photo uploaded.'
     : q.error ? `error:${q.error}`
     : '';
 
   const content = `
+  <style>
+  .mini-avatar { width:36px;height:36px;border-radius:50%;object-fit:cover;display:block }
+  .mini-avatar-empty { background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700 }
+  .td-photo { width:44px;text-align:center }
+  .profile-upload-area { display:flex;align-items:center;gap:12px;margin-bottom:12px;padding:12px;background:var(--bg-secondary);border-radius:8px }
+  .profile-upload-area img { width:64px;height:64px;border-radius:50%;object-fit:cover }
+  .profile-upload-area .empty-avatar { width:64px;height:64px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700 }
+  .profile-upload-area .file-input { font-size:13px }
+  </style>
   <div class="stats-grid">
     <div class="stat-card"><div class="stat-icon">&#x1F464;</div><div class="stat-value">${accounts.length}</div><div class="stat-label">Total Accounts</div></div>
     <div class="stat-card"><div class="stat-icon">&#x20B1;</div><div class="stat-value">${accounts.reduce((s,a)=>s+Number(a.actual_balance),0).toFixed(0)}</div><div class="stat-label">Combined Balance</div></div>
@@ -1051,13 +1061,14 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
     </div>
     <div class="card-body">
     <table class="dt-accounts-table">
-    <thead><tr><th>Name</th><th>Member ID</th><th>Age</th><th>Gender</th><th>Schedule</th><th>Balance</th><th>Unallocated</th><th>Status</th><th>Password</th><th>Created</th><th>Actions</th></tr></thead>
+    <thead><tr><th>Photo</th><th>Name</th><th>Member ID</th><th>Age</th><th>Gender</th><th>Schedule</th><th>Balance</th><th>Unallocated</th><th>Status</th><th>Password</th><th>Created</th><th>Actions</th></tr></thead>
     <tbody>
     ${accounts.map(a => {
       const statusNum = Number(a.is_active);
       const statusLabel = statusNum === 1 ? 'Active' : statusNum === 0 ? 'Inactive' : 'Closed';
       const statusBadge = statusNum === 1 ? 'badge-green' : statusNum === 0 ? 'badge-gray' : 'badge-red';
       return `<tr>
+      <td class="td-photo">${a.profile_pic_url ? '<img src="' + a.profile_pic_url + '" class="mini-avatar">' : '<div class="mini-avatar mini-avatar-empty">' + (a.child_name || '?')[0].toUpperCase() + '</div>'}</td>
       <td><b>${a.child_name}</b></td>
       <td class="mono">${a.member_id || '-'}</td>
       <td class="num">${a.age || '-'}</td>
@@ -1136,6 +1147,16 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
     <div class="form-row">
       <div><label for="estatus_${a.account_id}">Status</label><select id="estatus_${a.account_id}" name="is_active"><option value="1"${Number(a.is_active) === 1 ? ' selected' : ''}>Active</option><option value="0"${Number(a.is_active) === 0 ? ' selected' : ''}>Inactive</option><option value="-1"${Number(a.is_active) === -1 ? ' selected' : ''}>Closed</option></select></div>
       <div><label for="ephone_${a.account_id}">Phone</label><input type="text" id="ephone_${a.account_id}" name="parent_phone" value="${a.parent_phone || ''}"></div>
+    </div>
+    <div class="profile-upload-area">
+      ${a.profile_pic_url ? '<img src="' + a.profile_pic_url + '" alt="">' : '<div class="empty-avatar">' + (a.child_name || '?')[0].toUpperCase() + '</div>'}
+      <div>
+        <form method="post" action="/admin/accounts/upload-photo/${a.account_id}" enctype="multipart/form-data" style="display:flex;gap:6px;align-items:center">
+          <input type="file" name="photo" accept="image/*" required class="file-input">
+          <button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-upload"></i> Upload</button>
+        </form>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Max 5MB. JPG, PNG, GIF, WebP</div>
+      </div>
     </div>
     <button type="submit" class="btn btn-primary">&#x1F4BE; Save Changes</button>
   </form>
@@ -1309,6 +1330,39 @@ router.post('/accounts/delete/:id', requireRole(4), asyncHandler(async (req, res
     if (!account) return res.redirect('/admin/accounts?error=Account+not+found');
     await store.query('DELETE FROM accounts WHERE account_id = $1', [req.params.id]);
     res.redirect('/admin/accounts?deleted=ok');
+  } catch (err) {
+    res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
+  }
+}));
+
+const profilesDir = require('path').join(__dirname, '..', 'uploads', 'profiles');
+if (!fs.existsSync(profilesDir)) fs.mkdirSync(profilesDir, { recursive: true });
+const profileUpload = require('multer')({
+  dest: profilesDir,
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
+
+router.post('/accounts/upload-photo/:id', requireRole(2), profileUpload.single('photo'), asyncHandler(async (req, res) => {
+  try {
+    const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
+    if (!account) return res.redirect('/admin/accounts?error=Account+not+found');
+    if (!req.file) return res.redirect(`/admin/accounts?error=No+file`);
+    const ext = require('path').extname(req.file.originalname).toLowerCase();
+    if (!'.png.jpg.jpeg.gif.webp'.includes(ext)) {
+      require('fs').unlinkSync(req.file.path);
+      return res.redirect(`/admin/accounts?error=Invalid+file+type`);
+    }
+    const { v4: uuidv4 } = require('uuid');
+    const filename = `${Date.now()}-${uuidv4().slice(0,8)}${ext}`;
+    const dest = require('path').join(__dirname, '..', 'uploads', 'profiles', filename);
+    require('fs').renameSync(req.file.path, dest);
+    const imageUrl = '/uploads/profiles/' + filename;
+    if (account.profile_pic_url && account.profile_pic_url.startsWith('/uploads/')) {
+      const oldFile = require('path').join(__dirname, '..', account.profile_pic_url);
+      if (require('fs').existsSync(oldFile)) require('fs').unlinkSync(oldFile);
+    }
+    await store.updateAccount(req.params.id, { profile_pic_url: imageUrl });
+    res.redirect(`/admin/accounts?updated=ok#edit-${req.params.id}`);
   } catch (err) {
     res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
   }
@@ -3020,6 +3074,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   .search-result-item { display:flex; align-items:center; gap:12px; padding:10px 16px; border-radius:8px; cursor:pointer; transition:background 0.15s; text-decoration:none; color:var(--text); }
   .search-result-item:hover { background:var(--bg-alt); }
   .search-result-item .sra { width:36px; height:36px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; flex-shrink:0; }
+  .search-result-item .sra-img { width:36px; height:36px; border-radius:50%; object-fit:cover; flex-shrink:0; }
   .search-result-item .srn { font-weight:600; font-size:14px; }
   .search-result-item .srm { font-size:11px; color:var(--text-muted); font-family:var(--mono); }
   .teller-grid { display:grid; grid-template-columns: 1fr 1fr; gap:20px; }
@@ -3098,8 +3153,8 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   }
 
   function searchResultItem(a) {
-    var initial = (a.child_name || '?')[0].toUpperCase();
-    return '<a href="/admin/teller?account=' + a.account_id + (searchQ ? '&q=' + encodeURIComponent(searchQ) : '') + '" class="search-result-item"><div class="sra">' + initial + '</div><div><div class="srn">' + a.child_name + '</div><div class="srm">' + (a.member_id || '---') + '</div></div></a>';
+    var avatarHtml = a.profile_pic_url ? '<img src="' + a.profile_pic_url + '" class="sra-img">' : '<div class="sra">' + (a.child_name || '?')[0].toUpperCase() + '</div>';
+    return '<a href="/admin/teller?account=' + a.account_id + (searchQ ? '&q=' + encodeURIComponent(searchQ) : '') + '" class="search-result-item">' + avatarHtml + '<div><div class="srn">' + a.child_name + '</div><div class="srm">' + (a.member_id || '---') + '</div></div></a>';
   }
 
   const bankContent = bankStyle + `
@@ -3128,8 +3183,8 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
     <!-- Left: Customer + Actions -->
     <div class="teller-card">
       <div class="teller-card-body">
-        <div class="customer-header">
-          <div class="customer-avatar">${(selectedAccount.child_name || '?')[0].toUpperCase()}</div>
+          <div class="customer-header">
+          <div class="customer-avatar">${selectedAccount.profile_pic_url ? '<img src="' + selectedAccount.profile_pic_url + '" style="width:100%;height:100%;border-radius:50%;object-fit:cover" alt="">' : (selectedAccount.child_name || '?')[0].toUpperCase()}</div>
           <div class="customer-info">
             <h2>${selectedAccount.child_name}</h2>
             <span class="member">ID: ${selectedAccount.member_id || '---'}</span>

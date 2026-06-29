@@ -28,7 +28,8 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
           if (state.transactionStatus == TransactionStatus.loading) {
             return const Center(child: CircularProgressIndicator());
           }
-          if (state.transactions.isEmpty) {
+          final filtered = state.transactions.where((t) => t.type != TransactionType.allocation).toList();
+          if (filtered.isEmpty) {
             return const Center(child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -40,10 +41,10 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
           }
           return ListView.builder(
             padding: const EdgeInsets.all(16),
-            itemCount: state.transactions.length + 1,
+            itemCount: filtered.length + 1,
             itemBuilder: (context, index) {
-              if (index == 0) return _header();
-              final t = state.transactions[index - 1];
+              if (index == 0) return _headerEntry(filtered.length);
+              final t = filtered[index - 1];
               return _transactionTile(t);
             },
           );
@@ -52,14 +53,14 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
     );
   }
 
-  Widget _header() {
+  Widget _headerEntry(int count) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         children: [
           Text('Passbook Ledger', style: AppTextStyle.heading2),
           const Spacer(),
-          Text('${context.watch<BankingBloc>().state.transactions.length} entries', style: AppTextStyle.bodySmall),
+          Text('$count entries', style: AppTextStyle.bodySmall),
         ],
       ),
     );

@@ -264,6 +264,7 @@ class _BankingPageState extends State<BankingPage> {
   }
 
   Widget _recentTransactions(List<Transaction> transactions) {
+    final filtered = transactions.where((t) => t.type != TransactionType.allocation).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -278,10 +279,10 @@ class _BankingPageState extends State<BankingPage> {
           ],
         ),
         const SizedBox(height: 8),
-        if (transactions.isEmpty)
+        if (filtered.isEmpty)
           const Card(child: Padding(padding: EdgeInsets.all(24), child: Center(child: Text('No transactions yet'))))
         else
-          ...transactions.take(5).map((t) => _transactionTile(t)),
+          ...filtered.take(5).map((t) => _transactionTile(t)),
       ],
     );
   }

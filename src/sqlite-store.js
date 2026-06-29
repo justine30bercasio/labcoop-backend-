@@ -60,6 +60,7 @@ function getDb() {
     try { db.exec("ALTER TABLE loans ADD COLUMN asset_classification TEXT DEFAULT 'current'"); } catch (_) {}
     try { db.exec("ALTER TABLE loans ADD COLUMN late_fee_accrued DECIMAL(12,2) DEFAULT 0"); } catch (_) {}
     try { db.exec("ALTER TABLE loans ADD COLUMN last_late_fee_date TEXT"); } catch (_) {}
+    try { db.exec("ALTER TABLE loans ADD COLUMN due_date TEXT"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS term_deposits (td_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, td_number TEXT UNIQUE, amount DECIMAL(12,2) NOT NULL, term_days INTEGER NOT NULL, interest_rate DECIMAL(5,2) NOT NULL, maturity_date TEXT NOT NULL, status TEXT DEFAULT 'active' CHECK(status IN ('active','matured','closed','renewed')), renew_instruction TEXT DEFAULT 'mature', auto_renew INTEGER DEFAULT 0, interest_earned DECIMAL(12,2) DEFAULT 0, created_at TEXT, closed_at TEXT)"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS share_capital (share_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, shares INTEGER DEFAULT 0, share_value DECIMAL(12,2) DEFAULT 0, total_amount DECIMAL(12,2) DEFAULT 0, transaction_type TEXT CHECK(transaction_type IN ('subscription','dividend','refund')), notes TEXT DEFAULT '', created_at TEXT)"); } catch (_) {}
     try { db.exec("ALTER TABLE accounts ADD COLUMN total_shares INTEGER DEFAULT 0"); } catch (_) {}
@@ -658,16 +659,17 @@ function createLoan(fields) {
     purpose: fields.purpose || '',
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
+    due_date: fields.due_date || null,
   };
   getDb().prepare(`
-    INSERT INTO loans (loan_id, account_id, product_id, principal, interest_rate, interest_type, term_months, monthly_amortization, total_payable, amount_paid, remaining_balance, status, purpose, created_at, updated_at)
-    VALUES (@loan_id, @account_id, @product_id, @principal, @interest_rate, @interest_type, @term_months, @monthly_amortization, @total_payable, @amount_paid, @remaining_balance, @status, @purpose, @created_at, @updated_at)
+    INSERT INTO loans (loan_id, account_id, product_id, principal, interest_rate, interest_type, term_months, monthly_amortization, total_payable, amount_paid, remaining_balance, status, purpose, created_at, updated_at, due_date)
+    VALUES (@loan_id, @account_id, @product_id, @principal, @interest_rate, @interest_type, @term_months, @monthly_amortization, @total_payable, @amount_paid, @remaining_balance, @status, @purpose, @created_at, @updated_at, @due_date)
   `).run(loan);
   return loan;
 }
 
 function updateLoan(loanId, fields) {
-  const allowed = ['amount_paid', 'remaining_balance', 'status', 'approved_by', 'approved_at', 'disbursed_at'];
+  const allowed = ['amount_paid', 'remaining_balance', 'status', 'approved_by', 'approved_at', 'disbursed_at', 'due_date'];
   const setClauses = [];
   const values = [];
   for (const key of allowed) {

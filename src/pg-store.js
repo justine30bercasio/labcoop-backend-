@@ -229,7 +229,8 @@ class PgStore {
         approved_at TEXT,
         disbursed_at TEXT,
         created_at TEXT,
-        updated_at TEXT
+        updated_at TEXT,
+        due_date TEXT
       );
       CREATE TABLE IF NOT EXISTS loan_payments (
         payment_id TEXT PRIMARY KEY,
@@ -406,6 +407,7 @@ class PgStore {
     await this.pool.query("ALTER TABLE loans ADD COLUMN IF NOT EXISTS asset_classification TEXT DEFAULT 'current'").catch(() => {});
     await this.pool.query("ALTER TABLE loans ADD COLUMN IF NOT EXISTS late_fee_accrued DECIMAL(12,2) DEFAULT 0").catch(() => {});
     await this.pool.query("ALTER TABLE loans ADD COLUMN IF NOT EXISTS last_late_fee_date TEXT").catch(() => {});
+    await this.pool.query("ALTER TABLE loans ADD COLUMN IF NOT EXISTS due_date TEXT").catch(() => {});
     await this.pool.query("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS total_shares INTEGER DEFAULT 0").catch(() => {});
     await this.pool.query("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS share_capital_balance DECIMAL(12,2) DEFAULT 0").catch(() => {});
     await this.pool.query("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS overdraft_limit DECIMAL(12,2) DEFAULT 0").catch(() => {});
@@ -904,20 +906,21 @@ class PgStore {
       updated_at: new Date().toISOString(),
     };
     await this.query(`
-      INSERT INTO loans (loan_id, account_id, product_id, principal, interest_rate, interest_type, term_months, monthly_amortization, total_payable, amount_paid, remaining_balance, status, purpose, created_at, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+      INSERT INTO loans (loan_id, account_id, product_id, principal, interest_rate, interest_type, term_months, monthly_amortization, total_payable, amount_paid, remaining_balance, status, purpose, created_at, updated_at, due_date)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
     `, [
       loan.loan_id, loan.account_id, loan.product_id,
       loan.principal, loan.interest_rate, loan.interest_type,
       loan.term_months, loan.monthly_amortization, loan.total_payable,
       loan.amount_paid, loan.remaining_balance, loan.status,
       loan.purpose, loan.created_at, loan.updated_at,
+      loan.due_date,
     ]);
     return loan;
   }
 
   async updateLoan(loanId, fields) {
-    const allowed = ['amount_paid', 'remaining_balance', 'status', 'approved_by', 'approved_at', 'disbursed_at'];
+    const allowed = ['amount_paid', 'remaining_balance', 'status', 'approved_by', 'approved_at', 'disbursed_at', 'due_date'];
     const setClauses = [];
     const values = [];
     let idx = 1;

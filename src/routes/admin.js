@@ -1984,7 +1984,9 @@ router.post('/loans/disburse/:id', requireRole(3), asyncHandler(async (req, res)
       balance_before: Number(account.actual_balance),
       balance_after: newBalance,
     });
-    await store.updateLoan(req.params.id, { status: 'active', disbursed_at: new Date().toISOString() });
+    const dueDate = new Date();
+    dueDate.setMonth(dueDate.getMonth() + Number(loan.term_months));
+    await store.updateLoan(req.params.id, { status: 'active', disbursed_at: new Date().toISOString(), due_date: dueDate.toISOString().slice(0, 10) });
     try {
       const gl = require('../services/gl');
       await gl.postDoubleEntry(loan.loan_id, [

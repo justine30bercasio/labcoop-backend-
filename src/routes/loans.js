@@ -182,9 +182,12 @@ router.put('/loans/:loanId/disburse',
         balance_after: newBalance,
       });
 
+      const dueDate = new Date();
+      dueDate.setMonth(dueDate.getMonth() + Number(loan.term_months));
       return store.updateLoan(req.params.loanId, {
         status: 'active',
         disbursed_at: new Date().toISOString(),
+        due_date: dueDate.toISOString().slice(0, 10),
       });
     };
 

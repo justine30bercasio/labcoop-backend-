@@ -1147,11 +1147,11 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
   <div class="modal" style="max-width:420px">
   <a href="#" class="close">&times;</a>
   <div class="vcard">
-    <div class="vc-av" onclick="document.getElementById('vf_${a.account_id}').click()">
-      ${a.profile_pic_url ? '<img src="' + a.profile_pic_url + '" id="vp_${a.account_id}" onclick="event.stopPropagation();zoomPhoto(this.src)" alt="">' : '<div class="empty-avatar">' + (a.child_name || '?')[0].toUpperCase() + '</div>'}
+    <div class="vc-av" onclick="document.getElementById('vfi_${a.account_id}').click()">
+      ${a.profile_pic_url ? '<img src="' + a.profile_pic_url + '" id="vp_' + a.account_id + '" onclick="event.stopPropagation();zoomPhoto(this.src)" alt="">' : '<div class="empty-avatar">' + (a.child_name || '?')[0].toUpperCase() + '</div>'}
       <div class="upload-overlay"><i class="fas fa-camera"></i> Change Photo</div>
       <form method="post" action="/admin/accounts/upload-photo/${a.account_id}" enctype="multipart/form-data" id="vf_${a.account_id}">
-        <input type="file" name="photo" accept="image/*" onchange="this.form.submit()">
+        <input type="file" name="photo" accept="image/*" onchange="this.form.submit()" id="vfi_${a.account_id}">
       </form>
     </div>
     <h2>${a.child_name}</h2>
@@ -1175,14 +1175,14 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
   <div class="modal" style="max-width:520px">
   <a href="#" class="close">&times;</a>
   <h2><i class="fas fa-pen"></i> ${a.child_name}</h2>
-  <div class="profile-upload-area" onclick="document.getElementById('ef_${a.account_id}').click()">
+  <div class="profile-upload-area" onclick="document.getElementById('efi_${a.account_id}').click()">
     <div class="av-wrap">
-      ${a.profile_pic_url ? '<img src="' + a.profile_pic_url + '" id="ep_${a.account_id}" onclick="event.stopPropagation();zoomPhoto(this.src)" alt="">' : '<div class="empty-avatar">' + (a.child_name || '?')[0].toUpperCase() + '</div>'}
+      ${a.profile_pic_url ? '<img src="' + a.profile_pic_url + '" id="ep_' + a.account_id + '" onclick="event.stopPropagation();zoomPhoto(this.src)" alt="">' : '<div class="empty-avatar">' + (a.child_name || '?')[0].toUpperCase() + '</div>'}
       <div class="upload-overlay"><i class="fas fa-camera"></i></div>
     </div>
     <span style="font-size:13px;color:var(--text-muted)">Click avatar to upload photo</span>
     <form method="post" action="/admin/accounts/upload-photo/${a.account_id}" enctype="multipart/form-data" id="ef_${a.account_id}">
-      <input type="file" name="photo" accept="image/*" onchange="this.form.submit()">
+      <input type="file" name="photo" accept="image/*" onchange="this.form.submit()" id="efi_${a.account_id}">
     </form>
   </div>
   <form method="post" action="/admin/accounts/update/${a.account_id}">

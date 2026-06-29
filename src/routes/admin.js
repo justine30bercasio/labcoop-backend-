@@ -3113,7 +3113,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   if (selectedId) {
     selectedAccount = await one('SELECT * FROM accounts WHERE account_id = $1', [selectedId]);
     if (selectedAccount) {
-      recentTxs = await sql('SELECT * FROM transactions WHERE account_id = $1 ORDER BY created_at DESC LIMIT 20', [selectedId]);
+      recentTxs = await sql('SELECT * FROM transactions WHERE account_id = $1 AND type != \'allocation\' ORDER BY created_at DESC LIMIT 20', [selectedId]);
       const activeLoans = await sql("SELECT * FROM loans WHERE account_id = $1 AND status = 'active' ORDER BY created_at DESC", [selectedId]);
       loanOptionsHtml = activeLoans.map(function(l) {
         return '<option value="' + l.loan_id + '">' + (l.purpose || 'Loan') + ' - \u20B1' + Number(l.remaining_balance).toFixed(2) + ' remaining</option>';
@@ -3211,7 +3211,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
 
   function receiptHtml(r) {
     if (!r) return '';
-    var isCredit = r.type === 'deposit' || r.type === 'loan_disbursement';
+    var isCredit = r.type === 'deposit' || r.type === 'loan_disbursement' || r.type === 'interest' || r.type === 'interest_credit';
     var isVoided = r.voided_at ? true : false;
     var voidBanner = isVoided ? '<div style="background:#fef2f2;color:#dc2626;text-align:center;padding:6px;font-weight:700;font-size:13px;border-bottom:2px solid #dc2626"><i class="fas fa-ban"></i> VOIDED — ' + (r.void_reason || '') + '</div>' : '';
     var voidedByLine = isVoided ? '<div class="ri-row"><span class="ri-label">Voided By</span><span class="ri-value" style="color:#dc2626">' + (r.voided_by || '') + ' on ' + (r.voided_at || '').slice(0,10) + '</span></div><div class="ri-divider"></div>' : '';
@@ -3334,8 +3334,8 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
         ${receipt ? receiptHtml(receipt) : ''}
         ${recentTxs.length === 0 ? '<div style="text-align:center;padding:32px;color:var(--text-muted)">No transactions yet.</div>' : '<table class="tx-table"><tr><th>Type</th><th>Amount</th><th>Description</th><th>Date</th><th></th></tr>' + recentTxs.map(tx => {
             var tc = ({deposit:'deposit',withdrawal:'withdrawal',loan_payment:'loan_payment',loan_disbursement:'loan_disbursement',interest:'interest',interest_credit:'interest',allocation:'allocation'})[tx.type] || 'deposit';
-            var sign = tx.type === 'deposit' || tx.type === 'loan_disbursement' ? '+' : '-';
-            var col = tx.type === 'deposit' || tx.type === 'loan_disbursement' ? '#16a34a' : tx.type === 'withdrawal' ? '#dc2626' : 'var(--text)';
+            var sign = tx.type === 'deposit' || tx.type === 'loan_disbursement' || tx.type === 'interest' || tx.type === 'interest_credit' ? '+' : '-';
+            var col = tx.type === 'deposit' || tx.type === 'loan_disbursement' || tx.type === 'interest' || tx.type === 'interest_credit' ? '#16a34a' : tx.type === 'withdrawal' ? '#dc2626' : 'var(--text)';
             return '<tr><td><span class="tx-type-badge ' + tc + '">' + tx.type.replace(/_/g,' ') + (tx.voided_at ? ' VOIDED' : '') + '</span></td><td class="tx-amt" style="color:' + col + '">' + sign + '&#x20B1;' + Number(tx.amount).toFixed(2) + '</td><td class="tx-desc">' + (tx.description||'-') + (tx.voided_at ? '<br><span style="font-size:10px;color:#dc2626">Voided by ' + (tx.voided_by||'') + '</span>' : '') + '</td><td class="tx-date">' + (tx.created_at||'').slice(0,16).replace('T',' ') + '</td><td style="white-space:nowrap">' + (tx.voided_at ? '<span style="color:#dc2626;font-size:10px;font-weight:600"><i class="fas fa-ban"></i> VOIDED</span>' : '<a class="rcpt-link" href="?account=' + selectedId + '&receipt=' + tx.transaction_id + (searchQ ? '&q=' + encodeURIComponent(searchQ) : '') + '" title="View receipt"><i class="fas fa-receipt"></i></a>' + (adminRole >= 3 && ['deposit','withdrawal','loan_payment','interest','interest_credit','auto_save','fee'].includes(tx.type) ? ' <button class="btn btn-outline btn-xs" style="color:#dc2626;padding:2px 6px;font-size:10px" onclick="openVoidModal(\'' + tx.transaction_id + '\',\'' + tx.type.replace(/_/g,' ') + '\',\'' + Number(tx.amount).toFixed(2) + '\')"><i class="fas fa-ban"></i> Void</button>' : '')) + '</td></tr>';
           }).join('') + '</table>'}
       </div>

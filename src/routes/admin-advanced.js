@@ -1,6 +1,6 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
-const { store } = require('../db');
+const { store, isPostgres } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const { layout, printLayout } = require('./admin-lib');
 
@@ -529,31 +529,156 @@ router.get('/cash-flow', requireRole(1), asyncHandler(async (req, res) => {
   const from = req.query.from || firstDay; const to = req.query.to || today;
   const deposits = await one("SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type IN ($1,$2) AND created_at BETWEEN $3 AND $4", ['deposit','interest_credit', from+'T00:00:00', to+'T23:59:59']);
   const withdrawals = await one("SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type IN ($1,$2,$3) AND created_at BETWEEN $4 AND $5", ['withdrawal','loan_payment','fee', from+'T00:00:00', to+'T23:59:59']);
+  const loanDisb = await one("SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type=$1 AND created_at BETWEEN $2 AND $3", ['loan_disbursement', from+'T00:00:00', to+'T23:59:59']);
   const opCash = await one("SELECT COALESCE(SUM(debit),0) - COALESCE(SUM(credit),0) as bal FROM gl_entries WHERE account_code='1000' AND created_at < $1", [from+'T00:00:00']);
   const op = Number(opCash?.bal||0);
-  const dep = Number(deposits.total||0); const wd = Number(withdrawals.total||0);
-  const net = dep - wd; const cl = op + net;
-  const content = `<form method="get" action="/admin/cash-flow" style="display:flex;gap:8px;align-items:end;margin-bottom:16px">
-    <div><label style="font-size:11px">From</label><input type="date" name="from" value="${from}"></div>
-    <div><label style="font-size:11px">To</label><input type="date" name="to" value="${to}"></div>
-    <button type="submit" class="btn btn-primary btn-sm">View</button>
-    <a href="/admin/cash-flow" class="btn btn-outline btn-sm">Reset</a></div>
-  </form>
-  <div class="card"><div class="card-header"><h3>Cash Flow Statement</h3></div>
-  <div class="card-body-padded">
-  <table style="width:100%;max-width:500px"><tr><td style="font-weight:600">Opening Cash Balance</td><td class="num mono">${fmt(op)}</td></tr>
-    <tr style="background:var(--bg-secondary)"><td colspan="2" style="font-weight:600;padding:8px 12px">Cash Inflows</td></tr>
-    <tr><td style="padding-left:24px">Deposits & Interest</td><td class="num mono" style="color:#16a34a">+${fmt(dep)}</td></tr>
-    <tr><td style="padding-left:24px;font-weight:600">Total Inflows</td><td class="num mono" style="color:#16a34a;font-weight:600">+${fmt(dep)}</td></tr>
-    <tr style="background:var(--bg-secondary)"><td colspan="2" style="font-weight:600;padding:8px 12px">Cash Outflows</td></tr>
-    <tr><td style="padding-left:24px">Withdrawals, Payments & Fees</td><td class="num mono" style="color:#dc2626">-${fmt(wd)}</td></tr>
-    <tr><td style="padding-left:24px;font-weight:600">Total Outflows</td><td class="num mono" style="color:#dc2626;font-weight:600">-${fmt(wd)}</td></tr>
-    <tr style="border-top:2px solid var(--border)"><td style="font-weight:600">Net Cash Flow</td>
-      <td class="num mono" style="font-weight:700;color:${net>=0?'#16a34a':'#dc2626'}">${net>=0?'+':''}${fmt(net)}</td></tr>
-    <tr style="border-top:2px solid var(--border)"><td style="font-weight:700;font-size:14px">Closing Cash Balance</td>
-      <td class="num mono" style="font-weight:700;font-size:14px;color:${cl>=0?'#16a34a':'#dc2626'}">${fmt(cl)}</td></tr>
-  </table></div></div>`;
-  res.type('html').send(layout('Cash Flow Statement', 'cash-flow', content, { subtitle: 'Cash inflows and outflows for the period' }));
+  const dep = Number(deposits.total||0); const wd = Number(withdrawals.total||0); const ld = Number(loanDisb.total||0);
+  const totalIn = dep; const totalOut = wd + ld;
+  const net = totalIn - totalOut; const cl = op + net;
+
+  // Category breakdown
+  const categories = await sql(`
+    SELECT type, COALESCE(SUM(amount),0) as total FROM transactions
+    WHERE created_at BETWEEN $1 AND $2 GROUP BY type ORDER BY total DESC
+  `, [from+'T00:00:00', to+'T23:59:59']);
+  const breakdown = { withdrawals: wd, loan_payments: 0, fees: 0 };
+  categories.forEach(c => { if (c.type === 'loan_payment') breakdown.loan_payments = Number(c.total); if (c.type === 'fee') breakdown.fees = Number(c.total); });
+
+  // Monthly breakdown
+  const monthExpr = isPostgres ? "to_char(created_at, 'YYYY-MM')" : "strftime('%Y-%m', created_at)";
+  const monthly = await sql(`
+    SELECT ${monthExpr} as month,
+      COALESCE(SUM(CASE WHEN type IN ('deposit','interest_credit') THEN amount ELSE 0 END),0) as inflows,
+      COALESCE(SUM(CASE WHEN type IN ('withdrawal','loan_payment','fee','loan_disbursement') THEN amount ELSE 0 END),0) as outflows
+    FROM transactions WHERE created_at BETWEEN $1 AND $2 GROUP BY month ORDER BY month
+  `, [from+'T00:00:00', to+'T23:59:59']);
+
+  const catLabels = JSON.stringify(categories.map(c => c.type.replace(/_/g,' ')));
+  const catData = JSON.stringify(categories.map(c => Number(c.total)));
+  const catColors = JSON.stringify(categories.map(c => {
+    const m = { deposit:'#16a34a', withdrawal:'#dc2626', loan_payment:'#3b82f6', loan_disbursement:'#f59e0b', interest_credit:'#8b5cf6', fee:'#ef4444' };
+    return m[c.type] || '#6b7280';
+  }));
+
+  const monthLabels = JSON.stringify(monthly.map(m => m.month));
+  const monthIn = JSON.stringify(monthly.map(m => Number(m.inflows)));
+  const monthOut = JSON.stringify(monthly.map(m => Number(m.outflows)));
+
+  const content = `
+  <div class="card">
+    <div class="card-body-padded" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap">
+      <div class="field" style="flex:0 0 180px"><label>From</label>
+        <input type="date" id="cfFrom" value="${from}" onchange="updateCashFlow()">
+      </div>
+      <div class="field" style="flex:0 0 180px"><label>To</label>
+        <input type="date" id="cfTo" value="${to}" onchange="updateCashFlow()">
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="updateCashFlow()"><i class="fas fa-search"></i> View</button>
+      <a href="/admin/cash-flow" class="btn btn-outline btn-sm"><i class="fas fa-undo"></i> Reset</a>
+      <div style="flex:1;text-align:right">
+        <a href="/admin/cash-flow?from=${from}&to=${to}&export=csv" class="btn btn-outline btn-sm"><i class="fas fa-file-csv"></i> Export CSV</a>
+        <a href="/admin/cash-flow?from=${from}&to=${to}&print=1" class="btn btn-outline btn-sm" target="_blank"><i class="fas fa-print"></i> Print</a>
+      </div>
+    </div>
+  </div>
+  <script>
+  function updateCashFlow() {
+    var f = document.getElementById('cfFrom').value;
+    var t = document.getElementById('cfTo').value;
+    location.href = '/admin/cash-flow?from=' + f + '&to=' + t;
+  }
+  </script>
+  <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-piggy-bank"></i></div><div class="stat-value">${fmt(op)}</div><div class="stat-label">Opening Balance</div></div>
+    <div class="stat-card" style="border-left:4px solid #16a34a"><div class="stat-icon"><i class="fas fa-arrow-down"></i></div><div class="stat-value" style="color:#16a34a">+${fmt(totalIn)}</div><div class="stat-label">Total Inflows</div></div>
+    <div class="stat-card" style="border-left:4px solid #dc2626"><div class="stat-icon"><i class="fas fa-arrow-up"></i></div><div class="stat-value" style="color:#dc2626">-${fmt(totalOut)}</div><div class="stat-label">Total Outflows</div></div>
+    <div class="stat-card" style="border-left:4px solid ${net>=0?'#16a34a':'#dc2626'}"><div class="stat-icon"><i class="fas fa-chart-line"></i></div><div class="stat-value" style="color:${net>=0?'#16a34a':'#dc2626'}">${net>=0?'+':''}${fmt(net)}</div><div class="stat-label">Net Cash Flow</div></div>
+    <div class="stat-card" style="border-left:4px solid #2563eb"><div class="stat-icon"><i class="fas fa-wallet"></i></div><div class="stat-value" style="color:#2563eb">${fmt(cl)}</div><div class="stat-label">Closing Balance</div></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-list"></i> Cash Flow Statement</h3></div>
+    <div class="card-body-padded">
+    <table style="width:100%;max-width:600px">
+      <tr><td style="font-weight:600;padding:10px 12px">Opening Cash Balance</td><td class="num mono" style="font-weight:600">${fmt(op)}</td></tr>
+      <tr style="background:var(--bg-secondary)"><td colspan="2" style="font-weight:600;padding:8px 12px"><i class="fas fa-arrow-down" style="color:#16a34a"></i> Cash Inflows</td></tr>
+      <tr><td style="padding-left:28px">Deposits & Interest Credits</td><td class="num mono" style="color:#16a34a">+${fmt(dep)}</td></tr>
+      <tr><td style="padding-left:28px;font-weight:600">Total Inflows</td><td class="num mono" style="color:#16a34a;font-weight:600">+${fmt(totalIn)}</td></tr>
+      <tr style="background:var(--bg-secondary)"><td colspan="2" style="font-weight:600;padding:8px 12px"><i class="fas fa-arrow-up" style="color:#dc2626"></i> Cash Outflows</td></tr>
+      <tr><td style="padding-left:28px">Withdrawals</td><td class="num mono" style="color:#dc2626">-${fmt(breakdown.withdrawals)}</td></tr>
+      <tr><td style="padding-left:28px">Loan Payments</td><td class="num mono" style="color:#dc2626">-${fmt(breakdown.loan_payments)}</td></tr>
+      <tr><td style="padding-left:28px">Fees</td><td class="num mono" style="color:#dc2626">-${fmt(breakdown.fees)}</td></tr>
+      <tr><td style="padding-left:28px">Loan Disbursements</td><td class="num mono" style="color:#dc2626">-${fmt(ld)}</td></tr>
+      <tr><td style="padding-left:28px;font-weight:600">Total Outflows</td><td class="num mono" style="color:#dc2626;font-weight:600">-${fmt(totalOut)}</td></tr>
+      <tr style="border-top:2px solid var(--border)"><td style="font-weight:700;padding:10px 12px">Net Cash Flow</td>
+        <td class="num mono" style="font-weight:700;color:${net>=0?'#16a34a':'#dc2626'}">${net>=0?'+':''}${fmt(net)}</td></tr>
+      <tr style="border-top:2px solid var(--border)"><td style="font-weight:700;font-size:14px;padding:10px 12px">Closing Cash Balance</td>
+        <td class="num mono" style="font-weight:700;font-size:14px;color:${cl>=0?'#16a34a':'#dc2626'}">${fmt(cl)}</td></tr>
+    </table></div></div>
+  ${monthly.length > 0 ? `
+  <div class="stats-grid" style="grid-template-columns:1fr 1fr">
+    <div class="card" style="padding:0">
+      <div class="card-header"><h3><i class="fas fa-chart-area"></i> Monthly Trend</h3></div>
+      <div class="card-body"><canvas id="cfTrendChart" height="140"></canvas></div>
+    </div>
+    <div class="card" style="padding:0">
+      <div class="card-header"><h3><i class="fas fa-chart-pie"></i> Category Breakdown</h3></div>
+      <div class="card-body"><canvas id="cfPieChart" height="140"></canvas></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-table"></i> Monthly Breakdown</h3><span class="count">${monthly.length} months</span></div>
+    <div class="card-body" style="padding:0">
+    <table>
+      <tr><th>Month</th><th class="num">Inflows</th><th class="num">Outflows</th><th class="num">Net</th></tr>
+      ${monthly.map(m => { const n = Number(m.inflows) - Number(m.outflows); return `
+      <tr>
+        <td><b>${m.month}</b></td>
+        <td class="num mono" style="color:#16a34a">+${fmt(m.inflows)}</td>
+        <td class="num mono" style="color:#dc2626">-${fmt(m.outflows)}</td>
+        <td class="num mono" style="font-weight:600;color:${n>=0?'#16a34a':'#dc2626'}">${n>=0?'+':''}${fmt(n)}</td>
+      </tr>`; }).join('')}
+      <tr style="font-weight:700;background:var(--bg-muted)">
+        <td>TOTAL</td><td class="num mono" style="color:#16a34a">+${fmt(totalIn)}</td>
+        <td class="num mono" style="color:#dc2626">-${fmt(totalOut)}</td>
+        <td class="num mono" style="color:${net>=0?'#16a34a':'#dc2626'}">${net>=0?'+':''}${fmt(net)}</td>
+      </tr>
+    </table></div>
+  </div>
+  <script>
+  new Chart(document.getElementById('cfTrendChart'), {
+    type: 'line',
+    data: {
+      labels: ${monthLabels},
+      datasets: [
+        { label: 'Inflows', data: ${monthIn}, borderColor: '#16a34a', backgroundColor: 'rgba(22,163,74,0.1)', fill: true, tension: 0.3 },
+        { label: 'Outflows', data: ${monthOut}, borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,0.1)', fill: true, tension: 0.3 }
+      ]
+    },
+    options: {
+      responsive: true, interaction: { intersect: false, mode: 'index' },
+      plugins: { legend: { position: 'top', labels: { color: getComputedStyle(document.body).getPropertyValue('--text-color').trim() || '#fff', font: { size: 11 } } } },
+      scales: { y: { beginAtZero: true, ticks: { callback: v => '₱'+v.toLocaleString() } } }
+    }
+  });
+  new Chart(document.getElementById('cfPieChart'), {
+    type: 'doughnut',
+    data: { labels: ${catLabels}, datasets: [{ data: ${catData}, backgroundColor: ${catColors} }] },
+    options: { responsive: true, plugins: { legend: { position: 'right', labels: { color: getComputedStyle(document.body).getPropertyValue('--text-color').trim() || '#fff', font: { size: 11 } } } } }
+  });
+  </script>` : '<div class="card"><div class="card-body-padded" style="text-align:center;color:var(--text-muted);padding:40px"><i class="fas fa-chart-line" style="font-size:48px;opacity:0.3;display:block;margin-bottom:12px"></i> No transactions found for this period.</div></div>'}`;
+  if (req.query.export === 'csv') {
+    let csv = 'Month,Inflows,Outflows,Net\n';
+    monthly.forEach(m => { const n = Number(m.inflows) - Number(m.outflows); csv += `${m.month},${Number(m.inflows).toFixed(2)},${Number(m.outflows).toFixed(2)},${n.toFixed(2)}\n`; });
+    csv += `TOTAL,${totalIn.toFixed(2)},${totalOut.toFixed(2)},${net.toFixed(2)}\n`;
+    csv += `\nOpening Balance,${op.toFixed(2)}\nClosing Balance,${cl.toFixed(2)}\n`;
+    csv += `\nCategory,Amount\n`;
+    categories.forEach(c => { csv += `${c.type},${Number(c.total).toFixed(2)}\n`; });
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="cash_flow_${from}_${to}.csv"`);
+    return res.send(csv);
+  }
+  if (req.query.print) return res.type('html').send(printLayout('Cash Flow Statement', content, { subtitle: `${from} to ${to}` }));
+  res.type('html').send(layout('Cash Flow Statement', 'cash-flow', content, { subtitle: `${from} to ${to}` }));
 }));
 
 // ============================================================

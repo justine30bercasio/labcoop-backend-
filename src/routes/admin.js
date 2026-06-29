@@ -1042,10 +1042,34 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
 
   const content = `
   <style>
-  .profile-upload-area { display:flex;align-items:center;gap:12px;margin-bottom:12px;padding:12px;background:var(--bg-secondary);border-radius:8px }
-  .profile-upload-area img { width:64px;height:64px;border-radius:50%;object-fit:cover }
-  .profile-upload-area .empty-avatar { width:64px;height:64px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700 }
-  .profile-upload-area .file-input { font-size:13px }
+  .profile-upload-area { cursor:pointer; display:flex; align-items:center; gap:16px; margin-bottom:16px; padding:16px; background:var(--bg-secondary); border-radius:12px; position:relative }
+  .profile-upload-area .av-wrap { position:relative; width:72px; height:72px; flex-shrink:0 }
+  .profile-upload-area .av-wrap img, .profile-upload-area .av-wrap .empty-avatar { width:100%; height:100%; border-radius:50%; object-fit:cover }
+  .profile-upload-area .av-wrap .empty-avatar { background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:28px; font-weight:700 }
+  .profile-upload-area .av-wrap .upload-overlay { position:absolute; inset:0; border-radius:50%; background:rgba(0,0,0,0.4); color:#fff; display:flex; align-items:center; justify-content:center; opacity:0; transition:opacity 0.2s; font-size:18px; cursor:pointer }
+  .profile-upload-area .av-wrap:hover .upload-overlay { opacity:1 }
+  .profile-upload-area input[type=file] { display:none }
+  .vcard { text-align:center; padding:24px 16px 16px }
+  .vcard .vc-av { position:relative; width:120px; height:120px; border-radius:50%; margin:0 auto 12px; cursor:pointer; overflow:hidden }
+  .vcard .vc-av img { width:100%; height:100%; object-fit:cover }
+  .vcard .vc-av .empty-avatar { width:100%; height:100%; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:48px; font-weight:700 }
+  .vcard .vc-av .upload-overlay { position:absolute; inset:0; border-radius:50%; background:rgba(0,0,0,0.45); color:#fff; display:flex; align-items:center; justify-content:center; flex-direction:column; opacity:0; transition:opacity 0.25s; font-size:14px; cursor:pointer }
+  .vcard .vc-av .upload-overlay i { font-size:24px; margin-bottom:4px }
+  .vcard .vc-av:hover .upload-overlay { opacity:1 }
+  .vcard .vc-av input[type=file] { display:none }
+  .vcard h2 { font-size:22px; margin:0 0 2px }
+  .vcard .vc-meta { font-size:13px; color:var(--text-muted); margin-bottom:12px }
+  .vcard .vc-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; text-align:left; margin-bottom:16px }
+  .vcard .vc-grid .vc-item { padding:8px 12px; background:var(--bg-secondary); border-radius:8px }
+  .vcard .vc-grid .vc-item .vcl { font-size:10px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); font-weight:600 }
+  .vcard .vc-grid .vc-item .vcv { font-size:14px; font-weight:600; color:var(--text) }
+  .vc-actions { display:flex; gap:8px; justify-content:center }
+  .name-link { cursor:pointer; color:var(--accent); font-weight:600 }
+  .name-link:hover { text-decoration:underline }
+  .zoom-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:9999; display:none; align-items:center; justify-content:center; cursor:pointer }
+  .zoom-overlay img { max-width:90vw; max-height:90vh; border-radius:12px; box-shadow:0 8px 40px rgba(0,0,0,0.5) }
+  .zoom-overlay .close-zoom { position:absolute; top:20px; right:30px; font-size:36px; color:#fff; cursor:pointer; opacity:0.7 }
+  .zoom-overlay .close-zoom:hover { opacity:1 }
   </style>
   <div class="stats-grid">
     <div class="stat-card"><div class="stat-icon">&#x1F464;</div><div class="stat-value">${accounts.length}</div><div class="stat-label">Total Accounts</div></div>
@@ -1065,7 +1089,7 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
       const statusLabel = statusNum === 1 ? 'Active' : statusNum === 0 ? 'Inactive' : 'Closed';
       const statusBadge = statusNum === 1 ? 'badge-green' : statusNum === 0 ? 'badge-gray' : 'badge-red';
       return `<tr>
-      <td><b>${a.child_name}</b></td>
+      <td><a href="#view-${a.account_id}" class="name-link">${a.child_name}</a></td>
       <td class="mono">${a.member_id || '-'}</td>
       <td class="num">${a.age || '-'}</td>
       <td>${a.gender || '-'}</td>
@@ -1119,19 +1143,47 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
   </div>
 
   ${accounts.map(a => `
+  <div id="view-${a.account_id}" class="modal-overlay">
+  <div class="modal" style="max-width:420px">
+  <a href="#" class="close">&times;</a>
+  <div class="vcard">
+    <div class="vc-av" onclick="document.getElementById('vf_${a.account_id}').click()">
+      ${a.profile_pic_url ? '<img src="' + a.profile_pic_url + '" id="vp_${a.account_id}" onclick="event.stopPropagation();zoomPhoto(this.src)" alt="">' : '<div class="empty-avatar">' + (a.child_name || '?')[0].toUpperCase() + '</div>'}
+      <div class="upload-overlay"><i class="fas fa-camera"></i> Change Photo</div>
+      <form method="post" action="/admin/accounts/upload-photo/${a.account_id}" enctype="multipart/form-data" id="vf_${a.account_id}">
+        <input type="file" name="photo" accept="image/*" onchange="this.form.submit()">
+      </form>
+    </div>
+    <h2>${a.child_name}</h2>
+    <div class="vc-meta">${a.member_id || '---'} &middot; ${a.gender || '--'} &middot; ${a.age || '--'} yo</div>
+    <div class="vc-grid">
+      <div class="vc-item"><div class="vcl">Birthday</div><div class="vcv">${a.birthday || '--'}</div></div>
+      <div class="vc-item"><div class="vcl">Schedule</div><div class="vcv">${a.savings_schedule || '--'}</div></div>
+      <div class="vc-item"><div class="vcl">Balance</div><div class="vcv">&#x20B1;${Number(a.actual_balance).toFixed(2)}</div></div>
+      <div class="vc-item"><div class="vcl">Unallocated</div><div class="vcv">&#x20B1;${Number(a.unallocated_balance).toFixed(2)}</div></div>
+      <div class="vc-item"><div class="vcl">Phone</div><div class="vcv">${a.parent_phone || '--'}</div></div>
+      <div class="vc-item"><div class="vcl">Status</div><div class="vcv"><span class="badge ${Number(a.is_active) === 1 ? 'badge-green' : 'badge-gray'}">${Number(a.is_active) === 1 ? 'Active' : 'Inactive'}</span></div></div>
+    </div>
+    <div class="vc-actions">
+      <a href="#edit-${a.account_id}" class="btn btn-primary btn-sm"><i class="fas fa-pen"></i> Edit</a>
+      <a href="#" class="btn btn-outline btn-sm" onclick="closeModal()">Close</a>
+    </div>
+  </div>
+  </div>
+  </div>
   <div id="edit-${a.account_id}" class="modal-overlay">
   <div class="modal" style="max-width:520px">
   <a href="#" class="close">&times;</a>
-  <h2>&#x270F; ${a.child_name}</h2>
-  <div class="profile-upload-area">
-    ${a.profile_pic_url ? '<img src="' + a.profile_pic_url + '" alt="">' : '<div class="empty-avatar">' + (a.child_name || '?')[0].toUpperCase() + '</div>'}
-    <div>
-      <form method="post" action="/admin/accounts/upload-photo/${a.account_id}" enctype="multipart/form-data" style="display:flex;gap:6px;align-items:center">
-        <input type="file" name="photo" accept="image/*" required class="file-input">
-        <button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-upload"></i> Upload</button>
-      </form>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Max 5MB. JPG, PNG, GIF, WebP</div>
+  <h2><i class="fas fa-pen"></i> ${a.child_name}</h2>
+  <div class="profile-upload-area" onclick="document.getElementById('ef_${a.account_id}').click()">
+    <div class="av-wrap">
+      ${a.profile_pic_url ? '<img src="' + a.profile_pic_url + '" id="ep_${a.account_id}" onclick="event.stopPropagation();zoomPhoto(this.src)" alt="">' : '<div class="empty-avatar">' + (a.child_name || '?')[0].toUpperCase() + '</div>'}
+      <div class="upload-overlay"><i class="fas fa-camera"></i></div>
     </div>
+    <span style="font-size:13px;color:var(--text-muted)">Click avatar to upload photo</span>
+    <form method="post" action="/admin/accounts/upload-photo/${a.account_id}" enctype="multipart/form-data" id="ef_${a.account_id}">
+      <input type="file" name="photo" accept="image/*" onchange="this.form.submit()">
+    </form>
   </div>
   <form method="post" action="/admin/accounts/update/${a.account_id}">
     <label for="en_${a.account_id}">Child Name</label>
@@ -1154,10 +1206,26 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
       <div><label for="estatus_${a.account_id}">Status</label><select id="estatus_${a.account_id}" name="is_active"><option value="1"${Number(a.is_active) === 1 ? ' selected' : ''}>Active</option><option value="0"${Number(a.is_active) === 0 ? ' selected' : ''}>Inactive</option><option value="-1"${Number(a.is_active) === -1 ? ' selected' : ''}>Closed</option></select></div>
       <div><label for="ephone_${a.account_id}">Phone</label><input type="text" id="ephone_${a.account_id}" name="parent_phone" value="${a.parent_phone || ''}"></div>
     </div>
-    <button type="submit" class="btn btn-primary">&#x1F4BE; Save Changes</button>
+    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Changes</button>
   </form>
   </div>
   </div>`).join('')}
+  <div id="zoom-modal" class="zoom-overlay" onclick="closeZoom()">
+    <span class="close-zoom">&times;</span>
+    <img id="zoom-img" src="" alt="">
+  </div>
+  <script>
+  function zoomPhoto(src) {
+    document.getElementById('zoom-img').src = src;
+    document.getElementById('zoom-modal').style.display = 'flex';
+  }
+  function closeZoom() {
+    document.getElementById('zoom-modal').style.display = 'none';
+  }
+  function closeModal() {
+    document.querySelector('.modal-overlay[style*="block"] .close')?.click();
+  }
+  </script>
   `;
 
   res.type('html').send(layout('Accounts', 'accounts', content, {

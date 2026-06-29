@@ -122,3 +122,15 @@ Flutter app data disappeared on logout/refresh because:
 - All route handlers are async (`asyncHandler(async (req, res) => { ... await store.xxx() })`) — works for both PG (truly async) and SQLite (`await` on sync = no-op)
 - `PgStore._ensureSchema()` auto-creates all tables on connect — no manual migration needed
 - SQLite remains default for local dev; PostgreSQL auto-detected via `DATABASE_URL`
+
+=====
+### Session Completed 2026-06-29
+- Fixed Loan Aging and Loan Portfolio reports: changed `a.name` → `a.child_name` (admin.js:3843,4272)
+- Restructured admin sidebar into 10 clean groups: Members, Savings & Deposits, Loans, Teller & Payments, Reports, Accounting, Operations, Gamification, Administration (admin-lib.js)
+- Fixed GL sidebar keys from duplicate `'gl'` to unique keys: `gl-trial`, `gl-bsheet`, `gl-pnl`, `gl-ledger` (admin.js GL routes)
+- Removed `opacity:0.55` dimming from loan reports (they now work)
+- Flutter: Fixed `SavingsOpenPage` grey screen freeze — moved all data processing from build() to _load(), used typed lists with safe iteration, added loading/error/content states. All savings-related pages now use white background.
+- Flutter: `CelebrationOverlay` grey overlay now tappable to dismiss
+- Flutter: Dashboard keeps cached content visible during auto-refresh (instead of full-screen spinner)
+- Flutter: `SavingsBloc` skips `SavingsLoading` when data already loaded
+- APK rebuilt (26.7MB)

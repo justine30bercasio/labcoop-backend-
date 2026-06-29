@@ -31,7 +31,7 @@ class SavingsBloc extends Bloc<SavingsEvent, SavingsState> {
     LoadSavings event,
     Emitter<SavingsState> emit,
   ) async {
-    emit(SavingsLoading());
+    if (state is! SavingsLoaded) emit(SavingsLoading());
     try {
       final account = await _repository.getAccount(event.accountId);
       final goals = await _repository.getGoals(event.accountId);

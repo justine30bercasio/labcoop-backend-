@@ -67,6 +67,7 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text('LabCoop'),
         actions: [
@@ -148,11 +149,25 @@ class _DashboardPageState extends State<DashboardPage> {
             });
           }
           if (state is SavingsError && _lastLoadedState != null) {
+            setState(() { _showCelebration = false; _justSaved = false; });
             _showAllocationError(context, state.message);
           }
         },
         builder: (context, state) {
           if (state is SavingsLoading) {
+            if (_lastLoadedState != null) {
+              final s = _lastLoadedState!;
+              return Stack(
+                children: [
+                  _buildDashboard(s.account, s.goals, s.badges,
+                      lastXpGained: s.lastXpGained),
+                  const Positioned(
+                    top: 0, left: 0, right: 0,
+                    child: LinearProgressIndicator(),
+                  ),
+                ],
+              );
+            }
             return const Center(child: CircularProgressIndicator());
           }
           if (state is SavingsError) {

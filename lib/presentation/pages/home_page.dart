@@ -58,6 +58,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(
+        backgroundColor: Colors.white,
         body: Center(child: CircularProgressIndicator()),
       );
     }
@@ -84,6 +85,7 @@ class _HomePageState extends State<HomePage> {
         ];
 
         return Scaffold(
+          backgroundColor: Colors.white,
           body: SafeArea(
             top: false,
             bottom: false,

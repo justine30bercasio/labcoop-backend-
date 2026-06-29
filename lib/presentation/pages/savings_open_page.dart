@@ -12,9 +12,10 @@ class SavingsOpenPage extends StatefulWidget {
 }
 
 class _SavingsOpenPageState extends State<SavingsOpenPage> {
-  List<dynamic> _products = [];
+  List<Widget> _productCards = [];
   Map<String, dynamic>? _currentSavings;
   bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -23,19 +24,30 @@ class _SavingsOpenPageState extends State<SavingsOpenPage> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() { _loading = true; _error = null; _productCards = []; });
     try {
       final products = await BankingApiService.getSavingsProducts();
       final savingsInfo = await BankingApiService.getSavingsInfo(widget.accountId);
       if (!mounted) return;
+      final cards = <Widget>[];
+      for (final p in products) {
+        if (p is Map<String, dynamic>) {
+          try {
+            cards.add(_productCard(p));
+          } catch (_) {
+            cards.add(const SizedBox.shrink());
+          }
+        }
+      }
+      if (!mounted) return;
       setState(() {
-        _products = products;
+        _productCards = cards;
         _currentSavings = savingsInfo;
         _loading = false;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() { _loading = false; _error = 'Failed to load savings data'; });
     }
   }
 
@@ -76,27 +88,47 @@ class _SavingsOpenPageState extends State<SavingsOpenPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(title: const Text('Open Savings Account')),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  if (_currentSavings != null && _currentSavings!['savings_product'] != null) ...[
-                    _currentProductCard(_currentSavings!['savings_product'] as Map<String, dynamic>),
-                    const SizedBox(height: 16),
-                  ],
-                  Text('Available Savings Products', style: AppTextStyle.heading3),
-                  const SizedBox(height: 12),
-                  if (_products.isEmpty)
-                    const Card(child: Padding(padding: EdgeInsets.all(24), child: Center(child: Text('No products available'))))
-                  else
-                    ..._products.map((p) => _productCard(p as Map<String, dynamic>)),
-                ],
-              ),
-            ),
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, size: 48, color: Colors.red),
+            const SizedBox(height: 16),
+            Text(_error!, style: const TextStyle(color: Colors.red)),
+            const SizedBox(height: 16),
+            ElevatedButton(onPressed: _load, child: const Text('Retry')),
+          ],
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          if (_currentSavings != null && _currentSavings!['savings_product'] != null) ...[
+            _currentProductCard(_currentSavings!['savings_product'] as Map<String, dynamic>),
+            const SizedBox(height: 16),
+          ],
+          Text('Available Savings Products', style: AppTextStyle.heading3),
+          const SizedBox(height: 12),
+          if (_productCards.isEmpty)
+            const Card(child: Padding(padding: EdgeInsets.all(24), child: Center(child: Text('No products available'))))
+          else
+            ..._productCards,
+        ],
+      ),
     );
   }
 

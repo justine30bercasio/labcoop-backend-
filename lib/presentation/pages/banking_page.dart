@@ -113,6 +113,7 @@ class _BankingPageState extends State<BankingPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(title: const Text('Microbanking'), actions: [
         TextButton.icon(
           onPressed: () => Navigator.push(context, PageTransition.slideUp(const LoanProductsPage())),

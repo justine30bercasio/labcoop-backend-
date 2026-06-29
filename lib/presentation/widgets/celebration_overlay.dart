@@ -84,15 +84,18 @@ class _CelebrationOverlayState extends State<CelebrationOverlay>
                 opacity: _opacityAnim.value,
                 child: Transform.scale(
                   scale: _scaleAnim.value,
-                  child: Container(
-                    color: Colors.black.withValues(alpha: 0.35),
-                    child: Stack(
-                      children: [
-                        const ConfettiWidget(particleCount: 50),
-                        Center(
-                          child: _buildCard(),
-                        ),
-                      ],
+                  child: GestureDetector(
+                    onTap: () { if (mounted) _mainCtrl.reverse(); },
+                    child: Container(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      child: Stack(
+                        children: [
+                          const ConfettiWidget(particleCount: 50),
+                          Center(
+                            child: _buildCard(),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),

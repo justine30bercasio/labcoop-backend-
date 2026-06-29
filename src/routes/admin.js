@@ -3840,7 +3840,7 @@ router.get('/audit/csv', requireRole(1), asyncHandler(async (req, res) => {
 router.get('/reports/loan-aging', requireRole(2), asyncHandler(async (req, res) => {
   const asOf = req.query.as_of || new Date().toISOString().slice(0, 10);
   const loans = await store.query(`
-    SELECT l.*, a.name as child_name, a.member_id
+    SELECT l.*, a.child_name, a.member_id
     FROM loans l JOIN accounts a ON l.account_id = a.account_id
     WHERE l.status = 'active' OR l.status = 'overdue'
     ORDER BY l.due_date ASC
@@ -4269,7 +4269,7 @@ router.get('/reports/member-ledger', requireRole(2), asyncHandler(async (req, re
 // ── 5. Loan Portfolio Report ──
 router.get('/reports/loan-portfolio', requireRole(2), asyncHandler(async (req, res) => {
   const { rows: loans } = await store.query(`
-    SELECT l.*, a.name as child_name, a.member_id
+    SELECT l.*, a.child_name, a.member_id
     FROM loans l JOIN accounts a ON l.account_id = a.account_id
     ORDER BY l.created_at DESC
   `);
@@ -5265,7 +5265,7 @@ router.get('/gl/trial-balance', requireRole(1), asyncHandler(async (req, res) =>
       </tr>
     </table></div>
   </div>`;
-  res.type('html').send(layout('Trial Balance', 'gl', content, { subtitle: 'All GL accounts with debit/credit totals' }));
+  res.type('html').send(layout('Trial Balance', 'gl-trial', content, { subtitle: 'All GL accounts with debit/credit totals' }));
 }));
 
 router.get('/gl/balance-sheet', requireRole(1), asyncHandler(async (req, res) => {
@@ -5302,7 +5302,7 @@ router.get('/gl/balance-sheet', requireRole(1), asyncHandler(async (req, res) =>
     ${section('Assets', result.assets, result.totalAssets, '#16a34a')}
     ${section('Liabilities', result.liabilities, result.totalLiabilities, '#dc2626')}
     ${section('Equity', result.equity, result.totalEquity, '#2563eb')}`;
-  res.type('html').send(layout('Balance Sheet', 'gl', content, { subtitle: 'Assets = Liabilities + Equity' }));
+  res.type('html').send(layout('Balance Sheet', 'gl-bsheet', content, { subtitle: 'Assets = Liabilities + Equity' }));
 }));
 
 router.get('/gl/profit-and-loss', requireRole(1), asyncHandler(async (req, res) => {
@@ -5341,7 +5341,7 @@ router.get('/gl/profit-and-loss', requireRole(1), asyncHandler(async (req, res) 
     </div>
     ${result.income.length ? section('Income', result.income, result.totalIncome, '#16a34a') : ''}
     ${result.expense.length ? section('Expenses', result.expense, result.totalExpense, '#dc2626') : ''}`;
-  res.type('html').send(layout('Profit & Loss', 'gl', content, { subtitle: 'Income - Expenses = Net Profit/Loss' }));
+  res.type('html').send(layout('Profit & Loss', 'gl-pnl', content, { subtitle: 'Income - Expenses = Net Profit/Loss' }));
 }));
 
 router.get('/gl/ledger', requireRole(1), asyncHandler(async (req, res) => {
@@ -5394,7 +5394,7 @@ router.get('/gl/ledger', requireRole(1), asyncHandler(async (req, res) => {
         }).join('')}
     </table></div>
   </div>` : '<div style="text-align:center;padding:48px;color:var(--text-muted);font-size:14px">&#x1F4CB; Select a GL account above to view its ledger entries</div>'}`;
-  res.type('html').send(layout('General Ledger', 'gl', content, { subtitle: 'View individual account entries' }));
+  res.type('html').send(layout('General Ledger', 'gl-ledger', content, { subtitle: 'View individual account entries' }));
 }));
 
 // ── Audit Log ──

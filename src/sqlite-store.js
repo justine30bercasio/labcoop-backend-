@@ -53,6 +53,40 @@ function getDb() {
     try { db.exec("INSERT OR IGNORE INTO fees (fee_id, name, amount, fee_type, gl_account_code, description) VALUES ('fee_acct_maintenance', 'Account Maintenance Fee', 10, 'fixed', '4100', 'Monthly account maintenance fee')"); } catch (_) {}
     try { db.exec("INSERT OR IGNORE INTO fees (fee_id, name, amount, fee_type, gl_account_code, description) VALUES ('fee_withdrawal', 'Withdrawal Fee', 5, 'fixed', '4100', 'Per withdrawal transaction fee')"); } catch (_) {}
     try { db.exec("INSERT OR IGNORE INTO fees (fee_id, name, amount, fee_type, gl_account_code, description) VALUES ('fee_check', 'Check Processing Fee', 15, 'fixed', '4100', 'Per check deposit processing fee')"); } catch (_) {}
+    // ── Advanced Banking Tables ──
+    try { db.exec("CREATE TABLE IF NOT EXISTS loan_collateral (collateral_id TEXT PRIMARY KEY, loan_id TEXT NOT NULL, type TEXT NOT NULL, description TEXT DEFAULT '', estimated_value DECIMAL(12,2) DEFAULT 0, appraised_value DECIMAL(12,2), document_url TEXT DEFAULT '', is_released INTEGER DEFAULT 0, created_at TEXT)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS loan_guarantors (guarantor_id TEXT PRIMARY KEY, loan_id TEXT NOT NULL, name TEXT NOT NULL, relationship TEXT DEFAULT '', contact_number TEXT DEFAULT '', address TEXT DEFAULT '', income DECIMAL(12,2) DEFAULT 0, created_at TEXT)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS loan_restructuring (restructure_id TEXT PRIMARY KEY, loan_id TEXT NOT NULL, old_principal DECIMAL(12,2), new_principal DECIMAL(12,2), old_interest_rate DECIMAL(5,2), new_interest_rate DECIMAL(5,2), old_term_months INTEGER, new_term_months INTEGER, reason TEXT DEFAULT '', approved_by TEXT, created_at TEXT)"); } catch (_) {}
+    try { db.exec("ALTER TABLE loans ADD COLUMN asset_classification TEXT DEFAULT 'current'"); } catch (_) {}
+    try { db.exec("ALTER TABLE loans ADD COLUMN late_fee_accrued DECIMAL(12,2) DEFAULT 0"); } catch (_) {}
+    try { db.exec("ALTER TABLE loans ADD COLUMN last_late_fee_date TEXT"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS term_deposits (td_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, td_number TEXT UNIQUE, amount DECIMAL(12,2) NOT NULL, term_days INTEGER NOT NULL, interest_rate DECIMAL(5,2) NOT NULL, maturity_date TEXT NOT NULL, status TEXT DEFAULT 'active' CHECK(status IN ('active','matured','closed','renewed')), renew_instruction TEXT DEFAULT 'mature', auto_renew INTEGER DEFAULT 0, interest_earned DECIMAL(12,2) DEFAULT 0, created_at TEXT, closed_at TEXT)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS share_capital (share_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, shares INTEGER DEFAULT 0, share_value DECIMAL(12,2) DEFAULT 0, total_amount DECIMAL(12,2) DEFAULT 0, transaction_type TEXT CHECK(transaction_type IN ('subscription','dividend','refund')), notes TEXT DEFAULT '', created_at TEXT)"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN total_shares INTEGER DEFAULT 0"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN share_capital_balance DECIMAL(12,2) DEFAULT 0"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS dividends (dividend_id TEXT PRIMARY KEY, year INTEGER NOT NULL, total_amount DECIMAL(12,2) NOT NULL, rate DECIMAL(5,2) NOT NULL, per_share DECIMAL(10,4) DEFAULT 0, declared_date TEXT NOT NULL, paid_date TEXT, status TEXT DEFAULT 'declared' CHECK(status IN ('declared','paid')), created_at TEXT)"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN overdraft_limit DECIMAL(12,2) DEFAULT 0"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN overdraft_interest_rate DECIMAL(5,2) DEFAULT 0"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN address TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN city TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN province TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN postal_code TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN civil_status TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN occupation TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN employer TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN monthly_income DECIMAL(12,2) DEFAULT 0"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS checkbooks (checkbook_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, bank_name TEXT DEFAULT '', start_number TEXT NOT NULL, end_number TEXT NOT NULL, issue_date TEXT NOT NULL, status TEXT DEFAULT 'active' CHECK(status IN ('active','fully_used','cancelled','stopped')), next_check_number TEXT, created_at TEXT)"); } catch (_) {}
+    try { db.exec("ALTER TABLE checks ADD COLUMN checkbook_id TEXT"); } catch (_) {}
+    try { db.exec("ALTER TABLE checks ADD COLUMN stop_payment INTEGER DEFAULT 0"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS demand_drafts (dd_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, dd_number TEXT UNIQUE, payee TEXT NOT NULL, amount DECIMAL(12,2) NOT NULL, charge_type TEXT DEFAULT 'debit' CHECK(charge_type IN ('debit','cash')), status TEXT DEFAULT 'issued' CHECK(status IN ('issued','cancelled','paid')), created_at TEXT, issued_by TEXT)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS credit_scores (score_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, score INTEGER DEFAULT 500, rating TEXT DEFAULT 'fair' CHECK(rating IN ('poor','fair','good','very_good','excellent')), total_loans INTEGER DEFAULT 0, late_payments INTEGER DEFAULT 0, avg_balance DECIMAL(12,2) DEFAULT 0, last_updated TEXT, created_at TEXT)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS groups (group_id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT DEFAULT '', member_count INTEGER DEFAULT 0, created_at TEXT)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS group_members (gm_id TEXT PRIMARY KEY, group_id TEXT NOT NULL, account_id TEXT NOT NULL, role TEXT DEFAULT 'member' CHECK(role IN ('leader','member')), joined_at TEXT)"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN currency TEXT DEFAULT 'PHP'"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS holiday_calendar (holiday_id TEXT PRIMARY KEY, name TEXT NOT NULL, date TEXT NOT NULL UNIQUE, type TEXT DEFAULT 'regular' CHECK(type IN ('regular','special','local')), is_recurring INTEGER DEFAULT 0, created_at TEXT)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS tax_config (tax_id TEXT PRIMARY KEY, name TEXT NOT NULL, rate DECIMAL(5,2) NOT NULL, applies_to TEXT DEFAULT 'interest' CHECK(applies_to IN ('interest','fee','dividend','all')), is_active INTEGER DEFAULT 1, created_at TEXT)"); } catch (_) {}
+    try { db.exec("INSERT OR IGNORE INTO tax_config (tax_id, name, rate, applies_to) VALUES ('tax_interest', 'Interest Income Tax', 20, 'interest')"); } catch (_) {}
+    try { db.exec("INSERT OR IGNORE INTO tax_config (tax_id, name, rate, applies_to) VALUES ('tax_dividend', 'Dividend Tax', 10, 'dividend')"); } catch (_) {}
     const count = db.prepare("SELECT COUNT(*) as c FROM gl_accounts").get();
     if (count.c === 0) {
       const insert = db.prepare('INSERT INTO gl_accounts (code, name, type) VALUES (?,?,?)');

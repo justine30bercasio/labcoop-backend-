@@ -1042,9 +1042,6 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
 
   const content = `
   <style>
-  .mini-avatar { width:36px;height:36px;border-radius:50%;object-fit:cover;display:block }
-  .mini-avatar-empty { background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700 }
-  .td-photo { width:44px;text-align:center }
   .profile-upload-area { display:flex;align-items:center;gap:12px;margin-bottom:12px;padding:12px;background:var(--bg-secondary);border-radius:8px }
   .profile-upload-area img { width:64px;height:64px;border-radius:50%;object-fit:cover }
   .profile-upload-area .empty-avatar { width:64px;height:64px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700 }
@@ -1061,14 +1058,13 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
     </div>
     <div class="card-body">
     <table class="dt-accounts-table">
-    <thead><tr><th>Photo</th><th>Name</th><th>Member ID</th><th>Age</th><th>Gender</th><th>Schedule</th><th>Balance</th><th>Unallocated</th><th>Status</th><th>Password</th><th>Created</th><th>Actions</th></tr></thead>
+    <thead><tr><th>Name</th><th>Member ID</th><th>Age</th><th>Gender</th><th>Schedule</th><th>Balance</th><th>Unallocated</th><th>Status</th><th>Password</th><th>Created</th><th>Actions</th></tr></thead>
     <tbody>
     ${accounts.map(a => {
       const statusNum = Number(a.is_active);
       const statusLabel = statusNum === 1 ? 'Active' : statusNum === 0 ? 'Inactive' : 'Closed';
       const statusBadge = statusNum === 1 ? 'badge-green' : statusNum === 0 ? 'badge-gray' : 'badge-red';
       return `<tr>
-      <td class="td-photo">${a.profile_pic_url ? '<img src="' + a.profile_pic_url + '" class="mini-avatar">' : '<div class="mini-avatar mini-avatar-empty">' + (a.child_name || '?')[0].toUpperCase() + '</div>'}</td>
       <td><b>${a.child_name}</b></td>
       <td class="mono">${a.member_id || '-'}</td>
       <td class="num">${a.age || '-'}</td>
@@ -1127,6 +1123,16 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
   <div class="modal" style="max-width:520px">
   <a href="#" class="close">&times;</a>
   <h2>&#x270F; ${a.child_name}</h2>
+  <div class="profile-upload-area">
+    ${a.profile_pic_url ? '<img src="' + a.profile_pic_url + '" alt="">' : '<div class="empty-avatar">' + (a.child_name || '?')[0].toUpperCase() + '</div>'}
+    <div>
+      <form method="post" action="/admin/accounts/upload-photo/${a.account_id}" enctype="multipart/form-data" style="display:flex;gap:6px;align-items:center">
+        <input type="file" name="photo" accept="image/*" required class="file-input">
+        <button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-upload"></i> Upload</button>
+      </form>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Max 5MB. JPG, PNG, GIF, WebP</div>
+    </div>
+  </div>
   <form method="post" action="/admin/accounts/update/${a.account_id}">
     <label for="en_${a.account_id}">Child Name</label>
     <input type="text" id="en_${a.account_id}" name="child_name" value="${a.child_name}" required style="text-transform:uppercase">
@@ -1147,16 +1153,6 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
     <div class="form-row">
       <div><label for="estatus_${a.account_id}">Status</label><select id="estatus_${a.account_id}" name="is_active"><option value="1"${Number(a.is_active) === 1 ? ' selected' : ''}>Active</option><option value="0"${Number(a.is_active) === 0 ? ' selected' : ''}>Inactive</option><option value="-1"${Number(a.is_active) === -1 ? ' selected' : ''}>Closed</option></select></div>
       <div><label for="ephone_${a.account_id}">Phone</label><input type="text" id="ephone_${a.account_id}" name="parent_phone" value="${a.parent_phone || ''}"></div>
-    </div>
-    <div class="profile-upload-area">
-      ${a.profile_pic_url ? '<img src="' + a.profile_pic_url + '" alt="">' : '<div class="empty-avatar">' + (a.child_name || '?')[0].toUpperCase() + '</div>'}
-      <div>
-        <form method="post" action="/admin/accounts/upload-photo/${a.account_id}" enctype="multipart/form-data" style="display:flex;gap:6px;align-items:center">
-          <input type="file" name="photo" accept="image/*" required class="file-input">
-          <button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-upload"></i> Upload</button>
-        </form>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Max 5MB. JPG, PNG, GIF, WebP</div>
-      </div>
     </div>
     <button type="submit" class="btn btn-primary">&#x1F4BE; Save Changes</button>
   </form>
@@ -1215,7 +1211,7 @@ router.post('/accounts/update/:id', requireRole(2), asyncHandler(async (req, res
       child_name: child_name?.trim() ? child_name.trim().toUpperCase() : displayName,
       actual_balance: Number(actual_balance),
       unallocated_balance: Number(unallocated_balance),
-      current_xp: Number(current_xp),
+      current_xp: Number(current_xp) || 0,
       parent_phone: parent_phone || '',
       last_name: ulast,
       first_name: ufirst,

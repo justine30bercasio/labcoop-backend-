@@ -12,10 +12,14 @@ function layout(title, active, content, opts = {}) {
       { icon: '<i class="fas fa-calendar-check"></i>', label: 'End of Day', href: '/admin/eod', key: 'eod' },
       { icon: '<i class="fas fa-file-invoice"></i>', label: 'Statements', href: '/admin/statements', key: 'statements' },
       { icon: '<i class="fas fa-calendar-alt"></i>', label: 'Year-End', href: '/admin/eoy', key: 'eoy' },
+      { icon: '<i class="fas fa-cash-register"></i>', label: 'Teller Cash', href: '/admin/teller-cash', key: 'teller-cash' },
+      { icon: '<i class="fas fa-money-check"></i>', label: 'Checks', href: '/admin/checks', key: 'checks' },
+      { icon: '<i class="fas fa-passport"></i>', label: 'Member KYC', href: '/admin/kyc', key: 'kyc' },
     ]},
     { icon: '<i class="fas fa-boxes-stacked"></i>', label: 'Products', key: 'products', children: [
       { icon: '<i class="fas fa-hand-holding-hand"></i>', label: 'Loan Products', href: '/admin/loan-products', key: 'loan-products' },
       { icon: '<i class="fas fa-piggy-bank"></i>', label: 'Savings Products', href: '/admin/savings-products', key: 'savings-products' },
+      { icon: '<i class="fas fa-tags"></i>', label: 'Fees', href: '/admin/fees', key: 'fees' },
     ]},
     { icon: '<i class="fas fa-piggy-bank"></i>', label: 'Savings Reports', key: 'savings-reports', children: [
       { icon: '<i class="fas fa-coins"></i>', label: 'Deposit Summary', href: '/admin/reports/deposit-summary', key: 'deposit-summary' },
@@ -28,6 +32,7 @@ function layout(title, active, content, opts = {}) {
       { icon: '<i class="fas fa-file-invoice"></i>', label: 'Balance Sheet', href: '/admin/gl/balance-sheet', key: 'gl' },
       { icon: '<i class="fas fa-chart-line"></i>', label: 'P&L', href: '/admin/gl/profit-and-loss', key: 'gl' },
       { icon: '<i class="fas fa-book"></i>', label: 'Ledger', href: '/admin/gl/ledger', key: 'gl' },
+      { icon: '<i class="fas fa-list"></i>', label: 'Chart of Accounts', href: '/admin/gl/accounts', key: 'gl-accounts' },
     ]},
     { icon: '<i class="fas fa-sack-dollar"></i>', style: 'opacity:0.55', label: 'Loan Reports (Future)', key: 'loan-reports', children: [
       { icon: '<i class="fas fa-clock"></i>', label: 'Loan Aging', href: '/admin/reports/loan-aging', key: 'loan-aging' },
@@ -37,6 +42,7 @@ function layout(title, active, content, opts = {}) {
       { icon: '<i class="fas fa-clipboard-list"></i>', label: 'Audit Log', href: '/admin/audit-log', key: 'audit-log' },
       { icon: '<i class="fas fa-user-shield"></i>', label: 'Admin Users', href: '/admin/users', key: 'users' },
       { icon: '<i class="fas fa-database"></i>', label: 'Backup & Restore', href: '/admin/backup', key: 'backup' },
+      { icon: '<i class="fas fa-building"></i>', label: 'Branches', href: '/admin/branches', key: 'branches' },
     ]},
     { icon: '<i class="fas fa-gamepad"></i>', label: 'Gamification', key: 'gamification', children: [
       { icon: '<i class="fas fa-store"></i>', label: 'Shop', href: '/admin/shop', key: 'shop' },

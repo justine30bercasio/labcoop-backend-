@@ -234,6 +234,7 @@ const transactionsRouter = require('./routes/transactions');
 const excelRouter = require('./routes/excel');
 const authRouter = require('./routes/auth');
 const adminRouter = require('./routes/admin');
+const microbankRouter = require('./routes/admin-microbank');
 const coopRouter = require('./routes/coop');
 const gamesRouter = require('./routes/games');
 const shopRouter = require('./routes/shop');
@@ -498,6 +499,7 @@ app.use('/api/paymongo', paymongoRouter);
 app.use('/api/settings', authMiddleware, requireOwnership, settingsRouter);
 app.use('/admin', adminAuthRouter);
 app.use('/admin', adminRouter);
+app.use('/admin', microbankRouter);
 
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);

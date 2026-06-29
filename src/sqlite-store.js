@@ -39,6 +39,20 @@ function getDb() {
     try { db.exec("ALTER TABLE gl_entries ADD COLUMN void_reason TEXT"); } catch (_) {}
     try { db.exec("ALTER TABLE gl_entries ADD COLUMN voided_at TEXT"); } catch (_) {}
     try { db.exec("ALTER TABLE accounts ADD COLUMN profile_pic_url TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS teller_cash (cash_id TEXT PRIMARY KEY, teller_id TEXT NOT NULL, opening_balance DECIMAL(12,2) DEFAULT 0, current_balance DECIMAL(12,2) DEFAULT 0, date TEXT NOT NULL, status TEXT DEFAULT 'open' CHECK(status IN ('open','closed')), closed_at TEXT, notes TEXT DEFAULT '', created_at TEXT)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS checks (check_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, check_number TEXT NOT NULL, bank_name TEXT DEFAULT '', amount DECIMAL(12,2) NOT NULL, status TEXT DEFAULT 'pending' CHECK(status IN ('pending','cleared','bounced','deposited')), deposit_date TEXT, clear_date TEXT, created_at TEXT)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS fees (fee_id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, amount DECIMAL(12,2) NOT NULL DEFAULT 0, fee_type TEXT DEFAULT 'fixed' CHECK(fee_type IN ('fixed','percentage')), gl_account_code TEXT REFERENCES gl_accounts(code), description TEXT DEFAULT '', is_active INTEGER DEFAULT 1, created_at TEXT)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS branches (branch_id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, code TEXT UNIQUE, address TEXT DEFAULT '', contact_number TEXT DEFAULT '', manager_name TEXT DEFAULT '', is_active INTEGER DEFAULT 1, created_at TEXT)"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN branch_id TEXT REFERENCES branches(branch_id)"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN photo_2x2_url TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN birth_cert_url TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN id_photo_url TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE admin_users ADD COLUMN branch_id TEXT REFERENCES branches(branch_id)"); } catch (_) {}
+    try { db.exec("ALTER TABLE teller_cash ADD COLUMN branch_id TEXT REFERENCES branches(branch_id)"); } catch (_) {}
+    try { db.exec("INSERT OR IGNORE INTO branches (branch_id, name, code, address) VALUES ('main', 'Main Branch', 'MAIN', 'Head Office')"); } catch (_) {}
+    try { db.exec("INSERT OR IGNORE INTO fees (fee_id, name, amount, fee_type, gl_account_code, description) VALUES ('fee_acct_maintenance', 'Account Maintenance Fee', 10, 'fixed', '4100', 'Monthly account maintenance fee')"); } catch (_) {}
+    try { db.exec("INSERT OR IGNORE INTO fees (fee_id, name, amount, fee_type, gl_account_code, description) VALUES ('fee_withdrawal', 'Withdrawal Fee', 5, 'fixed', '4100', 'Per withdrawal transaction fee')"); } catch (_) {}
+    try { db.exec("INSERT OR IGNORE INTO fees (fee_id, name, amount, fee_type, gl_account_code, description) VALUES ('fee_check', 'Check Processing Fee', 15, 'fixed', '4100', 'Per check deposit processing fee')"); } catch (_) {}
     const count = db.prepare("SELECT COUNT(*) as c FROM gl_accounts").get();
     if (count.c === 0) {
       const insert = db.prepare('INSERT INTO gl_accounts (code, name, type) VALUES (?,?,?)');

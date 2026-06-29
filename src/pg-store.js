@@ -340,6 +340,13 @@ class PgStore {
     await this.pool.query(schema);
     // Migrations for existing tables
     await this.pool.query("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS trn_number INTEGER").catch(() => {});
+    await this.pool.query("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS voided_by TEXT").catch(() => {});
+    await this.pool.query("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS void_reason TEXT").catch(() => {});
+    await this.pool.query("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS voided_at TEXT").catch(() => {});
+    await this.pool.query("ALTER TABLE gl_entries ADD COLUMN IF NOT EXISTS is_voided INTEGER DEFAULT 0").catch(() => {});
+    await this.pool.query("ALTER TABLE gl_entries ADD COLUMN IF NOT EXISTS voided_by TEXT").catch(() => {});
+    await this.pool.query("ALTER TABLE gl_entries ADD COLUMN IF NOT EXISTS void_reason TEXT").catch(() => {});
+    await this.pool.query("ALTER TABLE gl_entries ADD COLUMN IF NOT EXISTS voided_at TEXT").catch(() => {});
     await this.pool.query("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS email TEXT DEFAULT ''").catch(() => {});
     await this._seedGlAccounts();
   }

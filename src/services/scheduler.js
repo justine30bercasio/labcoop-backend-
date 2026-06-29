@@ -54,7 +54,20 @@ function startScheduler() {
         if (shouldApply && rate > 0) {
           const interestAmount = Math.round(account.actual_balance * rate * 100) / 100;
           if (interestAmount > 0) {
-            store.creditInterest(account.account_id, interestAmount);
+            const tx = store.creditInterest(account.account_id, interestAmount);
+            // Post GL entry for the interest credit
+            try {
+              const gl = require('./gl');
+              const txId = tx?.transaction_id || '';
+              if (txId) {
+                await gl.postDoubleEntry(txId, [
+                  { account_code: '5000', debit: interestAmount, description: 'Interest expense: ' + account.child_name },
+                  { account_code: '2000', credit: interestAmount, description: 'Interest credited: ' + account.child_name },
+                ]);
+              }
+            } catch (glErr) {
+              console.error('[Scheduler] GL post for interest failed:', glErr.message);
+            }
             console.log(`[Scheduler] Credited PHP ${interestAmount} interest to ${account.child_name}`);
           }
         }

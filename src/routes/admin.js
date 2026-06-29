@@ -3004,10 +3004,12 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   const toast = qry.deposited ? 'success:Deposit completed. Receipt #' + (qry.receipt || '')
     : qry.withdrawn ? 'success:Withdrawal completed. Receipt #' + (qry.receipt || '')
     : qry.loanpaid ? 'success:Loan payment collected. Receipt #' + (qry.receipt || '')
-    : qry.error ? `error:${qry.error}`
+    : qry.voided ? 'success:Transaction voided. Reversal receipt #' + (qry.receipt || '')
+    : qry.error ? 'error:' + qry.error
     : '';
 
   const receipt = qry.receipt ? (await one("SELECT t.*, a.child_name, a.member_id FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id WHERE t.transaction_id = $1", [qry.receipt])) : null;
+  const adminRole = Number(req.session.role) || 0;
 
   const bankStyle = `<style>
   .teller-bar { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 24px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
@@ -3089,7 +3091,10 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   function receiptHtml(r) {
     if (!r) return '';
     var isCredit = r.type === 'deposit' || r.type === 'loan_disbursement';
-    return '<div class="receipt-inline" id="rinline"><div class="ri-header"><strong>LABCOOP PASSBOOK</strong><br><span style="font-size:10px;color:#999">Official Transaction Receipt</span></div><div class="ri-body"><div class="ri-row"><span class="ri-label">TRN#</span><span class="ri-value">' + fmtTrn(r, 'TXN-' + (r.transaction_id || '').slice(0,8).toUpperCase()) + '</span></div><div class="ri-row"><span class="ri-label">Date</span><span class="ri-value">' + (r.created_at || '').slice(0,19).replace('T',' ') + '</span></div><div class="ri-row"><span class="ri-label">Member</span><span class="ri-value">' + (r.child_name||'N/A') + ' (' + (r.member_id||'---') + ')</span></div><div class="ri-divider"></div><div class="ri-row"><span class="ri-label">Transaction</span><span class="ri-value" style="text-transform:uppercase">' + r.type.replace(/_/g,' ') + '</span></div><div class="ri-row"><span class="ri-label">Amount</span><span class="ri-value ' + (isCredit ? 'ri-credit' : 'ri-debit') + '">' + (isCredit ? '+' : '-') + ' \u20B1' + Number(r.amount).toFixed(2) + '</span></div><div class="ri-row"><span class="ri-label">Description</span><span class="ri-value">' + (r.description||'-') + '</span></div><div class="ri-divider"></div><div class="ri-row"><span class="ri-label">Ext. Ref</span><span class="ri-value" style="font-size:11px">' + (r.reference_id ? (r.reference_type ? r.reference_type + ':' : '') + r.reference_id : '-') + '</span></div><div class="ri-divider"></div><div class="ri-row"><span class="ri-label">Balance Before</span><span class="ri-value">\u20B1' + Number(r.balance_before || 0).toFixed(2) + '</span></div><div class="ri-row"><span class="ri-label">Balance After</span><span class="ri-value">\u20B1' + Number(r.balance_after || 0).toFixed(2) + '</span></div></div><div class="ri-footer"><button data-action="print-receipt" class="btn btn-outline btn-xs">\uD83D\uDDA8 Print</button> &nbsp; <button data-action="close-receipt" class="btn btn-outline btn-xs">\u2716 Close</button></div></div>';
+    var isVoided = r.voided_at ? true : false;
+    var voidBanner = isVoided ? '<div style="background:#fef2f2;color:#dc2626;text-align:center;padding:6px;font-weight:700;font-size:13px;border-bottom:2px solid #dc2626"><i class="fas fa-ban"></i> VOIDED — ' + (r.void_reason || '') + '</div>' : '';
+    var voidedByLine = isVoided ? '<div class="ri-row"><span class="ri-label">Voided By</span><span class="ri-value" style="color:#dc2626">' + (r.voided_by || '') + ' on ' + (r.voided_at || '').slice(0,10) + '</span></div><div class="ri-divider"></div>' : '';
+    return '<div class="receipt-inline" id="rinline">' + voidBanner + '<div class="ri-header"><strong>LABCOOP PASSBOOK</strong><br><span style="font-size:10px;color:#999">Official Transaction Receipt</span></div><div class="ri-body"><div class="ri-row"><span class="ri-label">TRN#</span><span class="ri-value">' + fmtTrn(r, 'TXN-' + (r.transaction_id || '').slice(0,8).toUpperCase()) + '</span></div><div class="ri-row"><span class="ri-label">Date</span><span class="ri-value">' + (r.created_at || '').slice(0,19).replace('T',' ') + '</span></div><div class="ri-row"><span class="ri-label">Member</span><span class="ri-value">' + (r.child_name||'N/A') + ' (' + (r.member_id||'---') + ')</span></div><div class="ri-divider"></div><div class="ri-row"><span class="ri-label">Transaction</span><span class="ri-value" style="text-transform:uppercase">' + r.type.replace(/_/g,' ') + '</span></div><div class="ri-row"><span class="ri-label">Amount</span><span class="ri-value ' + (isCredit ? 'ri-credit' : 'ri-debit') + '">' + (isCredit ? '+' : '-') + ' \u20B1' + Number(r.amount).toFixed(2) + '</span></div><div class="ri-row"><span class="ri-label">Description</span><span class="ri-value">' + (r.description||'-') + '</span></div>' + voidedByLine + '<div class="ri-row"><span class="ri-label">Ext. Ref</span><span class="ri-value" style="font-size:11px">' + (r.reference_id ? (r.reference_type ? r.reference_type + ':' : '') + r.reference_id : '-') + '</span></div><div class="ri-divider"></div><div class="ri-row"><span class="ri-label">Balance Before</span><span class="ri-value">\u20B1' + Number(r.balance_before || 0).toFixed(2) + '</span></div><div class="ri-row"><span class="ri-label">Balance After</span><span class="ri-value">\u20B1' + Number(r.balance_after || 0).toFixed(2) + '</span></div></div><div class="ri-footer"><button data-action="print-receipt" class="btn btn-outline btn-xs">\uD83D\uDDA8 Print</button> &nbsp; <button data-action="close-receipt" class="btn btn-outline btn-xs">\u2716 Close</button></div></div>';
   }
 
   function searchResultItem(a) {
@@ -3206,21 +3211,60 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
       </div>
       <div class="teller-card-body" style="padding:0">
         ${receipt ? receiptHtml(receipt) : ''}
-        ${recentTxs.length === 0 ? '<div style="text-align:center;padding:32px;color:var(--text-muted)">No transactions yet.</div>' : `
-        <table class="tx-table">
-          <tr><th>Type</th><th>Amount</th><th>Description</th><th>Date</th><th></th></tr>
-          ${recentTxs.map(tx => {
+        ${recentTxs.length === 0 ? '<div style="text-align:center;padding:32px;color:var(--text-muted)">No transactions yet.</div>' : '<table class="tx-table"><tr><th>Type</th><th>Amount</th><th>Description</th><th>Date</th><th></th></tr>' + recentTxs.map(tx => {
             var tc = ({deposit:'deposit',withdrawal:'withdrawal',loan_payment:'loan_payment',loan_disbursement:'loan_disbursement',interest:'interest',interest_credit:'interest',allocation:'allocation'})[tx.type] || 'deposit';
             var sign = tx.type === 'deposit' || tx.type === 'loan_disbursement' ? '+' : '-';
             var col = tx.type === 'deposit' || tx.type === 'loan_disbursement' ? '#16a34a' : tx.type === 'withdrawal' ? '#dc2626' : 'var(--text)';
-            return '<tr><td><span class="tx-type-badge ' + tc + '">' + tx.type.replace(/_/g,' ') + '</span></td><td class="tx-amt" style="color:' + col + '">' + sign + '&#x20B1;' + Number(tx.amount).toFixed(2) + '</td><td class="tx-desc">' + (tx.description||'-') + '</td><td class="tx-date">' + (tx.created_at||'').slice(0,16).replace('T',' ') + '</td><td><a class="rcpt-link" href="?account=' + selectedId + '&receipt=' + tx.transaction_id + (searchQ ? '&q=' + encodeURIComponent(searchQ) : '') + '" title="View receipt">&#x1F5A8;</a></td></tr>';
-          }).join('')}
-        </table>`}
+            return '<tr><td><span class="tx-type-badge ' + tc + '">' + tx.type.replace(/_/g,' ') + (tx.voided_at ? ' VOIDED' : '') + '</span></td><td class="tx-amt" style="color:' + col + '">' + sign + '&#x20B1;' + Number(tx.amount).toFixed(2) + '</td><td class="tx-desc">' + (tx.description||'-') + (tx.voided_at ? '<br><span style="font-size:10px;color:#dc2626">Voided by ' + (tx.voided_by||'') + '</span>' : '') + '</td><td class="tx-date">' + (tx.created_at||'').slice(0,16).replace('T',' ') + '</td><td style="white-space:nowrap">' + (tx.voided_at ? '<span style="color:#dc2626;font-size:10px;font-weight:600"><i class="fas fa-ban"></i> VOIDED</span>' : '<a class="rcpt-link" href="?account=' + selectedId + '&receipt=' + tx.transaction_id + (searchQ ? '&q=' + encodeURIComponent(searchQ) : '') + '" title="View receipt"><i class="fas fa-receipt"></i></a>' + (adminRole >= 3 && ['deposit','withdrawal','loan_payment','interest','interest_credit','auto_save','fee'].includes(tx.type) ? ' <button class="btn btn-outline btn-xs" style="color:#dc2626;padding:2px 6px;font-size:10px" onclick="openVoidModal(\'' + tx.transaction_id + '\',\'' + tx.type.replace(/_/g,' ') + '\',\'' + Number(tx.amount).toFixed(2) + '\')"><i class="fas fa-ban"></i> Void</button>' : '')) + '</td></tr>';
+          }).join('') + '</table>'}
       </div>
     </div>
 
   </div>
   `}
+
+  <!-- Void Transaction Modal -->
+  <div id="voidModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:999;align-items:center;justify-content:center">
+    <div style="background:var(--card);border-radius:12px;padding:24px;max-width:480px;width:90%;border:2px solid #dc2626">
+      <h3 style="color:#dc2626;margin-bottom:12px"><i class="fas fa-ban"></i> Void Transaction</h3>
+      <div style="background:#fef2f2;padding:12px;border-radius:8px;margin-bottom:16px">
+        <div style="font-size:13px"><b>Transaction:</b> <span id="voidTxType"></span></div>
+        <div style="font-size:13px"><b>Amount:</b> &#x20B1; <span id="voidTxAmount"></span></div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:4px">This will reverse the transaction, post reversing GL entries, and update the account balance.</div>
+      </div>
+      <form method="post" action="/admin/teller/void/PLACEHOLDER" id="voidForm">
+        <div class="field" style="margin-bottom:12px">
+          <label style="font-weight:600;display:block;margin-bottom:4px">Reason for void <span style="color:#dc2626">*</span></label>
+          <textarea name="reason" id="voidReason" required minlength="5" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;min-height:60px" placeholder="Explain why this transaction is being voided (min 5 characters)"></textarea>
+        </div>
+        <div class="field" style="margin-bottom:16px">
+          <label style="font-weight:600;display:block;margin-bottom:4px">Your password <span style="color:#dc2626">*</span></label>
+          <input type="password" name="password" id="voidPassword" required style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px" placeholder="Enter your admin password to authorize">
+        </div>
+        <div style="display:flex;gap:8px">
+          <button type="submit" class="btn btn-danger" style="flex:1"><i class="fas fa-ban"></i> Confirm Void</button>
+          <button type="button" class="btn btn-cancel" onclick="closeVoidModal()">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+  function openVoidModal(txId, type, amount) {
+    document.getElementById('voidTxType').textContent = type;
+    document.getElementById('voidTxAmount').textContent = amount;
+    document.getElementById('voidForm').action = '/admin/teller/void/' + txId;
+    document.getElementById('voidReason').value = '';
+    document.getElementById('voidPassword').value = '';
+    document.getElementById('voidModal').style.display = 'flex';
+  }
+  function closeVoidModal() {
+    document.getElementById('voidModal').style.display = 'none';
+  }
+  document.getElementById('voidModal').addEventListener('click', function(e) {
+    if (e.target === this) closeVoidModal();
+  });
+  </script>
   `;
 
   var toastHtml = toast ? '<div class="toast ' + (toast.startsWith('error:') ? 'error' : 'success') + '">' + (toast.startsWith('error:') ? '&#x274C; ' + toast.slice(6) : '&#x2705; ' + toast.slice(8)) + '</div>' : '';
@@ -3238,6 +3282,17 @@ router.post('/teller/deposit/:id', requireRole(2), asyncHandler(async (req, res)
     const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
     if (!account) return res.redirect('/admin/teller?error=Account+not+found');
     const newBalance = Number(account.actual_balance) + val;
+
+    // Post GL FIRST — if this fails, nothing changes
+    const gl = require('../services/gl');
+    const audit = require('../services/audit');
+    const glTxId = uuidv4();
+    await gl.postDoubleEntry(glTxId, [
+      { account_code: '1000', debit: val, description: 'Counter deposit: ' + account.child_name },
+      { account_code: '2000', credit: val, description: 'Counter deposit: ' + account.child_name },
+    ]);
+
+    // Now update account and create transaction
     await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=unallocated_balance+$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3", [newBalance, val, req.params.id]);
     const result = await store.addTransaction({
       account_id: req.params.id,
@@ -3248,15 +3303,9 @@ router.post('/teller/deposit/:id', requireRole(2), asyncHandler(async (req, res)
       balance_after: newBalance,
     });
     const txId = result?.transaction_id || '';
-    try {
-      const gl = require('../services/gl');
-      await gl.postDoubleEntry(txId, [
-        { account_code: '1000', debit: val, description: 'Counter deposit: ' + account.child_name },
-        { account_code: '2000', credit: val, description: 'Counter deposit: ' + account.child_name },
-      ]);
-      const audit = require('../services/audit');
-      await audit.log(req, 'TELLER_DEPOSIT', 'account', req.params.id, { amount: val, txId, desc: description || 'Counter deposit' });
-    } catch (glErr) { console.error('GL post failed (non-fatal):', glErr.message); }
+    // Link GL entry to actual transaction
+    await store.query('UPDATE gl_entries SET transaction_id = $1 WHERE entry_id = $2', [txId, glTxId]).catch(() => {});
+    await audit.log(req, 'TELLER_DEPOSIT', 'account', req.params.id, { amount: val, txId, desc: description || 'Counter deposit' });
     const sq = req.body.q ? '&q=' + encodeURIComponent(req.body.q) : '';
     res.redirect(`/admin/teller?deposited=ok&receipt=${txId}&account=${req.params.id}${sq}`);
   } catch (err) {
@@ -3275,6 +3324,17 @@ router.post('/teller/withdraw/:id', requireRole(2), asyncHandler(async (req, res
     if (Number(account.actual_balance) < val) return res.redirect('/admin/teller?error=Insufficient+balance');
     const newBalance = Math.round((Number(account.actual_balance) - val) * 100) / 100;
     const newUnallocated = Math.round((Number(account.unallocated_balance) - val) * 100) / 100;
+
+    // Post GL FIRST
+    const gl = require('../services/gl');
+    const audit = require('../services/audit');
+    const glTxId = uuidv4();
+    await gl.postDoubleEntry(glTxId, [
+      { account_code: '2000', debit: val, description: 'Counter withdrawal: ' + account.child_name },
+      { account_code: '1000', credit: val, description: 'Counter withdrawal: ' + account.child_name },
+    ]);
+
+    // Then update account and create transaction
     await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3", [newBalance, Math.max(0, newUnallocated), req.params.id]);
     const result = await store.addTransaction({
       account_id: req.params.id,
@@ -3285,15 +3345,8 @@ router.post('/teller/withdraw/:id', requireRole(2), asyncHandler(async (req, res
       balance_after: newBalance,
     });
     const txId = result?.transaction_id || '';
-    try {
-      const gl = require('../services/gl');
-      await gl.postDoubleEntry(txId, [
-        { account_code: '2000', debit: val, description: 'Counter withdrawal: ' + account.child_name },
-        { account_code: '1000', credit: val, description: 'Counter withdrawal: ' + account.child_name },
-      ]);
-      const audit = require('../services/audit');
-      await audit.log(req, 'TELLER_WITHDRAWAL', 'account', req.params.id, { amount: val, txId, desc: description || 'Counter withdrawal' });
-    } catch (glErr) { console.error('GL post failed (non-fatal):', glErr.message); }
+    await store.query('UPDATE gl_entries SET transaction_id = $1 WHERE entry_id = $2', [txId, glTxId]).catch(() => {});
+    await audit.log(req, 'TELLER_WITHDRAWAL', 'account', req.params.id, { amount: val, txId, desc: description || 'Counter withdrawal' });
     const sq = req.body.q ? '&q=' + encodeURIComponent(req.body.q) : '';
     res.redirect(`/admin/teller?withdrawn=ok&receipt=${txId}&account=${req.params.id}${sq}`);
   } catch (err) {
@@ -3330,6 +3383,19 @@ router.post('/teller/loan-pay/:id', requireRole(2), asyncHandler(async (req, res
     const newRemainingBalance = Math.max(0, Math.round((loan.remaining_balance - val) * 100) / 100);
     const newStatus = newRemainingBalance <= 0 ? 'paid' : 'active';
 
+    // Post GL FIRST
+    const gl = require('../services/gl');
+    const audit = require('../services/audit');
+    const glTxId = uuidv4();
+    const entries = [
+      { account_code: '1000', debit: val, description: 'Loan payment: ' + (loan.purpose || 'Loan') },
+      { account_code: '1100', credit: principalPortion, description: 'Principal repayment' },
+    ];
+    if (interestPortion > 0) {
+      entries.push({ account_code: '4000', credit: interestPortion, description: 'Interest income' });
+    }
+    await gl.postDoubleEntry(glTxId, entries);
+
     // Record loan payment
     await store.addLoanPayment({
       loan_id: loan.loan_id,
@@ -3344,7 +3410,7 @@ router.post('/teller/loan-pay/:id', requireRole(2), asyncHandler(async (req, res
     // Update loan
     await store.query("UPDATE loans SET amount_paid = $1, remaining_balance = $2, status = $3, updated_at = CURRENT_TIMESTAMP WHERE loan_id = $4", [newAmountPaid, newRemainingBalance, newStatus, loan_id]);
 
-    // Record transaction (no balance change since it's over-the-counter collection)
+    // Record transaction
     const txResult = await store.addTransaction({
       account_id: accountId,
       type: 'loan_payment',
@@ -3356,21 +3422,149 @@ router.post('/teller/loan-pay/:id', requireRole(2), asyncHandler(async (req, res
       balance_after: Number(account.actual_balance),
     });
     const txId = txResult?.transaction_id || '';
-    try {
-      const gl = require('../services/gl');
-      const entries = [
-        { account_code: '1000', debit: val, description: 'Loan payment: ' + (loan.purpose || 'Loan') },
-        { account_code: '1100', credit: principalPortion, description: 'Principal repayment' },
-      ];
-      if (interestPortion > 0) {
-        entries.push({ account_code: '4000', credit: interestPortion, description: 'Interest income' });
-      }
-      await gl.postDoubleEntry(txId, entries);
-      const audit = require('../services/audit');
-      await audit.log(req, 'TELLER_LOAN_PAYMENT', 'loan', loan_id, { amount: val, principalPortion, interestPortion, txId });
-    } catch (glErr) { console.error('GL post failed (non-fatal):', glErr.message); }
+    await store.query('UPDATE gl_entries SET transaction_id = $1 WHERE entry_id = $2', [txId, glTxId]).catch(() => {});
+    await audit.log(req, 'TELLER_LOAN_PAYMENT', 'loan', loan_id, { amount: val, principalPortion, interestPortion, txId });
     const sq = req.body.q ? '&q=' + encodeURIComponent(req.body.q) : '';
     res.redirect(`/admin/teller?loanpaid=ok&receipt=${txId}&account=${accountId}${sq}`);
+  } catch (err) {
+    res.redirect(`/admin/teller?error=${encodeURIComponent(err.message)}`);
+  }
+}));
+
+// ── Transaction Void / Reversal (Banking-Grade) ──
+
+const VOIDABLE_TYPES = ['deposit', 'withdrawal', 'loan_payment', 'interest', 'interest_credit', 'auto_save', 'fee'];
+
+router.post('/teller/void/:txId', requireRole(3), asyncHandler(async (req, res) => {
+  try {
+    const txId = req.params.txId;
+    const { reason, password } = req.body;
+    if (!reason || reason.trim().length < 5) return res.redirect('/admin/teller?error=Void+reason+must+be+at+least+5+characters');
+    if (!password) return res.redirect('/admin/teller?error=Password+required');
+
+    // Verify admin password
+    const admin = await one('SELECT * FROM admin_users WHERE admin_id = $1', [req.session.adminId]);
+    if (!admin) return res.redirect('/admin/teller?error=Admin+not+found');
+    const bcrypt = require('bcryptjs');
+    if (!bcrypt.compareSync(password, admin.password_hash)) return res.redirect('/admin/teller?error=Invalid+password');
+
+    // Fetch original transaction
+    const tx = await one('SELECT * FROM transactions WHERE transaction_id = $1', [txId]);
+    if (!tx) return res.redirect('/admin/teller?error=Transaction+not+found');
+
+    // Validate not already voided
+    if (tx.voided_at) return res.redirect('/admin/teller?error=Transaction+already+voided');
+
+    // Validate voidable type
+    if (!VOIDABLE_TYPES.includes(tx.type)) return res.redirect('/admin/teller?error=Cannot+void+'+ tx.type + '+transactions');
+
+    // Check age limit (30 days)
+    const txDate = new Date(tx.created_at);
+    const daysSince = (Date.now() - txDate.getTime()) / (1000 * 60 * 60 * 24);
+    if (daysSince > 30) return res.redirect('/admin/teller?error=Cannot+void+transactions+older+than+30+days');
+
+    // Fetch account
+    const account = await one('SELECT * FROM accounts WHERE account_id = $1', [tx.account_id]);
+    if (!account) return res.redirect('/admin/teller?error=Account+not+found');
+
+    const val = Number(tx.amount);
+    const now = new Date().toISOString();
+    const voidDesc = 'VOID: ' + (tx.description || '') + ' — ' + reason;
+
+    // Determine reversal effect on balance
+    let reversedBalance = Number(account.actual_balance);
+    if (['deposit', 'interest_credit', 'loan_disbursement'].includes(tx.type)) {
+      // Original added to balance — subtract to reverse
+      reversedBalance = Math.round((reversedBalance - val) * 100) / 100;
+    } else if (['withdrawal', 'loan_payment', 'fee', 'auto_save'].includes(tx.type)) {
+      // Original subtracted from balance — add back to reverse
+      reversedBalance = Math.round((reversedBalance + val) * 100) / 100;
+    }
+    if (reversedBalance < 0) return res.redirect('/admin/teller?error=Void+would+cause+negative+balance');
+
+    // ── Post reversing GL entries FIRST ──
+    const gl = require('../services/gl');
+    const glTxId = uuidv4();
+    if (tx.type === 'deposit' || tx.type === 'interest_credit' || tx.type === 'loan_disbursement') {
+      await gl.postDoubleEntry(glTxId, [
+        { account_code: '2000', debit: val, description: 'VOID reversal: ' + voidDesc },
+        { account_code: '1000', credit: val, description: 'VOID reversal: ' + voidDesc },
+      ]);
+    } else if (tx.type === 'withdrawal' || tx.type === 'fee' || tx.type === 'auto_save') {
+      await gl.postDoubleEntry(glTxId, [
+        { account_code: '1000', debit: val, description: 'VOID reversal: ' + voidDesc },
+        { account_code: '2000', credit: val, description: 'VOID reversal: ' + voidDesc },
+      ]);
+    } else if (tx.type === 'loan_payment') {
+      // Reverse loan payment: debit Loans Receivable, credit Cash, debit Interest Income
+      const loanPayments = await store.query('SELECT * FROM loan_payments WHERE transaction_id = $1 ORDER BY created_at DESC LIMIT 1', [txId]);
+      const lp = loanPayments.rows[0];
+      const principalPortion = lp ? Number(lp.principal_paid) : val;
+      const interestPortion = lp ? Number(lp.interest_paid) : 0;
+      const entries = [
+        { account_code: '1100', debit: principalPortion, description: 'VOID reversal: principal' },
+        { account_code: '1000', credit: val, description: 'VOID reversal: ' + voidDesc },
+      ];
+      if (interestPortion > 0) {
+        entries.push({ account_code: '4000', debit: interestPortion, description: 'VOID reversal: interest income' });
+      }
+      await gl.postDoubleEntry(glTxId, entries);
+
+      // Restore the loan balance
+      const loan = await one('SELECT * FROM loans WHERE loan_id = $1', [tx.reference_id]);
+      if (loan) {
+        const restoredAmountPaid = Math.max(0, Math.round((Number(loan.amount_paid) - val) * 100) / 100);
+        const restoredRemaining = Math.round((Number(loan.remaining_balance) + val) * 100) / 100;
+        const restoredStatus = 'active';
+        await store.query("UPDATE loans SET amount_paid = $1, remaining_balance = $2, status = $3, updated_at = CURRENT_TIMESTAMP WHERE loan_id = $4",
+          [restoredAmountPaid, restoredRemaining, restoredStatus, loan.loan_id]);
+      }
+    }
+
+    // ── Update account balance ──
+    if (tx.type !== 'loan_payment') {
+      if (['deposit', 'interest_credit', 'loan_disbursement'].includes(tx.type)) {
+        // Reverse: deduction from savings
+        const newUnallocated = Math.max(0, Number(account.unallocated_balance) - val);
+        await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3",
+          [reversedBalance, newUnallocated, tx.account_id]);
+      } else {
+        // Reverse: add back
+        const newUnallocated = Number(account.unallocated_balance) + val;
+        await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3",
+          [reversedBalance, newUnallocated, tx.account_id]);
+      }
+    }
+
+    // ── Create reversal transaction ──
+    const revResult = await store.addTransaction({
+      account_id: tx.account_id,
+      type: 'void',
+      amount: val,
+      description: voidDesc,
+      reference_type: 'void',
+      reference_id: txId,
+      balance_before: tx.type === 'loan_payment' ? Number(account.actual_balance) : Number(account.actual_balance),
+      balance_after: tx.type === 'loan_payment' ? Number(account.actual_balance) : reversedBalance,
+    });
+    const revTxId = revResult?.transaction_id || '';
+    await store.query('UPDATE gl_entries SET transaction_id = $1 WHERE entry_id = $2', [revTxId, glTxId]).catch(() => {});
+
+    // ── Mark original as voided ──
+    await store.query(
+      "UPDATE transactions SET voided_by=$1, void_reason=$2, voided_at=$3 WHERE transaction_id=$4",
+      [req.session.adminName || 'admin', reason, now, txId]
+    );
+
+    // ── Audit log ──
+    const audit = require('../services/audit');
+    await audit.log(req, 'TRANSACTION_VOID', 'transaction', txId, {
+      amount: val, reason, reversalTxId: revTxId, originalType: tx.type,
+      reversedBalance, voidedBy: req.session.adminName || 'admin'
+    });
+
+    const sq = req.body.q ? '&q=' + encodeURIComponent(req.body.q) : '';
+    res.redirect(`/admin/teller?voided=ok&receipt=${revTxId}&account=${tx.account_id}${sq}`);
   } catch (err) {
     res.redirect(`/admin/teller?error=${encodeURIComponent(err.message)}`);
   }

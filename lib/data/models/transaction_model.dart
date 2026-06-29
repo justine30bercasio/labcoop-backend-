@@ -93,7 +93,8 @@ class TransactionModel {
       case 'transfer': return TransactionType.transfer;
       case 'loan_disbursement': return TransactionType.loanDisbursement;
       case 'loan_payment': return TransactionType.loanPayment;
-      case 'interest_credit': return TransactionType.interestCredit;
+      case 'interest_credit':
+      case 'interest': return TransactionType.interestCredit;
       case 'fee': return TransactionType.fee;
       case 'allocation': return TransactionType.allocation;
       default: return TransactionType.deposit;

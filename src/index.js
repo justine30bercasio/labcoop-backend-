@@ -510,6 +510,13 @@ app.use((err, req, res, next) => {
   }
 });
 
+  // Ensure upload directories exist
+  const dirs = ['uploads', 'uploads/profiles'];
+  for (const d of dirs) {
+    const p = path.join(__dirname, d);
+    if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
+  }
+
 app.listen(PORT, () => {
   console.log(`LabCoop API server running on port ${PORT}`);
   startScheduler();

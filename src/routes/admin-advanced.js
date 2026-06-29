@@ -7,7 +7,7 @@ const { layout, printLayout } = require('./admin-lib');
 const _p = (...p) => p.length === 1 && Array.isArray(p[0]) ? p[0] : p;
 const sql = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows);
 const one = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows[0]);
-const fmt = v => '?' + Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmt = v => '\u20B1' + Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const router = express.Router();
 const ROLE_LEVELS = { super_admin: 4, manager: 3, teller: 2, auditor: 1 };

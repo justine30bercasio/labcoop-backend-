@@ -1229,7 +1229,7 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
   const initial = (account.child_name || '?')[0].toUpperCase();
 
   const txRows = transactions.length === 0
-    ? '<tr><td colspan="6"><div class="m360-empty"><i class="fas fa-arrows-spin"></i>No transactions yet</div></td></tr>'
+    ? '<tr><td colspan="6" class="no-data">No transactions yet</td></tr>'
     : transactions.map(t => {
         const badgeCls = ({deposit:'badge-green',withdrawal:'badge-red',loan_disbursement:'badge-amber',loan_payment:'badge-blue',interest_credit:'badge-purple',interest:'badge-purple',allocation:'badge-purple',td_placement:'badge-amber',td_maturity:'badge-blue',fee:'badge-red',reward:'badge-green',purchase:'badge-gray'})[t.type] || 'badge-gray';
         const isInflow = ['deposit','loan_disbursement','interest_credit','interest','td_maturity','reward','fee'].includes(t.type);
@@ -1238,10 +1238,10 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
         return `<tr>
           <td class="mono" style="font-size:11px">${dateFmt(t.created_at)}</td>
           <td><span class="badge ${badgeCls}">${t.type.replace(/_/g,' ')}</span></td>
-          <td class="mono" style="color:${col};font-weight:600;text-align:right">${sign}${fmt(t.amount)}</td>
-          <td style="font-size:12px;color:var(--text-muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.description || '-'}</td>
-          <td class="mono" style="font-size:12px;text-align:right">${t.balance_after ? fmt(t.balance_after) : '-'}</td>
-          <td style="text-align:center"><button class="btn btn-xs btn-outline" onclick="showTxDetail('${t.transaction_id}','${t.type}','${fmt(t.amount)}','${sign}','${t.balance_before ? fmt(t.balance_before) : '-'}','${t.balance_after ? fmt(t.balance_after) : '-'}','${dateFmt(t.created_at)}','${String(t.created_at||'').slice(11,19)}','${(t.description||'-').replace(/'/g,"\\'")}','${t.reference_type||'-'}','${t.reference_id||'-'}','${t.goal_title||''}','${t.transaction_id}')">View</button></td>
+          <td class="mono" style="text-align:right;color:var(--red);font-weight:600">${isInflow ? '' : fmt(t.amount)}</td>
+          <td class="mono" style="text-align:right;color:var(--accent);font-weight:600">${isInflow ? fmt(t.amount) : ''}</td>
+          <td class="mono" style="font-size:12px;text-align:right;font-weight:500">${t.balance_after ? fmt(t.balance_after) : '-'}</td>
+          <td style="text-align:center"><button class="btn btn-xs btn-outline" onclick="showTxDetail('${t.transaction_id}','${t.type}','${fmt(t.amount)}','${isInflow ? '+' : '-'}','${t.balance_before ? fmt(t.balance_before) : '-'}','${t.balance_after ? fmt(t.balance_after) : '-'}','${dateFmt(t.created_at)}','${String(t.created_at||'').slice(11,19)}','${(t.description||'-').replace(/'/g,"\\'")}','${t.reference_type||'-'}','${t.reference_id||'-'}','${t.goal_title||''}','${t.transaction_id}')">View</button></td>
         </tr>`;
       }).join('');
 
@@ -1317,8 +1317,20 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
   .m360-table td { padding:9px 12px; font-size:13px; border-bottom:1px solid var(--border); transition:background 0.15s }
   .m360-table tbody tr:hover td { background:var(--bg-secondary) }
 
-  .m360-search { width:100%; padding:10px 14px; border:none; border-bottom:1px solid var(--border); background:transparent; font-size:13px; outline:none; transition:border-color 0.2s }
-  .m360-search:focus { border-bottom-color:var(--accent) }
+  .m360-panel .dataTables_wrapper { padding:0 }
+  .m360-panel .dataTables_wrapper .dataTables_filter { padding:10px 14px; border-bottom:1px solid var(--border) }
+  .m360-panel .dataTables_wrapper .dataTables_filter input { margin-left:6px; padding:5px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px; background:transparent; color:var(--text); outline:none }
+  .m360-panel .dataTables_wrapper .dataTables_filter input:focus { border-color:var(--accent) }
+  .m360-panel .dataTables_wrapper .dataTables_length { padding:10px 14px; border-bottom:1px solid var(--border) }
+  .m360-panel .dataTables_wrapper .dataTables_length select { margin:0 4px; padding:3px 6px; border:1px solid var(--border); border-radius:4px; background:transparent; color:var(--text); font-size:12px; outline:none }
+  .m360-panel .dataTables_wrapper .dataTables_info { padding:10px 14px; font-size:12px; color:var(--text-muted) }
+  .m360-panel .dataTables_wrapper .dataTables_paginate { padding:10px 14px }
+  .m360-panel .dataTables_wrapper .dataTables_paginate .paginate_button { padding:4px 10px; margin:0 2px; border:1px solid var(--border); border-radius:6px; font-size:12px; background:transparent; color:var(--text); cursor:pointer; display:inline-block }
+  .m360-panel .dataTables_wrapper .dataTables_paginate .paginate_button:hover { background:var(--bg-secondary); border-color:var(--accent); color:var(--accent) }
+  .m360-panel .dataTables_wrapper .dataTables_paginate .paginate_button.current { background:var(--accent); color:#fff; border-color:var(--accent) }
+  .m360-panel .dataTables_wrapper .dataTables_paginate .paginate_button.disabled { opacity:0.4; cursor:default }
+  .m360-panel table.dataTable { margin:0 !important }
+  .m360-panel table.dataTable td { padding:9px 12px }
 
   .m360-empty { text-align:center; padding:32px 16px; color:var(--text-muted); font-size:13px }
   .m360-empty i { font-size:32px; margin-bottom:8px; opacity:0.4; display:block }
@@ -1388,10 +1400,9 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
   <div class="m360-panel">
     <div class="card">
       <div class="card-header"><h3><i class="fas fa-arrows-spin" style="color:var(--accent)"></i> Transactions</h3><span class="count">${transactions.length} entries</span></div>
-      <div class="card-body" style="padding:0;max-height:420px;overflow-y:auto">
-      <input type="text" class="m360-search" id="txSearch" placeholder="Search by type, amount, description..." onkeyup="filterTx()">
-      <table class="m360-table" id="txTable" data-skip-datatable>
-        <thead><tr><th>Date</th><th>Type</th><th style="text-align:right">Amount</th><th>Description</th><th style="text-align:right">Balance</th><th style="width:50px"></th></tr></thead>
+      <div class="card-body" style="padding:0">
+      <table class="m360-table" id="txTable">
+        <thead><tr><th>Date</th><th>Type</th><th style="text-align:right;color:var(--red)">Debit</th><th style="text-align:right;color:var(--accent)">Credit</th><th style="text-align:right">Balance</th><th style="width:50px"></th></tr></thead>
         <tbody>${txRows}</tbody>
       </table>
       </div>
@@ -1485,14 +1496,6 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
   </div>
 
   <script>
-  function filterTx() {
-    var q = document.getElementById('txSearch').value.toLowerCase();
-    var rows = document.querySelectorAll('#txTable tbody tr');
-    for(var i=0;i<rows.length;i++){
-      var txt = rows[i].textContent.toLowerCase();
-      rows[i].style.display = txt.indexOf(q) > -1 ? '' : 'none';
-    }
-  }
   function showTxDetail(id,type,amount,sign,balBefore,balAfter,date,time,desc,refType,refId,goal,txid) {
     var typeLabel = type.replace(/_/g,' ');
     var colors = {deposit:'badge-green',withdrawal:'badge-red',loan_disbursement:'badge-amber',loan_payment:'badge-blue',interest_credit:'badge-purple',interest:'badge-purple',allocation:'badge-blue',td_placement:'badge-amber',td_maturity:'badge-blue',fee:'badge-amber',reward:'badge-green',purchase:'badge-gray'};

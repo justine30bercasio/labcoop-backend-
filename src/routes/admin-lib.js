@@ -664,8 +664,8 @@ $(document).ready(function(){
           layout: {
             topStart: 'pageLength',
             topEnd: 'search',
-            bottomStart: 'paging',
-            bottomEnd: 'info'
+            bottomStart: null,
+            bottomEnd: 'info paging'
           }
         });
       }catch(e){}

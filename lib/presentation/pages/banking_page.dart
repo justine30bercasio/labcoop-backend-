@@ -29,6 +29,7 @@ class BankingPage extends StatefulWidget {
 }
 
 class _BankingPageState extends State<BankingPage> {
+  bool _balanceVisible = true;
   Map<String, dynamic>? _interestData;
   bool _interestLoading = false;
   Timer? _withdrawPollTimer;
@@ -123,8 +124,10 @@ class _BankingPageState extends State<BankingPage> {
       ]),
       body: BlocBuilder<SavingsBloc, SavingsState>(
         builder: (context, savingsState) {
-          final balance = savingsState is SavingsLoaded ? savingsState.account.actualBalance : 0.0;
-          final unallocated = savingsState is SavingsLoaded ? savingsState.account.unallocatedBalance : 0.0;
+          final acct = savingsState is SavingsLoaded ? savingsState.account : null;
+          final balance = acct?.actualBalance ?? 0.0;
+          final unallocated = acct?.unallocatedBalance ?? 0.0;
+          final withdrawable = acct?.withdrawableBalance ?? 0.0;
 
           return BlocBuilder<BankingBloc, BankingState>(
             builder: (context, state) {
@@ -145,7 +148,7 @@ class _BankingPageState extends State<BankingPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _balanceCard(balance, unallocated),
+                      _balanceCard(balance, unallocated, withdrawable),
                       const SizedBox(height: 16),
                       _quickActions(context, balance),
                       const SizedBox(height: 20),
@@ -165,7 +168,7 @@ class _BankingPageState extends State<BankingPage> {
     );
   }
 
-  Widget _balanceCard(double balance, double unallocated) {
+  Widget _balanceCard(double balance, double unallocated, double withdrawable) {
     return Card(
       child: Container(
         width: double.infinity,
@@ -181,11 +184,41 @@ class _BankingPageState extends State<BankingPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Total Balance', style: TextStyle(color: Colors.white70, fontSize: 14)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Total Balance', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                IconButton(
+                  icon: Icon(_balanceVisible ? Icons.visibility : Icons.visibility_off, color: Colors.white60, size: 22),
+                  onPressed: () => setState(() => _balanceVisible = !_balanceVisible),
+                  splashRadius: 20,
+                ),
+              ],
+            ),
             const SizedBox(height: 4),
-            Text('PHP ${balance.toStringAsFixed(2)}', style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
+            Text(
+              _balanceVisible ? 'PHP ${balance.toStringAsFixed(2)}' : 'PHP ••••',
+              style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
+              key: ValueKey('balance_$_balanceVisible'),
+            ),
             const SizedBox(height: 8),
-            Text('Available: PHP ${unallocated.toStringAsFixed(2)}', style: const TextStyle(color: Colors.white60, fontSize: 14)),
+            Row(
+              children: [
+                Icon(Icons.account_balance_wallet, color: Colors.white.withValues(alpha: 0.6), size: 14),
+                const SizedBox(width: 4),
+                Text(
+                  'Withdrawable: ${_balanceVisible ? 'PHP ${withdrawable.toStringAsFixed(2)}' : 'PHP ••••'}',
+                  style: const TextStyle(color: Colors.white60, fontSize: 13),
+                ),
+                const SizedBox(width: 16),
+                Icon(Icons.check_circle_outline, color: Colors.white.withValues(alpha: 0.6), size: 14),
+                const SizedBox(width: 4),
+                Text(
+                  'Available: ${_balanceVisible ? 'PHP ${unallocated.toStringAsFixed(2)}' : 'PHP ••••'}',
+                  style: const TextStyle(color: Colors.white60, fontSize: 13),
+                ),
+              ],
+            ),
           ],
         ),
       ),

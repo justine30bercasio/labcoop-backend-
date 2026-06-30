@@ -63,23 +63,9 @@ class _GameCenterPageState extends State<GameCenterPage> {
   Widget build(BuildContext context) {
     final games = _filteredGames;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Game Center'),
-        backgroundColor: AppTheme.primaryGreen,
-        foregroundColor: Colors.white,
-      ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFE8F5E9), Color(0xFFF1F8E9)],
-          ),
-        ),
-        child: ListView(
-          padding: const EdgeInsets.all(Spacing.md),
-          children: [
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
             _sectionHeader('🎮 Play Offline', 'Native games — no internet needed'),
             const SizedBox(height: Spacing.sm),
             _GameCard(
@@ -170,11 +156,9 @@ class _GameCenterPageState extends State<GameCenterPage> {
                     ),
                   );
                 }),
-              ),
-          ],
-        ),
-      ),
-    );
+            ),
+        ],
+      );
   }
 
   Widget _buildGameCard(GameInfo game) {

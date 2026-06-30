@@ -35,6 +35,7 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
+  bool _balanceVisible = true;
   bool _showCelebration = false;
   double _lastAmount = 0;
   int? _lastXp;
@@ -407,27 +408,93 @@ class _DashboardPageState extends State<DashboardPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Hello, ${account.childName}!',
-                      style:
-                          const TextStyle(color: Colors.white70, fontSize: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Hello, ${account.childName}!',
+                            style: const TextStyle(
+                                color: Colors.white70, fontSize: 14),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: IconButton(
+                            padding: EdgeInsets.zero,
+                            icon: Icon(
+                              _balanceVisible
+                                  ? Icons.visibility
+                                  : Icons.visibility_off,
+                              color: Colors.white.withValues(alpha: 0.6),
+                              size: 20,
+                            ),
+                            onPressed: () =>
+                                setState(() => _balanceVisible = !_balanceVisible),
+                            splashRadius: 16,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: Spacing.sm),
-                    AnimatedCounter(
-                      value: account.actualBalance,
-                      prefix: '₱',
-                      decimals: 2,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    SizedBox(
+                      height: 36,
+                      child: _balanceVisible
+                          ? AnimatedCounter(
+                              value: account.actualBalance,
+                              prefix: '₱',
+                              decimals: 2,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 32,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            )
+                          : const Text(
+                              '₱ ••••',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 32,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                     ),
                     const SizedBox(height: Spacing.xs),
-                    Text(
-                      '₱${account.unallocatedBalance.toStringAsFixed(2)} available',
-                      style:
-                          const TextStyle(color: Colors.white60, fontSize: 14),
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 4,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.account_balance_wallet,
+                                color: Colors.white.withValues(alpha: 0.6),
+                                size: 13),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Withdrawable: ${_balanceVisible ? '₱${account.withdrawableBalance.toStringAsFixed(2)}' : '₱••••'}',
+                              style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.6),
+                                  fontSize: 12),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.check_circle_outline,
+                                color: Colors.white.withValues(alpha: 0.6),
+                                size: 13),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Available: ${_balanceVisible ? '₱${account.unallocatedBalance.toStringAsFixed(2)}' : '₱••••'}',
+                              style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.6),
+                                  fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                     const SizedBox(height: Spacing.xs),
                     Row(

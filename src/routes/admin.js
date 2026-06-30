@@ -2171,14 +2171,6 @@ router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {
     { key: 'DB_TYPE', val: isPostgres ? 'PostgreSQL (Aiven)' : 'SQLite (better-sqlite3)' },
   ];
 
-  const gcashNumber = await store.getSetting('gcash_number');
-  const gcashName = await store.getSetting('gcash_name');
-
-  const savingsProduct = await one("SELECT * FROM savings_products WHERE product_id = 'sp_regular'");
-  const savingsRate = savingsProduct ? (parseFloat(savingsProduct.interest_rate) * 100).toFixed(1) : '2.0';
-  const savingsFrequency = savingsProduct?.interest_frequency || 'monthly';
-  const defaultMaintaining = await store.getSetting('default_maintaining_balance');
-
   const tip = isPostgres ? '' : `<div class="card" style="margin-top:20px"><div class="card-body-padded"><b>&#x26A0; SQLite:</b> Database file is <code>${(dbSize / 1024).toFixed(1)} KB</code> on disk at <code>backend/labcoop.db</code></div></div>`;
 
   const content = `
@@ -2206,6 +2198,43 @@ router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {
     </table></div>
   </div>
 
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-database"></i> Backup &amp; Restore</h3></div>
+    <div class="card-body-padded" style="display:flex;gap:12px;flex-wrap:wrap">
+      <a href="/admin/backup" class="btn btn-secondary"><i class="fas fa-download"></i> Backup Manager</a>
+      <p style="margin:0;font-size:12px;color:var(--text-muted);flex:1;min-width:200px;line-height:36px">
+        <i class="fas fa-info-circle"></i> Download complete data backup with integrity checksum, preview before restore.
+      </p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3>&#x1F527; Tools</h3></div>
+    <div class="card-body-padded" style="display:flex;gap:12px;flex-wrap:wrap">
+      <a href="/api/excel/export/all" class="btn btn-secondary">&#x1F4E5; Export All Data</a>
+      <a href="/api/excel/template" class="btn btn-outline">&#x1F4C4; Download Template</a>
+      <a href="/api/health" target="_blank" class="btn btn-outline">&#x1F4C8; Health Check</a>
+      <a href="/admin/reset-data/confirm" class="btn btn-danger">&#x26A0; Reset All Data</a>
+    </div>
+  </div>
+  `;
+
+  res.type('html').send(layout('Settings', 'settings', content, {
+    subtitle: 'System information and configuration',
+  }));
+}));
+
+// ── Savings Settings (Interest Rate + Maintaining Balance + GCash) ──
+
+router.get('/savings-settings', requireRole(1), asyncHandler(async (req, res) => {
+  const gcashNumber = await store.getSetting('gcash_number');
+  const gcashName = await store.getSetting('gcash_name');
+  const savingsProduct = await one("SELECT * FROM savings_products WHERE product_id = 'sp_regular'");
+  const savingsRate = savingsProduct ? (parseFloat(savingsProduct.interest_rate) * 100).toFixed(1) : '2.0';
+  const savingsFrequency = savingsProduct?.interest_frequency || 'monthly';
+  const defaultMaintaining = await store.getSetting('default_maintaining_balance');
+
+  const content = `
   <div class="card">
     <div class="card-header"><h3><i class="fas fa-piggy-bank"></i> Savings Interest Rate</h3></div>
     <div class="card-body-padded">
@@ -2258,16 +2287,6 @@ router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-header"><h3><i class="fas fa-database"></i> Backup &amp; Restore</h3></div>
-    <div class="card-body-padded" style="display:flex;gap:12px;flex-wrap:wrap">
-      <a href="/admin/backup" class="btn btn-secondary"><i class="fas fa-download"></i> Backup Manager</a>
-      <p style="margin:0;font-size:12px;color:var(--text-muted);flex:1;min-width:200px;line-height:36px">
-        <i class="fas fa-info-circle"></i> Download complete data backup with integrity checksum, preview before restore.
-      </p>
-    </div>
-  </div>
-
   <script>
   function showGcashToast(msg, isError){
     var t = document.createElement('div');
@@ -2316,20 +2335,10 @@ router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {
     }).catch(function(e){ showGcashToast(e.message, true); });
   });
   </script>
-
-  <div class="card">
-    <div class="card-header"><h3>&#x1F527; Tools</h3></div>
-    <div class="card-body-padded" style="display:flex;gap:12px;flex-wrap:wrap">
-      <a href="/api/excel/export/all" class="btn btn-secondary">&#x1F4E5; Export All Data</a>
-      <a href="/api/excel/template" class="btn btn-outline">&#x1F4C4; Download Template</a>
-      <a href="/api/health" target="_blank" class="btn btn-outline">&#x1F4C8; Health Check</a>
-      <a href="/admin/reset-data/confirm" class="btn btn-danger">&#x26A0; Reset All Data</a>
-    </div>
-  </div>
   `;
 
-  res.type('html').send(layout('Settings', 'settings', content, {
-    subtitle: 'System information and configuration',
+  res.type('html').send(layout('Savings Settings', 'savings-settings', content, {
+    subtitle: 'Interest rate, maintaining balance, and GCash configuration',
   }));
 }));
 

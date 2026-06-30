@@ -16,6 +16,7 @@ function layout(title, active, content, opts = {}) {
       { icon: '<i class="fas fa-coins"></i>', label: 'Share Capital', href: '/admin/share-capital', key: 'share-capital' },
       { icon: '<i class="fas fa-chart-line"></i>', label: 'Dividends', href: '/admin/dividends', key: 'dividends' },
       { icon: '<i class="fas fa-money-bill-trend-up"></i>', label: 'Overdrafts', href: '/admin/overdrafts', key: 'overdrafts' },
+      { icon: '<i class="fas fa-gear"></i>', label: 'Savings Settings', href: '/admin/savings-settings', key: 'savings-settings' },
     ]},
     { icon: '<i class="fas fa-sack-dollar"></i>', label: 'Loans', key: 'loans-group', children: [
       { icon: '<i class="fas fa-sack-dollar"></i>', label: 'Loans', href: '/admin/loans', key: 'loans' },

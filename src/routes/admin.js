@@ -1317,7 +1317,7 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
   .m360-table td { padding:9px 12px; font-size:13px; border-bottom:1px solid var(--border); transition:background 0.15s }
   .m360-table tbody tr:hover td { background:var(--bg-secondary) }
 
-  .m360-panel .dataTables_wrapper { padding:0 }
+  .m360-panel .dataTables_wrapper { padding:0 14px }
   .m360-panel .dataTables_wrapper .dataTables_filter { padding:10px 14px; border-bottom:1px solid var(--border) }
   .m360-panel .dataTables_wrapper .dataTables_filter input { margin-left:6px; padding:5px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px; background:transparent; color:var(--text); outline:none }
   .m360-panel .dataTables_wrapper .dataTables_filter input:focus { border-color:var(--accent) }

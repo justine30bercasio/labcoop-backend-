@@ -1089,7 +1089,7 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
       const statusLabel = statusNum === 1 ? 'Active' : statusNum === 0 ? 'Inactive' : 'Closed';
       const statusBadge = statusNum === 1 ? 'badge-green' : statusNum === 0 ? 'badge-gray' : 'badge-red';
       return `<tr>
-      <td><a href="#view-${a.account_id}" class="name-link">${a.child_name}</a></td>
+      <td><a href="/admin/member/${a.account_id}" class="name-link">${a.child_name}</a></td>
       <td class="mono">${a.member_id || '-'}</td>
       <td>&#x20B1;${Number(a.actual_balance).toFixed(2)}</td>
       <td><span class="badge ${statusBadge}">${statusLabel}</span></td>
@@ -1147,34 +1147,6 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
   </div>
 
   ${accounts.map(a => `
-  <div id="view-${a.account_id}" class="modal-overlay">
-  <div class="modal" style="max-width:420px">
-  <a href="#" class="close">&times;</a>
-  <div class="vcard">
-    <div class="vc-av" onclick="document.getElementById('vfi_${a.account_id}').click()">
-      ${a.profile_pic_url ? '<img src="' + a.profile_pic_url + '" id="vp_' + a.account_id + '" onclick="event.stopPropagation();zoomPhoto(this.src)" alt="">' : '<div class="empty-avatar">' + (a.child_name || '?')[0].toUpperCase() + '</div>'}
-      <div class="upload-overlay"><i class="fas fa-camera"></i> Change Photo</div>
-      <form method="post" action="/admin/accounts/upload-photo/${a.account_id}" enctype="multipart/form-data" id="vf_${a.account_id}">
-        <input type="file" name="photo" accept="image/*" onchange="this.form.submit()" id="vfi_${a.account_id}">
-      </form>
-    </div>
-    <h2>${a.child_name}</h2>
-    <div class="vc-meta">${a.member_id || '---'} &middot; ${a.gender || '--'} &middot; ${a.age || '--'} yo</div>
-    <div class="vc-grid">
-      <div class="vc-item"><div class="vcl">Birthday</div><div class="vcv">${a.birthday || '--'}</div></div>
-      <div class="vc-item"><div class="vcl">Schedule</div><div class="vcv">${a.savings_schedule || '--'}</div></div>
-      <div class="vc-item"><div class="vcl">Balance</div><div class="vcv">&#x20B1;${Number(a.actual_balance).toFixed(2)}</div></div>
-      <div class="vc-item"><div class="vcl">Unallocated</div><div class="vcv">&#x20B1;${Number(a.unallocated_balance).toFixed(2)}</div></div>
-      <div class="vc-item"><div class="vcl">Phone</div><div class="vcv">${a.parent_phone || '--'}</div></div>
-      <div class="vc-item"><div class="vcl">Status</div><div class="vcv"><span class="badge ${Number(a.is_active) === 1 ? 'badge-green' : 'badge-gray'}">${Number(a.is_active) === 1 ? 'Active' : 'Inactive'}</span></div></div>
-    </div>
-    <div class="vc-actions">
-      <a href="#edit-${a.account_id}" class="btn btn-primary btn-sm"><i class="fas fa-pen"></i> Edit</a>
-      <a href="#" class="btn btn-outline btn-sm" onclick="closeModal()">Close</a>
-    </div>
-  </div>
-  </div>
-  </div>
   <div id="edit-${a.account_id}" class="modal-overlay">
   <div class="modal" style="max-width:520px">
   <a href="#" class="close">&times;</a>
@@ -1226,15 +1198,297 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
   function closeZoom() {
     document.getElementById('zoom-modal').style.display = 'none';
   }
-  function closeModal() {
-    document.querySelector('.modal-overlay[style*="block"] .close')?.click();
-  }
   </script>
   `;
 
   res.type('html').send(layout('Accounts', 'accounts', content, {
     toast,
     subtitle: `${accounts.length} accounts registered`,
+  }));
+}));
+
+// ── Member 360 — Full Member Detail Page ──
+
+router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) => {
+  const { accountId } = req.params;
+  const account = await one('SELECT * FROM accounts WHERE account_id = $1', [accountId]);
+  if (!account) return res.type('html').send(layout('Member Not Found', 'accounts', '<div class="card"><div class="card-body-padded"><p style="color:var(--danger)">Account not found.</p><a href="/admin/accounts" class="btn btn-outline">&larr; Back to Accounts</a></div></div>'));
+
+  const transactions = await sql('SELECT t.*, g.title as goal_title FROM transactions t LEFT JOIN goal_jars g ON t.goal_id = g.goal_id WHERE t.account_id = $1 ORDER BY t.created_at DESC LIMIT 500', [accountId]);
+  const loans = await sql('SELECT * FROM loans WHERE account_id = $1 ORDER BY created_at DESC', [accountId]);
+  const tds = await sql("SELECT t.* FROM term_deposits t WHERE t.account_id = $1 ORDER BY t.created_at DESC", [accountId]);
+  const goals = await sql('SELECT * FROM goal_jars WHERE account_id = $1 ORDER BY created_at DESC', [accountId]);
+  const badges = await sql('SELECT * FROM badges WHERE account_id = $1 ORDER BY unlocked_at DESC', [accountId]);
+
+  const statusNum = Number(account.is_active);
+  const statusLabel = statusNum === 1 ? 'Active' : statusNum === 0 ? 'Inactive' : 'Closed';
+  const statusBadge = statusNum === 1 ? 'badge-green' : statusNum === 0 ? 'badge-gray' : 'badge-red';
+
+  const fmt = (v) => '&#x20B1;' + Number(v).toFixed(2);
+  const dateFmt = (d) => d ? String(d).slice(0, 10) : '-';
+  const initial = (account.child_name || '?')[0].toUpperCase();
+
+  const txRows = transactions.length === 0
+    ? '<tr><td colspan="6" class="no-data">No transactions</td></tr>'
+    : transactions.map(t => {
+        const badgeCls = ({deposit:'badge-green',withdrawal:'badge-red',loan_disbursement:'badge-amber',loan_payment:'badge-blue',interest_credit:'badge-purple',interest:'badge-purple',allocation:'badge-purple',td_placement:'badge-amber',td_maturity:'badge-blue',fee:'badge-red',reward:'badge-green',purchase:'badge-gray'})[t.type] || 'badge-gray';
+        const isInflow = ['deposit','loan_disbursement','interest_credit','interest','td_maturity','reward'].includes(t.type);
+        const sign = isInflow ? '+' : '-';
+        const col = isInflow ? 'var(--accent)' : 'var(--red)';
+        return `<tr>
+          <td class="mono" style="font-size:11px">${dateFmt(t.created_at)}</td>
+          <td><span class="badge ${badgeCls}">${t.type.replace(/_/g,' ')}</span></td>
+          <td class="mono" style="color:${col};font-weight:600">${sign}${fmt(t.amount)}</td>
+          <td style="font-size:12px;color:var(--text-muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.description || '-'}</td>
+          <td class="mono" style="font-size:11px">${t.balance_after ? fmt(t.balance_after) : '-'}</td>
+          <td><button class="btn btn-xs btn-outline" onclick="showTxDetail('${t.transaction_id}','${t.type}','${fmt(t.amount)}','${sign}','${t.balance_before ? fmt(t.balance_before) : '-'}','${t.balance_after ? fmt(t.balance_after) : '-'}','${dateFmt(t.created_at)}','${String(t.created_at||'').slice(11,19)}','${(t.description||'-').replace(/'/g,"\\'")}','${t.reference_type||'-'}','${t.reference_id||'-'}','${t.goal_title||''}','${t.transaction_id}')">View</button></td>
+        </tr>`;
+      }).join('');
+
+  const loanRows = loans.length === 0
+    ? '<tr><td colspan="7" class="no-data">No loans</td></tr>'
+    : loans.map(l => {
+        const ls = ({pending:'badge-amber',approved:'badge-blue',active:'badge-green',paid:'badge-gray',rejected:'badge-red',defaulted:'badge-red'})[l.status] || 'badge-gray';
+        return `<tr>
+          <td class="mono" style="font-size:11px">${(l.loan_id||'').slice(0,8).toUpperCase()}</td>
+          <td>${l.product_id || '-'}</td>
+          <td>${fmt(l.principal)}</td>
+          <td>${fmt(l.remaining_balance || l.principal)}</td>
+          <td>${l.interest_rate}% ${l.interest_type||'flat'}</td>
+          <td>${l.term_months || '-'}mo</td>
+          <td><span class="badge ${ls}">${l.status}</span></td>
+        </tr>`;
+      }).join('');
+
+  const tdRows = tds.length === 0
+    ? '<tr><td colspan="6" class="no-data">No term deposits</td></tr>'
+    : tds.map(d => {
+        const ds = ({active:'badge-green',matured:'badge-blue',closed:'badge-gray',renewed:'badge-purple'})[d.status] || 'badge-gray';
+        return `<tr>
+          <td class="mono" style="font-size:11px">${d.td_number || (d.td_id||'').slice(0,8).toUpperCase()}</td>
+          <td>${fmt(d.amount)}</td>
+          <td>${d.term_days || '-'}d</td>
+          <td>${d.interest_rate || 0}%</td>
+          <td>${dateFmt(d.maturity_date)}</td>
+          <td><span class="badge ${ds}">${d.status}</span></td>
+        </tr>`;
+      }).join('');
+
+  const goalHtml = goals.length === 0
+    ? '<div class="no-data" style="padding:20px">No goals set</div>'
+    : goals.map(g => {
+        const pct = g.target_amount > 0 ? Math.min((Number(g.current_allocated) / Number(g.target_amount)) * 100, 100) : 0;
+        return `<div style="display:flex;align-items:center;gap:12px;padding:8px 12px;background:var(--bg-secondary);border-radius:8px;margin-bottom:6px">
+          <div style="flex:1"><b style="font-size:14px">${g.title}</b><br><span style="font-size:11px;color:var(--text-muted)">${fmt(g.current_allocated||0)} of ${fmt(g.target_amount)}</span></div>
+          <div style="width:100px"><span class="bar"><span class="bar-track"><span class="bar-fill blue" style="width:${pct}%"></span></span>${pct.toFixed(0)}%</span></div>
+        </div>`;
+      }).join('');
+
+  const badgeHtml = badges.length === 0
+    ? '<div class="no-data" style="padding:20px">No badges earned</div>'
+    : badges.map(b => `<span class="badge badge-purple" style="margin:2px;font-size:12px">${b.badge_name || b.badge_type || 'Badge'}</span>`).join('');
+
+  const content = `
+  <style>
+  .m360-grid { display:grid; grid-template-columns:300px 1fr; gap:16px; margin-bottom:16px }
+  .m360-card { background:var(--bg-secondary); border-radius:12px; padding:20px; text-align:center }
+  .m360-card .av { width:100px; height:100px; border-radius:50%; margin:0 auto 10px; overflow:hidden; background:var(--accent); display:flex; align-items:center; justify-content:center; font-size:40px; font-weight:700; color:#fff }
+  .m360-card .av img { width:100%; height:100%; object-fit:cover }
+  .m360-card h1 { font-size:20px; margin:0 0 2px }
+  .m360-card .meta { font-size:12px; color:var(--text-muted); margin-bottom:10px }
+  .m360-card .big-bal { font-size:28px; font-weight:700; margin:8px 0 }
+  .m360-card .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; text-align:left; margin-top:12px }
+  .m360-card .info-grid .ig-item { padding:6px 10px; background:var(--bg-primary); border-radius:6px; font-size:12px }
+  .m360-card .info-grid .ig-item .igl { font-size:10px; text-transform:uppercase; color:var(--text-muted); font-weight:600 }
+  .m360-card .info-grid .ig-item .igv { font-size:13px; font-weight:600 }
+  .m360-section { margin-bottom:16px }
+  .m360-section .card-header { display:flex; align-items:center; gap:8px }
+  .m360-section .card-header h3 { margin:0; font-size:15px }
+  .m360-section .card-header .count { font-size:11px; color:var(--text-muted); margin-left:auto }
+  .m360-tx-table td { padding:6px 8px; font-size:13px }
+  .m360-tx-table th { padding:6px 8px; font-size:11px }
+  table.m360-tx-table { width:100%; border-collapse:collapse }
+  table.m360-tx-table th { text-align:left; border-bottom:1px solid var(--border); font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.3px }
+  table.m360-tx-table td { border-bottom:1px solid var(--border) }
+  .m360-tx-table tr:hover td { background:var(--bg-secondary) }
+  .tx-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center }
+  .tx-modal.show { display:flex }
+  .tx-modal .modal { max-width:440px; width:90% }
+  .tx-modal .tx-details { display:grid; grid-template-columns:1fr 1fr; gap:8px }
+  .tx-modal .tx-details .td-item { padding:8px 12px; background:var(--bg-secondary); border-radius:6px }
+  .tx-modal .tx-details .td-item .tdl { font-size:10px; text-transform:uppercase; color:var(--text-muted); font-weight:600; letter-spacing:0.3px }
+  .tx-modal .tx-details .td-item .tdv { font-size:14px; font-weight:600; margin-top:2px }
+  </style>
+
+  <div style="margin-bottom:12px">
+    <a href="/admin/accounts" class="btn btn-outline btn-xs"><i class="fas fa-arrow-left"></i> Back to Accounts</a>
+    <a href="#edit-${account.account_id}" class="btn btn-primary btn-xs" style="margin-left:8px"><i class="fas fa-pen"></i> Edit Member</a>
+    <a href="/admin/teller?account=${account.account_id}" class="btn btn-secondary btn-xs" style="margin-left:4px"><i class="fas fa-cash-register"></i> Teller</a>
+  </div>
+
+  <div class="m360-grid">
+    <!-- Profile Card -->
+    <div class="m360-card">
+      <div class="av">
+        ${account.profile_pic_url ? '<img src="' + account.profile_pic_url + '" alt="">' : initial}
+      </div>
+      <h1>${account.child_name}</h1>
+      <div class="meta">${account.member_id || 'No ID'} &middot; ${account.gender || '--'} &middot; ${account.age || '--'} yo</div>
+      <div class="big-bal">${fmt(account.actual_balance)}</div>
+      <span class="badge ${statusBadge}" style="font-size:13px">${statusLabel}</span>
+      <div class="info-grid">
+        <div class="ig-item"><div class="igl">Savings #</div><div class="igv mono" style="font-size:11px">${account.regular_savings_number || '-'}</div></div>
+        <div class="ig-item"><div class="igl">Unallocated</div><div class="igv">${fmt(account.unallocated_balance)}</div></div>
+        <div class="ig-item"><div class="igl">Maintaining</div><div class="igv" style="color:var(--accent-color)">${fmt(account.maintaining_balance || 0)}</div></div>
+        <div class="ig-item"><div class="igl">Schedule</div><div class="igv">${account.savings_schedule || '-'}</div></div>
+        <div class="ig-item"><div class="igl">Phone</div><div class="igv">${account.parent_phone || '-'}</div></div>
+        <div class="ig-item"><div class="igl">Member Since</div><div class="igv">${dateFmt(account.created_at)}</div></div>
+        <div class="ig-item"><div class="igl">Birthday</div><div class="igv">${account.birthday || '-'}</div></div>
+        <div class="ig-item"><div class="igl">XP</div><div class="igv">${account.current_xp || 0}</div></div>
+      </div>
+    </div>
+
+    <!-- Recent Transactions -->
+    <div class="m360-section">
+      <div class="card" style="overflow:visible">
+        <div class="card-header"><h3><i class="fas fa-arrows-spin"></i> Transactions</h3><span class="count">${transactions.length} total</span></div>
+        <div class="card-body" style="padding:0">
+          <input type="text" id="txSearch" placeholder="Search transactions..." onkeyup="filterTx()" style="width:100%;padding:8px 12px;border:none;border-bottom:1px solid var(--border);background:transparent;font-size:13px;outline:none">
+          <div style="overflow-x:auto;max-height:420px;overflow-y:auto">
+          <table class="m360-tx-table" id="txTable">
+            <thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Description</th><th>Balance</th><th></th></tr></thead>
+            <tbody>${txRows}</tbody>
+          </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loans -->
+  <div class="m360-section">
+    <div class="card">
+      <div class="card-header"><h3><i class="fas fa-sack-dollar"></i> Loans</h3><span class="count">${loans.length} loan(s)</span></div>
+      <div class="card-body" style="padding:0;overflow-x:auto">
+      <table class="m360-tx-table">
+        <thead><tr><th>Loan #</th><th>Product</th><th>Principal</th><th>Balance</th><th>Rate</th><th>Term</th><th>Status</th></tr></thead>
+        <tbody>${loanRows}</tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Term Deposits -->
+  <div class="m360-section">
+    <div class="card">
+      <div class="card-header"><h3><i class="fas fa-clock"></i> Term Deposits</h3><span class="count">${tds.length} deposit(s)</span></div>
+      <div class="card-body" style="padding:0;overflow-x:auto">
+      <table class="m360-tx-table">
+        <thead><tr><th>TD #</th><th>Amount</th><th>Term</th><th>Rate</th><th>Maturity</th><th>Status</th></tr></thead>
+        <tbody>${tdRows}</tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Goals & Badges -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+    <div class="card">
+      <div class="card-header"><h3><i class="fas fa-bullseye"></i> Goals</h3><span class="count">${goals.length} goal(s)</span></div>
+      <div class="card-body-padded">${goalHtml}</div>
+    </div>
+    <div class="card">
+      <div class="card-header"><h3><i class="fas fa-medal"></i> Badges</h3><span class="count">${badges.length} badge(s)</span></div>
+      <div class="card-body-padded">${badgeHtml}</div>
+    </div>
+  </div>
+
+  <!-- Transaction Detail Modal -->
+  <div class="tx-modal" id="txModal" onclick="if(event.target===this)closeTxModal()">
+    <div class="modal">
+      <a href="#" class="close" onclick="closeTxModal();return false">&times;</a>
+      <h3 style="margin:0 0 16px"><i class="fas fa-receipt"></i> Transaction Details</h3>
+      <div class="tx-details" id="txDetails">
+        <div class="td-item"><div class="tdl">Type</div><div class="tdv" id="txd_type"></div></div>
+        <div class="td-item"><div class="tdl">Amount</div><div class="tdv" id="txd_amount"></div></div>
+        <div class="td-item"><div class="tdl">Balance Before</div><div class="tdv" id="txd_bal_before"></div></div>
+        <div class="td-item"><div class="tdl">Balance After</div><div class="tdv" id="txd_bal_after"></div></div>
+        <div class="td-item"><div class="tdl">Date</div><div class="tdv" id="txd_date"></div></div>
+        <div class="td-item"><div class="tdl">Time</div><div class="tdv" id="txd_time"></div></div>
+        <div class="td-item" style="grid-column:1/-1"><div class="tdl">Description</div><div class="tdv" id="txd_desc"></div></div>
+        <div class="td-item"><div class="tdl">Reference Type</div><div class="tdv mono" style="font-size:12px" id="txd_ref_type"></div></div>
+        <div class="td-item"><div class="tdl">Reference ID</div><div class="tdv mono" style="font-size:12px" id="txd_ref_id"></div></div>
+        <div class="td-item"><div class="tdl">Goal</div><div class="tdv" id="txd_goal"></div></div>
+        <div class="td-item"><div class="tdl">Transaction ID</div><div class="tdv mono" style="font-size:11px;word-break:break-all" id="txd_txid"></div></div>
+      </div>
+      <div style="text-align:right;margin-top:16px">
+        <button class="btn btn-outline" onclick="closeTxModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Modal (reuse from accounts page) -->
+  <div id="edit-${account.account_id}" class="modal-overlay">
+  <div class="modal" style="max-width:520px">
+  <a href="#" class="close">&times;</a>
+  <h2><i class="fas fa-pen"></i> ${account.child_name}</h2>
+  <form method="post" action="/admin/accounts/update/${account.account_id}">
+    <label for="en_${account.account_id}">Child Name</label>
+    <input type="text" id="en_${account.account_id}" name="child_name" value="${account.child_name}" required style="text-transform:uppercase">
+    <div class="form-row">
+      <div><label for="elast_${account.account_id}">Last Name</label><input type="text" id="elast_${account.account_id}" name="last_name" value="${account.last_name || ''}" style="text-transform:uppercase"></div>
+      <div><label for="efirst_${account.account_id}">First Name</label><input type="text" id="efirst_${account.account_id}" name="first_name" value="${account.first_name || ''}" style="text-transform:uppercase"></div>
+      <div><label for="emid_${account.account_id}">Middle Name</label><input type="text" id="emid_${account.account_id}" name="middle_name" value="${account.middle_name || ''}" style="text-transform:uppercase"></div>
+    </div>
+    <div class="form-row">
+      <div><label for="ebday_${account.account_id}">Birthday</label><input type="date" id="ebday_${account.account_id}" name="birthday" value="${account.birthday || ''}"></div>
+      <div><label for="egender_${account.account_id}">Gender</label><select id="egender_${account.account_id}" name="gender"><option value="">--</option><option value="Male"${account.gender === 'Male' ? ' selected' : ''}>Male</option><option value="Female"${account.gender === 'Female' ? ' selected' : ''}>Female</option></select></div>
+      <div><label for="esched_${account.account_id}">Savings Schedule</label><select id="esched_${account.account_id}" name="savings_schedule"><option value="">--</option><option value="Daily"${account.savings_schedule === 'Daily' ? ' selected' : ''}>Daily</option><option value="Weekly"${account.savings_schedule === 'Weekly' ? ' selected' : ''}>Weekly</option><option value="Bi-Weekly"${account.savings_schedule === 'Bi-Weekly' ? ' selected' : ''}>Bi-Weekly</option><option value="Monthly"${account.savings_schedule === 'Monthly' ? ' selected' : ''}>Monthly</option><option value="Every Quarter"${account.savings_schedule === 'Every Quarter' ? ' selected' : ''}>Every Quarter</option></select></div>
+    </div>
+    <div class="form-row">
+      <div><label for="eb_${account.account_id}">Balance (&#x20B1;)</label><input type="number" id="eb_${account.account_id}" name="actual_balance" min="0" step="0.01" value="${account.actual_balance}"></div>
+      <div><label for="eu_${account.account_id}">Unallocated (&#x20B1;)</label><input type="number" id="eu_${account.account_id}" name="unallocated_balance" min="0" step="0.01" value="${account.unallocated_balance}"></div>
+    </div>
+    <div class="form-row">
+      <div><label for="estatus_${account.account_id}">Status</label><select id="estatus_${account.account_id}" name="is_active"><option value="1"${Number(account.is_active) === 1 ? ' selected' : ''}>Active</option><option value="0"${Number(account.is_active) === 0 ? ' selected' : ''}>Inactive</option><option value="-1"${Number(account.is_active) === -1 ? ' selected' : ''}>Closed</option></select></div>
+      <div><label for="ephone_${account.account_id}">Phone</label><input type="text" id="ephone_${account.account_id}" name="parent_phone" value="${account.parent_phone || ''}"></div>
+    </div>
+    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Changes</button>
+  </form>
+  </div>
+  </div>
+
+  <script>
+  function filterTx() {
+    var q = document.getElementById('txSearch').value.toLowerCase();
+    var rows = document.querySelectorAll('#txTable tbody tr');
+    for(var i=0;i<rows.length;i++){
+      var txt = rows[i].textContent.toLowerCase();
+      rows[i].style.display = txt.indexOf(q) > -1 ? '' : 'none';
+    }
+  }
+  function showTxDetail(id,type,amount,sign,balBefore,balAfter,date,time,desc,refType,refId,goal,txid) {
+    document.getElementById('txd_type').innerHTML = '<span class="badge badge-blue">' + type.replace(/_/g,' ') + '</span>';
+    document.getElementById('txd_amount').innerHTML = '<span style="color:' + (sign === '+' ? 'var(--accent)' : 'var(--red)') + ';font-size:18px">' + sign + amount + '</span>';
+    document.getElementById('txd_bal_before').textContent = balBefore;
+    document.getElementById('txd_bal_after').textContent = balAfter;
+    document.getElementById('txd_date').textContent = date;
+    document.getElementById('txd_time').textContent = time;
+    document.getElementById('txd_desc').textContent = desc;
+    document.getElementById('txd_ref_type').textContent = refType;
+    document.getElementById('txd_ref_id').textContent = refId;
+    document.getElementById('txd_goal').textContent = goal || '-';
+    document.getElementById('txd_txid').textContent = txid;
+    document.getElementById('txModal').classList.add('show');
+  }
+  function closeTxModal() {
+    document.getElementById('txModal').classList.remove('show');
+  }
+  </script>
+  `;
+
+  res.type('html').send(layout(`Member: ${account.child_name}`, 'accounts', content, {
+    subtitle: `Member 360 &middot; ${account.member_id || 'No ID'}`,
   }));
 }));
 

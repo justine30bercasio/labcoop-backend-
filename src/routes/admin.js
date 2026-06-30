@@ -1132,15 +1132,26 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
       <div><label for="asched">Savings Schedule <span class="required">*</span></label><select id="asched" name="savings_schedule" required><option value="">--</option><option value="Daily">Daily</option><option value="Weekly">Weekly</option><option value="Bi-Weekly">Bi-Weekly</option><option value="Monthly">Monthly</option><option value="Every Quarter">Every Quarter</option></select></div>
     </div>
     <div class="form-row">
-      <div><label for="abalance">Initial Balance / Maintaining Balance (&#x20B1;) <span class="required">*</span></label>
-        <input type="number" id="abalance" name="actual_balance" min="0" value="100" step="0.01" required></div>
-      <div><label for="aphone">Parent Phone</label>
-        <input type="text" id="aphone" name="parent_phone" placeholder="Optional"></div>
+      <div><label for="amembershipFee"><i class="fas fa-id-card"></i> Membership Fee (&#x20B1;)</label>
+        <input type="number" id="amembershipFee" name="membership_fee" min="0" value="${membershipFee || '100'}" step="0.01" required oninput="calcTotal()"></div>
+      <div><label for="ainsuranceFee"><i class="fas fa-shield"></i> Insurance Fee (&#x20B1;)</label>
+        <input type="number" id="ainsuranceFee" name="insurance_fee" min="0" value="${insuranceFee || '50'}" step="0.01" required oninput="calcTotal()"></div>
+      <div><label for="ainitialSavings"><i class="fas fa-piggy-bank"></i> Initial Savings (&#x20B1;)</label>
+        <input type="number" id="ainitialSavings" name="savings_deposit" min="0" value="${initialSavings || '100'}" step="0.01" required oninput="calcTotal()"></div>
     </div>
     <p style="font-size:12px;color:var(--text-muted);margin:4px 0 8px">
-      <i class="fas fa-info-circle"></i> The initial deposit becomes the maintaining balance — withdrawals cannot go below this amount.
-      Savings account number is auto-generated as SAVC-BRANCH-MMDDYY-SEQ.
+      <i class="fas fa-info-circle"></i> Total Payment: <b id="totalDisplay">&#x20B1;${(parseFloat(membershipFee||100) + parseFloat(insuranceFee||50) + parseFloat(initialSavings||100)).toFixed(2)}</b>
+      &nbsp;|&nbsp; Membership fee (income) + Insurance fee (income) + Initial savings (liability)
+      <br>Savings account number is auto-generated as SAVC-BRANCH-MMDDYY-SEQ.
     </p>
+    <script>
+    function calcTotal(){
+      var mf = parseFloat(document.getElementById('amembershipFee').value) || 0;
+      var ins = parseFloat(document.getElementById('ainsuranceFee').value) || 0;
+      var sav = parseFloat(document.getElementById('ainitialSavings').value) || 0;
+      document.getElementById('totalDisplay').textContent = '\u20B1' + (mf+ins+sav).toFixed(2);
+    }
+    </script>
     <button type="submit" class="btn btn-primary">&#x2795; Create Account</button>
   </form>
   </div>
@@ -1516,7 +1527,7 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
 
 router.post('/accounts/create', requireRole(2), asyncHandler(async (req, res) => {
   try {
-    const { child_name, actual_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, gender, savings_schedule } = req.body;
+    const { child_name, current_xp, parent_phone, last_name, first_name, middle_name, birthday, gender, savings_schedule, membership_fee, insurance_fee, savings_deposit } = req.body;
     if (!child_name) return res.redirect('/admin/accounts?error=Name+required');
     if (!last_name || !first_name || !birthday || !gender || !savings_schedule) {
       return res.redirect('/admin/accounts?error=All+required+fields+must+be+filled');
@@ -1527,14 +1538,16 @@ router.post('/accounts/create', requireRole(2), asyncHandler(async (req, res) =>
     const umid = (middle_name || '').trim().toUpperCase();
     const displayName = umid ? `${ufirst} ${umid[0]}. ${ulast}` : `${ufirst} ${ulast}`;
 
-    const initialBalance = Number(actual_balance) || 100;
+    const membershipAmt = Number(membership_fee) || 0;
+    const insuranceAmt = Number(insurance_fee) || 0;
+    const savingsAmt = Number(savings_deposit) || 0;
+    const totalPayment = membershipAmt + insuranceAmt + savingsAmt;
 
     const maxResult = await store.query("SELECT MAX(CAST(member_id AS INTEGER)) as m FROM accounts");
     const maxMember = parseInt(maxResult.rows[0]?.m || '0', 10);
 
-    // Get default maintaining balance from settings, fallback to the initial balance amount
     const defaultMaintaining = await store.getSetting('default_maintaining_balance');
-    const maintainingBalance = parseFloat(defaultMaintaining) || initialBalance;
+    const maintainingBalance = parseFloat(defaultMaintaining) || savingsAmt;
 
     const account = await store.createAccount({
       child_name: displayName,
@@ -1544,8 +1557,8 @@ router.post('/accounts/create', requireRole(2), asyncHandler(async (req, res) =>
       birthday: birthday || '',
       gender: gender || '',
       savings_schedule: savings_schedule || '',
-      actual_balance: initialBalance,
-      unallocated_balance: initialBalance,
+      actual_balance: savingsAmt,
+      unallocated_balance: savingsAmt,
       current_xp: Number(current_xp) || 0,
       parent_phone: parent_phone || '',
       password: bcrypt.hashSync('0000', 10),
@@ -1553,23 +1566,76 @@ router.post('/accounts/create', requireRole(2), asyncHandler(async (req, res) =>
       maintaining_balance: maintainingBalance,
     });
 
-    // Generate regular savings account number
     const branchCode = account.branch_id || '01';
     const savingsNumber = await store.generateSavingsAccountNumber(branchCode);
 
     await store.query('UPDATE accounts SET member_id=$1, regular_savings_number=$2, savings_product_id=$3, maintaining_balance=$4 WHERE account_id=$5',
       [String(maxMember + 1).padStart(6, '0'), savingsNumber, 'sp_regular', maintainingBalance, account.account_id]);
-    try { const audit = require('../services/audit'); await audit.log(req, 'ACCOUNT_CREATE', 'account', account.account_id, { child_name: child_name.trim(), initial_balance: initialBalance, maintaining_balance: maintainingBalance, regular_savings_number: savingsNumber }); } catch (e) {}
-    try { await store.addTransaction({
-      account_id: account.account_id,
-      type: 'fee',
-      amount: initialBalance,
-      description: 'Membership fee',
-      reference_type: 'account_create',
-      reference_id: account.account_id,
-      balance_before: 0,
-      balance_after: initialBalance,
-    }); } catch (e) {}
+    try { const audit = require('../services/audit'); await audit.log(req, 'ACCOUNT_CREATE', 'account', account.account_id, { child_name: child_name.trim(), membership_fee: membershipAmt, insurance_fee: insuranceAmt, savings_deposit: savingsAmt, total_payment: totalPayment, regular_savings_number: savingsNumber }); } catch (e) {}
+
+    // Membership fee transaction + GL
+    if (membershipAmt > 0) {
+      const mfTx = await store.addTransaction({
+        account_id: account.account_id,
+        type: 'fee',
+        amount: membershipAmt,
+        description: 'Membership fee',
+        reference_type: 'account_create',
+        reference_id: account.account_id,
+        balance_before: 0,
+        balance_after: savingsAmt,
+      });
+      try {
+        const gl = require('../services/gl');
+        await gl.postDoubleEntry(mfTx.transaction_id, [
+          { account_code: '1000', debit: membershipAmt, description: 'Membership fee: ' + displayName },
+          { account_code: '4100', credit: membershipAmt, description: 'Membership fee: ' + displayName },
+        ]);
+      } catch (e) {}
+    }
+
+    // Insurance fee transaction + GL
+    if (insuranceAmt > 0) {
+      const insTx = await store.addTransaction({
+        account_id: account.account_id,
+        type: 'fee',
+        amount: insuranceAmt,
+        description: 'Insurance fee',
+        reference_type: 'account_create',
+        reference_id: account.account_id,
+        balance_before: savingsAmt,
+        balance_after: savingsAmt,
+      });
+      try {
+        const gl = require('../services/gl');
+        await gl.postDoubleEntry(insTx.transaction_id, [
+          { account_code: '1000', debit: insuranceAmt, description: 'Insurance fee: ' + displayName },
+          { account_code: '4200', credit: insuranceAmt, description: 'Insurance fee: ' + displayName },
+        ]);
+      } catch (e) {}
+    }
+
+    // Initial savings deposit transaction + GL
+    if (savingsAmt > 0) {
+      const depTx = await store.addTransaction({
+        account_id: account.account_id,
+        type: 'deposit',
+        amount: savingsAmt,
+        description: 'Initial savings deposit',
+        reference_type: 'account_create',
+        reference_id: account.account_id,
+        balance_before: 0,
+        balance_after: savingsAmt,
+      });
+      try {
+        const gl = require('../services/gl');
+        await gl.postDoubleEntry(depTx.transaction_id, [
+          { account_code: '1000', debit: savingsAmt, description: 'Initial savings deposit: ' + displayName },
+          { account_code: '2000', credit: savingsAmt, description: 'Initial savings deposit: ' + displayName },
+        ]);
+      } catch (e) {}
+    }
+
     res.redirect('/admin/accounts?added=ok');
   } catch (err) {
     res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
@@ -2512,6 +2578,9 @@ router.get('/savings-settings', requireRole(1), asyncHandler(async (req, res) =>
   const savingsRate = savingsProduct ? (parseFloat(savingsProduct.interest_rate) * 100).toFixed(1) : '2.0';
   const savingsFrequency = savingsProduct?.interest_frequency || 'monthly';
   const defaultMaintaining = await store.getSetting('default_maintaining_balance');
+  const membershipFee = await store.getSetting('membership_fee');
+  const insuranceFee = await store.getSetting('insurance_fee');
+  const initialSavings = await store.getSetting('initial_savings');
 
   const content = `
   <div class="card">
@@ -2549,6 +2618,27 @@ router.get('/savings-settings', requireRole(1), asyncHandler(async (req, res) =>
       </form>
       <p style="margin-top:10px;font-size:12px;color:var(--text-muted)">
         <i class="fas fa-info-circle"></i> This is the minimum balance every new account must maintain. Withdrawals that would drop the balance below this amount are blocked.
+      </p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-file-invoice"></i> Account Opening Fees</h3></div>
+    <div class="card-body-padded">
+      <form id="openingFeesForm" style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:12px;align-items:end">
+        <div class="field"><label><i class="fas fa-id-card"></i> Membership Fee (&#x20B1;)</label>
+          <input type="number" id="membershipFee" value="${parseFloat(membershipFee || '100').toFixed(2)}" min="0" step="0.01" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px">
+        </div>
+        <div class="field"><label><i class="fas fa-shield"></i> Insurance Fee (&#x20B1;)</label>
+          <input type="number" id="insuranceFee" value="${parseFloat(insuranceFee || '50').toFixed(2)}" min="0" step="0.01" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px">
+        </div>
+        <div class="field"><label><i class="fas fa-piggy-bank"></i> Initial Savings (&#x20B1;)</label>
+          <input type="number" id="initialSavings" value="${parseFloat(initialSavings || '100').toFixed(2)}" min="0" step="0.01" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px">
+        </div>
+        <button type="submit" class="btn btn-secondary"><i class="fas fa-floppy-disk"></i> Save</button>
+      </form>
+      <p style="margin-top:10px;font-size:12px;color:var(--text-muted)">
+        <i class="fas fa-info-circle"></i> These amounts are the default fees charged when opening a new account. Total payment = Membership Fee + Insurance Fee + Initial Savings.
       </p>
     </div>
   </div>
@@ -2613,6 +2703,20 @@ router.get('/savings-settings', requireRole(1), asyncHandler(async (req, res) =>
       showGcashToast(d.success ? 'Savings rate updated!' : d.message||'Error', !d.success);
     }).catch(function(e){ showGcashToast(e.message, true); });
   });
+  document.getElementById('openingFeesForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var mf = parseFloat(document.getElementById('membershipFee').value);
+    var ins = parseFloat(document.getElementById('insuranceFee').value);
+    var sav = parseFloat(document.getElementById('initialSavings').value);
+    if(isNaN(mf) || mf < 0 || isNaN(ins) || ins < 0 || isNaN(sav) || sav < 0){ showGcashToast('Enter valid amounts', true); return; }
+    fetch('/admin/settings/opening-fees', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ membership_fee: mf, insurance_fee: ins, initial_savings: sav })
+    }).then(function(r){ return r.json(); }).then(function(d){
+      showGcashToast(d.success ? 'Opening fees saved!' : d.message||'Error', !d.success);
+    }).catch(function(e){ showGcashToast(e.message, true); });
+  });
   </script>
   `;
 
@@ -2660,6 +2764,14 @@ router.post('/settings/savings-rate', requireRole(3), asyncHandler(async (req, r
     );
   }
   res.json({ success: true, rate, frequency });
+}));
+
+router.post('/settings/opening-fees', requireRole(3), asyncHandler(async (req, res) => {
+  const { membership_fee, insurance_fee, initial_savings } = req.body;
+  if (membership_fee !== undefined) await store.setSetting('membership_fee', String(Number(membership_fee).toFixed(2)));
+  if (insurance_fee !== undefined) await store.setSetting('insurance_fee', String(Number(insurance_fee).toFixed(2)));
+  if (initial_savings !== undefined) await store.setSetting('initial_savings', String(Number(initial_savings).toFixed(2)));
+  res.json({ success: true });
 }));
 
 router.get('/reset-data/confirm', requireRole(4), asyncHandler(async (req, res) => {
@@ -5810,7 +5922,10 @@ router.get('/users', requireRole(4), asyncHandler(async (req, res) => {
     : q.updated ? 'success:Admin user updated.'
     : q.error ? `error:${q.error}`
     : '';
-  const roleColors = { super_admin:'badge-red', manager:'badge-blue', teller:'badge-green', auditor:'badge-orange' };
+  const membershipFee = await store.getSetting('membership_fee') || '100';
+  const insuranceFee = await store.getSetting('insurance_fee') || '50';
+  const initialSavings = await store.getSetting('initial_savings') || '100';
+
   const content = `
   <div class="stats-grid">
     <div class="stat-card"><div class="stat-icon">&#x1F465;</div><div class="stat-value">${users.length}</div><div class="stat-label">Total Admins</div></div>

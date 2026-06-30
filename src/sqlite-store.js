@@ -97,7 +97,7 @@ function getDb() {
         ['1000','Cash on Hand','asset'], ['1100','Loans Receivable','asset'], ['1200','Accrued Interest','asset'],
         ['2000','Savings Deposits','liability'], ['2100','Time Deposits','liability'], ['2200','Interest Payable','liability'],
         ['3000','Share Capital','equity'], ['3100','Retained Earnings','equity'],
-        ['4000','Interest Income','income'], ['4100','Fee Income','income'],
+        ['4000','Interest Income','income'], ['4100','Fee Income','income'], ['4200','Insurance Income','income'],
         ['5000','Interest Expense','expense'],
       ];
       for (const a of accounts) insert.run(...a);

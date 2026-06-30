@@ -442,6 +442,7 @@ class PgStore {
       ['3100', 'Retained Earnings', 'equity'],
       ['4000', 'Interest Income', 'income'],
       ['4100', 'Fee Income', 'income'],
+      ['4200', 'Insurance Income', 'income'],
       ['5000', 'Interest Expense', 'expense'],
     ];
     for (const [code, name, type] of accounts) {

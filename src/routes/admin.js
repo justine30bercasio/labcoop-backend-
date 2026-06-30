@@ -2519,52 +2519,153 @@ router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {
     { key: 'DB_TYPE', val: isPostgres ? 'PostgreSQL (Aiven)' : 'SQLite (better-sqlite3)' },
   ];
 
-  const tip = isPostgres ? '' : `<div class="card" style="margin-top:20px"><div class="card-body-padded"><b>&#x26A0; SQLite:</b> Database file is <code>${(dbSize / 1024).toFixed(1)} KB</code> on disk at <code>backend/labcoop.db</code></div></div>`;
+  const totalRows = tableInfo.reduce((s, t) => s + t.rows, 0);
+  const dbLabel = isPostgres ? 'PostgreSQL' : 'SQLite';
+  const dbIcon = isPostgres ? 'server' : 'database';
 
   const content = `
-  <div class="stats-grid">
-    <div class="stat-card"><div class="stat-icon">&#x1F4CA;</div><div class="stat-value">${tableInfo.length}</div><div class="stat-label">Tables</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F504;</div><div class="stat-value">${tableInfo.reduce((s,t)=>s+t.rows,0)}</div><div class="stat-label">Total Rows</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F4C5;</div><div class="stat-value">Node ${process.version}</div><div class="stat-label">Runtime</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F4E1;</div><div class="stat-value">${isPostgres ? 'PostgreSQL' : 'SQLite'}</div><div class="stat-label">Database</div></div>
-  </div>
-  ${tip}
+  <style>
+  .settings-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px }
+  .settings-grid .stat-card { cursor:default }
+  .settings-grid .stat-card .stat-icon { width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:10px }
+  .settings-grid .stat-card:nth-child(1) .stat-icon { background:#e0f2fe;color:#0369a1 }
+  .settings-grid .stat-card:nth-child(2) .stat-icon { background:#dcfce7;color:#15803d }
+  .settings-grid .stat-card:nth-child(3) .stat-icon { background:#fef3c7;color:#b45309 }
+  .settings-grid .stat-card:nth-child(4) .stat-icon { background:#f3e8ff;color:#7c3aed }
 
-  <div class="card">
-    <div class="card-header"><h3>&#x1F4CA; Database Tables</h3></div>
-    <div class="card-body">
-    <table><tr><th>Table Name</th><th>Rows</th></tr>
-    ${tableInfo.map(t => `<tr><td><b>${t.name}</b></td><td>${t.rows}</td></tr>`).join('')}
-    </table></div>
+  .table-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:10px }
+  .table-chip { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--bg); border-radius:var(--radius-sm); border:1px solid var(--border); transition:all var(--transition) }
+  .table-chip:hover { border-color:var(--accent); background:#f0fdf4; transform:translateY(-1px); box-shadow:0 2px 8px rgba(46,125,50,0.08) }
+  .table-chip .name { font-size:13px; font-weight:500; color:var(--text) }
+  .table-chip .count { font-size:12px; font-weight:600; color:var(--accent); background:#e8f5e9; padding:2px 10px; border-radius:20px; white-space:nowrap }
+  .table-chip .count.zero { color:var(--text-muted); background:#f1f5f9 }
+
+  .env-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px }
+  .env-item { padding:14px 16px; background:var(--bg); border-radius:var(--radius-sm); border:1px solid var(--border); transition:all var(--transition) }
+  .env-item:hover { border-color:var(--accent); box-shadow:0 2px 8px rgba(46,125,50,0.06) }
+  .env-item .key { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-bottom:4px }
+  .env-item .val { font-size:14px; font-weight:500; font-family:var(--mono); color:var(--text); word-break:break-all }
+  .env-item .val.masked { color:var(--text-muted); font-style:italic }
+
+  .action-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px }
+  .action-card { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:24px 16px; background:var(--bg); border-radius:var(--radius-sm); border:1px solid var(--border); text-decoration:none; color:var(--text); transition:all var(--transition); cursor:pointer }
+  .action-card:hover { border-color:var(--accent); background:#f0fdf4; transform:translateY(-2px); box-shadow:0 4px 16px rgba(46,125,50,0.1) }
+  .action-card .icon { font-size:28px }
+  .action-card .label { font-size:13px; font-weight:500 }
+  .action-card .desc { font-size:11px; color:var(--text-muted); text-align:center; line-height:1.4 }
+  .action-card.danger:hover { border-color:var(--red); background:#fef2f2 }
+  .action-card.danger .icon { color:var(--red) }
+
+  .db-tip { display:flex; align-items:center; gap:12px; padding:14px 18px; background:#fffbeb; border:1px solid #fde68a; border-radius:var(--radius-sm); color:#92400e; font-size:13px }
+  .db-tip code { background:#fef3c7; padding:2px 8px; border-radius:4px; font-size:12px }
+
+  [data-theme="dark"] .table-chip:hover { background:#1a2e1a }
+  [data-theme="dark"] .env-item:hover { background:#1a1a2e }
+  [data-theme="dark"] .action-card:hover { background:#1a2e1a }
+  [data-theme="dark"] .db-tip { background:#1e1b0e; border-color:#5c4a1a; color:#fbbf24 }
+  [data-theme="dark"] .db-tip code { background:#2a2410 }
+  [data-theme="dark"] .table-chip .count { background:#1a3a1a }
+  [data-theme="dark"] .table-chip .count.zero { background:#1e1e1e }
+  [data-theme="dark"] .action-card.danger:hover { background:#2e1a1a }
+  </style>
+
+  <div class="settings-grid">
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-table"></i></div><div class="stat-value">${tableInfo.length}</div><div class="stat-label">Tables</div><div class="stat-sub">database entities</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-database"></i></div><div class="stat-value">${totalRows.toLocaleString()}</div><div class="stat-label">Total Rows</div><div class="stat-sub">across all tables</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fab fa-node-js"></i></div><div class="stat-value">${process.version}</div><div class="stat-label">Node.js</div><div class="stat-sub">runtime version</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-${dbIcon}"></i></div><div class="stat-value">${dbLabel}</div><div class="stat-label">Database</div><div class="stat-sub">${isPostgres ? 'Aiven Cloud' : 'local file'}</div></div>
   </div>
 
-  <div class="card">
-    <div class="card-header"><h3>&#x2699; Environment</h3></div>
-    <div class="card-body">
-    <table><tr><th>Key</th><th>Value</th></tr>
-    ${envVars.map(e => `<tr><td class="mono">${e.key}</td><td class="mono">${e.val}</td></tr>`).join('')}
-    </table></div>
-  </div>
+  ${!isPostgres ? `
+  <div class="db-tip" style="margin-top:14px">
+    <i class="fas fa-info-circle" style="font-size:18px"></i>
+    <span><b>SQLite</b> &mdash; Database file <code>${(dbSize / 1024).toFixed(1)} KB</code> at <code>backend/labcoop.db</code></span>
+  </div>` : ''}
 
-  <div class="card">
-    <div class="card-header"><h3><i class="fas fa-database"></i> Backup &amp; Restore</h3></div>
-    <div class="card-body-padded" style="display:flex;gap:12px;flex-wrap:wrap">
-      <a href="/admin/backup" class="btn btn-secondary"><i class="fas fa-download"></i> Backup Manager</a>
-      <p style="margin:0;font-size:12px;color:var(--text-muted);flex:1;min-width:200px;line-height:36px">
-        <i class="fas fa-info-circle"></i> Download complete data backup with integrity checksum, preview before restore.
-      </p>
+  <div class="card" style="margin-top:20px">
+    <div class="card-header">
+      <h3><i class="fas fa-table"></i> Database Tables</h3>
+      <span class="count">${tableInfo.length} tables &middot; ${totalRows.toLocaleString()} rows</span>
+    </div>
+    <div class="card-body-padded">
+      <div class="table-grid" id="tableGrid">
+        ${tableInfo.map((t, idx) => `
+        <div class="table-chip" style="animation:fadeUp 0.3s ease ${idx * 0.03}s both">
+          <span class="name">${t.name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+          <span class="count ${t.rows === 0 ? 'zero' : ''}">${t.rows.toLocaleString()}</span>
+        </div>`).join('')}
+      </div>
     </div>
   </div>
 
   <div class="card">
-    <div class="card-header"><h3>&#x1F527; Tools</h3></div>
-    <div class="card-body-padded" style="display:flex;gap:12px;flex-wrap:wrap">
-      <a href="/api/excel/export/all" class="btn btn-secondary">&#x1F4E5; Export All Data</a>
-      <a href="/api/excel/template" class="btn btn-outline">&#x1F4C4; Download Template</a>
-      <a href="/api/health" target="_blank" class="btn btn-outline">&#x1F4C8; Health Check</a>
-      <a href="/admin/reset-data/confirm" class="btn btn-danger">&#x26A0; Reset All Data</a>
+    <div class="card-header">
+      <h3><i class="fas fa-cog"></i> Environment</h3>
+      <span class="count">${envVars.length} variables</span>
+    </div>
+    <div class="card-body-padded">
+      <div class="env-grid">
+        ${envVars.map(e => `
+        <div class="env-item">
+          <div class="key">${e.key}</div>
+          <div class="val ${e.val.includes('*****') || e.val === '(not set)' ? 'masked' : ''}">${e.val}</div>
+        </div>`).join('')}
+      </div>
     </div>
   </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h3><i class="fas fa-tools"></i> Actions</h3>
+      <span class="count">utility tools</span>
+    </div>
+    <div class="card-body-padded">
+      <div class="action-grid">
+        <a href="/admin/backup" class="action-card">
+          <div class="icon"><i class="fas fa-download"></i></div>
+          <div class="label">Backup Manager</div>
+          <div class="desc">Download full data backup with integrity checksum</div>
+        </a>
+        <a href="/api/excel/export/all" class="action-card">
+          <div class="icon"><i class="fas fa-file-excel"></i></div>
+          <div class="label">Export All Data</div>
+          <div class="desc">Export all records to Excel spreadsheet</div>
+        </a>
+        <a href="/api/excel/template" class="action-card">
+          <div class="icon"><i class="fas fa-file-import"></i></div>
+          <div class="label">Download Template</div>
+          <div class="desc">Get Excel template for bulk imports</div>
+        </a>
+        <a href="/api/health" target="_blank" class="action-card">
+          <div class="icon"><i class="fas fa-heartbeat"></i></div>
+          <div class="label">Health Check</div>
+          <div class="desc">View system health status endpoint</div>
+        </a>
+        <a href="/admin/reset-data/confirm" class="action-card danger" onclick="return confirmAction('Reset all data? This cannot be undone.')">
+          <div class="icon"><i class="fas fa-exclamation-triangle"></i></div>
+          <div class="label">Reset All Data</div>
+          <div class="desc">Permanently delete all member data</div>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  // Search/filter table chips
+  var searchInput = document.createElement('input');
+  searchInput.type = 'text';
+  searchInput.placeholder = 'Search tables...';
+  searchInput.style.cssText = 'width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;margin-bottom:12px;background:var(--bg);color:var(--text);outline:none;transition:border var(--transition)';
+  searchInput.addEventListener('focus', function(){ this.style.borderColor = 'var(--accent)'; });
+  searchInput.addEventListener('blur', function(){ this.style.borderColor = 'var(--border)'; });
+  searchInput.addEventListener('input', function(){
+    var q = this.value.toLowerCase();
+    document.querySelectorAll('.table-chip').forEach(function(chip){
+      chip.style.display = chip.querySelector('.name').textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+  document.getElementById('tableGrid').parentNode.insertBefore(searchInput, document.getElementById('tableGrid'));
+  </script>
   `;
 
   res.type('html').send(layout('Settings', 'settings', content, {

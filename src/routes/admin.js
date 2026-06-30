@@ -1317,19 +1317,13 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
   .m360-table td { padding:9px 12px; font-size:13px; border-bottom:1px solid var(--border); transition:background 0.15s }
   .m360-table tbody tr:hover td { background:var(--bg-secondary) }
 
-  .m360-panel .dataTables_wrapper { padding:0 16px }
-  .m360-panel .dataTables_wrapper .dataTables_filter { padding:10px 0; border-bottom:1px solid var(--border) }
   .m360-panel .dataTables_wrapper .dataTables_filter input { margin-left:6px; padding:5px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px; background:transparent; color:var(--text); outline:none }
   .m360-panel .dataTables_wrapper .dataTables_filter input:focus { border-color:var(--accent) }
-  .m360-panel .dataTables_wrapper .dataTables_length { padding:10px 0; border-bottom:1px solid var(--border) }
   .m360-panel .dataTables_wrapper .dataTables_length select { margin:0 4px; padding:3px 6px; border:1px solid var(--border); border-radius:4px; background:transparent; color:var(--text); font-size:12px; outline:none }
-  .m360-panel .dataTables_wrapper .dataTables_info { padding:10px 0; font-size:12px; color:var(--text-muted) }
-  .m360-panel .dataTables_wrapper .dataTables_paginate { padding:10px 0 }
   .m360-panel .dataTables_wrapper .dataTables_paginate .paginate_button { padding:4px 10px; margin:0 2px; border:1px solid var(--border); border-radius:6px; font-size:12px; background:transparent; color:var(--text); cursor:pointer; display:inline-block }
   .m360-panel .dataTables_wrapper .dataTables_paginate .paginate_button:hover { background:var(--bg-secondary); border-color:var(--accent); color:var(--accent) }
   .m360-panel .dataTables_wrapper .dataTables_paginate .paginate_button.current { background:var(--accent); color:#fff; border-color:var(--accent) }
   .m360-panel .dataTables_wrapper .dataTables_paginate .paginate_button.disabled { opacity:0.4; cursor:default }
-  .m360-panel table.dataTable { width:100% }
   .m360-panel table.dataTable td { padding:9px 12px }
 
   .m360-empty { text-align:center; padding:32px 16px; color:var(--text-muted); font-size:13px }
@@ -1400,7 +1394,7 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
   <div class="m360-panel">
     <div class="card">
       <div class="card-header"><h3><i class="fas fa-arrows-spin" style="color:var(--accent)"></i> Transactions</h3><span class="count">${transactions.length} entries</span></div>
-      <div class="card-body" style="padding:0">
+      <div class="card-body">
       <table class="m360-table" id="txTable">
         <thead><tr><th>Date</th><th>Type</th><th style="text-align:right;color:var(--red)">Debit</th><th style="text-align:right;color:var(--accent)">Credit</th><th style="text-align:right">Balance</th><th style="width:50px"></th></tr></thead>
         <tbody>${txRows}</tbody>

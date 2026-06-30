@@ -98,12 +98,39 @@ class _StatementPageState extends State<StatementPage> {
               const SizedBox(height: 2),
               Text(savingsProduct.toString(), style: const TextStyle(color: Colors.white60, fontSize: 12)),
             ],
-            const SizedBox(height: 12),
+            const SizedBox(height: 2),
             Text('PHP ${balance.toStringAsFixed(2)}', style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                _statBadge(Icons.account_balance, 'Savings #', acct['regular_savings_number'] ?? '--'),
+                const SizedBox(width: 8),
+                _statBadge(Icons.lock, 'Maintaining', 'PHP ${parseAmount(acct['maintaining_balance']).toStringAsFixed(0)}'),
+              ],
+            ),
+            const SizedBox(height: 6),
             Text('Interest Earned: PHP ${interestEarned.toStringAsFixed(2)}', style: const TextStyle(color: Colors.white70, fontSize: 14)),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _statBadge(IconData icon, String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: Colors.white70),
+          const SizedBox(width: 4),
+          Text('$label: ', style: const TextStyle(color: Colors.white60, fontSize: 10)),
+          Text(value, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600)),
+        ],
       ),
     );
   }

@@ -6,7 +6,6 @@ import '../../data/datasources/local_db_source.dart';
 import '../../data/datasources/remote_api_source.dart';
 import 'change_password_page.dart';
 import 'home_page.dart';
-import 'registration_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -324,28 +323,26 @@ class _LoginPageState extends State<LoginPage>
                             ),
                           ),
                           const SizedBox(height: 16),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                "Don't have an account? ",
-                                style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 13),
-                              ),
-                              GestureDetector(
-                                onTap: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(builder: (_) => const RegistrationPage()),
-                                ),
-                                child: Text(
-                                  'Create Account',
-                                  style: TextStyle(
-                                    color: AppTheme.accentAmber,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
+                          Container(
+                            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.store, size: 16, color: AppTheme.accentAmber),
+                                SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    'Visit your nearest branch to open a Regular Savings account',
+                                    style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12),
+                                    textAlign: TextAlign.center,
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ],
                       ),

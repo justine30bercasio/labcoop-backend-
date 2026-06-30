@@ -14,6 +14,8 @@ class SavingsAccount {
   final double actualBalance;
   final double unallocatedBalance;
   final int currentXp;
+  final double maintainingBalance;
+  final String? regularSavingsNumber;
 
   const SavingsAccount({
     required this.accountId,
@@ -31,6 +33,8 @@ class SavingsAccount {
     required this.actualBalance,
     required this.unallocatedBalance,
     required this.currentXp,
+    this.maintainingBalance = 0,
+    this.regularSavingsNumber,
   });
 
   String get fullName {
@@ -43,6 +47,8 @@ class SavingsAccount {
   }
 
   double get allocatedBalance => actualBalance - unallocatedBalance;
+
+  double get withdrawableBalance => actualBalance - maintainingBalance;
 
   SavingsAccount copyWith({
     String? accountId,
@@ -60,6 +66,8 @@ class SavingsAccount {
     double? actualBalance,
     double? unallocatedBalance,
     int? currentXp,
+    double? maintainingBalance,
+    String? regularSavingsNumber,
   }) {
     return SavingsAccount(
       accountId: accountId ?? this.accountId,
@@ -77,6 +85,8 @@ class SavingsAccount {
       actualBalance: actualBalance ?? this.actualBalance,
       unallocatedBalance: unallocatedBalance ?? this.unallocatedBalance,
       currentXp: currentXp ?? this.currentXp,
+      maintainingBalance: maintainingBalance ?? this.maintainingBalance,
+      regularSavingsNumber: regularSavingsNumber ?? this.regularSavingsNumber,
     );
   }
 }

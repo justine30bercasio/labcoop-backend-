@@ -16,6 +16,8 @@ class SavingsAccountModel {
   final double actualBalance;
   final double unallocatedBalance;
   final int currentXp;
+  final double maintainingBalance;
+  final String? regularSavingsNumber;
 
   const SavingsAccountModel({
     required this.accountId,
@@ -33,6 +35,8 @@ class SavingsAccountModel {
     required this.actualBalance,
     required this.unallocatedBalance,
     required this.currentXp,
+    this.maintainingBalance = 0,
+    this.regularSavingsNumber,
   });
 
   factory SavingsAccountModel.fromJson(Map<String, dynamic> json) {
@@ -54,6 +58,8 @@ class SavingsAccountModel {
       actualBalance: n(json['actual_balance']),
       unallocatedBalance: n(json['unallocated_balance']),
       currentXp: i(json['current_xp']),
+      maintainingBalance: json['maintaining_balance'] != null ? n(json['maintaining_balance']) : 0,
+      regularSavingsNumber: json['regular_savings_number'] as String?,
     );
   }
 
@@ -74,6 +80,8 @@ class SavingsAccountModel {
       'actual_balance': actualBalance,
       'unallocated_balance': unallocatedBalance,
       'current_xp': currentXp,
+      'maintaining_balance': maintainingBalance,
+      'regular_savings_number': regularSavingsNumber,
     };
   }
 
@@ -94,6 +102,8 @@ class SavingsAccountModel {
       actualBalance: actualBalance,
       unallocatedBalance: unallocatedBalance,
       currentXp: currentXp,
+      maintainingBalance: maintainingBalance,
+      regularSavingsNumber: regularSavingsNumber,
     );
   }
 
@@ -114,6 +124,8 @@ class SavingsAccountModel {
       actualBalance: entity.actualBalance,
       unallocatedBalance: entity.unallocatedBalance,
       currentXp: entity.currentXp,
+      maintainingBalance: entity.maintainingBalance,
+      regularSavingsNumber: entity.regularSavingsNumber,
     );
   }
 }

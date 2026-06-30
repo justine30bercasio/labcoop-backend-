@@ -665,7 +665,7 @@ $(document).ready(function(){
             topStart: 'pageLength',
             topEnd: 'search',
             bottomStart: null,
-            bottomEnd: 'info paging'
+            bottomEnd: ['info', 'paging']
           }
         });
       }catch(e){}

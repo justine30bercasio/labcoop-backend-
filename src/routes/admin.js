@@ -1229,7 +1229,7 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
   const initial = (account.child_name || '?')[0].toUpperCase();
 
   const txRows = transactions.length === 0
-    ? '<tr><td colspan="6" class="no-data">No transactions</td></tr>'
+    ? '<tr><td colspan="6"><div class="m360-empty"><i class="fas fa-arrows-spin"></i>No transactions yet</div></td></tr>'
     : transactions.map(t => {
         const badgeCls = ({deposit:'badge-green',withdrawal:'badge-red',loan_disbursement:'badge-amber',loan_payment:'badge-blue',interest_credit:'badge-purple',interest:'badge-purple',allocation:'badge-purple',td_placement:'badge-amber',td_maturity:'badge-blue',fee:'badge-red',reward:'badge-green',purchase:'badge-gray'})[t.type] || 'badge-gray';
         const isInflow = ['deposit','loan_disbursement','interest_credit','interest','td_maturity','reward'].includes(t.type);
@@ -1238,22 +1238,22 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
         return `<tr>
           <td class="mono" style="font-size:11px">${dateFmt(t.created_at)}</td>
           <td><span class="badge ${badgeCls}">${t.type.replace(/_/g,' ')}</span></td>
-          <td class="mono" style="color:${col};font-weight:600">${sign}${fmt(t.amount)}</td>
-          <td style="font-size:12px;color:var(--text-muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.description || '-'}</td>
-          <td class="mono" style="font-size:11px">${t.balance_after ? fmt(t.balance_after) : '-'}</td>
-          <td><button class="btn btn-xs btn-outline" onclick="showTxDetail('${t.transaction_id}','${t.type}','${fmt(t.amount)}','${sign}','${t.balance_before ? fmt(t.balance_before) : '-'}','${t.balance_after ? fmt(t.balance_after) : '-'}','${dateFmt(t.created_at)}','${String(t.created_at||'').slice(11,19)}','${(t.description||'-').replace(/'/g,"\\'")}','${t.reference_type||'-'}','${t.reference_id||'-'}','${t.goal_title||''}','${t.transaction_id}')">View</button></td>
+          <td class="mono" style="color:${col};font-weight:600;text-align:right">${sign}${fmt(t.amount)}</td>
+          <td style="font-size:12px;color:var(--text-muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.description || '-'}</td>
+          <td class="mono" style="font-size:12px;text-align:right">${t.balance_after ? fmt(t.balance_after) : '-'}</td>
+          <td style="text-align:center"><button class="btn btn-xs btn-outline" onclick="showTxDetail('${t.transaction_id}','${t.type}','${fmt(t.amount)}','${sign}','${t.balance_before ? fmt(t.balance_before) : '-'}','${t.balance_after ? fmt(t.balance_after) : '-'}','${dateFmt(t.created_at)}','${String(t.created_at||'').slice(11,19)}','${(t.description||'-').replace(/'/g,"\\'")}','${t.reference_type||'-'}','${t.reference_id||'-'}','${t.goal_title||''}','${t.transaction_id}')">View</button></td>
         </tr>`;
       }).join('');
 
   const loanRows = loans.length === 0
-    ? '<tr><td colspan="7" class="no-data">No loans</td></tr>'
+    ? '<tr><td colspan="7"><div class="m360-empty"><i class="fas fa-sack-dollar"></i>No loans</div></td></tr>'
     : loans.map(l => {
         const ls = ({pending:'badge-amber',approved:'badge-blue',active:'badge-green',paid:'badge-gray',rejected:'badge-red',defaulted:'badge-red'})[l.status] || 'badge-gray';
         return `<tr>
           <td class="mono" style="font-size:11px">${(l.loan_id||'').slice(0,8).toUpperCase()}</td>
           <td>${l.product_id || '-'}</td>
-          <td>${fmt(l.principal)}</td>
-          <td>${fmt(l.remaining_balance || l.principal)}</td>
+          <td style="text-align:right">${fmt(l.principal)}</td>
+          <td style="text-align:right">${fmt(l.remaining_balance || l.principal)}</td>
           <td>${l.interest_rate}% ${l.interest_type||'flat'}</td>
           <td>${l.term_months || '-'}mo</td>
           <td><span class="badge ${ls}">${l.status}</span></td>
@@ -1261,12 +1261,12 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
       }).join('');
 
   const tdRows = tds.length === 0
-    ? '<tr><td colspan="6" class="no-data">No term deposits</td></tr>'
+    ? '<tr><td colspan="6"><div class="m360-empty"><i class="fas fa-clock"></i>No term deposits</div></td></tr>'
     : tds.map(d => {
         const ds = ({active:'badge-green',matured:'badge-blue',closed:'badge-gray',renewed:'badge-purple'})[d.status] || 'badge-gray';
         return `<tr>
           <td class="mono" style="font-size:11px">${d.td_number || (d.td_id||'').slice(0,8).toUpperCase()}</td>
-          <td>${fmt(d.amount)}</td>
+          <td style="text-align:right">${fmt(d.amount)}</td>
           <td>${d.term_days || '-'}d</td>
           <td>${d.interest_rate || 0}%</td>
           <td>${dateFmt(d.maturity_date)}</td>
@@ -1275,7 +1275,7 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
       }).join('');
 
   const goalHtml = goals.length === 0
-    ? '<div class="no-data" style="padding:20px">No goals set</div>'
+    ? '<div class="m360-empty"><i class="fas fa-bullseye"></i>No goals set</div>'
     : goals.map(g => {
         const pct = g.target_amount > 0 ? Math.min((Number(g.current_allocated) / Number(g.target_amount)) * 100, 100) : 0;
         return `<div style="display:flex;align-items:center;gap:12px;padding:8px 12px;background:var(--bg-secondary);border-radius:8px;margin-bottom:6px">
@@ -1285,141 +1285,167 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
       }).join('');
 
   const badgeHtml = badges.length === 0
-    ? '<div class="no-data" style="padding:20px">No badges earned</div>'
+    ? '<div class="m360-empty"><i class="fas fa-medal"></i>No badges earned</div>'
     : badges.map(b => `<span class="badge badge-purple" style="margin:2px;font-size:12px">${b.badge_name || b.badge_type || 'Badge'}</span>`).join('');
 
   const content = `
   <style>
-  .m360-grid { display:grid; grid-template-columns:300px 1fr; gap:16px; margin-bottom:16px }
-  .m360-card { background:var(--bg-secondary); border-radius:12px; padding:20px; text-align:center }
-  .m360-card .av { width:100px; height:100px; border-radius:50%; margin:0 auto 10px; overflow:hidden; background:var(--accent); display:flex; align-items:center; justify-content:center; font-size:40px; font-weight:700; color:#fff }
-  .m360-card .av img { width:100%; height:100%; object-fit:cover }
-  .m360-card h1 { font-size:20px; margin:0 0 2px }
-  .m360-card .meta { font-size:12px; color:var(--text-muted); margin-bottom:10px }
-  .m360-card .big-bal { font-size:28px; font-weight:700; margin:8px 0 }
-  .m360-card .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; text-align:left; margin-top:12px }
-  .m360-card .info-grid .ig-item { padding:6px 10px; background:var(--bg-primary); border-radius:6px; font-size:12px }
-  .m360-card .info-grid .ig-item .igl { font-size:10px; text-transform:uppercase; color:var(--text-muted); font-weight:600 }
-  .m360-card .info-grid .ig-item .igv { font-size:13px; font-weight:600 }
-  .m360-section { margin-bottom:16px }
-  .m360-section .card-header { display:flex; align-items:center; gap:8px }
-  .m360-section .card-header h3 { margin:0; font-size:15px }
-  .m360-section .card-header .count { font-size:11px; color:var(--text-muted); margin-left:auto }
-  .m360-tx-table td { padding:6px 8px; font-size:13px }
-  .m360-tx-table th { padding:6px 8px; font-size:11px }
-  table.m360-tx-table { width:100%; border-collapse:collapse }
-  table.m360-tx-table th { text-align:left; border-bottom:1px solid var(--border); font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.3px }
-  table.m360-tx-table td { border-bottom:1px solid var(--border) }
-  .m360-tx-table tr:hover td { background:var(--bg-secondary) }
-  .tx-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center }
+  .m360-top { display:flex; align-items:center; gap:20px; background:var(--bg-secondary); border-radius:16px; padding:20px 28px; margin-bottom:20px }
+  .m360-av { width:72px; height:72px; border-radius:50%; background:var(--accent); display:flex; align-items:center; justify-content:center; font-size:28px; font-weight:700; color:#fff; flex-shrink:0; overflow:hidden }
+  .m360-av img { width:100%; height:100%; object-fit:cover }
+  .m360-info { flex:1; min-width:0 }
+  .m360-info h1 { font-size:20px; margin:0; font-weight:700 }
+  .m360-info .sub { font-size:13px; color:var(--text-muted); margin:2px 0 }
+  .m360-info .bal-row { display:flex; align-items:center; gap:16px; margin-top:6px }
+  .m360-info .bal-row .bal { font-size:26px; font-weight:700 }
+  .m360-actions { display:flex; gap:6px; flex-shrink:0 }
+  .m360-actions a { white-space:nowrap }
+
+  .m360-metrics { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:8px; margin-bottom:20px }
+  .m360-metric { background:var(--bg-secondary); border-radius:10px; padding:10px 14px }
+  .m360-metric .ml { font-size:10px; text-transform:uppercase; letter-spacing:0.4px; color:var(--text-muted); font-weight:600 }
+  .m360-metric .mv { font-size:14px; font-weight:600; margin-top:1px }
+
+  .m360-panel { margin-bottom:16px }
+  .m360-panel .card { overflow:visible }
+  .m360-panel .card-header { display:flex; align-items:center; gap:10px; padding:12px 16px }
+  .m360-panel .card-header h3 { margin:0; font-size:14px; font-weight:600 }
+  .m360-panel .card-header .count { margin-left:auto; font-size:11px; color:var(--text-muted) }
+
+  .m360-table { width:100%; border-collapse:collapse }
+  .m360-table th { text-align:left; padding:9px 12px; font-size:10px; text-transform:uppercase; letter-spacing:0.3px; color:var(--text-muted); font-weight:600; border-bottom:1px solid var(--border); background:var(--bg-primary) }
+  .m360-table td { padding:9px 12px; font-size:13px; border-bottom:1px solid var(--border); transition:background 0.15s }
+  .m360-table tbody tr:hover td { background:var(--bg-secondary) }
+
+  .m360-search { width:100%; padding:10px 14px; border:none; border-bottom:1px solid var(--border); background:transparent; font-size:13px; outline:none; transition:border-color 0.2s }
+  .m360-search:focus { border-bottom-color:var(--accent) }
+
+  .m360-empty { text-align:center; padding:32px 16px; color:var(--text-muted); font-size:13px }
+  .m360-empty i { font-size:32px; margin-bottom:8px; opacity:0.4; display:block }
+
+  .m360-row { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px }
+
+  .goal-item { display:flex; align-items:center; gap:12px; padding:10px 14px; background:var(--bg-secondary); border-radius:10px; margin-bottom:6px; transition:background 0.15s }
+  .goal-item:hover { background:var(--bg-primary) }
+  .goal-item .gi-info { flex:1; min-width:0 }
+  .goal-item .gi-info b { font-size:14px; display:block }
+  .goal-item .gi-info span { font-size:11px; color:var(--text-muted) }
+  .goal-item .gi-bar { width:120px }
+
+  .badge-pill { display:inline-flex; align-items:center; gap:4px; padding:5px 12px; border-radius:20px; font-size:12px; font-weight:500; background:#f3e8ff; color:#7c3aed; margin:3px }
+  .badge-pill i { font-size:11px }
+
+  .tx-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9999; align-items:center; justify-content:center; backdrop-filter:blur(2px) }
   .tx-modal.show { display:flex }
-  .tx-modal .modal { max-width:440px; width:90% }
-  .tx-modal .tx-details { display:grid; grid-template-columns:1fr 1fr; gap:8px }
-  .tx-modal .tx-details .td-item { padding:8px 12px; background:var(--bg-secondary); border-radius:6px }
-  .tx-modal .tx-details .td-item .tdl { font-size:10px; text-transform:uppercase; color:var(--text-muted); font-weight:600; letter-spacing:0.3px }
-  .tx-modal .tx-details .td-item .tdv { font-size:14px; font-weight:600; margin-top:2px }
+  .tx-modal .modal { max-width:420px; width:90%; border-radius:16px; padding:24px }
+  .tx-details { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:16px }
+  .tx-details .td-item { padding:8px 12px; background:var(--bg-secondary); border-radius:8px }
+  .tx-details .td-item .tdl { font-size:10px; text-transform:uppercase; letter-spacing:0.3px; color:var(--text-muted); font-weight:600 }
+  .tx-details .td-item .tdv { font-size:14px; font-weight:600; margin-top:2px }
+
+  @media (max-width:768px){
+    .m360-top { flex-direction:column; text-align:center; padding:16px }
+    .m360-info .bal-row { justify-content:center; flex-wrap:wrap }
+    .m360-actions { width:100%; justify-content:center }
+    .m360-row { grid-template-columns:1fr }
+    .m360-metrics { grid-template-columns:repeat(auto-fill,minmax(100px,1fr)) }
+  }
   </style>
 
-  <div style="margin-bottom:12px">
-    <a href="/admin/accounts" class="btn btn-outline btn-xs"><i class="fas fa-arrow-left"></i> Back to Accounts</a>
-    <a href="#edit-${account.account_id}" class="btn btn-primary btn-xs" style="margin-left:8px"><i class="fas fa-pen"></i> Edit Member</a>
-    <a href="/admin/teller?account=${account.account_id}" class="btn btn-secondary btn-xs" style="margin-left:4px"><i class="fas fa-cash-register"></i> Teller</a>
-  </div>
-
-  <div class="m360-grid">
-    <!-- Profile Card -->
-    <div class="m360-card">
-      <div class="av">
-        ${account.profile_pic_url ? '<img src="' + account.profile_pic_url + '" alt="">' : initial}
-      </div>
+  <!-- Header -->
+  <div class="m360-top">
+    <div class="m360-av">
+      ${account.profile_pic_url ? '<img src="' + account.profile_pic_url + '" alt="">' : initial}
+    </div>
+    <div class="m360-info">
       <h1>${account.child_name}</h1>
-      <div class="meta">${account.member_id || 'No ID'} &middot; ${account.gender || '--'} &middot; ${account.age || '--'} yo</div>
-      <div class="big-bal">${fmt(account.actual_balance)}</div>
-      <span class="badge ${statusBadge}" style="font-size:13px">${statusLabel}</span>
-      <div class="info-grid">
-        <div class="ig-item"><div class="igl">Savings #</div><div class="igv mono" style="font-size:11px">${account.regular_savings_number || '-'}</div></div>
-        <div class="ig-item"><div class="igl">Unallocated</div><div class="igv">${fmt(account.unallocated_balance)}</div></div>
-        <div class="ig-item"><div class="igl">Maintaining</div><div class="igv" style="color:var(--accent-color)">${fmt(account.maintaining_balance || 0)}</div></div>
-        <div class="ig-item"><div class="igl">Schedule</div><div class="igv">${account.savings_schedule || '-'}</div></div>
-        <div class="ig-item"><div class="igl">Phone</div><div class="igv">${account.parent_phone || '-'}</div></div>
-        <div class="ig-item"><div class="igl">Member Since</div><div class="igv">${dateFmt(account.created_at)}</div></div>
-        <div class="ig-item"><div class="igl">Birthday</div><div class="igv">${account.birthday || '-'}</div></div>
-        <div class="ig-item"><div class="igl">XP</div><div class="igv">${account.current_xp || 0}</div></div>
+      <div class="sub">${account.member_id || 'No ID'} &middot; ${account.gender || '--'} &middot; ${account.age || '--'} yo &middot; Member since ${dateFmt(account.created_at)}</div>
+      <div class="bal-row">
+        <span class="bal">${fmt(account.actual_balance)}</span>
+        <span class="badge ${statusBadge}" style="font-size:12px">${statusLabel}</span>
       </div>
     </div>
-
-    <!-- Recent Transactions -->
-    <div class="m360-section">
-      <div class="card" style="overflow:visible">
-        <div class="card-header"><h3><i class="fas fa-arrows-spin"></i> Transactions</h3><span class="count">${transactions.length} total</span></div>
-        <div class="card-body" style="padding:0">
-          <input type="text" id="txSearch" placeholder="Search transactions..." onkeyup="filterTx()" style="width:100%;padding:8px 12px;border:none;border-bottom:1px solid var(--border);background:transparent;font-size:13px;outline:none">
-          <div style="overflow-x:auto;max-height:420px;overflow-y:auto">
-          <table class="m360-tx-table" id="txTable">
-            <thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Description</th><th>Balance</th><th></th></tr></thead>
-            <tbody>${txRows}</tbody>
-          </table>
-          </div>
-        </div>
-      </div>
+    <div class="m360-actions">
+      <a href="/admin/accounts" class="btn btn-outline btn-xs"><i class="fas fa-arrow-left"></i></a>
+      <a href="#edit-${account.account_id}" class="btn btn-primary btn-xs"><i class="fas fa-pen"></i> Edit</a>
+      <a href="/admin/teller?account=${account.account_id}" class="btn btn-secondary btn-xs"><i class="fas fa-cash-register"></i> Teller</a>
     </div>
   </div>
 
-  <!-- Loans -->
-  <div class="m360-section">
+  <!-- Metrics -->
+  <div class="m360-metrics">
+    <div class="m360-metric"><div class="ml">Savings #</div><div class="mv mono" style="font-size:12px">${account.regular_savings_number || '-'}</div></div>
+    <div class="m360-metric"><div class="ml">Balance</div><div class="mv">${fmt(account.actual_balance)}</div></div>
+    <div class="m360-metric"><div class="ml">Unallocated</div><div class="mv">${fmt(account.unallocated_balance)}</div></div>
+    <div class="m360-metric"><div class="ml">Maintaining</div><div class="mv" style="color:var(--accent-color)">${fmt(account.maintaining_balance || 0)}</div></div>
+    <div class="m360-metric"><div class="ml">Schedule</div><div class="mv">${account.savings_schedule || '-'}</div></div>
+    <div class="m360-metric"><div class="ml">Phone</div><div class="mv">${account.parent_phone || '-'}</div></div>
+    <div class="m360-metric"><div class="ml">Birthday</div><div class="mv">${account.birthday || '-'}</div></div>
+    <div class="m360-metric"><div class="ml">XP</div><div class="mv">${account.current_xp || 0}</div></div>
+  </div>
+
+  <!-- Transactions -->
+  <div class="m360-panel">
     <div class="card">
-      <div class="card-header"><h3><i class="fas fa-sack-dollar"></i> Loans</h3><span class="count">${loans.length} loan(s)</span></div>
-      <div class="card-body" style="padding:0;overflow-x:auto">
-      <table class="m360-tx-table">
-        <thead><tr><th>Loan #</th><th>Product</th><th>Principal</th><th>Balance</th><th>Rate</th><th>Term</th><th>Status</th></tr></thead>
-        <tbody>${loanRows}</tbody>
+      <div class="card-header"><h3><i class="fas fa-arrows-spin" style="color:var(--accent)"></i> Transactions</h3><span class="count">${transactions.length} entries</span></div>
+      <input type="text" class="m360-search" id="txSearch" placeholder="Search by type, amount, description..." onkeyup="filterTx()" style="width:100%">
+      <div class="card-body" style="padding:0;max-height:400px;overflow-y:auto">
+      <table class="m360-table" id="txTable">
+        <thead><tr><th>Date</th><th>Type</th><th style="text-align:right">Amount</th><th>Description</th><th style="text-align:right">Balance</th><th style="width:50px"></th></tr></thead>
+        <tbody>${txRows}</tbody>
       </table>
       </div>
     </div>
   </div>
 
-  <!-- Term Deposits -->
-  <div class="m360-section">
+  <!-- Loans + TD -->
+  <div class="m360-row">
     <div class="card">
-      <div class="card-header"><h3><i class="fas fa-clock"></i> Term Deposits</h3><span class="count">${tds.length} deposit(s)</span></div>
+      <div class="card-header"><h3><i class="fas fa-sack-dollar" style="color:#d97706"></i> Loans</h3><span class="count">${loans.length}</span></div>
       <div class="card-body" style="padding:0;overflow-x:auto">
-      <table class="m360-tx-table">
-        <thead><tr><th>TD #</th><th>Amount</th><th>Term</th><th>Rate</th><th>Maturity</th><th>Status</th></tr></thead>
+      <table class="m360-table">
+        <thead><tr><th>Loan #</th><th>Product</th><th style="text-align:right">Principal</th><th style="text-align:right">Balance</th><th>Rate</th><th>Term</th><th>Status</th></tr></thead>
+        <tbody>${loanRows}</tbody>
+      </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><h3><i class="fas fa-clock" style="color:#2563eb"></i> Term Deposits</h3><span class="count">${tds.length}</span></div>
+      <div class="card-body" style="padding:0;overflow-x:auto">
+      <table class="m360-table">
+        <thead><tr><th>TD #</th><th style="text-align:right">Amount</th><th>Term</th><th>Rate</th><th>Maturity</th><th>Status</th></tr></thead>
         <tbody>${tdRows}</tbody>
       </table>
       </div>
     </div>
   </div>
 
-  <!-- Goals & Badges -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+  <!-- Goals + Badges -->
+  <div class="m360-row">
     <div class="card">
-      <div class="card-header"><h3><i class="fas fa-bullseye"></i> Goals</h3><span class="count">${goals.length} goal(s)</span></div>
+      <div class="card-header"><h3><i class="fas fa-bullseye" style="color:#059669"></i> Goals</h3><span class="count">${goals.length}</span></div>
       <div class="card-body-padded">${goalHtml}</div>
     </div>
     <div class="card">
-      <div class="card-header"><h3><i class="fas fa-medal"></i> Badges</h3><span class="count">${badges.length} badge(s)</span></div>
+      <div class="card-header"><h3><i class="fas fa-medal" style="color:#7c3aed"></i> Badges</h3><span class="count">${badges.length}</span></div>
       <div class="card-body-padded">${badgeHtml}</div>
     </div>
   </div>
 
-  <!-- Transaction Detail Modal -->
+  <!-- TX Detail Modal -->
   <div class="tx-modal" id="txModal" onclick="if(event.target===this)closeTxModal()">
     <div class="modal">
       <a href="#" class="close" onclick="closeTxModal();return false">&times;</a>
-      <h3 style="margin:0 0 16px"><i class="fas fa-receipt"></i> Transaction Details</h3>
-      <div class="tx-details" id="txDetails">
-        <div class="td-item"><div class="tdl">Type</div><div class="tdv" id="txd_type"></div></div>
+      <h3 style="margin:0"><i class="fas fa-receipt"></i> Transaction Details</h3>
+      <div class="tx-details">
+        <div class="td-item" style="grid-column:1/-1"><div class="tdl">Type</div><div class="tdv" id="txd_type"></div></div>
         <div class="td-item"><div class="tdl">Amount</div><div class="tdv" id="txd_amount"></div></div>
-        <div class="td-item"><div class="tdl">Balance Before</div><div class="tdv" id="txd_bal_before"></div></div>
         <div class="td-item"><div class="tdl">Balance After</div><div class="tdv" id="txd_bal_after"></div></div>
         <div class="td-item"><div class="tdl">Date</div><div class="tdv" id="txd_date"></div></div>
         <div class="td-item"><div class="tdl">Time</div><div class="tdv" id="txd_time"></div></div>
         <div class="td-item" style="grid-column:1/-1"><div class="tdl">Description</div><div class="tdv" id="txd_desc"></div></div>
-        <div class="td-item"><div class="tdl">Reference Type</div><div class="tdv mono" style="font-size:12px" id="txd_ref_type"></div></div>
-        <div class="td-item"><div class="tdl">Reference ID</div><div class="tdv mono" style="font-size:12px" id="txd_ref_id"></div></div>
+        <div class="td-item"><div class="tdl">Reference</div><div class="tdv mono" style="font-size:12px" id="txd_ref"></div></div>
         <div class="td-item"><div class="tdl">Goal</div><div class="tdv" id="txd_goal"></div></div>
-        <div class="td-item"><div class="tdl">Transaction ID</div><div class="tdv mono" style="font-size:11px;word-break:break-all" id="txd_txid"></div></div>
       </div>
       <div style="text-align:right;margin-top:16px">
         <button class="btn btn-outline" onclick="closeTxModal()">Close</button>
@@ -1427,7 +1453,7 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
     </div>
   </div>
 
-  <!-- Edit Modal (reuse from accounts page) -->
+  <!-- Edit Modal -->
   <div id="edit-${account.account_id}" class="modal-overlay">
   <div class="modal" style="max-width:520px">
   <a href="#" class="close">&times;</a>
@@ -1468,17 +1494,16 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
     }
   }
   function showTxDetail(id,type,amount,sign,balBefore,balAfter,date,time,desc,refType,refId,goal,txid) {
-    document.getElementById('txd_type').innerHTML = '<span class="badge badge-blue">' + type.replace(/_/g,' ') + '</span>';
-    document.getElementById('txd_amount').innerHTML = '<span style="color:' + (sign === '+' ? 'var(--accent)' : 'var(--red)') + ';font-size:18px">' + sign + amount + '</span>';
-    document.getElementById('txd_bal_before').textContent = balBefore;
-    document.getElementById('txd_bal_after').textContent = balAfter;
+    var typeLabel = type.replace(/_/g,' ');
+    var colors = {deposit:'badge-green',withdrawal:'badge-red',loan_disbursement:'badge-amber',loan_payment:'badge-blue',interest_credit:'badge-purple',interest:'badge-purple',allocation:'badge-blue',td_placement:'badge-amber',td_maturity:'badge-blue',fee:'badge-red',reward:'badge-green',purchase:'badge-gray'};
+    document.getElementById('txd_type').innerHTML = '<span class="badge ' + (colors[type]||'badge-gray') + '">' + typeLabel + '</span>';
+    document.getElementById('txd_amount').innerHTML = '<span style="color:' + (sign === '+' ? 'var(--accent)' : 'var(--red)') + ';font-size:20px;font-weight:700">' + sign + amount + '</span>';
+    document.getElementById('txd_bal_after').innerHTML = balAfter + (balBefore !== '-' ? ' <span style="font-size:11px;color:var(--text-muted);font-weight:400">from ' + balBefore + '</span>' : '');
     document.getElementById('txd_date').textContent = date;
     document.getElementById('txd_time').textContent = time;
     document.getElementById('txd_desc').textContent = desc;
-    document.getElementById('txd_ref_type').textContent = refType;
-    document.getElementById('txd_ref_id').textContent = refId;
+    document.getElementById('txd_ref').innerHTML = (refType !== '-' ? '<span style="font-size:11px;color:var(--text-muted)">' + refType + ':</span> ' : '') + refId;
     document.getElementById('txd_goal').textContent = goal || '-';
-    document.getElementById('txd_txid').textContent = txid;
     document.getElementById('txModal').classList.add('show');
   }
   function closeTxModal() {

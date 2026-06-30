@@ -1232,7 +1232,7 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
     ? '<tr><td colspan="6"><div class="m360-empty"><i class="fas fa-arrows-spin"></i>No transactions yet</div></td></tr>'
     : transactions.map(t => {
         const badgeCls = ({deposit:'badge-green',withdrawal:'badge-red',loan_disbursement:'badge-amber',loan_payment:'badge-blue',interest_credit:'badge-purple',interest:'badge-purple',allocation:'badge-purple',td_placement:'badge-amber',td_maturity:'badge-blue',fee:'badge-red',reward:'badge-green',purchase:'badge-gray'})[t.type] || 'badge-gray';
-        const isInflow = ['deposit','loan_disbursement','interest_credit','interest','td_maturity','reward'].includes(t.type);
+        const isInflow = ['deposit','loan_disbursement','interest_credit','interest','td_maturity','reward','fee'].includes(t.type);
         const sign = isInflow ? '+' : '-';
         const col = isInflow ? 'var(--accent)' : 'var(--red)';
         return `<tr>
@@ -1495,7 +1495,7 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
   }
   function showTxDetail(id,type,amount,sign,balBefore,balAfter,date,time,desc,refType,refId,goal,txid) {
     var typeLabel = type.replace(/_/g,' ');
-    var colors = {deposit:'badge-green',withdrawal:'badge-red',loan_disbursement:'badge-amber',loan_payment:'badge-blue',interest_credit:'badge-purple',interest:'badge-purple',allocation:'badge-blue',td_placement:'badge-amber',td_maturity:'badge-blue',fee:'badge-red',reward:'badge-green',purchase:'badge-gray'};
+    var colors = {deposit:'badge-green',withdrawal:'badge-red',loan_disbursement:'badge-amber',loan_payment:'badge-blue',interest_credit:'badge-purple',interest:'badge-purple',allocation:'badge-blue',td_placement:'badge-amber',td_maturity:'badge-blue',fee:'badge-amber',reward:'badge-green',purchase:'badge-gray'};
     document.getElementById('txd_type').innerHTML = '<span class="badge ' + (colors[type]||'badge-gray') + '">' + typeLabel + '</span>';
     document.getElementById('txd_amount').innerHTML = '<span style="color:' + (sign === '+' ? 'var(--accent)' : 'var(--red)') + ';font-size:20px;font-weight:700">' + sign + amount + '</span>';
     document.getElementById('txd_bal_after').innerHTML = balAfter + (balBefore !== '-' ? ' <span style="font-size:11px;color:var(--text-muted);font-weight:400">from ' + balBefore + '</span>' : '');
@@ -1563,6 +1563,16 @@ router.post('/accounts/create', requireRole(2), asyncHandler(async (req, res) =>
     await store.query('UPDATE accounts SET member_id=$1, regular_savings_number=$2, savings_product_id=$3, maintaining_balance=$4 WHERE account_id=$5',
       [String(maxMember + 1).padStart(6, '0'), savingsNumber, 'sp_regular', maintainingBalance, account.account_id]);
     try { const audit = require('../services/audit'); await audit.log(req, 'ACCOUNT_CREATE', 'account', account.account_id, { child_name: child_name.trim(), initial_balance: initialBalance, maintaining_balance: maintainingBalance, regular_savings_number: savingsNumber }); } catch (e) {}
+    try { await store.addTransaction({
+      account_id: account.account_id,
+      type: 'fee',
+      amount: initialBalance,
+      description: 'Membership fee',
+      reference_type: 'account_create',
+      reference_id: account.account_id,
+      balance_before: 0,
+      balance_after: initialBalance,
+    }); } catch (e) {}
     res.redirect('/admin/accounts?added=ok');
   } catch (err) {
     res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);

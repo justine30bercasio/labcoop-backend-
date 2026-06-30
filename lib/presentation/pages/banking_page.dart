@@ -251,7 +251,7 @@ class _BankingPageState extends State<BankingPage> {
               Navigator.push(context, PageTransition.slideUp(StatementPage(accountId: widget.accountId)));
             }),
             _actionChip(Icons.account_balance, 'Open Savings', AppTheme.waterBlue, () {
-              Navigator.push(context, PageTransition.slideUp(SavingsOpenPage(accountId: widget.accountId)));
+              Navigator.push(context, MaterialPageRoute(builder: (_) => SavingsOpenPage(accountId: widget.accountId)));
             }),
             _actionChip(Icons.timer, 'Auto-Save', AppTheme.coinGold, () {
               Navigator.push(context, PageTransition.slideUp(AutoSavePage(accountId: widget.accountId)));

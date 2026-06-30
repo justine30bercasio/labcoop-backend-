@@ -85,6 +85,12 @@ function startScheduler() {
             console.log(`[Scheduler] Skipping standing order ${order.order_id} for ${order.child_name}: insufficient balance`);
             continue;
           }
+          // Check maintaining balance
+          const maintainingBalance = Number(order.maintaining_balance || 0);
+          if (Number(order.actual_balance) - amount < maintainingBalance) {
+            console.log(`[Scheduler] Skipping standing order ${order.order_id} for ${order.child_name}: would drop below maintaining balance of ₱${maintainingBalance.toFixed(2)}`);
+            continue;
+          }
 
           if (order.target_goal_id) {
             // Transfer to goal

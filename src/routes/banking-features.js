@@ -205,6 +205,10 @@ router.post('/withdrawals/request',
     if (Number(account.actual_balance) < Number(amount)) {
       return res.status(400).json({ message: 'Insufficient balance' });
     }
+    const maintainingBalance = Number(account.maintaining_balance || 0);
+    if (Number(account.actual_balance) - Number(amount) < maintainingBalance) {
+      return res.status(400).json({ message: `Cannot withdraw below maintaining balance of ₱${maintainingBalance.toFixed(2)}` });
+    }
 
     // Check for existing pending withdrawal request
     const existing = await store.getWithdrawalRequests(account_id);

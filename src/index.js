@@ -173,12 +173,20 @@ async function ensureDb() {
         q.map(v => typeof v === 'string' ? v : JSON.stringify(v))
       );
     }
-    await store.query(
+      await store.query(
       `INSERT INTO savings_products (product_id, name, description, interest_rate, interest_frequency, min_balance, is_active, created_at)
        VALUES ('sp_regular', 'Regular Savings', 'Default savings account with automatic interest', 0.02, 'monthly', 0, 1, $1)
        ON CONFLICT (product_id) DO UPDATE SET interest_rate = 0.02`,
       [new Date().toISOString()]
     );
+    // Seed default maintaining balance setting if not set
+    try {
+      const existing = await store.query("SELECT * FROM settings WHERE key = 'default_maintaining_balance'");
+      if (!existing.rows.length) {
+        await store.query("INSERT INTO settings (key, value) VALUES ('default_maintaining_balance', '100')");
+        console.log('Default maintaining balance set to PHP 100');
+      }
+    } catch (_) {}
     console.log('Seed data ensured.');
   } catch (err) {
     console.error('Seed failed:', err.message);
@@ -216,6 +224,14 @@ async function ensureSavingsProduct() {
   } catch (err) {
     console.error('Savings product seed failed (non-fatal):', err.message);
   }
+  // Seed default maintaining balance setting
+  try {
+    const existingSetting = await store.query("SELECT * FROM settings WHERE key = 'default_maintaining_balance'");
+    if (!existingSetting.rows.length) {
+      await store.query("INSERT INTO settings (key, value) VALUES ('default_maintaining_balance', '100')");
+      console.log('Default maintaining balance set to PHP 100');
+    }
+  } catch (_) {}
 }
 
 (async () => {

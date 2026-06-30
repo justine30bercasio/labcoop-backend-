@@ -84,6 +84,8 @@ function getDb() {
     try { db.exec("CREATE TABLE IF NOT EXISTS groups (group_id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT DEFAULT '', member_count INTEGER DEFAULT 0, created_at TEXT)"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS group_members (gm_id TEXT PRIMARY KEY, group_id TEXT NOT NULL, account_id TEXT NOT NULL, role TEXT DEFAULT 'member' CHECK(role IN ('leader','member')), joined_at TEXT)"); } catch (_) {}
     try { db.exec("ALTER TABLE accounts ADD COLUMN currency TEXT DEFAULT 'PHP'"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN maintaining_balance DECIMAL(12,2) DEFAULT 0"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN regular_savings_number TEXT"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS holiday_calendar (holiday_id TEXT PRIMARY KEY, name TEXT NOT NULL, date TEXT NOT NULL UNIQUE, type TEXT DEFAULT 'regular' CHECK(type IN ('regular','special','local')), is_recurring INTEGER DEFAULT 0, created_at TEXT)"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS tax_config (tax_id TEXT PRIMARY KEY, name TEXT NOT NULL, rate DECIMAL(5,2) NOT NULL, applies_to TEXT DEFAULT 'interest' CHECK(applies_to IN ('interest','fee','dividend','all')), is_active INTEGER DEFAULT 1, created_at TEXT)"); } catch (_) {}
     try { db.exec("INSERT OR IGNORE INTO tax_config (tax_id, name, rate, applies_to) VALUES ('tax_interest', 'Interest Income Tax', 20, 'interest')"); } catch (_) {}
@@ -137,14 +139,34 @@ function createAccount(fields) {
     id_photo_url: fields.id_photo_url || '',
     profile_pic_url: fields.profile_pic_url || '',
     is_active: fields.is_active ?? 1,
+    savings_product_id: fields.savings_product_id || null,
+    maintaining_balance: fields.maintaining_balance || 0,
+    regular_savings_number: fields.regular_savings_number || null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
   getDb().prepare(`
-    INSERT INTO accounts (account_id, child_name, member_id, password, password_changed, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, age, gender, savings_schedule, photo_2x2_url, birth_cert_url, id_photo_url, profile_pic_url, is_active, created_at, updated_at)
-    VALUES (@account_id, @child_name, @member_id, @password, @password_changed, @actual_balance, @unallocated_balance, @current_xp, @parent_phone, @last_name, @first_name, @middle_name, @birthday, @age, @gender, @savings_schedule, @photo_2x2_url, @birth_cert_url, @id_photo_url, @profile_pic_url, @is_active, @created_at, @updated_at)
+    INSERT INTO accounts (account_id, child_name, member_id, password, password_changed, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, age, gender, savings_schedule, photo_2x2_url, birth_cert_url, id_photo_url, profile_pic_url, is_active, savings_product_id, maintaining_balance, regular_savings_number, created_at, updated_at)
+    VALUES (@account_id, @child_name, @member_id, @password, @password_changed, @actual_balance, @unallocated_balance, @current_xp, @parent_phone, @last_name, @first_name, @middle_name, @birthday, @age, @gender, @savings_schedule, @photo_2x2_url, @birth_cert_url, @id_photo_url, @profile_pic_url, @is_active, @savings_product_id, @maintaining_balance, @regular_savings_number, @created_at, @updated_at)
   `).run(account);
   return account;
+}
+
+function generateSavingsAccountNumber(branch) {
+  const now = new Date();
+  const mmdd = String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0') + String(now.getFullYear()).slice(-2);
+  const seqName = `savings_acct_${branch || '01'}_${mmdd}`;
+  const db = getDb();
+  const seq = db.transaction(() => {
+    const existing = db.prepare('SELECT value FROM sequences WHERE name = ? AND year = ?').get(seqName, now.getFullYear());
+    if (!existing) {
+      db.prepare('INSERT INTO sequences (name, year, value) VALUES (?, ?, 1)').run(seqName, now.getFullYear());
+      return 1;
+    }
+    db.prepare('UPDATE sequences SET value = value + 1 WHERE name = ? AND year = ?').run(seqName, now.getFullYear());
+    return existing.value + 1;
+  })();
+  return `SAVC-${String(branch || '01').padStart(2, '0')}-${mmdd}-${String(seq).padStart(3, '0')}`;
 }
 
 function _computeAge(birthday) {
@@ -160,7 +182,7 @@ function _computeAge(birthday) {
 }
 
 function updateAccount(accountId, fields) {
-  const allowed = ['actual_balance', 'unallocated_balance', 'current_xp', 'child_name', 'parent_phone', 'last_name', 'first_name', 'middle_name', 'birthday', 'age', 'gender', 'savings_schedule', 'photo_2x2_url', 'birth_cert_url', 'id_photo_url', 'profile_pic_url', 'is_active'];
+  const allowed = ['actual_balance', 'unallocated_balance', 'current_xp', 'child_name', 'parent_phone', 'last_name', 'first_name', 'middle_name', 'birthday', 'age', 'gender', 'savings_schedule', 'photo_2x2_url', 'birth_cert_url', 'id_photo_url', 'profile_pic_url', 'is_active', 'maintaining_balance', 'regular_savings_number', 'savings_product_id'];
   const setClauses = [];
   const values = [];
 
@@ -897,6 +919,7 @@ module.exports = {
   getAccountByName,
   createAccount,
   updateAccount,
+  generateSavingsAccountNumber,
   getGoals,
   getGoal,
   createGoal,

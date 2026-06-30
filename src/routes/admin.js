@@ -1082,7 +1082,7 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
     </div>
     <div class="card-body">
     <table class="dt-accounts-table">
-    <thead><tr><th>Name</th><th>Member ID</th><th>Age</th><th>Gender</th><th>Schedule</th><th>Balance</th><th>Unallocated</th><th>Status</th><th>Password</th><th>Created</th><th>Actions</th></tr></thead>
+    <thead><tr><th>Name</th><th>Member ID</th><th>Savings #</th><th>Age</th><th>Gender</th><th>Schedule</th><th>Balance</th><th>Maintaining</th><th>Unallocated</th><th>Status</th><th>Password</th><th>Created</th><th>Actions</th></tr></thead>
     <tbody>
     ${accounts.map(a => {
       const statusNum = Number(a.is_active);
@@ -1091,10 +1091,12 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
       return `<tr>
       <td><a href="#view-${a.account_id}" class="name-link">${a.child_name}</a></td>
       <td class="mono">${a.member_id || '-'}</td>
+      <td class="mono" style="font-size:11px">${a.regular_savings_number || '-'}</td>
       <td class="num">${a.age || '-'}</td>
       <td>${a.gender || '-'}</td>
       <td>${a.savings_schedule || '-'}</td>
       <td class="num">&#x20B1;${Number(a.actual_balance).toFixed(2)}</td>
+      <td class="num" style="color:var(--accent-color)">&#x20B1;${Number(a.maintaining_balance || 0).toFixed(2)}</td>
       <td class="num">&#x20B1;${Number(a.unallocated_balance).toFixed(2)}</td>
       <td><span class="badge ${statusBadge}">${statusLabel}</span></td>
       <td><span class="badge ${a.password_changed ? 'badge-green' : 'badge-red'}">${a.password_changed ? 'Changed' : 'Default'}</span></td>
@@ -1120,23 +1122,32 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
   <div class="modal" style="max-width:520px">
   <a href="#" class="close">&times;</a>
   <h2>&#x2795; New Account</h2>
+  <div class="info-box" style="margin-bottom:12px;padding:8px 12px;background:#e8f5e9;border-radius:6px;font-size:13px;color:#1B5E20">
+    <i class="fas fa-piggy-bank"></i> Regular Savings (sp_regular) will be auto-opened with a generated account number.
+  </div>
   <form method="post" action="/admin/accounts/create">
     <input type="hidden" name="child_name" value="auto">
     <div class="info-box" style="margin-bottom:12px;padding:8px 12px;background:var(--bg-secondary);border-radius:6px;font-size:13px">Display name auto-composed as: <b>FIRSTNAME M. LASTNAME</b></div>
     <div class="form-row">
-      <div><label for="alast">Last Name</label><input type="text" id="alast" name="last_name" placeholder="Dela Cruz" style="text-transform:uppercase"></div>
-      <div><label for="afirst">First Name</label><input type="text" id="afirst" name="first_name" placeholder="Juan" style="text-transform:uppercase"></div>
+      <div><label for="alast">Last Name <span class="required">*</span></label><input type="text" id="alast" name="last_name" placeholder="Dela Cruz" required style="text-transform:uppercase"></div>
+      <div><label for="afirst">First Name <span class="required">*</span></label><input type="text" id="afirst" name="first_name" placeholder="Juan" required style="text-transform:uppercase"></div>
       <div><label for="amid">Middle Name</label><input type="text" id="amid" name="middle_name" placeholder="Optional" style="text-transform:uppercase"></div>
     </div>
     <div class="form-row">
-      <div><label for="abday">Birthday</label><input type="date" id="abday" name="birthday"></div>
-      <div><label for="agender">Gender</label><select id="agender" name="gender"><option value="">--</option><option value="Male">Male</option><option value="Female">Female</option></select></div>
-      <div><label for="asched">Savings Schedule</label><select id="asched" name="savings_schedule"><option value="">--</option><option value="Daily">Daily</option><option value="Weekly">Weekly</option><option value="Bi-Weekly">Bi-Weekly</option><option value="Monthly">Monthly</option><option value="Every Quarter">Every Quarter</option></select></div>
+      <div><label for="abday">Birthday <span class="required">*</span></label><input type="date" id="abday" name="birthday" required></div>
+      <div><label for="agender">Gender <span class="required">*</span></label><select id="agender" name="gender" required><option value="">--</option><option value="Male">Male</option><option value="Female">Female</option></select></div>
+      <div><label for="asched">Savings Schedule <span class="required">*</span></label><select id="asched" name="savings_schedule" required><option value="">--</option><option value="Daily">Daily</option><option value="Weekly">Weekly</option><option value="Bi-Weekly">Bi-Weekly</option><option value="Monthly">Monthly</option><option value="Every Quarter">Every Quarter</option></select></div>
     </div>
-    <label for="abalance">Initial Balance (&#x20B1;)</label>
-    <input type="number" id="abalance" name="actual_balance" min="0" value="0">
-    <label for="aphone">Parent Phone</label>
-    <input type="text" id="aphone" name="parent_phone" placeholder="Optional">
+    <div class="form-row">
+      <div><label for="abalance">Initial Balance / Maintaining Balance (&#x20B1;) <span class="required">*</span></label>
+        <input type="number" id="abalance" name="actual_balance" min="0" value="100" step="0.01" required></div>
+      <div><label for="aphone">Parent Phone</label>
+        <input type="text" id="aphone" name="parent_phone" placeholder="Optional"></div>
+    </div>
+    <p style="font-size:12px;color:var(--text-muted);margin:4px 0 8px">
+      <i class="fas fa-info-circle"></i> The initial deposit becomes the maintaining balance — withdrawals cannot go below this amount.
+      Savings account number is auto-generated as SAVC-BRANCH-MMDDYY-SEQ.
+    </p>
     <button type="submit" class="btn btn-primary">&#x2795; Create Account</button>
   </form>
   </div>
@@ -1238,14 +1249,24 @@ router.post('/accounts/create', requireRole(2), asyncHandler(async (req, res) =>
   try {
     const { child_name, actual_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, gender, savings_schedule } = req.body;
     if (!child_name) return res.redirect('/admin/accounts?error=Name+required');
+    if (!last_name || !first_name || !birthday || !gender || !savings_schedule) {
+      return res.redirect('/admin/accounts?error=All+required+fields+must+be+filled');
+    }
 
     const ulast = (last_name || '').trim().toUpperCase();
     const ufirst = (first_name || '').trim().toUpperCase();
     const umid = (middle_name || '').trim().toUpperCase();
     const displayName = umid ? `${ufirst} ${umid[0]}. ${ulast}` : `${ufirst} ${ulast}`;
 
+    const initialBalance = Number(actual_balance) || 100;
+
     const maxResult = await store.query("SELECT MAX(CAST(member_id AS INTEGER)) as m FROM accounts");
     const maxMember = parseInt(maxResult.rows[0]?.m || '0', 10);
+
+    // Get default maintaining balance from settings, fallback to the initial balance amount
+    const defaultMaintaining = await store.getSetting('default_maintaining_balance');
+    const maintainingBalance = parseFloat(defaultMaintaining) || initialBalance;
+
     const account = await store.createAccount({
       child_name: displayName,
       last_name: ulast,
@@ -1254,14 +1275,22 @@ router.post('/accounts/create', requireRole(2), asyncHandler(async (req, res) =>
       birthday: birthday || '',
       gender: gender || '',
       savings_schedule: savings_schedule || '',
-      actual_balance: Number(actual_balance) || 0,
-      unallocated_balance: Number(actual_balance) || 0,
+      actual_balance: initialBalance,
+      unallocated_balance: initialBalance,
       current_xp: Number(current_xp) || 0,
       parent_phone: parent_phone || '',
       password: bcrypt.hashSync('0000', 10),
+      savings_product_id: 'sp_regular',
+      maintaining_balance: maintainingBalance,
     });
-    await store.query('UPDATE accounts SET member_id=$1 WHERE account_id=$2', [String(maxMember + 1).padStart(6, '0'), account.account_id]);
-    try { const audit = require('../services/audit'); await audit.log(req, 'ACCOUNT_CREATE', 'account', account.account_id, { child_name: child_name.trim(), initial_balance: Number(actual_balance) || 0 }); } catch (e) {}
+
+    // Generate regular savings account number
+    const branchCode = account.branch_id || '01';
+    const savingsNumber = await store.generateSavingsAccountNumber(branchCode);
+
+    await store.query('UPDATE accounts SET member_id=$1, regular_savings_number=$2, savings_product_id=$3, maintaining_balance=$4 WHERE account_id=$5',
+      [String(maxMember + 1).padStart(6, '0'), savingsNumber, 'sp_regular', maintainingBalance, account.account_id]);
+    try { const audit = require('../services/audit'); await audit.log(req, 'ACCOUNT_CREATE', 'account', account.account_id, { child_name: child_name.trim(), initial_balance: initialBalance, maintaining_balance: maintainingBalance, regular_savings_number: savingsNumber }); } catch (e) {}
     res.redirect('/admin/accounts?added=ok');
   } catch (err) {
     res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
@@ -2148,6 +2177,7 @@ router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {
   const savingsProduct = await one("SELECT * FROM savings_products WHERE product_id = 'sp_regular'");
   const savingsRate = savingsProduct ? (parseFloat(savingsProduct.interest_rate) * 100).toFixed(1) : '2.0';
   const savingsFrequency = savingsProduct?.interest_frequency || 'monthly';
+  const defaultMaintaining = await store.getSetting('default_maintaining_balance');
 
   const tip = isPostgres ? '' : `<div class="card" style="margin-top:20px"><div class="card-body-padded"><b>&#x26A0; SQLite:</b> Database file is <code>${(dbSize / 1024).toFixed(1)} KB</code> on disk at <code>backend/labcoop.db</code></div></div>`;
 
@@ -2201,6 +2231,21 @@ router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {
   </div>
 
   <div class="card">
+    <div class="card-header"><h3><i class="fas fa-shield-alt"></i> Maintaining Balance</h3></div>
+    <div class="card-body-padded">
+      <form id="maintainingBalanceForm" style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end">
+        <div class="field"><label><i class="fas fa-coins"></i> Default Maintaining Balance (&#x20B1;)</label>
+          <input type="number" id="defaultMaintaining" value="${parseFloat(defaultMaintaining || '100').toFixed(2)}" min="0" step="0.01" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px">
+        </div>
+        <button type="submit" class="btn btn-secondary"><i class="fas fa-floppy-disk"></i> Save</button>
+      </form>
+      <p style="margin-top:10px;font-size:12px;color:var(--text-muted)">
+        <i class="fas fa-info-circle"></i> This is the minimum balance every new account must maintain. Withdrawals that would drop the balance below this amount are blocked.
+      </p>
+    </div>
+  </div>
+
+  <div class="card">
     <div class="card-header"><h3><i class="fas fa-mobile-alt"></i> GCash Settings</h3></div>
     <div class="card-body">
       <form id="gcashForm" style="display:flex;flex-direction:column;gap:12px">
@@ -2245,6 +2290,18 @@ router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {
       showGcashToast(d.success ? 'GCash settings saved!' : d.message||'Error', !d.success);
     }).catch(function(e){ showGcashToast(e.message, true); });
   });
+  document.getElementById('maintainingBalanceForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var val = parseFloat(document.getElementById('defaultMaintaining').value);
+    if(isNaN(val) || val < 0){ showGcashToast('Enter a valid amount', true); return; }
+    fetch('/admin/settings/maintaining-balance', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ amount: val })
+    }).then(function(r){ return r.json(); }).then(function(d){
+      showGcashToast(d.success ? 'Maintaining balance saved!' : d.message||'Error', !d.success);
+    }).catch(function(e){ showGcashToast(e.message, true); });
+  });
   document.getElementById('savingsRateForm').addEventListener('submit', function(e){
     e.preventDefault();
     var rate = parseFloat(document.getElementById('savingsRate').value);
@@ -2283,6 +2340,15 @@ router.post('/settings/gcash', requireRole(3), asyncHandler(async (req, res) => 
   await store.setSetting('gcash_number', req.body.gcash_number.trim());
   await store.setSetting('gcash_name', req.body.gcash_name.trim());
   res.json({ success: true });
+}));
+
+router.post('/settings/maintaining-balance', requireRole(3), asyncHandler(async (req, res) => {
+  const amount = parseFloat(req.body.amount);
+  if (isNaN(amount) || amount < 0) {
+    return res.status(400).json({ success: false, message: 'Amount must be a positive number' });
+  }
+  await store.setSetting('default_maintaining_balance', String(amount));
+  res.json({ success: true, amount });
 }));
 
 router.post('/settings/savings-rate', requireRole(3), asyncHandler(async (req, res) => {
@@ -2797,6 +2863,10 @@ router.post('/withdrawal-requests/pay/:id', requireRole(2), asyncHandler(async (
     if (!account) return res.redirect('/admin/withdrawal-requests?error=Account+not+found');
     if (Number(account.actual_balance) < Number(reqData.amount)) {
       return res.redirect('/admin/withdrawal-requests?error=Insufficient+balance');
+    }
+    const maintainingBalance = Number(account.maintaining_balance || 0);
+    if (Number(account.actual_balance) - Number(reqData.amount) < maintainingBalance) {
+      return res.redirect(`/admin/withdrawal-requests?error=Cannot+withdraw+below+maintaining+balance+of+%E2%82%B1${maintainingBalance.toFixed(2)}`);
     }
 
     const val = Number(reqData.amount);
@@ -3443,6 +3513,10 @@ router.post('/teller/withdraw/:id', requireRole(2), asyncHandler(async (req, res
     const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
     if (!account) return res.redirect('/admin/teller?error=Account+not+found');
     if (Number(account.actual_balance) < val) return res.redirect('/admin/teller?error=Insufficient+balance');
+    const maintainingBalance = Number(account.maintaining_balance || 0);
+    if (Number(account.actual_balance) - val < maintainingBalance) {
+      return res.redirect(`/admin/teller?error=Cannot+withdraw+below+maintaining+balance+of+%E2%82%B1${maintainingBalance.toFixed(2)}`);
+    }
     const newBalance = Math.round((Number(account.actual_balance) - val) * 100) / 100;
     const newUnallocated = Math.round((Number(account.unallocated_balance) - val) * 100) / 100;
 

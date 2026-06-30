@@ -97,6 +97,10 @@ router.post('/login', asyncHandler(async (req, res) => {
       actual_balance: Number(account.actual_balance),
       unallocated_balance: Number(account.unallocated_balance),
       current_xp: Number(account.current_xp),
+      member_id: account.member_id,
+      savings_product_id: account.savings_product_id,
+      maintaining_balance: Number(account.maintaining_balance || 0),
+      regular_savings_number: account.regular_savings_number,
     },
   });
 }));
@@ -119,6 +123,15 @@ router.post('/register', regUpload.fields([
   if (!firstName || typeof firstName !== 'string' || firstName.trim().length === 0) {
     return res.status(400).json({ message: 'firstName is required' });
   }
+  if (!birthday || typeof birthday !== 'string' || birthday.trim().length === 0) {
+    return res.status(400).json({ message: 'birthday is required' });
+  }
+  if (!gender || typeof gender !== 'string' || gender.trim().length === 0) {
+    return res.status(400).json({ message: 'gender is required' });
+  }
+  if (!savingsSchedule || typeof savingsSchedule !== 'string' || savingsSchedule.trim().length === 0) {
+    return res.status(400).json({ message: 'savingsSchedule is required' });
+  }
   if (!password || typeof password !== 'string' || password.length < 8) {
     return res.status(400).json({ message: 'password is required (min 8 characters)' });
   }
@@ -138,6 +151,10 @@ router.post('/register', regUpload.fields([
   const birthCertUrl = files.birth_cert ? '/uploads/registration/' + files.birth_cert[0].filename : '';
   const idPhotoUrl = files.id_photo ? '/uploads/registration/' + files.id_photo[0].filename : '';
 
+  // Get default maintaining balance from settings
+  const defaultMaintaining = await store.getSetting('default_maintaining_balance');
+  const maintainingBalance = parseFloat(defaultMaintaining) || 100;
+
   const account = await store.createAccount({
     child_name: displayName,
     last_name: ulast,
@@ -152,12 +169,25 @@ router.post('/register', regUpload.fields([
     birth_cert_url: birthCertUrl,
     id_photo_url: idPhotoUrl,
     password: bcrypt.hashSync(password, 10),
+    savings_product_id: 'sp_regular',
+    maintaining_balance: maintainingBalance,
   });
   const maxResult = await store.query("SELECT MAX(CAST(member_id AS INTEGER)) as m FROM accounts");
   const maxMember = parseInt(maxResult.rows[0]?.m || '0', 10);
   const newMemberId = String(maxMember + 1).padStart(6, '0');
-  await store.query('UPDATE accounts SET member_id = $1, password_changed = 1 WHERE account_id = $2', [newMemberId, account.account_id]);
+  // Generate regular savings account number
+  const accountResult = await store.query("SELECT branch_id FROM accounts WHERE account_id = $1", [account.account_id]);
+  const branchCode = accountResult.rows[0]?.branch_id || '01';
+  let savingsNumber;
+  if (store.generateSavingsAccountNumber) {
+    savingsNumber = await store.generateSavingsAccountNumber(branchCode);
+  }
+  await store.query('UPDATE accounts SET member_id = $1, password_changed = 1, savings_product_id = $2, maintaining_balance = $3, regular_savings_number = $4 WHERE account_id = $5',
+    [newMemberId, 'sp_regular', maintainingBalance, savingsNumber || null, account.account_id]);
   account.member_id = newMemberId;
+  account.savings_product_id = 'sp_regular';
+  account.maintaining_balance = maintainingBalance;
+  account.regular_savings_number = savingsNumber;
 
   const token = jwt.sign(
     { accountId: account.account_id, childName: account.child_name },
@@ -185,6 +215,9 @@ router.post('/register', regUpload.fields([
       actual_balance: account.actual_balance,
       unallocated_balance: account.unallocated_balance,
       current_xp: account.current_xp,
+      savings_product_id: account.savings_product_id,
+      maintaining_balance: account.maintaining_balance,
+      regular_savings_number: account.regular_savings_number,
     },
   });
 }));

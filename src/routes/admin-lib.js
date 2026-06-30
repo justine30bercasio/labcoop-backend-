@@ -640,6 +640,7 @@ clone.querySelectorAll('a,button').forEach(function(el) {
 
 $(document).ready(function(){
   $('.card-body table').each(function(){
+    if($(this).is('[data-skip-datatable]')) return;
     var $th = $(this).find('thead th, > tr:first th').length;
     var $td = $(this).find('tbody tr:first td, > tr:eq(1) td').length;
     if($td === 0) $td = $th;

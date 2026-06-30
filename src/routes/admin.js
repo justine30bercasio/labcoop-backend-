@@ -1388,9 +1388,9 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
   <div class="m360-panel">
     <div class="card">
       <div class="card-header"><h3><i class="fas fa-arrows-spin" style="color:var(--accent)"></i> Transactions</h3><span class="count">${transactions.length} entries</span></div>
-      <input type="text" class="m360-search" id="txSearch" placeholder="Search by type, amount, description..." onkeyup="filterTx()" style="width:100%">
-      <div class="card-body" style="padding:0;max-height:400px;overflow-y:auto">
-      <table class="m360-table" id="txTable">
+      <div class="card-body" style="padding:0;max-height:420px;overflow-y:auto">
+      <input type="text" class="m360-search" id="txSearch" placeholder="Search by type, amount, description..." onkeyup="filterTx()">
+      <table class="m360-table" id="txTable" data-skip-datatable>
         <thead><tr><th>Date</th><th>Type</th><th style="text-align:right">Amount</th><th>Description</th><th style="text-align:right">Balance</th><th style="width:50px"></th></tr></thead>
         <tbody>${txRows}</tbody>
       </table>

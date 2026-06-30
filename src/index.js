@@ -175,8 +175,8 @@ async function ensureDb() {
     }
       await store.query(
       `INSERT INTO savings_products (product_id, name, description, interest_rate, interest_frequency, min_balance, is_active, created_at)
-       VALUES ('sp_regular', 'Regular Savings', 'Default savings account with automatic interest', 0.02, 'monthly', 0, 1, $1)
-       ON CONFLICT (product_id) DO UPDATE SET interest_rate = 0.02`,
+       VALUES ('sp_regular', 'Regular Savings', 'Default savings account with automatic interest', 0.02, 'yearly', 0, 1, $1)
+       ON CONFLICT (product_id) DO UPDATE SET interest_rate = 0.02, interest_frequency = 'yearly'`,
       [new Date().toISOString()]
     );
     // Seed default maintaining balance setting if not set
@@ -216,10 +216,10 @@ async function ensureSavingsProduct() {
     if (!existing.rows.length) {
       await store.query(
         `INSERT INTO savings_products (product_id, name, description, interest_rate, interest_frequency, min_balance, is_active, created_at)
-         VALUES ('sp_regular', 'Regular Savings', 'Default savings account with automatic interest', 0.02, 'monthly', 0, 1, $1)`,
+         VALUES ('sp_regular', 'Regular Savings', 'Default savings account with automatic interest', 0.02, 'yearly', 0, 1, $1)`,
         [new Date().toISOString()]
       );
-      console.log('Default savings product created: sp_regular (2% monthly)');
+      console.log('Default savings product created: sp_regular (2% yearly)');
     }
   } catch (err) {
     console.error('Savings product seed failed (non-fatal):', err.message);

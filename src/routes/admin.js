@@ -1039,6 +1039,9 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
     : q.uploaded ? 'success:Photo uploaded.'
     : q.error ? `error:${q.error}`
     : '';
+  const membershipFee = await store.getSetting('membership_fee') || '100';
+  const insuranceFee = await store.getSetting('insurance_fee') || '50';
+  const initialSavings = await store.getSetting('initial_savings') || '100';
 
   const content = `
   <style>
@@ -5922,6 +5925,7 @@ router.get('/users', requireRole(4), asyncHandler(async (req, res) => {
     : q.updated ? 'success:Admin user updated.'
     : q.error ? `error:${q.error}`
     : '';
+  const roleColors = { super_admin:'badge-red', manager:'badge-blue', teller:'badge-green', auditor:'badge-orange' };
   const membershipFee = await store.getSetting('membership_fee') || '100';
   const insuranceFee = await store.getSetting('insurance_fee') || '50';
   const initialSavings = await store.getSetting('initial_savings') || '100';

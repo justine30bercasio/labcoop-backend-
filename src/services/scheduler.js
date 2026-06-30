@@ -32,7 +32,8 @@ function startScheduler() {
           );
 
           if (!lastInterest) {
-            shouldApply = true;
+            const created = new Date(account.created_at);
+            shouldApply = created.getMonth() !== now.getMonth() || created.getFullYear() !== now.getFullYear();
           } else {
             const lastDate = new Date(lastInterest.created_at);
             shouldApply = lastDate.getMonth() !== now.getMonth() || lastDate.getFullYear() !== now.getFullYear();
@@ -44,7 +45,8 @@ function startScheduler() {
           );
 
           if (!lastInterest) {
-            shouldApply = true;
+            const created = new Date(account.created_at);
+            shouldApply = created.getFullYear() !== now.getFullYear();
           } else {
             const lastDate = new Date(lastInterest.created_at);
             shouldApply = lastDate.getFullYear() !== now.getFullYear();

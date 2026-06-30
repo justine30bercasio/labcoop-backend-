@@ -1082,7 +1082,7 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
     </div>
     <div class="card-body">
     <table class="dt-accounts-table">
-    <thead><tr><th>Name</th><th>Member ID</th><th>Savings #</th><th>Age</th><th>Gender</th><th>Schedule</th><th>Balance</th><th>Maintaining</th><th>Unallocated</th><th>Status</th><th>Password</th><th>Created</th><th>Actions</th></tr></thead>
+    <thead><tr><th>Name</th><th>Member ID</th><th>Balance</th><th>Status</th><th>Password</th><th>Action</th></tr></thead>
     <tbody>
     ${accounts.map(a => {
       const statusNum = Number(a.is_active);
@@ -1091,16 +1091,9 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
       return `<tr>
       <td><a href="#view-${a.account_id}" class="name-link">${a.child_name}</a></td>
       <td class="mono">${a.member_id || '-'}</td>
-      <td class="mono" style="font-size:11px">${a.regular_savings_number || '-'}</td>
-      <td class="num">${a.age || '-'}</td>
-      <td>${a.gender || '-'}</td>
-      <td>${a.savings_schedule || '-'}</td>
       <td class="num">&#x20B1;${Number(a.actual_balance).toFixed(2)}</td>
-      <td class="num" style="color:var(--accent-color)">&#x20B1;${Number(a.maintaining_balance || 0).toFixed(2)}</td>
-      <td class="num">&#x20B1;${Number(a.unallocated_balance).toFixed(2)}</td>
       <td><span class="badge ${statusBadge}">${statusLabel}</span></td>
       <td><span class="badge ${a.password_changed ? 'badge-green' : 'badge-red'}">${a.password_changed ? 'Changed' : 'Default'}</span></td>
-      <td class="mono">${(a.created_at || '').slice(0, 10)}</td>
       <td><details class="action-menu">
         <summary>&#x22EE;</summary>
         <div class="action-dropdown">

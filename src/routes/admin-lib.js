@@ -420,17 +420,12 @@ table.dataTable td.mono { font-family:var(--mono); font-size:12px; }
 .dt-empty { text-align:center; padding:40px !important; color:var(--text-muted); font-size:13px; }
 
 /* Column width distribution for Accounts table */
-.dt-accounts-table thead th:nth-child(1) { width:18%; }
-.dt-accounts-table thead th:nth-child(2) { width:10%; }
-.dt-accounts-table thead th:nth-child(3) { width:5%; }
-.dt-accounts-table thead th:nth-child(4) { width:7%; }
-.dt-accounts-table thead th:nth-child(5) { width:9%; }
-.dt-accounts-table thead th:nth-child(6) { width:10%; }
-.dt-accounts-table thead th:nth-child(7) { width:10%; }
-.dt-accounts-table thead th:nth-child(8) { width:8%; }
-.dt-accounts-table thead th:nth-child(9) { width:8%; }
-.dt-accounts-table thead th:nth-child(10) { width:7%; }
-.dt-accounts-table thead th:nth-child(11) { width:8%; }
+.dt-accounts-table thead th:nth-child(1) { width:25%; }
+.dt-accounts-table thead th:nth-child(2) { width:15%; }
+.dt-accounts-table thead th:nth-child(3) { width:15%; }
+.dt-accounts-table thead th:nth-child(4) { width:10%; }
+.dt-accounts-table thead th:nth-child(5) { width:10%; }
+.dt-accounts-table thead th:nth-child(6) { width:15%; }
 </style>
 </head>
 <body>

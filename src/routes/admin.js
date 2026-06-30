@@ -370,7 +370,7 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
         const goalCount = goals.filter(g => g.account_id === a.account_id).length;
         return `<tr>
         <td><b>${a.child_name}</b></td>
-        <td class="num">&#x20B1;${Number(a.actual_balance).toFixed(2)}</td>
+      <td>&#x20B1;${Number(a.actual_balance).toFixed(2)}</td>
         <td class="num">${a.current_xp}</td>
         <td class="num">${goalCount}</td>
       </tr>`;}).join('')}

@@ -1091,7 +1091,7 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
       return `<tr>
       <td><a href="#view-${a.account_id}" class="name-link">${a.child_name}</a></td>
       <td class="mono">${a.member_id || '-'}</td>
-      <td class="num">&#x20B1;${Number(a.actual_balance).toFixed(2)}</td>
+      <td>&#x20B1;${Number(a.actual_balance).toFixed(2)}</td>
       <td><span class="badge ${statusBadge}">${statusLabel}</span></td>
       <td><span class="badge ${a.password_changed ? 'badge-green' : 'badge-red'}">${a.password_changed ? 'Changed' : 'Default'}</span></td>
       <td><details class="action-menu">

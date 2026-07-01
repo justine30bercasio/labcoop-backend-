@@ -797,6 +797,7 @@ router.get('/budget', requireRole(3), asyncHandler(async (req, res) => {
     return res.send(csv);
   }
 
+  if (req.query.print) return res.type('html').send(printLayout('Budget vs Actual', content, { subtitle: 'Year ' + year, asOf: String(year), orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
   res.type('html').send(layout('Budget vs Actual', 'budget', content, { subtitle: 'Year ' + year }));
 }));
 
@@ -938,6 +939,7 @@ router.get('/withholding-tax', requireRole(3), asyncHandler(async (req, res) => 
     return res.send(csv);
   }
 
+  if (req.query.print) return res.type('html').send(printLayout('Withholding Tax Report', content, { subtitle: 'BIR Form 2307 Equivalent', asOf: String(year), orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'Auditor' }));
 res.type('html').send(layout('Withholding Tax', 'withholding-tax', content, { subtitle: 'BIR Form 2307 equivalent — tax withheld on interest & dividends' }));
 }));
 

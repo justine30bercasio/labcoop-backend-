@@ -169,7 +169,7 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
     dayLabels.push(d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).replace(',',''));
     const dayStr = d.toISOString().slice(0,10);
     const dayTxs = transactions.filter(t => t.created_at && t.created_at.slice(0,10) === dayStr);
-    const deps = dayTxs.filter(t => t.type === 'deposit').reduce((s,t) => s + Number(t.amount), 0);
+    const deps = dayTxs.filter(t => ['deposit','fee','penalty','interest_income','interest_credit','interest','loan_payment','td_maturity','reward'].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
     const wds = dayTxs.filter(t => t.type === 'withdrawal').reduce((s,t) => s + Number(t.amount), 0);
     dayDeposits.push(deps); dayWithdrawals.push(wds); dayCounts.push(dayTxs.length);
   }
@@ -182,7 +182,7 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
   const xpTop = [...accounts].sort((a,b) => Number(b.current_xp) - Number(a.current_xp)).slice(0, 6);
   const maxXp = Math.max(...xpTop.map(a => Number(a.current_xp)), 1);
 
-  const cashIn = transactions.filter(t => ['deposit','loan_disbursement','interest_credit','interest'].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
+  const cashIn = transactions.filter(t => ['deposit','loan_disbursement','interest_credit','interest','fee','penalty','interest_income','td_maturity','reward'].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
   const cashOut = transactions.filter(t => ['withdrawal','loan_payment'].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
   const netFlow = cashIn - cashOut;
 
@@ -380,7 +380,7 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
       ${transactions.slice(0, 8).map(t => {
         const dateStr = t.created_at ? t.created_at.slice(0, 10) : '';
         const badgeCls = ({deposit:'badge-green',withdrawal:'badge-red',loan_disbursement:'badge-amber',loan_payment:'badge-blue',interest_credit:'badge-purple',interest:'badge-purple',allocation:'badge-purple'})[t.type] || 'badge-gray';
-        const isInflow = ['deposit','loan_disbursement','interest_credit','interest'].includes(t.type);
+        const isInflow = ['deposit','loan_disbursement','interest_credit','interest','fee','penalty','interest_income','td_maturity','reward'].includes(t.type);
         return `<tr>
         <td>${t.child_name || '-'}</td>
         <td><span class="badge ${badgeCls}">${t.type.replace(/_/g,' ')}</span></td>
@@ -448,9 +448,9 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
     // Transaction Activity Doughnut
     var ctx4 = document.getElementById('activityChart');
     if (ctx4) {
-      var activityTypes = ${JSON.stringify(['deposit','withdrawal','loan_disbursement','loan_payment','interest_credit','allocation'])};
+      var activityTypes = ${JSON.stringify(['deposit','withdrawal','loan_disbursement','loan_payment','interest_credit','interest','fee','penalty','interest_income','td_maturity','reward','auto_save','purchase','td_placement'])};
       var activityCounts = activityTypes.map(function(t) { return transactions.filter(function(x) { return x.type === t; }).length; });
-      var activityColors = ['rgba(34,197,94,0.7)','rgba(239,68,68,0.7)','rgba(245,158,11,0.7)','rgba(59,130,246,0.7)','rgba(139,92,246,0.7)','rgba(6,182,212,0.7)'];
+      var activityColors = ['rgba(34,197,94,0.7)','rgba(239,68,68,0.7)','rgba(245,158,11,0.7)','rgba(59,130,246,0.7)','rgba(139,92,246,0.7)','rgba(6,182,212,0.7)','rgba(168,85,247,0.7)','rgba(220,38,38,0.7)','rgba(16,185,129,0.7)','rgba(251,146,60,0.7)','rgba(99,102,241,0.7)','rgba(236,72,153,0.7)','rgba(34,211,238,0.7)','rgba(250,204,21,0.7)'];
       new Chart(ctx4, {
         type: 'doughnut',
         data: {
@@ -3793,7 +3793,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
             var tc = ({deposit:'deposit',withdrawal:'withdrawal',loan_payment:'loan_payment',loan_disbursement:'loan_disbursement',interest:'interest',interest_credit:'interest',allocation:'allocation'})[tx.type] || 'deposit';
             var sign = tx.type === 'deposit' || tx.type === 'loan_disbursement' || tx.type === 'interest' || tx.type === 'interest_credit' ? '+' : '-';
             var col = tx.type === 'deposit' || tx.type === 'loan_disbursement' || tx.type === 'interest' || tx.type === 'interest_credit' ? '#16a34a' : tx.type === 'withdrawal' ? '#dc2626' : 'var(--text)';
-            return '<tr><td><span class="tx-type-badge ' + tc + '">' + tx.type.replace(/_/g,' ') + (tx.voided_at ? ' VOIDED' : '') + '</span></td><td class="tx-amt" style="color:' + col + '">' + sign + '&#x20B1;' + Number(tx.amount).toFixed(2) + '</td><td class="tx-desc">' + (tx.description||'-') + (tx.voided_at ? '<br><span style="font-size:10px;color:#dc2626">Voided by ' + (tx.voided_by||'') + '</span>' : '') + '</td><td class="tx-date">' + (tx.created_at||'').slice(0,16).replace('T',' ') + '</td><td style="white-space:nowrap">' + (tx.voided_at ? '<span style="color:#dc2626;font-size:10px;font-weight:600"><i class="fas fa-ban"></i> VOIDED</span>' : '<a class="rcpt-link" href="?account=' + selectedId + '&receipt=' + tx.transaction_id + (searchQ ? '&q=' + encodeURIComponent(searchQ) : '') + '" title="View receipt"><i class="fas fa-receipt"></i></a>' + (adminRole >= 3 && ['deposit','withdrawal','loan_payment','interest','interest_credit','auto_save','fee'].includes(tx.type) ? ' <button class="btn btn-outline btn-xs" style="color:#dc2626;padding:2px 6px;font-size:10px" onclick="openVoidModal(\'' + tx.transaction_id + '\',\'' + tx.type.replace(/_/g,' ') + '\',\'' + Number(tx.amount).toFixed(2) + '\')"><i class="fas fa-ban"></i> Void</button>' : '')) + '</td></tr>';
+            return '<tr><td><span class="tx-type-badge ' + tc + '">' + tx.type.replace(/_/g,' ') + (tx.voided_at ? ' VOIDED' : '') + '</span></td><td class="tx-amt" style="color:' + col + '">' + sign + '&#x20B1;' + Number(tx.amount).toFixed(2) + '</td><td class="tx-desc">' + (tx.description||'-') + (tx.voided_at ? '<br><span style="font-size:10px;color:#dc2626">Voided by ' + (tx.voided_by||'') + '</span>' : '') + '</td><td class="tx-date">' + (tx.created_at||'').slice(0,16).replace('T',' ') + '</td><td style="white-space:nowrap">' + (tx.voided_at ? '<span style="color:#dc2626;font-size:10px;font-weight:600"><i class="fas fa-ban"></i> VOIDED</span>' : '<a class="rcpt-link" href="?account=' + selectedId + '&receipt=' + tx.transaction_id + (searchQ ? '&q=' + encodeURIComponent(searchQ) : '') + '" title="View receipt"><i class="fas fa-receipt"></i></a>' + (adminRole >= 3 && ['deposit','withdrawal','loan_payment','interest','interest_credit','auto_save','fee','penalty'].includes(tx.type) ? ' <button class="btn btn-outline btn-xs" style="color:#dc2626;padding:2px 6px;font-size:10px" onclick="openVoidModal(\'' + tx.transaction_id + '\',\'' + tx.type.replace(/_/g,' ') + '\',\'' + Number(tx.amount).toFixed(2) + '\')"><i class="fas fa-ban"></i> Void</button>' : '')) + '</td></tr>';
           }).join('') + '</table>'}
       </div>
     </div>
@@ -4015,7 +4015,7 @@ router.post('/teller/loan-pay/:id', requireRole(2), asyncHandler(async (req, res
 
 // ── Transaction Void / Reversal (Banking-Grade) ──
 
-const VOIDABLE_TYPES = ['deposit', 'withdrawal', 'loan_payment', 'interest', 'interest_credit', 'auto_save', 'fee'];
+const VOIDABLE_TYPES = ['deposit', 'withdrawal', 'loan_payment', 'interest', 'interest_credit', 'auto_save', 'fee', 'penalty'];
 
 router.post('/teller/void/:txId', requireRole(3), asyncHandler(async (req, res) => {
   try {
@@ -4176,8 +4176,8 @@ router.get('/audit', requireRole(1), asyncHandler(async (req, res) => {
   // Stats
   const stats = await one(`
     SELECT COUNT(*) as total,
-      SUM(CASE WHEN t.type IN ('deposit','loan_disbursement','interest_credit','interest') THEN t.amount ELSE 0 END) as credits,
-      SUM(CASE WHEN t.type IN ('withdrawal','loan_payment') THEN t.amount ELSE 0 END) as debits,
+      SUM(CASE WHEN t.type IN ('deposit','loan_disbursement','interest_credit','interest','fee','penalty','interest_income','td_maturity','reward') THEN t.amount ELSE 0 END) as credits,
+      SUM(CASE WHEN t.type IN ('withdrawal','loan_payment','auto_save','purchase','td_placement') THEN t.amount ELSE 0 END) as debits,
       SUM(CASE WHEN t.type='deposit' THEN t.amount ELSE 0 END) as total_deposits,
       SUM(CASE WHEN t.type='withdrawal' THEN t.amount ELSE 0 END) as total_withdrawals,
       SUM(CASE WHEN t.type='loan_disbursement' THEN t.amount ELSE 0 END) as total_loans,
@@ -4195,7 +4195,7 @@ router.get('/audit', requireRole(1), asyncHandler(async (req, res) => {
   const csvParams = Object.keys(q).filter(k => k !== 'export').map(k => k + '=' + encodeURIComponent(q[k])).join('&');
   const csvLink = '/admin/audit/csv?' + csvParams;
 
-  const typeOpts = ['deposit','withdrawal','loan_disbursement','loan_payment','interest_credit','interest'];
+  const typeOpts = ['','deposit','withdrawal','loan_disbursement','loan_payment','interest_credit','interest','fee','penalty','interest_income','td_maturity','td_placement','auto_save','purchase','reward'];
   const typeSummary = txns.reduce((acc, t) => { acc[t.type] = (acc[t.type]||0) + 1; return acc; }, {});
   const summaryStr = Object.keys(typeSummary).map(k => k + ': ' + typeSummary[k]).join(' &middot; ');
 
@@ -4241,8 +4241,8 @@ router.get('/audit', requireRole(1), asyncHandler(async (req, res) => {
     </div>
     <div class="card-body">
       ${txns.length === 0 ? '<div style="text-align:center;padding:48px;color:var(--text-muted)">No transactions found for the selected filters.</div>' : '<table><tr><th>Receipt #</th><th>Date &amp; Time</th><th>Member</th><th>ID</th><th>Type</th><th>Amount</th><th>Balance Delta</th><th>Description</th><th>Ref</th></tr>' + txns.map(t => {
-        const sign = (t.type==='deposit'||t.type==='loan_disbursement'||t.type==='interest_credit'||t.type==='interest') ? '+' : '-';
-        const col = (t.type==='deposit'||t.type==='loan_disbursement'||t.type==='interest_credit'||t.type==='interest') ? '#16a34a' : '#dc2626';
+        const sign = (t.type==='deposit'||t.type==='loan_disbursement'||t.type==='interest_credit'||t.type==='interest'||t.type==='fee'||t.type==='penalty'||t.type==='interest_income'||t.type==='td_maturity'||t.type==='reward'||t.type==='loan_payment') ? '+' : '-';
+        const col = (t.type==='deposit'||t.type==='loan_disbursement'||t.type==='interest_credit'||t.type==='interest'||t.type==='fee'||t.type==='penalty'||t.type==='interest_income'||t.type==='td_maturity'||t.type==='reward'||t.type==='loan_payment') ? '#16a34a' : '#dc2626';
         const delta = t.balance_before != null ? '<span style="color:' + col + '">' + sign + '&#x20B1;' + Number(t.amount).toFixed(2) + '</span>' : '-';
         const bg = ({deposit:'badge-green',withdrawal:'badge-red',loan_disbursement:'badge-amber',loan_payment:'badge-blue',interest_credit:'badge-purple',interest:'badge-purple',allocation:'badge-gray'})[t.type] || 'badge-gray';
         return '<tr><td class="mono"><a href="/admin/teller?account=' + t.account_id + '&receipt=' + t.transaction_id + '" style="color:var(--accent);text-decoration:none">' + (t.transaction_id||'').slice(0,8).toUpperCase() + '</a></td><td class="mono" style="font-size:11px">' + (t.created_at||'').slice(0,19).replace('T',' ') + '</td><td>' + (t.child_name||'') + '</td><td class="mono" style="font-size:11px;color:var(--text-muted)">' + (t.member_id||'-') + '</td><td><span class="badge ' + bg + '">' + t.type.replace(/_/g,' ') + '</span></td><td class="num mono" style="color:' + col + '">' + sign + '&#x20B1;' + Number(t.amount).toFixed(2) + '</td><td class="num mono">' + delta + '</td><td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted)">' + (t.description||'-') + '</td><td class="mono" style="font-size:11px;color:var(--text-muted)">' + (t.reference_id ? (t.reference_type||'') + ':' + (t.reference_id||'').slice(0,8) : '-') + '</td></tr>';
@@ -4434,11 +4434,11 @@ router.get('/reports/daily-collection', requireRole(2), asyncHandler(async (req,
     SELECT t.*, a.child_name as child_name, a.member_id
     FROM transactions t
     JOIN accounts a ON t.account_id = a.account_id
-    WHERE t.type IN ('deposit','loan_payment','interest_income','penalty')
+    WHERE t.type IN ('deposit','loan_payment','interest_income','penalty','fee')
       AND DATE(t.created_at) = $1
     ORDER BY t.created_at ASC
   `, [date]);
-  const summary = { deposit: 0, loan_payment: 0, interest_income: 0, penalty: 0, count: 0 };
+  const summary = { deposit: 0, loan_payment: 0, interest_income: 0, penalty: 0, fee: 0, count: 0 };
   rows.forEach(r => {
     const amt = parseFloat(r.amount) || 0;
     if (summary[r.type] !== undefined) summary[r.type] += amt;
@@ -4654,8 +4654,8 @@ router.get('/reports/member-ledger', requireRole(2), asyncHandler(async (req, re
       name: first.child_name,
       memberId: first.member_id,
       balance: first.balance,
-      totalIn: searchResults.rows.filter(r => r.type === 'deposit').reduce((s, r) => s + parseFloat(r.amount || 0), 0),
-      totalOut: searchResults.rows.filter(r => ['withdrawal','loan_payment','penalty'].includes(r.type)).reduce((s, r) => s + parseFloat(r.amount || 0), 0),
+      totalIn: searchResults.rows.filter(r => ['deposit','loan_payment','interest_income','interest_credit','interest','fee','penalty','td_maturity','reward','loan_disbursement'].includes(r.type)).reduce((s, r) => s + parseFloat(r.amount || 0), 0),
+      totalOut: searchResults.rows.filter(r => ['withdrawal','auto_save','purchase','td_placement'].includes(r.type)).reduce((s, r) => s + parseFloat(r.amount || 0), 0),
       count: searchResults.rows.length
     };
   }
@@ -4696,7 +4696,7 @@ router.get('/reports/member-ledger', requireRole(2), asyncHandler(async (req, re
       <tr><th>Date</th><th>TRN#</th><th>Type</th><th>Description</th><th>Amount</th><th>Ext. Ref</th></tr>
       ${searchResults.rows.map(r => {
         const amt = parseFloat(r.amount || 0);
-        const isCredit = ['deposit','interest_income','loan'].includes(r.type);
+        const isCredit = ['deposit','interest_income','loan_disbursement','loan_payment','interest_credit','interest','fee','penalty','td_maturity','reward'].includes(r.type);
         return '<tr>' +
           '<td class="mono" style="font-size:11px">' + (r.created_at||'').slice(0,19).replace('T',' ') + '</td>' +
           '<td class="mono" style="font-size:11px;font-weight:600">' + fmtTrn(r) + '</td>' +
@@ -4718,7 +4718,7 @@ router.get('/reports/member-ledger', requireRole(2), asyncHandler(async (req, re
   if (req.query.export === 'csv' && searchResults.rows.length) {
     let csv = 'TRN#,Date,Type,Description,Amount,Ext. Ref\n';
     searchResults.rows.forEach(r => {
-      const isCredit = ['deposit','interest_income','loan'].includes(r.type);
+      const isCredit = ['deposit','interest_income','loan_disbursement','loan_payment','interest_credit','interest','fee','penalty','td_maturity','reward'].includes(r.type);
       csv += `"${fmtTrn(r)}","${r.created_at}",${r.type},"${(r.description||'').replace(/"/g,'""')}",${isCredit ? '' : '-'}${r.amount},"${r.reference_id||''}"\n`;
     });
     res.setHeader('Content-Type', 'text/csv');
@@ -4851,7 +4851,7 @@ router.get('/eod', requireRole(1), asyncHandler(async (req, res) => {
 
   // Today's transactions
   const txs = await sql(`SELECT t.*, a.child_name, a.member_id FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id WHERE DATE(t.created_at) = $1 ORDER BY t.created_at ASC`, [date]);
-  const totalCollections = txs.filter(t => ['deposit','loan_payment','interest_income'].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
+  const totalCollections = txs.filter(t => ['deposit','loan_payment','interest_income','fee','penalty','interest_credit','interest','td_maturity','reward'].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
   const totalDisbursements = txs.filter(t => ['withdrawal','loan_disbursement'].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
   const txCount = txs.length;
 
@@ -4934,7 +4934,7 @@ router.get('/eod', requireRole(1), asyncHandler(async (req, res) => {
       <table>
         <tr><th>TRN#</th><th>Time</th><th>Member</th><th>Type</th><th>Amount</th></tr>
         ${txs.slice(0, 50).map(t => {
-          const isCredit = ['deposit','loan_payment','interest_income'].includes(t.type);
+          const isCredit = ['deposit','loan_payment','interest_income','fee','penalty','interest_credit','interest','td_maturity','reward'].includes(t.type);
           return '<tr>' +
             '<td class="mono" style="font-size:11px;font-weight:600">' + fmtTrn(t) + '</td>' +
             '<td class="mono" style="font-size:11px">' + (t.created_at||'').slice(11,19) + '</td>' +
@@ -5015,8 +5015,8 @@ router.get('/eom', requireRole(1), asyncHandler(async (req, res) => {
 
   // Monthly transaction stats
   const txStats = await one(`SELECT
-    COALESCE(SUM(CASE WHEN type IN ('deposit','interest_credit') THEN amount ELSE 0 END),0) as deposits,
-    COALESCE(SUM(CASE WHEN type IN ('withdrawal','loan_payment') THEN amount ELSE 0 END),0) as withdrawals,
+    COALESCE(SUM(CASE WHEN type IN ('deposit','interest_credit','interest','interest_income','fee','penalty','td_maturity','reward') THEN amount ELSE 0 END),0) as deposits,
+    COALESCE(SUM(CASE WHEN type IN ('withdrawal','loan_payment','auto_save','purchase','td_placement') THEN amount ELSE 0 END),0) as withdrawals,
     COALESCE(SUM(CASE WHEN type='loan_disbursement' THEN amount ELSE 0 END),0) as loans_granted,
     COALESCE(SUM(CASE WHEN type='fee' THEN amount ELSE 0 END),0) as fees,
     COUNT(*) as tx_count
@@ -5208,8 +5208,8 @@ router.get('/statements', requireRole(1), asyncHandler(async (req, res) => {
   let openingBalance = 0;
   if (memberId && statements.length > 0) {
     const balBefore = await one(`
-      SELECT COALESCE(SUM(CASE WHEN type IN ('deposit','interest_credit','loan_disbursement','interest') THEN amount
-        WHEN type IN ('withdrawal','loan_payment','fee') THEN -amount ELSE 0 END), 0) as bal
+      SELECT COALESCE(SUM(CASE WHEN type IN ('deposit','interest_credit','loan_disbursement','interest','fee','penalty','interest_income','td_maturity','reward') THEN amount
+        WHEN type IN ('withdrawal','loan_payment','auto_save','purchase','td_placement') THEN -amount ELSE 0 END), 0) as bal
       FROM transactions t JOIN accounts a ON t.account_id = a.account_id
       WHERE a.member_id = $1 AND DATE(t.created_at) < $2
     `, [memberId, fromDate]);
@@ -5217,8 +5217,8 @@ router.get('/statements', requireRole(1), asyncHandler(async (req, res) => {
   }
 
   let runningBalance = openingBalance;
-  const totalIn = statements.filter(t => ['deposit','interest_credit','interest','loan_disbursement'].includes(t.type)).reduce((s, t) => s + Number(t.amount), 0);
-  const totalOut = statements.filter(t => ['withdrawal','loan_payment','fee'].includes(t.type)).reduce((s, t) => s + Number(t.amount), 0);
+  const totalIn = statements.filter(t => ['deposit','interest_credit','interest','loan_disbursement','fee','penalty','interest_income','td_maturity','reward'].includes(t.type)).reduce((s, t) => s + Number(t.amount), 0);
+  const totalOut = statements.filter(t => ['withdrawal','loan_payment','auto_save','purchase','td_placement'].includes(t.type)).reduce((s, t) => s + Number(t.amount), 0);
   const closingBalance = openingBalance + totalIn - totalOut;
 
   const content = `
@@ -5272,7 +5272,7 @@ router.get('/statements', requireRole(1), asyncHandler(async (req, res) => {
       </tr>
       ${statements.map(t => {
         const amt = Number(t.amount);
-        const isCredit = ['deposit','interest_credit','interest','loan_disbursement'].includes(t.type);
+        const isCredit = ['deposit','interest_credit','interest','loan_disbursement','fee','penalty','interest_income','td_maturity','reward','loan_payment'].includes(t.type);
         runningBalance += isCredit ? amt : -amt;
         return '<tr>' +
           '<td class="mono" style="font-size:11px">' + (t.created_at||'').slice(0,10) + '</td>' +

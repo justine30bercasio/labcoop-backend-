@@ -144,3 +144,19 @@ Flutter app data disappeared on logout/refresh because:
   - Stores (`pg-store.js`, `sqlite-store.js`): Removed `getSavingsApplications`, `createSavingsApplication`, `updateSavingsApplication` methods + CREATE TABLE schema
   - Table name kept in `clean-db.js`, `aiven-clean.js`, `index.js:reset-database` for backward compat with existing databases
 - All changes commited and deployed to Render
+
+=====
+### Session Completed 2026-07-01 (Session 2)
+- **BIR-compliant accounting system** — expanded chart of accounts to 25 accounts with category/is_contra classification (current_asset, non_current_asset, current_liability, etc.), added audit trail columns (`posted_by`, `approved_by`, `reference_type`, `reference_number`, `period_id`) on `gl_entries`, upgraded `gl.js` with period lock checking, category-aware Balance Sheet (current vs non-current + prior-year), category-aware P&L (operating vs other income/expense + prior-year), General Journal in BIR format (folio-grouped with per-transaction debit/credit totals), Subsidiary Ledger, Account Ledger with running balance
+- **Withholding tax on interest credits**: Scheduler now splits interest into gross expense (5000) + 20% tax payable (2400) + net credit (2000). Configurable via `tax_config` table.
+- **Withholding tax on dividends**: Dividend declaration now splits into gross (3100) + 10% tax (2400) + net payable (3000).
+- **OR Series system**: `or_series` table with prefix/current_number/type, `assignOrNumber(type)` store method, `or_number` column on transactions. Seeds: `OR-` for deposits, `WT-` for withdrawals, `JV-` for journal vouchers.
+- **Accounting Periods**: `accounting_periods` table with auto-create on GL post, period lock enforcement at GL engine level, management page at `/admin/accounting-periods`, EOD close auto-closes period when all days in month are closed.
+- **General Journal route** (`/admin/gl/journal`): BIR format with date range filter, folio-grouped entries, reference number, posted by, CSV export with per-folio totals, print layout.
+- **Withholding Tax report** (`/admin/withholding-tax`): BIR Form 2307 equivalent — gross interest/dividends, tax rates from config, tax withheld, net amounts, GL balance comparison, CSV export, year selector.
+- **Budget vs Actual upgraded**: Editable budget form with per-account input fields for all 12 income/expense accounts, save via POST `/admin/budget/save`, budget stored as JSON in settings, CSV export, stat cards for budgeted vs actual totals and net.
+- **Monthly accrual scheduler job**: Runs 1st of month at ~3:15 AM, accrues interest receivable (1300/4000) on outstanding loans and interest payable (5000/2500) on savings deposits, gated by period lock check and last-run tracking.
+- **All report routes updated** with CSV export (Trial Balance, Balance Sheet, P&L, GL Ledger, General Journal, Cash Flow, Budget, Withholding Tax).
+- **Dividend declaration fixed**: Now passes `referenceType: 'dividend'` to GL post.
+- All 18+ `postDoubleEntry` call sites updated with audit opts.
+- APK rebuilt (26.4MB).

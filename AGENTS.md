@@ -160,3 +160,11 @@ Flutter app data disappeared on logout/refresh because:
 - **Dividend declaration fixed**: Now passes `referenceType: 'dividend'` to GL post.
 - All 18+ `postDoubleEntry` call sites updated with audit opts.
 - APK rebuilt (26.4MB).
+
+=====
+### Session 2026-07-01 (Session 3) — Professional Reports & Bug Fixes
+- **Bug fix**: Imported `h` (HTML escape) in `admin.js` — was missing from `require('./admin-lib')`, causing 500 error on Balance Sheet and P&L notes textareas.
+- **Bug fix**: Balance Sheet now includes net income in Equity as "Current Year Earnings" — fixes Assets ≠ Liabilities + Equity (Accounting Equation off by net income amount).
+- **Professional report layouts**: Upgraded `printLayout()` in `admin-lib.js` with company header (name, address, TIN), report title/subtitle, date range, proper table formatting (Courier New monospace, alternating rows, total rows), 3-column signature blocks (Prepared by / Reviewed by / Approved by), page numbers via CSS counters, A4 portrait/landscape orientation support, disclaimer footer, PH timezone generation timestamp.
+- **All 10 reports now use professional print layout**: Trial Balance, Balance Sheet, P&L, GL Ledger, General Journal, Cash Flow, Withholding Tax, Budget vs Actual (plus Loan reports too).
+- Pushed to Render: backend `main` (a0f3661) + parent `master` (44adbb9).

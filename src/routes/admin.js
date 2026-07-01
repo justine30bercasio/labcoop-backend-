@@ -4972,12 +4972,19 @@ router.post('/eod/close', requireRole(2), asyncHandler(async (req, res) => {
   const { date, opening_cash, total_collections, total_disbursements, closing_cash, tx_count, notes } = req.body;
   if (!date) return res.redirect('/admin/eod?error=Date+required');
   const existing = await store.query("SELECT * FROM eod_logs WHERE date = $1", [date]);
-  if (existing.rows.length > 0) return res.redirect('/admin/eod?error=Day+already+closed');
-  await store.query(
-    `INSERT INTO eod_logs (eod_id, date, opening_cash, total_collections, total_disbursements, closing_cash, tx_count, closed_by, notes, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-    [uuidv4(), date, Number(opening_cash||0), Number(total_collections||0), Number(total_disbursements||0), Number(closing_cash||0), Number(tx_count||0), req.session.adminName || 'admin', notes || '', new Date().toISOString()]
-  );
+  if (existing.rows.length > 0) {
+    // Already closed — recalculate with updated collection logic
+    await store.query(
+      `UPDATE eod_logs SET opening_cash=$1, total_collections=$2, total_disbursements=$3, closing_cash=$4, tx_count=$5, closed_by=$6, notes=$7, created_at=$8 WHERE date=$9`,
+      [Number(opening_cash||0), Number(total_collections||0), Number(total_disbursements||0), Number(closing_cash||0), Number(tx_count||0), req.session.adminName || 'admin', notes || '', new Date().toISOString(), date]
+    );
+  } else {
+    await store.query(
+      `INSERT INTO eod_logs (eod_id, date, opening_cash, total_collections, total_disbursements, closing_cash, tx_count, closed_by, notes, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [uuidv4(), date, Number(opening_cash||0), Number(total_collections||0), Number(total_disbursements||0), Number(closing_cash||0), Number(tx_count||0), req.session.adminName || 'admin', notes || '', new Date().toISOString()]
+    );
+  }
   // Auto-close accounting period if all days in month are closed
   const monthPrefix = date.slice(0, 7);
   const daysInMonth = new Date(Number(date.slice(0,4)), Number(date.slice(5,7)), 0).getDate();

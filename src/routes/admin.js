@@ -8,7 +8,7 @@ const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 const { getDb, store, isPostgres } = require('../db');
 const { asyncHandler } = require('../async-handler');
-const { layout, printLayout } = require('./admin-lib');
+const { layout, printLayout, h } = require('./admin-lib');
 const notifs = require('../services/notifications');
 
 const _p = (...p) => p.length === 1 && Array.isArray(p[0]) ? p[0] : p;

@@ -716,7 +716,7 @@ router.get('/cash-flow', requireRole(1), asyncHandler(async (req, res) => {
       { cells: ['Net Cash Flow', fmtAmt(net)] },
       { cells: ['ENDING CASH BALANCE', '<span style="font-weight:700;color:#2563eb">' + fmtAmt(cl) + '</span>'], cls: 'total-row' },
     ], { totalCells: false });
-    return res.type('html').send(printLayout('Cash Flow Statement', printContent, { subtitle: from + ' to ' + to, dateRange: from + ' to ' + to, orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
+    return res.type('html').send(printLayout('Cash Flow Statement', printContent, { subtitle: from + ' to ' + to, dateRange: from + ' to ' + to, orientation: 'portrait', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
   }
   res.type('html').send(layout('Cash Flow Statement', 'cash-flow', content, { subtitle: from + ' to ' + to }));
 }));
@@ -846,7 +846,7 @@ router.get('/budget', requireRole(3), asyncHandler(async (req, res) => {
       + reportTable(['', '', '', ''], [
         { cells: ['TOTAL EXPENSES', fmtAmt(expBudget), fmtAmt(expTotal), (expTotal - expBudget >= 0 ? '+' : '') + fmtAmt(expTotal - expBudget)] }
       ], { totalCells: ['NET SURPLUS/(DEFICIT)', fmtAmt(incBudget - expBudget), fmtAmt(incTotal - expTotal), fmtAmt((incTotal - expTotal) - (incBudget - expBudget))] });
-    return res.type('html').send(printLayout('Budget vs Actual', printContent, { subtitle: 'Year ' + year, asOf: String(year), orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
+    return res.type('html').send(printLayout('Budget vs Actual', printContent, { subtitle: 'Year ' + year, asOf: String(year), orientation: 'portrait', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
   }
   res.type('html').send(layout('Budget vs Actual', 'budget', content, { subtitle: 'Year ' + year }));
 }));
@@ -1002,7 +1002,7 @@ router.get('/withholding-tax', requireRole(3), asyncHandler(async (req, res) => 
       { cells: ['Interest Income', fmtAmt(interestGross), iRate + '%', fmtAmt(interestWithheld), fmtAmt(interestGross - interestWithheld)] },
       { cells: ['Dividend Income', fmtAmt(divGross), dRate + '%', fmtAmt(divWithheld), fmtAmt(divGross - divWithheld)] },
     ], { totalCells: ['TOTAL', fmtAmt(interestGross + divGross), '', fmtAmt(totalWithheld), fmtAmt(interestGross + divGross - totalWithheld)] });
-    return res.type('html').send(printLayout('Withholding Tax Report', printContent, { subtitle: 'BIR Form 2307 Equivalent', asOf: String(year), orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'Auditor' }));
+    return res.type('html').send(printLayout('Withholding Tax Report', printContent, { subtitle: 'BIR Form 2307 Equivalent', asOf: String(year), orientation: 'portrait', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'Auditor' }));
   }
 res.type('html').send(layout('Withholding Tax', 'withholding-tax', content, { subtitle: 'BIR Form 2307 equivalent — tax withheld on interest & dividends' }));
 }));

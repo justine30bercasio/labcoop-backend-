@@ -5817,7 +5817,7 @@ router.get('/gl/trial-balance', requireRole(1), asyncHandler(async (req, res) =>
       rows,
       { totalCells: ['TOTAL', '', '', '', fmt(totalD), fmt(totalC), fmt(Math.abs(totalD - totalC)), Math.abs(totalD - totalC) < 0.01 ? '✓' : '⚠'] }
     );
-    return res.type('html').send(printLayout('Trial Balance', printContent, { subtitle: 'All GL accounts with debit/credit totals', asOf: date || undefined, orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
+    return res.type('html').send(printLayout('Trial Balance', printContent, { subtitle: 'All GL accounts with debit/credit totals', asOf: date || undefined, orientation: 'portrait', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
   }
   res.type('html').send(layout('Trial Balance', 'gl-trial', content, { subtitle: 'All GL accounts with debit/credit totals' }));
 }));
@@ -5902,7 +5902,7 @@ router.get('/gl/balance-sheet', requireRole(1), asyncHandler(async (req, res) =>
     printContent += reportSection('Equity', result.equity, fmtAmt(result.totalEquity), { color: '#2563eb' });
     const notes = await store.getSetting('fs_notes_bs') || '';
     if (notes) printContent += `<div class="section-title">Notes to Financial Statements</div><div style="font-size:8pt;line-height:1.6;margin-bottom:3mm;padding:2mm;border:1px solid #ccc;background:#fafafa">${h(notes)}</div>`;
-    return res.type('html').send(printLayout('Balance Sheet', printContent, { subtitle: 'Assets = Liabilities + Equity', asOf: date || undefined, orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
+    return res.type('html').send(printLayout('Balance Sheet', printContent, { subtitle: 'Assets = Liabilities + Equity', asOf: date || undefined, orientation: 'portrait', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
   }
   res.type('html').send(layout('Balance Sheet', 'gl-bsheet', content, { subtitle: 'Assets = Liabilities + Equity' }));
 }));
@@ -6020,7 +6020,7 @@ router.get('/gl/profit-and-loss', requireRole(1), asyncHandler(async (req, res) 
     ], { totalCells: false });
     const notes = await store.getSetting('fs_notes_pnl') || '';
     if (notes) printContent += `<div class="section-title">Notes to Financial Statements</div><div style="font-size:8pt;line-height:1.6;margin-bottom:3mm;padding:2mm;border:1px solid #ccc;background:#fafafa">${h(notes)}</div>`;
-    return res.type('html').send(printLayout('Profit & Loss Statement', printContent, { subtitle: `${from} to ${to}`, dateRange: `${from} to ${to}`, orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
+    return res.type('html').send(printLayout('Profit & Loss Statement', printContent, { subtitle: `${from} to ${to}`, dateRange: `${from} to ${to}`, orientation: 'portrait', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
   }
   res.type('html').send(layout('Profit & Loss', 'gl-pnl', content, { subtitle: 'Income - Expenses = Net Profit/Loss' }));
 }));
@@ -6103,7 +6103,7 @@ router.get('/gl/ledger', requireRole(1), asyncHandler(async (req, res) => {
       return { cells: [e.created_at ? e.created_at.slice(0,10) : '-', e.description || '-', e.reference_number || '-', e.posted_by || '-', fmt(e.debit || 0), fmt(e.credit || 0), fmt(runningBalance)] };
     });
     const printContent = reportTable(['Date', 'Description', 'Ref No', 'Posted By', 'Debit', 'Credit', 'Balance'], rows, { totalCells: ['', '', '', '', fmt(rows.reduce((s,r)=>s+Number(r.cells[4].replace(/[₱,]/g,'')),0)), fmt(rows.reduce((s,r)=>s+Number(r.cells[5].replace(/[₱,]/g,'')),0)), fmt(runningBalance)] });
-    return res.type('html').send(printLayout('General Ledger', printContent, { subtitle: selected ? 'Account: ' + accName : 'All accounts', orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'Auditor' }));
+    return res.type('html').send(printLayout('General Ledger', printContent, { subtitle: selected ? 'Account: ' + accName : 'All accounts', orientation: 'portrait', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'Auditor' }));
   }
 
   res.type('html').send(layout('General Ledger', 'gl-ledger', content, { subtitle: 'View individual account entries' }));
@@ -6192,7 +6192,7 @@ router.get('/gl/journal', requireRole(1), asyncHandler(async (req, res) => {
       return { cells: [e.transaction_id ? e.transaction_id.slice(0,8) : '-', e.account_code, e.account_name || '', e.description || '', e.reference_number || '-', e.posted_by || '-', e.created_at ? e.created_at.slice(0,10) : '-', fmt(e.debit || 0), fmt(e.credit || 0)] };
     });
     const printContent = reportTable(['Folio', 'Code', 'Account', 'Description', 'Ref No', 'Posted By', 'Date', 'Debit', 'Credit'], rows, { totalCells: ['', '', '', '', '', '', 'TOTAL', fmt(totalDebit), fmt(totalCredit)] });
-    return res.type('html').send(printLayout('General Journal', printContent, { subtitle: 'BIR-compliant journal entries', dateRange: `${from} to ${to}`, orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'Auditor' }));
+    return res.type('html').send(printLayout('General Journal', printContent, { subtitle: 'BIR-compliant journal entries', dateRange: `${from} to ${to}`, orientation: 'portrait', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'Auditor' }));
   }
   res.type('html').send(layout('General Journal', 'gl-journal', content, { subtitle: `${from} to ${to}` }));
 }));

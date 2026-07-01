@@ -267,15 +267,6 @@ class PgStore {
         created_at TEXT,
         updated_at TEXT
       );
-      CREATE TABLE IF NOT EXISTS savings_applications (
-        application_id TEXT PRIMARY KEY,
-        account_id TEXT NOT NULL,
-        product_id TEXT NOT NULL,
-        status VARCHAR(20) DEFAULT 'pending',
-        admin_notes TEXT DEFAULT '',
-        created_at TEXT,
-        resolved_at TEXT
-      );
       CREATE TABLE IF NOT EXISTS gl_accounts (
         code TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -1122,60 +1113,6 @@ class PgStore {
     await this.query("UPDATE standing_orders SET is_active = 0, updated_at = $1 WHERE order_id = $2", [new Date().toISOString(), orderId]);
   }
 
-  async getSavingsApplications(accountId) {
-    if (accountId) {
-      const res = await this.query('SELECT * FROM savings_applications WHERE account_id = $1 ORDER BY created_at DESC', [accountId]);
-      return res.rows;
-    }
-    const res = await this.query(`
-      SELECT sa.*, a.child_name, sp.name as product_name
-      FROM savings_applications sa
-      LEFT JOIN accounts a ON sa.account_id = a.account_id
-      LEFT JOIN savings_products sp ON sa.product_id = sp.product_id
-      ORDER BY sa.created_at DESC
-    `);
-    return res.rows;
-  }
-
-  async createSavingsApplication(fields) {
-    const app = {
-      application_id: uuidv4(),
-      account_id: fields.account_id,
-      product_id: fields.product_id,
-      status: 'pending',
-      admin_notes: '',
-      created_at: new Date().toISOString(),
-    };
-    await this.query(`
-      INSERT INTO savings_applications (application_id, account_id, product_id, status, admin_notes, created_at)
-      VALUES ($1,$2,$3,$4,$5,$6)
-    `, [
-      app.application_id, app.account_id, app.product_id,
-      app.status, app.admin_notes, app.created_at,
-    ]);
-    return app;
-  }
-
-  async updateSavingsApplication(applicationId, fields) {
-    const allowed = ['status', 'admin_notes', 'resolved_at'];
-    const setClauses = [];
-    const values = [];
-    let idx = 1;
-    for (const key of allowed) {
-      if (fields[key] !== undefined) {
-        setClauses.push(`${key} = $${idx++}`);
-        values.push(fields[key]);
-      }
-    }
-    if (setClauses.length === 0) {
-      const r = await this.query('SELECT * FROM savings_applications WHERE application_id = $1', [applicationId]);
-      return r.rows[0] || null;
-    }
-    values.push(applicationId);
-    await this.query(`UPDATE savings_applications SET ${setClauses.join(', ')} WHERE application_id = $${idx}`, values);
-    const r = await this.query('SELECT * FROM savings_applications WHERE application_id = $1', [applicationId]);
-    return r.rows[0] || null;
-  }
 
   async getOnlineDeposits(accountId) {
     if (accountId) {

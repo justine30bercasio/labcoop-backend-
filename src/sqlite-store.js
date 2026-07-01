@@ -532,46 +532,6 @@ function updateStandingOrder(orderId, fields) {
 function deleteStandingOrder(orderId) {
   getDb().prepare('UPDATE standing_orders SET is_active = 0, updated_at = datetime(\'now\') WHERE order_id = ?').run(orderId);
 }
-
-// ── Savings Applications ──
-
-function getSavingsApplications(accountId) {
-  if (accountId) return getDb().prepare('SELECT * FROM savings_applications WHERE account_id = ? ORDER BY created_at DESC').all(accountId);
-  return getDb().prepare('SELECT sa.*, a.child_name, sp.name as product_name FROM savings_applications sa LEFT JOIN accounts a ON sa.account_id = a.account_id LEFT JOIN savings_products sp ON sa.product_id = sp.product_id ORDER BY sa.created_at DESC').all();
-}
-
-function createSavingsApplication(fields) {
-  const app = {
-    application_id: uuidv4(),
-    account_id: fields.account_id,
-    product_id: fields.product_id,
-    status: 'pending',
-    admin_notes: '',
-    created_at: new Date().toISOString(),
-  };
-  getDb().prepare(`
-    INSERT INTO savings_applications (application_id, account_id, product_id, status, admin_notes, created_at)
-    VALUES (@application_id, @account_id, @product_id, @status, @admin_notes, @created_at)
-  `).run(app);
-  return app;
-}
-
-function updateSavingsApplication(applicationId, fields) {
-  const allowed = ['status', 'admin_notes', 'resolved_at'];
-  const setClauses = [];
-  const values = [];
-  for (const key of allowed) {
-    if (fields[key] !== undefined) {
-      setClauses.push(`${key} = ?`);
-      values.push(fields[key]);
-    }
-  }
-  if (setClauses.length === 0) return getDb().prepare('SELECT * FROM savings_applications WHERE application_id = ?').get(applicationId);
-  values.push(applicationId);
-  getDb().prepare(`UPDATE savings_applications SET ${setClauses.join(', ')} WHERE application_id = ?`).run(...values);
-  return getDb().prepare('SELECT * FROM savings_applications WHERE application_id = ?').get(applicationId);
-}
-
 // ── Online Deposits (GCash) ──
 
 function getOnlineDeposits(accountId) {
@@ -954,9 +914,6 @@ module.exports = {
   createStandingOrder,
   updateStandingOrder,
   deleteStandingOrder,
-  getSavingsApplications,
-  createSavingsApplication,
-  updateSavingsApplication,
   getOnlineDeposits,
   getOnlineDeposit,
   createOnlineDeposit,

@@ -154,7 +154,6 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
   const unlockedBadges = Number((await one('SELECT COUNT(*) as c FROM badges WHERE is_unlocked=1')).c);
   const pendingLoans = Number((await one("SELECT COUNT(*) as c FROM loans WHERE status='pending'")).c);
   const pendingWithdrawals = Number((await one("SELECT COUNT(*) as c FROM withdrawal_requests WHERE status='pending'")).c);
-  const pendingSavingsApps = Number((await one("SELECT COUNT(*) as c FROM savings_applications WHERE status='pending'")).c);
   const pendingOnlineDeposits = Number((await one("SELECT COUNT(*) as c FROM online_deposits WHERE status='pending'")).c);
   const activeLoanProducts = Number(loanProducts[0]?.c || 0);
   const shopItemsCount = Number(shopItems[0]?.c || 0);
@@ -187,7 +186,7 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
   const cashOut = transactions.filter(t => ['withdrawal','loan_payment'].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
   const netFlow = cashIn - cashOut;
 
-  const pendingTotal = pendingLoans + pendingWithdrawals + pendingSavingsApps + pendingOnlineDeposits;
+  const pendingTotal = pendingLoans + pendingWithdrawals + pendingOnlineDeposits;
 
   // Compute trend percentages
   const weekAgoDeps = dayDeposits.slice(0, 3).reduce((s, v) => s + v, 0);
@@ -238,10 +237,9 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
   ${pendingTotal > 0 ? `
   <div class="pending-alert">
     <span class="pa-icon"><i class="fas fa-triangle-exclamation" style="color:#F57F17"></i></span>
-    <span class="pa-text">${pendingLoans} loan pending &middot; ${pendingWithdrawals} withdrawal pending &middot; ${pendingSavingsApps} savings app pending &middot; ${pendingOnlineDeposits} deposit pending</span>
+    <span class="pa-text">${pendingLoans} loan pending &middot; ${pendingWithdrawals} withdrawal pending &middot; ${pendingOnlineDeposits} deposit pending</span>
     ${pendingLoans > 0 ? `<a href="/admin/loans?status=pending" class="btn btn-amber btn-xs">Review Loans</a>` : ''}
     ${pendingWithdrawals > 0 ? `<a href="/admin/withdrawal-requests?status=pending" class="btn btn-amber btn-xs">Review Withdrawals</a>` : ''}
-    ${pendingSavingsApps > 0 ? `<a href="/admin/savings-applications?status=pending" class="btn btn-amber btn-xs">Review Apps</a>` : ''}
     ${pendingOnlineDeposits > 0 ? `<a href="/admin/online-deposits?status=pending" class="btn btn-amber btn-xs">Review Deposits</a>` : ''}
   </div>` : ''}
 
@@ -252,7 +250,6 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
     <a href="/admin/accounts" class="quick-action-btn"><span class="qa-icon"><i class="fas fa-user-plus"></i></span><span class="qa-label">New Account</span></a>
     <a href="/admin/loans" class="quick-action-btn"><span class="qa-icon"><i class="fas fa-sack-dollar"></i></span><span class="qa-label">Loans${pendingLoans > 0 ? `<span class="qa-badge">${pendingLoans}</span>` : ''}</span></a>
     <a href="/admin/withdrawal-requests" class="quick-action-btn"><span class="qa-icon"><i class="fas fa-money-bill-transfer"></i></span><span class="qa-label">Withdrawals${pendingWithdrawals > 0 ? `<span class="qa-badge">${pendingWithdrawals}</span>` : ''}</span></a>
-    <a href="/admin/savings-applications" class="quick-action-btn"><span class="qa-icon"><i class="fas fa-piggy-bank"></i></span><span class="qa-label">Savings Apps${pendingSavingsApps > 0 ? `<span class="qa-badge">${pendingSavingsApps}</span>` : ''}</span></a>
     <a href="/admin/online-deposits" class="quick-action-btn"><span class="qa-icon"><i class="fas fa-circle-dollar"></i></span><span class="qa-label">Deposits${pendingOnlineDeposits > 0 ? `<span class="qa-badge">${pendingOnlineDeposits}</span>` : ''}</span></a>
     <a href="/admin/gl/trial-balance" class="quick-action-btn"><span class="qa-icon"><i class="fas fa-scale-balanced"></i></span><span class="qa-label">GL Reports</span></a>
     <a href="/admin/audit" class="quick-action-btn"><span class="qa-icon"><i class="fas fa-file-lines"></i></span><span class="qa-label">Audit</span></a>
@@ -617,7 +614,6 @@ td.mono { font-family:var(--mono); font-size:12px; }
     <a href="/admin/loans"><span class="icon">&#x1F4B0;</span> <span>Loans</span></a>
     <a href="/admin/withdrawal-requests"><span class="icon">&#x1F4B8;</span> <span>Withdrawals</span></a>
     <a href="/admin/online-deposits"><span class="icon">&#x1F4B0;</span> <span>Online Deposits</span></a>
-    <a href="/admin/savings-applications"><span class="icon">&#x1F4B1;</span> <span>Savings Apps</span></a>
     <a href="/admin/loan-products"><span class="icon">&#x1F3ED;</span> <span>Loan Products</span></a>
     <a href="/admin/savings-products"><span class="icon">&#x1F4E6;</span> <span>Savings Products</span></a>
     <a href="/admin/goals"><span class="icon">&#x1F3AF;</span> <span>Goals</span></a>
@@ -2915,7 +2911,6 @@ router.post('/reset-data', requireRole(4), asyncHandler(async (req, res) => {
     'loans',
     'withdrawal_requests',
     'standing_orders',
-    'savings_applications',
     'coop_contributions',
     'coop_goals',
     'accounts',
@@ -3550,118 +3545,6 @@ router.post('/online-deposits/reject/:id', requireRole(2), asyncHandler(async (r
     res.redirect('/admin/online-deposits');
   } catch (err) {
     res.redirect(`/admin/online-deposits?error=${encodeURIComponent(err.message)}`);
-  }
-}));
-
-// ── Savings Applications Management ──
-
-router.get('/savings-applications', requireRole(1), asyncHandler(async (req, res) => {
-
-  const apps = await sql(`
-    SELECT sa.*, a.child_name, a.member_id, sp.name as product_name, sp.interest_rate, sp.interest_frequency
-    FROM savings_applications sa
-    LEFT JOIN accounts a ON sa.account_id = a.account_id
-    LEFT JOIN savings_products sp ON sa.product_id = sp.product_id
-    ORDER BY sa.created_at DESC
-  `);
-  const q = req.query;
-
-  const filterStatus = q.status || '';
-  const filtered = filterStatus ? apps.filter(a => a.status === filterStatus) : apps;
-
-  const toast = q.approved ? 'success:Savings application approved.'
-    : q.rejected ? 'success:Savings application rejected.'
-    : q.error ? `error:${q.error}`
-    : '';
-
-  const pendingCount = apps.filter(a => a.status === 'pending').length;
-
-  const statusColors = { pending: 'badge-amber', approved: 'badge-green', rejected: 'badge-red' };
-  const statusLabels = { pending: 'Pending', approved: 'Approved', rejected: 'Rejected' };
-
-  const content = `
-  <div class="stats-grid">
-    <div class="stat-card"><div class="stat-icon">&#x1F4B1;</div><div class="stat-value">${apps.length}</div><div class="stat-label">Total Applications</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x23F3;</div><div class="stat-value">${pendingCount}</div><div class="stat-label">Pending</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x2705;</div><div class="stat-value">${apps.filter(a => a.status === 'approved').length}</div><div class="stat-label">Approved</div></div>
-  </div>
-
-  <div class="card">
-    <div class="card-header"><h3>&#x1F4B1; Savings Account Applications</h3>
-      <div style="display:flex;gap:8px;align-items:center">
-        <form method="get" action="/admin/savings-applications" style="display:flex;gap:6px;align-items:center">
-          <select name="status" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" data-auto-submit="true">
-            <option value="">All Status</option>
-            <option value="pending"${filterStatus === 'pending' ? ' selected' : ''}>Pending</option>
-            <option value="approved"${filterStatus === 'approved' ? ' selected' : ''}>Approved</option>
-            <option value="rejected"${filterStatus === 'rejected' ? ' selected' : ''}>Rejected</option>
-          </select>
-          ${filterStatus ? `<a href="/admin/savings-applications" class="btn btn-outline btn-xs">&#x2716; Clear</a>` : ''}
-        </form>
-      </div>
-    </div>
-    <div class="card-body">
-    ${filtered.length === 0 ? '<div style="padding:32px;text-align:center;color:var(--text-muted)">No applications found.</div>' : `
-    <table><tr>
-      <th>Child</th><th>Member ID</th><th>Product</th><th>Rate</th><th>Frequency</th><th>Status</th><th>Applied</th><th>Actions</th>
-    </tr>
-    ${filtered.map(a => `
-    <tr>
-      <td><b>${a.child_name || 'Unknown'}</b></td>
-      <td class="mono">${a.member_id || '-'}</td>
-      <td><b>${a.product_name || 'Unknown'}</b></td>
-      <td class="num">${a.interest_rate ? (Number(a.interest_rate) * 100).toFixed(1) + '%' : '-'}</td>
-      <td><span class="badge badge-purple">${a.interest_frequency || '-'}</span></td>
-      <td><span class="badge ${statusColors[a.status] || 'badge-gray'}">${statusLabels[a.status] || a.status}</span></td>
-      <td class="mono">${(a.created_at || '').slice(0, 10)}</td>
-      <td><div class="actions-cell">
-        ${a.status === 'pending' ? `
-          <form method="post" action="/admin/savings-applications/approve/${a.application_id}" style="display:inline" data-confirm="Approve ${a.child_name}'s application for ${a.product_name}?">
-            <button type="submit" class="btn btn-primary btn-xs">&#x2705; Approve</button>
-          </form>
-          <form method="post" action="/admin/savings-applications/reject/${a.application_id}" style="display:inline" data-confirm="Reject this application?">
-            <button type="submit" class="btn btn-danger btn-xs">&#x274C; Reject</button>
-          </form>
-        ` : '<span style="font-size:11px;color:var(--text-muted)">—</span>'}
-      </div></td>
-    </tr>`).join('')}
-    </table>`}
-    </div>
-  </div>
-  `;
-
-  res.type('html').send(layout('Savings Applications', 'savings-applications', content, {
-    toast,
-    subtitle: `${pendingCount} pending`,
-    counts: { 'savings-applications': pendingCount },
-  }));
-}));
-
-router.post('/savings-applications/approve/:id', requireRole(3), asyncHandler(async (req, res) => {
-  try {
-
-    const app = await one('SELECT * FROM savings_applications WHERE application_id = $1', [req.params.id]);
-    if (!app) return res.redirect('/admin/savings-applications?error=Application+not+found');
-    if (app.status !== 'pending') return res.redirect('/admin/savings-applications?error=Application+is+not+pending');
-
-    // Assign the savings product to the account
-    await store.query("UPDATE accounts SET savings_product_id = $1, updated_at = CURRENT_TIMESTAMP WHERE account_id = $2", [app.product_id, app.account_id]);
-    await store.updateSavingsApplication(req.params.id, { status: 'approved', resolved_at: new Date().toISOString() });
-    res.redirect('/admin/savings-applications?approved=ok');
-  } catch (err) {
-    res.redirect(`/admin/savings-applications?error=${encodeURIComponent(err.message)}`);
-  }
-}));
-
-router.post('/savings-applications/reject/:id', requireRole(3), asyncHandler(async (req, res) => {
-  try {
-    const app = await one('SELECT * FROM savings_applications WHERE application_id = $1', [req.params.id]);
-    if (!app) return res.redirect('/admin/savings-applications?error=Application+not+found');
-    if (app.status !== 'pending') return res.redirect('/admin/savings-applications?error=Application+is+not+pending');
-    await store.updateSavingsApplication(req.params.id, { status: 'rejected', resolved_at: new Date().toISOString() });
-    res.redirect('/admin/savings-applications?rejected=ok');
-  } catch (err) {
-    res.redirect(`/admin/savings-applications?error=${encodeURIComponent(err.message)}`);
   }
 }));
 
@@ -5775,7 +5658,6 @@ router.post('/reset-database', requireRole(4), asyncHandler(async (req, res) => 
     'loans',
     'withdrawal_requests',
     'standing_orders',
-    'savings_applications',
     'coop_contributions',
     'coop_goals',
     'accounts',

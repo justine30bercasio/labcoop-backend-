@@ -11,7 +11,6 @@ function layout(title, active, content, opts = {}) {
     ]},
     { icon: '<i class="fas fa-piggy-bank"></i>', label: 'Savings & Deposits', key: 'deposits', children: [
       { icon: '<i class="fas fa-piggy-bank"></i>', label: 'Savings Products', href: '/admin/savings-products', key: 'savings-products' },
-      { icon: '<i class="fas fa-file-pen"></i>', label: 'Savings Applications', href: '/admin/savings-applications', key: 'savings-applications' },
       { icon: '<i class="fas fa-clock"></i>', label: 'Term Deposits', href: '/admin/term-deposits', key: 'term-deposits' },
       { icon: '<i class="fas fa-coins"></i>', label: 'Share Capital', href: '/admin/share-capital', key: 'share-capital' },
       { icon: '<i class="fas fa-chart-line"></i>', label: 'Dividends', href: '/admin/dividends', key: 'dividends' },

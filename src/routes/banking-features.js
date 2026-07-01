@@ -40,47 +40,6 @@ router.get('/loans/:loanId/schedule',
   })
 );
 
-// ── Savings Account Application ──
-
-router.post('/savings/apply',
-  body('account_id').isString().notEmpty().trim(),
-  body('product_id').isString().notEmpty().trim(),
-  asyncHandler(async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
-    const { account_id, product_id } = req.body;
-    const account = await store.getAccount(account_id);
-    if (!account) return res.status(404).json({ message: 'Account not found' });
-
-    const product = await store.getSavingsProduct(product_id);
-    if (!product) return res.status(404).json({ message: 'Savings product not found' });
-
-    // Check if already has a savings product or pending application
-    if (account.savings_product_id) {
-      return res.status(400).json({ message: 'Account already has a savings product assigned' });
-    }
-    const existingApps = await store.getSavingsApplications(account_id);
-    if (existingApps.some(a => a.status === 'pending')) {
-      return res.status(400).json({ message: 'You already have a pending application' });
-    }
-
-    const app = await store.createSavingsApplication({ account_id, product_id });
-    res.status(201).json(app);
-  })
-);
-
-router.get('/savings/applications/:accountId',
-  param('accountId').isString().notEmpty().trim(),
-  asyncHandler(async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
-    const apps = await store.getSavingsApplications(req.params.accountId);
-    res.json(apps);
-  })
-);
-
 // ── Account Savings Info (linked product + interest) ──
 
 router.get('/accounts/:accountId/savings',

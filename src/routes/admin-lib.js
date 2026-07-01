@@ -778,7 +778,13 @@ function printLayout(title, content, opts = {}) {
   .signature-block .label { font-size: 8pt; font-weight: 600; }
   .signature-block .sub-label { font-size: 7pt; color: #555; }
   .status-badge { display: none; }
-  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    form[method="get"], .btn, button, input, select, canvas,
+    .stats-grid:not(.stats-grid-print), .card-header .count,
+    a[href*="export"], a[href*="print"], a[href*="reset"],
+    a[target="_blank"], .badge-count { display: none !important; }
+  }
   .stats-grid-print { display: flex; gap: 3mm; margin-bottom: 3mm; }
   .stats-grid-print > div { flex: 1; border: 1px solid #999; padding: 2mm; text-align: center; font-size: 8pt; }
   .stats-grid-print .val { font-size: 11pt; font-weight: 700; }

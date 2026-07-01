@@ -4829,7 +4829,7 @@ router.get('/reports/loan-portfolio', requireRole(2), asyncHandler(async (req, r
     loans.forEach(l => {
       const amt = parseFloat(l.amount) || 0;
       const interest = parseFloat(l.interest) || 0;
-      csv += `"${l.child_name||''}","${l.member_id||''}",${amt},${interest},${amt+interest},${l.created_at.slice(0,10)},${l.due_date.slice(0,10)},${l.status}\n`;
+      csv += `"${l.child_name||''}","${l.member_id||''}",${amt},${interest},${amt+interest},${(l.created_at||'').slice(0,10)},${(l.due_date||'').slice(0,10)},${l.status}\n`;
     });
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="loan_portfolio_' + new Date().toISOString().slice(0,10) + '.csv"');
@@ -5162,7 +5162,7 @@ router.get('/eoy', requireRole(1), asyncHandler(async (req, res) => {
   let income = [], expense = [], totalIncome = 0, totalExpense = 0, netProfit = 0;
   try {
     const pnl = await gl.getProfitAndLoss(selYear + '-01-01', selYear + '-12-31');
-    income = pnl.income; expense = pnl.expense; totalIncome = pnl.totalIncome; totalExpense = pnl.totalExpense; netProfit = pnl.netProfit;
+    income = [...(pnl.operatingIncome || []), ...(pnl.otherIncome || [])]; expense = [...(pnl.operatingExpense || []), ...(pnl.otherExpense || [])]; totalIncome = pnl.totalIncome; totalExpense = pnl.totalExpense; netProfit = pnl.netProfit;
   } catch (e) {}
 
   const prevCloses = await sql("SELECT * FROM eoy_logs ORDER BY year DESC");
@@ -5263,8 +5263,8 @@ router.post('/eoy/close', requireRole(3), asyncHandler(async (req, res) => {
   const pnl = await gl.getProfitAndLoss(fromDate, toDate);
   const closeTxId = 'eoy-' + uuidv4().slice(0,8);
   const entries = [];
-  for (const inc of pnl.income) { if (inc.amount > 0) entries.push({ account_code: inc.code, debit: inc.amount, credit: 0, description: 'P&L close ' + year }); }
-  for (const exp of pnl.expense) { if (exp.amount > 0) entries.push({ account_code: exp.code, debit: 0, credit: exp.amount, description: 'P&L close ' + year }); }
+  for (const inc of [...(pnl.operatingIncome||[]), ...(pnl.otherIncome||[])]) { if (inc.amount > 0) entries.push({ account_code: inc.code, debit: inc.amount, credit: 0, description: 'P&L close ' + year }); }
+  for (const exp of [...(pnl.operatingExpense||[]), ...(pnl.otherExpense||[])]) { if (exp.amount > 0) entries.push({ account_code: exp.code, debit: 0, credit: exp.amount, description: 'P&L close ' + year }); }
   if (pnl.netProfit >= 0) entries.push({ account_code: '3100', debit: 0, credit: pnl.netProfit, description: 'Net profit ' + year });
   else entries.push({ account_code: '3100', debit: Math.abs(pnl.netProfit), credit: 0, description: 'Net loss ' + year });
   await gl.postDoubleEntry(closeTxId, entries, { postedBy: req.session.adminName || 'admin', referenceType: 'eoy' });
@@ -6098,11 +6098,18 @@ router.get('/gl/ledger', requireRole(1), asyncHandler(async (req, res) => {
 
   if (req.query.print) {
     let runningBalance = 0;
+    let totalDebit = 0, totalCredit = 0;
+    const accountType = accounts.find(x => x.code === selected)?.type;
+    const isAssetExpense = ['asset','expense'].includes(accountType || '');
     const rows = (entries || []).map(e => {
-      runningBalance += (e.debit || 0) - (e.credit || 0);
-      return { cells: [e.created_at ? e.created_at.slice(0,10) : '-', e.description || '-', e.reference_number || '-', e.posted_by || '-', fmt(e.debit || 0), fmt(e.credit || 0), fmt(runningBalance)] };
+      const d = Number(e.debit || 0);
+      const c = Number(e.credit || 0);
+      totalDebit += d;
+      totalCredit += c;
+      runningBalance += (isAssetExpense ? 1 : -1) * (d - c);
+      return { cells: [e.created_at ? e.created_at.slice(0,10) : '-', e.description || '-', e.reference_number || '-', e.posted_by || '-', fmt(d), fmt(c), fmt(runningBalance)] };
     });
-    const printContent = reportTable(['Date', 'Description', 'Ref No', 'Posted By', 'Debit', 'Credit', 'Balance'], rows, { totalCells: ['', '', '', '', fmt(rows.reduce((s,r)=>s+Number(r.cells[4].replace(/[₱,]/g,'')),0)), fmt(rows.reduce((s,r)=>s+Number(r.cells[5].replace(/[₱,]/g,'')),0)), fmt(runningBalance)] });
+    const printContent = reportTable(['Date', 'Description', 'Ref No', 'Posted By', 'Debit', 'Credit', 'Balance'], rows, { totalCells: ['', '', '', '', fmt(totalDebit), fmt(totalCredit), fmt(runningBalance)] });
     return res.type('html').send(printLayout('General Ledger', printContent, { subtitle: selected ? 'Account: ' + accName : 'All accounts', orientation: 'portrait', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'Auditor' }));
   }
 

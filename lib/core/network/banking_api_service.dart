@@ -13,27 +13,6 @@ class BankingApiService {
     }
   }
 
-  static Future<Map<String, dynamic>?> applySavingsAccount(String accountId, String productId) async {
-    try {
-      final resp = await _dio.post('/api/savings/apply', data: {
-        'account_id': accountId,
-        'product_id': productId,
-      });
-      return resp.data as Map<String, dynamic>;
-    } on DioException {
-      return null;
-    }
-  }
-
-  static Future<List<dynamic>> getSavingsApplications(String accountId) async {
-    try {
-      final resp = await _dio.get('/api/savings/applications/$accountId');
-      return resp.data as List<dynamic>;
-    } on DioException {
-      return [];
-    }
-  }
-
   static Future<Map<String, dynamic>?> getSavingsInfo(String accountId) async {
     try {
       final resp = await _dio.get('/api/accounts/$accountId/savings');

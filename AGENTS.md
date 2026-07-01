@@ -134,3 +134,13 @@ Flutter app data disappeared on logout/refresh because:
 - Flutter: Dashboard keeps cached content visible during auto-refresh (instead of full-screen spinner)
 - Flutter: `SavingsBloc` skips `SavingsLoading` when data already loaded
 - APK rebuilt (26.7MB)
+
+=====
+### Session Completed 2026-07-01
+- Removed **savings application feature** entirely:
+  - Flutter: Deleted `savings_open_page.dart`, removed navigation chip from `banking_page.dart`, removed `applySavingsAccount()`/`getSavingsApplications()` from API service
+  - Admin (`admin_converted.js`): Removed GET listing, POST approve/reject routes, sidebar link, dashboard pending count + quick-action card, export table reference
+  - Backend routes (`banking-features.js`): Removed POST `/savings/apply` + GET `/savings/applications/:accountId`
+  - Stores (`pg-store.js`, `sqlite-store.js`): Removed `getSavingsApplications`, `createSavingsApplication`, `updateSavingsApplication` methods + CREATE TABLE schema
+  - Table name kept in `clean-db.js`, `aiven-clean.js`, `index.js:reset-database` for backward compat with existing databases
+- All changes commited and deployed to Render

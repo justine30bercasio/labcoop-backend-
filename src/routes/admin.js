@@ -5801,7 +5801,7 @@ router.get('/gl/trial-balance', requireRole(1), asyncHandler(async (req, res) =>
       </tr>
     </table></div>
   </div>`;
-  if (req.query.print) return res.type('html').send(printLayout('Trial Balance', content, { subtitle: date ? 'As of ' + date : 'All periods' }));
+  if (req.query.print) return res.type('html').send(printLayout('Trial Balance', content, { subtitle: 'All GL accounts with debit/credit totals', asOf: date || undefined, orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
   res.type('html').send(layout('Trial Balance', 'gl-trial', content, { subtitle: 'All GL accounts with debit/credit totals' }));
 }));
 
@@ -5870,7 +5870,7 @@ router.get('/gl/balance-sheet', requireRole(1), asyncHandler(async (req, res) =>
     res.setHeader('Content-Disposition', `attachment; filename="balance_sheet_${date||'all'}.csv"`);
     return res.send(csv);
   }
-  if (req.query.print) return res.type('html').send(printLayout('Balance Sheet', content, { subtitle: date ? 'As of ' + date : 'All periods' }));
+  if (req.query.print) return res.type('html').send(printLayout('Balance Sheet', content, { subtitle: 'Assets = Liabilities + Equity', asOf: date || undefined, orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
   res.type('html').send(layout('Balance Sheet', 'gl-bsheet', content, { subtitle: 'Assets = Liabilities + Equity' }));
 }));
 
@@ -5968,7 +5968,7 @@ router.get('/gl/profit-and-loss', requireRole(1), asyncHandler(async (req, res) 
     res.setHeader('Content-Disposition', `attachment; filename="pnl_${from}_${to}.csv"`);
     return res.send(csv);
   }
-  if (req.query.print) return res.type('html').send(printLayout('Profit & Loss Statement', content, { subtitle: `${from} to ${to}` }));
+  if (req.query.print) return res.type('html').send(printLayout('Profit & Loss Statement', content, { subtitle: `${from} to ${to}`, dateRange: `${from} to ${to}`, orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
   res.type('html').send(layout('Profit & Loss', 'gl-pnl', content, { subtitle: 'Income - Expenses = Net Profit/Loss' }));
 }));
 
@@ -6042,6 +6042,8 @@ router.get('/gl/ledger', requireRole(1), asyncHandler(async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="ledger_${selected}.csv"`);
     return res.send(csv);
   }
+
+  if (req.query.print) return res.type('html').send(printLayout('General Ledger', content, { subtitle: selected ? 'Account: ' + accName : 'All accounts', orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'Auditor' }));
 
   res.type('html').send(layout('General Ledger', 'gl-ledger', content, { subtitle: 'View individual account entries' }));
 }));
@@ -6121,7 +6123,7 @@ router.get('/gl/journal', requireRole(1), asyncHandler(async (req, res) => {
       </table></div>
     </div>`;
   }).join('') || '<div class="card"><div class="card-body-padded" style="text-align:center;padding:40px;color:var(--text-muted)">No journal entries for this period.</div></div>'}`;
-  if (req.query.print) return res.type('html').send(printLayout('General Journal', content, { subtitle: `${from} to ${to}` }));
+  if (req.query.print) return res.type('html').send(printLayout('General Journal', content, { subtitle: 'BIR-compliant journal entries', dateRange: `${from} to ${to}`, orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'Auditor' }));
   res.type('html').send(layout('General Journal', 'gl-journal', content, { subtitle: `${from} to ${to}` }));
 }));
 

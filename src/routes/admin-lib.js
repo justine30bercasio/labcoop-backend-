@@ -723,66 +723,93 @@ function h(str) {
 }
 
 function printLayout(title, content, opts = {}) {
-  const { subtitle } = opts;
+  const {
+    subtitle = '',
+    dateRange = '',
+    companyName = 'LabCoop',
+    companyAddress = '123 Rizal Street, Barangay Poblacion',
+    companyTin = '123-456-789-000',
+    asOf = '',
+    orientation = 'portrait',
+    signatureLine1 = 'Prepared by:',
+    signatureLine2 = 'Reviewed by:',
+    signatureLine3 = 'Approved by:',
+    disclaimer = 'This report is system-generated and does not require a physical signature unless otherwise specified.',
+    showPageNumbers = true,
+    showSignatures = true,
+    showDisclaimer = true,
+  } = opts;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${h(title)} — LabCoop</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
 <style>
-  @media print { @page { size: landscape; margin: 10mm; } body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  @page {
+    size: ${orientation === 'landscape' ? 'A4 landscape' : 'A4 portrait'};
+    margin: 20mm 15mm 25mm 15mm;
+    ${showPageNumbers ? "@bottom-center { content: 'Page ' counter(page) ' of ' counter(pages); font-size: 9px; color: #666; }" : ''}
+  }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #fff; color: #1a1a2e; padding: 20px; }
-  .print-header { border-bottom: 3px solid #2563eb; padding-bottom: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: end; }
-  .print-header h1 { font-size: 22px; color: #1e3a5f; }
-  .print-header .subtitle { color: #64748b; font-size: 13px; margin-top: 4px; }
-  .print-header .meta { text-align: right; font-size: 11px; color: #94a3b8; }
-  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
-  .stat-card { background: #f8fafc; border-radius: 8px; padding: 14px; text-align: center; border: 1px solid #e2e8f0; }
-  .stat-card .stat-icon { font-size: 22px; color: #2563eb; margin-bottom: 4px; }
-  .stat-card .stat-value { font-size: 20px; font-weight: 700; color: #1e3a5f; }
-  .stat-card .stat-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
-  .card { border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
-  .card-header { background: #f8fafc; padding: 10px 14px; font-weight: 600; font-size: 13px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
-  .card-header h3 { font-size: 14px; }
-  .card-body { padding: 0; }
-  .card-body-padded { padding: 14px; }
-  table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  th { background: #f1f5f9; color: #475569; font-weight: 600; padding: 8px 10px; text-align: left; border-bottom: 2px solid #e2e8f0; }
-  td { padding: 7px 10px; border-bottom: 1px solid #f1f5f9; }
-  .mono { font-family: 'Cascadia Code', 'Fira Code', monospace; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
-  .badge-green { background: #dcfce7; color: #166534; }
-  .badge-red { background: #fee2e2; color: #991b1b; }
-  .badge-blue { background: #dbeafe; color: #1e40af; }
-  .badge-yellow { background: #fef9c3; color: #854d0e; }
-  .badge-orange { background: #ffedd5; color: #9a3412; }
-  .badge-gray { background: #f1f5f9; color: #475569; }
-  .count { font-size: 12px; color: #94a3b8; font-weight: 400; }
-  canvas { max-height: 200px; }
-  .text-right { text-align: right; }
-  .text-center { text-align: center; }
+  body { font-family: 'Courier New', Courier, 'Lucida Sans Typewriter', monospace; font-size: 10pt; line-height: 1.5; color: #000; }
+  .report-header { text-align: center; margin-bottom: 4mm; padding-bottom: 3mm; border-bottom: 2px solid #000; }
+  .report-header h1 { font-size: 14pt; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 1mm; }
+  .report-header .company-details { font-size: 8pt; color: #333; line-height: 1.4; }
+  .report-header .tin { font-size: 8pt; color: #555; }
+  .report-title { text-align: center; margin: 4mm 0 3mm 0; }
+  .report-title h2 { font-size: 12pt; font-weight: 700; text-decoration: underline; margin-bottom: 1mm; }
+  .report-title .subtitle { font-size: 9pt; color: #444; }
+  .report-title .date-range { font-size: 8pt; color: #555; margin-top: 1mm; }
+  .report-meta { text-align: right; font-size: 7pt; color: #666; margin-bottom: 2mm; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 3mm; font-size: 8.5pt; }
+  thead th { background: #e0e0e0; font-weight: 700; text-align: left; padding: 2mm 1.5mm; border: 1px solid #000; font-size: 8pt; text-transform: uppercase; }
+  thead th.num { text-align: right; }
+  tbody td { padding: 1.5mm 1.5mm; border: 1px solid #999; vertical-align: top; }
+  tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody tr:nth-child(even) { background: #f5f5f5; }
+  tbody tr.total-row { font-weight: 700; background: #e8e8e8; border-top: 2px solid #000; }
+  tbody tr.subtotal-row { font-weight: 600; background: #f0f0f0; border-top: 1px solid #666; }
+  .mono { font-family: 'Courier New', monospace; }
+  .section-title { font-weight: 700; font-size: 9pt; margin: 3mm 0 1mm 0; padding: 1mm 0; border-bottom: 1px solid #666; }
+  .disclaimer-text { font-size: 7pt; color: #666; text-align: center; margin-top: 4mm; padding-top: 2mm; border-top: 1px solid #ccc; }
+  .signature-area { margin-top: 6mm; display: flex; justify-content: space-between; }
+  .signature-block { text-align: center; flex: 1; }
+  .signature-block .line { border-top: 1px solid #000; width: 80%; margin: 20mm auto 1mm auto; }
+  .signature-block .label { font-size: 8pt; font-weight: 600; }
+  .signature-block .sub-label { font-size: 7pt; color: #555; }
+  .status-badge { display: none; }
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  .stats-grid-print { display: flex; gap: 3mm; margin-bottom: 3mm; }
+  .stats-grid-print > div { flex: 1; border: 1px solid #999; padding: 2mm; text-align: center; font-size: 8pt; }
+  .stats-grid-print .val { font-size: 11pt; font-weight: 700; }
+  .indent { padding-left: 5mm !important; }
+  .double-indent { padding-left: 10mm !important; }
+  .no-print { display: none; }
+  .footer-note { text-align: center; font-size: 7pt; color: #888; margin-top: 2mm; }
 </style>
 </head>
 <body>
-  <div class="print-header">
-    <div>
-      <h1><i class="fas fa-building-columns" style="color:#2563eb;margin-right:8px"></i>${h(title)}</h1>
-      ${subtitle ? '<div class="subtitle">' + subtitle + '</div>' : ''}
-    </div>
-    <div class="meta">
-      <div>LabCoop Microbanking System</div>
-      <div>Generated: ${new Date().toLocaleString()}</div>
-    </div>
+  <div class="report-header">
+    <h1>${companyName}</h1>
+    <div class="company-details">${companyAddress}</div>
+    <div class="tin">TIN: ${companyTin}</div>
   </div>
+  <div class="report-title">
+    <h2>${title}</h2>
+    ${subtitle ? `<div class="subtitle">${subtitle}</div>` : ''}
+    ${asOf ? `<div class="date-range">As of ${asOf}</div>` : ''}
+    ${dateRange ? `<div class="date-range">${dateRange}</div>` : ''}
+  </div>
+  <div class="report-meta">Generated: ${new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
   ${content}
-  <div style="text-align:center;margin-top:30px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:10px;color:#94a3b8">
-    LabCoop — Confidential — Generated on ${new Date().toISOString().slice(0,10)}
-  </div>
-  <script>document.querySelectorAll('.btn,.sidebar,.no-print').forEach(e => e && e.remove());</script>
+  ${showDisclaimer ? `<div class="disclaimer-text">${disclaimer}</div>` : ''}
+  ${showSignatures ? `
+  <div class="signature-area">
+    <div class="signature-block"><div class="line"></div><div class="label">${signatureLine1}</div><div class="sub-label">(Printed Name &amp; Signature)</div></div>
+    <div class="signature-block"><div class="line"></div><div class="label">${signatureLine2}</div><div class="sub-label">(Printed Name &amp; Signature)</div></div>
+    <div class="signature-block"><div class="line"></div><div class="label">${signatureLine3}</div><div class="sub-label">(Printed Name &amp; Signature)</div></div>
+  </div>` : ''}
+  <div class="footer-note">This report is system-generated from LabCoop Banking System</div>
 </body>
 </html>`;
 }

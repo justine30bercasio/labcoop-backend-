@@ -687,7 +687,7 @@ router.get('/cash-flow', requireRole(1), asyncHandler(async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="cash_flow_${from}_${to}.csv"`);
     return res.send(csv);
   }
-  if (req.query.print) return res.type('html').send(printLayout('Cash Flow Statement', content, { subtitle: `${from} to ${to}` }));
+  if (req.query.print) return res.type('html').send(printLayout('Cash Flow Statement', content, { subtitle: `${from} to ${to}`, dateRange: `${from} to ${to}`, orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
   res.type('html').send(layout('Cash Flow Statement', 'cash-flow', content, { subtitle: `${from} to ${to}` }));
 }));
 

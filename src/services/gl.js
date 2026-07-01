@@ -70,16 +70,23 @@ async function getBalanceSheet(asOf) {
   const currentLiabilities = rows.filter(r => r.type === 'liability' && r.category === 'current_liability');
   const nonCurrentLiabilities = rows.filter(r => r.type === 'liability' && r.category === 'non_current_liability');
   const equity = rows.filter(r => r.type === 'equity');
+  // Calculate net income from income/expense accounts not yet closed to retained earnings
+  const income = rows.filter(r => r.type === 'income').reduce((s, r) => s + r.balance, 0);
+  const expense = rows.filter(r => r.type === 'expense').reduce((s, r) => s + r.balance, 0);
+  const netIncome = income - expense;
   const totalCurrentAssets = currentAssets.reduce((s, r) => s + r.balance, 0);
   const totalNonCurrentAssets = nonCurrentAssets.reduce((s, r) => s + r.balance, 0);
   const totalCurrentLiabilities = currentLiabilities.reduce((s, r) => s + r.balance, 0);
   const totalNonCurrentLiabilities = nonCurrentLiabilities.reduce((s, r) => s + r.balance, 0);
-  const totalEquity = equity.reduce((s, r) => s + r.balance, 0);
+  const totalEquity = equity.reduce((s, r) => s + r.balance, 0) + netIncome;
   const totalAssets = totalCurrentAssets + totalNonCurrentAssets;
   const totalLiabilities = totalCurrentLiabilities + totalNonCurrentLiabilities;
-  return { currentAssets, nonCurrentAssets, currentLiabilities, nonCurrentLiabilities, equity,
+  const equityItems = netIncome !== 0
+    ? [...equity, { code: 'net_income', name: 'Current Year Earnings', type: 'equity', category: 'equity', balance: netIncome }]
+    : equity;
+  return { currentAssets, nonCurrentAssets, currentLiabilities, nonCurrentLiabilities, equity: equityItems,
     totalCurrentAssets, totalNonCurrentAssets, totalCurrentLiabilities, totalNonCurrentLiabilities,
-    totalEquity, totalAssets, totalLiabilities };
+    totalEquity, totalAssets, totalLiabilities, netIncome };
 }
 
 async function getProfitAndLoss(fromDate, toDate) {

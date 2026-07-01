@@ -4852,7 +4852,7 @@ router.get('/eod', requireRole(1), asyncHandler(async (req, res) => {
   // Today's transactions
   const txs = await sql(`SELECT t.*, a.child_name, a.member_id FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id WHERE DATE(t.created_at) = $1 ORDER BY t.created_at ASC`, [date]);
   const totalCollections = txs.filter(t => ['deposit','loan_payment','interest_income'].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
-  const totalDisbursements = txs.filter(t => ['withdrawal','loan_disbursement','penalty','fee'].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
+  const totalDisbursements = txs.filter(t => ['withdrawal','loan_disbursement'].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
   const txCount = txs.length;
 
   // Previous day's closing cash = today's opening cash

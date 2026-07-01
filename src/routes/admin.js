@@ -8,7 +8,7 @@ const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 const { getDb, store, isPostgres } = require('../db');
 const { asyncHandler } = require('../async-handler');
-const { layout, printLayout, h } = require('./admin-lib');
+const { layout, printLayout, h, reportTable, reportSection, reportStats } = require('./admin-lib');
 const notifs = require('../services/notifications');
 
 const _p = (...p) => p.length === 1 && Array.isArray(p[0]) ? p[0] : p;
@@ -5801,7 +5801,24 @@ router.get('/gl/trial-balance', requireRole(1), asyncHandler(async (req, res) =>
       </tr>
     </table></div>
   </div>`;
-  if (req.query.print) return res.type('html').send(printLayout('Trial Balance', content, { subtitle: 'All GL accounts with debit/credit totals', asOf: date || undefined, orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
+  if (req.query.print) {
+    const totalD = result.rows.reduce((s, r) => s + r.debit, 0);
+    const totalC = result.rows.reduce((s, r) => s + r.credit, 0);
+    const rows = result.rows.map(r => ({
+      cells: [r.code, r.name, `<span class="badge badge-${r.type === 'asset' || r.type === 'expense' ? 'red' : r.type === 'liability' || r.type === 'equity' ? 'blue' : 'green'}">${r.type}</span>`, r.category || '-', fmt(r.debit), fmt(r.credit), (r.balance >= 0 ? '' : '-') + fmt(Math.abs(r.balance)), (r.type === 'asset' || r.type === 'expense') ? (r.balance >= 0 ? 'DR' : 'CR') : (r.balance >= 0 ? 'CR' : 'DR')]
+    }));
+    const printContent = reportStats([
+      { label: 'GL Accounts', value: result.rows.length },
+      { label: 'Total Debits', value: fmt(totalD) },
+      { label: 'Total Credits', value: fmt(totalC) },
+      { label: 'Status', value: Math.abs(totalD - totalC) < 0.01 ? '✓ Balanced' : '⚠ Unbalanced' },
+    ]) + reportTable(
+      ['Code', 'Account', 'Type', 'Category', 'Debit', 'Credit', 'Balance', 'DR/CR'],
+      rows,
+      { totalCells: ['TOTAL', '', '', '', fmt(totalD), fmt(totalC), fmt(Math.abs(totalD - totalC)), Math.abs(totalD - totalC) < 0.01 ? '✓' : '⚠'] }
+    );
+    return res.type('html').send(printLayout('Trial Balance', printContent, { subtitle: 'All GL accounts with debit/credit totals', asOf: date || undefined, orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
+  }
   res.type('html').send(layout('Trial Balance', 'gl-trial', content, { subtitle: 'All GL accounts with debit/credit totals' }));
 }));
 
@@ -5870,7 +5887,23 @@ router.get('/gl/balance-sheet', requireRole(1), asyncHandler(async (req, res) =>
     res.setHeader('Content-Disposition', `attachment; filename="balance_sheet_${date||'all'}.csv"`);
     return res.send(csv);
   }
-  if (req.query.print) return res.type('html').send(printLayout('Balance Sheet', content, { subtitle: 'Assets = Liabilities + Equity', asOf: date || undefined, orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
+  if (req.query.print) {
+    const fmtAmt = v => '₱' + Number(v || 0).toFixed(2);
+    let printContent = reportStats([
+      { label: 'Total Assets', value: fmtAmt(result.totalAssets) },
+      { label: 'Total Liabilities', value: fmtAmt(result.totalLiabilities) },
+      { label: 'Total Equity', value: fmtAmt(result.totalEquity) },
+      { label: 'Equation', value: Math.abs(result.totalAssets - (result.totalLiabilities + result.totalEquity)) < 0.01 ? '✓ A = L + E' : '⚠ Off by ₱' + (result.totalAssets - result.totalLiabilities - result.totalEquity).toFixed(2) },
+    ]);
+    if (result.currentAssets.length) printContent += reportSection('Current Assets', result.currentAssets, fmtAmt(result.totalCurrentAssets), { color: '#16a34a' });
+    if (result.nonCurrentAssets.length) printContent += reportSection('Non-Current Assets', result.nonCurrentAssets, fmtAmt(result.totalNonCurrentAssets), { color: '#22c55e' });
+    if (result.currentLiabilities.length) printContent += reportSection('Current Liabilities', result.currentLiabilities, fmtAmt(result.totalCurrentLiabilities), { color: '#dc2626' });
+    if (result.nonCurrentLiabilities.length) printContent += reportSection('Non-Current Liabilities', result.nonCurrentLiabilities, fmtAmt(result.totalNonCurrentLiabilities), { color: '#ef4444' });
+    printContent += reportSection('Equity', result.equity, fmtAmt(result.totalEquity), { color: '#2563eb' });
+    const notes = await store.getSetting('fs_notes_bs') || '';
+    if (notes) printContent += `<div class="section-title">Notes to Financial Statements</div><div style="font-size:8pt;line-height:1.6;margin-bottom:3mm;padding:2mm;border:1px solid #ccc;background:#fafafa">${h(notes)}</div>`;
+    return res.type('html').send(printLayout('Balance Sheet', printContent, { subtitle: 'Assets = Liabilities + Equity', asOf: date || undefined, orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
+  }
   res.type('html').send(layout('Balance Sheet', 'gl-bsheet', content, { subtitle: 'Assets = Liabilities + Equity' }));
 }));
 
@@ -5968,7 +6001,27 @@ router.get('/gl/profit-and-loss', requireRole(1), asyncHandler(async (req, res) 
     res.setHeader('Content-Disposition', `attachment; filename="pnl_${from}_${to}.csv"`);
     return res.send(csv);
   }
-  if (req.query.print) return res.type('html').send(printLayout('Profit & Loss Statement', content, { subtitle: `${from} to ${to}`, dateRange: `${from} to ${to}`, orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
+  if (req.query.print) {
+    const fmtAmt = v => '₱' + Number(v || 0).toFixed(2);
+    let printContent = reportStats([
+      { label: 'Total Income', value: fmtAmt(result.totalIncome) },
+      { label: 'Total Expenses', value: fmtAmt(result.totalExpense) },
+      { label: 'Gross Profit', value: fmtAmt(result.grossProfit) },
+      { label: 'Net Profit', value: fmtAmt(result.netProfit) },
+    ]);
+    if (result.operatingIncome.length) printContent += reportSection('Operating Income', result.operatingIncome.map(i => ({ name: i.code + ' — ' + i.name, amount: (i.amount >= 0 ? '' : '(') + fmtAmt(Math.abs(i.amount)) + (i.amount < 0 ? ')' : '') })), fmtAmt(result.totalOperatingIncome), { color: '#16a34a', totalLabel: 'TOTAL OPERATING INCOME' });
+    if (result.otherIncome.length) printContent += reportSection('Other Income', result.otherIncome.map(i => ({ name: i.code + ' — ' + i.name, amount: (i.amount >= 0 ? '' : '(') + fmtAmt(Math.abs(i.amount)) + (i.amount < 0 ? ')' : '') })), fmtAmt(result.totalOtherIncome), { color: '#16a34a', totalLabel: 'TOTAL OTHER INCOME' });
+    if (result.operatingExpense.length) printContent += reportSection('Operating Expenses', result.operatingExpense.map(i => ({ name: i.code + ' — ' + i.name, amount: (i.amount >= 0 ? '' : '(') + fmtAmt(Math.abs(i.amount)) + (i.amount < 0 ? ')' : '') })), fmtAmt(result.totalOperatingExpense), { color: '#dc2626', totalLabel: 'TOTAL OPERATING EXPENSES' });
+    if (result.otherExpense.length) printContent += reportSection('Other Expenses', result.otherExpense.map(i => ({ name: i.code + ' — ' + i.name, amount: (i.amount >= 0 ? '' : '(') + fmtAmt(Math.abs(i.amount)) + (i.amount < 0 ? ')' : '') })), fmtAmt(result.totalOtherExpense), { color: '#dc2626', totalLabel: 'TOTAL OTHER EXPENSES' });
+    printContent += `<div class="section-title">Summary</div>` + reportTable(['', 'Amount'], [
+      { cells: ['Gross Profit (Operating Income)', fmtAmt(result.grossProfit)] },
+      { cells: ['Operating Profit (Inc - Exp)', fmtAmt(result.operatingProfit)] },
+      { cells: ['Net Profit Before Tax', fmtAmt(result.netProfit)] },
+    ], { totalCells: false });
+    const notes = await store.getSetting('fs_notes_pnl') || '';
+    if (notes) printContent += `<div class="section-title">Notes to Financial Statements</div><div style="font-size:8pt;line-height:1.6;margin-bottom:3mm;padding:2mm;border:1px solid #ccc;background:#fafafa">${h(notes)}</div>`;
+    return res.type('html').send(printLayout('Profit & Loss Statement', printContent, { subtitle: `${from} to ${to}`, dateRange: `${from} to ${to}`, orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
+  }
   res.type('html').send(layout('Profit & Loss', 'gl-pnl', content, { subtitle: 'Income - Expenses = Net Profit/Loss' }));
 }));
 
@@ -6043,7 +6096,15 @@ router.get('/gl/ledger', requireRole(1), asyncHandler(async (req, res) => {
     return res.send(csv);
   }
 
-  if (req.query.print) return res.type('html').send(printLayout('General Ledger', content, { subtitle: selected ? 'Account: ' + accName : 'All accounts', orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'Auditor' }));
+  if (req.query.print) {
+    let runningBalance = 0;
+    const rows = (entries || []).map(e => {
+      runningBalance += (e.debit || 0) - (e.credit || 0);
+      return { cells: [e.created_at ? e.created_at.slice(0,10) : '-', e.description || '-', e.reference_number || '-', e.posted_by || '-', fmt(e.debit || 0), fmt(e.credit || 0), fmt(runningBalance)] };
+    });
+    const printContent = reportTable(['Date', 'Description', 'Ref No', 'Posted By', 'Debit', 'Credit', 'Balance'], rows, { totalCells: ['', '', '', '', fmt(rows.reduce((s,r)=>s+Number(r.cells[4].replace(/[₱,]/g,'')),0)), fmt(rows.reduce((s,r)=>s+Number(r.cells[5].replace(/[₱,]/g,'')),0)), fmt(runningBalance)] });
+    return res.type('html').send(printLayout('General Ledger', printContent, { subtitle: selected ? 'Account: ' + accName : 'All accounts', orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'Auditor' }));
+  }
 
   res.type('html').send(layout('General Ledger', 'gl-ledger', content, { subtitle: 'View individual account entries' }));
 }));
@@ -6123,7 +6184,16 @@ router.get('/gl/journal', requireRole(1), asyncHandler(async (req, res) => {
       </table></div>
     </div>`;
   }).join('') || '<div class="card"><div class="card-body-padded" style="text-align:center;padding:40px;color:var(--text-muted)">No journal entries for this period.</div></div>'}`;
-  if (req.query.print) return res.type('html').send(printLayout('General Journal', content, { subtitle: 'BIR-compliant journal entries', dateRange: `${from} to ${to}`, orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'Auditor' }));
+  if (req.query.print) {
+    let totalDebit = 0, totalCredit = 0;
+    const rows = (entries || []).map(e => {
+      totalDebit += Number(e.debit || 0);
+      totalCredit += Number(e.credit || 0);
+      return { cells: [e.transaction_id ? e.transaction_id.slice(0,8) : '-', e.account_code, e.account_name || '', e.description || '', e.reference_number || '-', e.posted_by || '-', e.created_at ? e.created_at.slice(0,10) : '-', fmt(e.debit || 0), fmt(e.credit || 0)] };
+    });
+    const printContent = reportTable(['Folio', 'Code', 'Account', 'Description', 'Ref No', 'Posted By', 'Date', 'Debit', 'Credit'], rows, { totalCells: ['', '', '', '', '', '', 'TOTAL', fmt(totalDebit), fmt(totalCredit)] });
+    return res.type('html').send(printLayout('General Journal', printContent, { subtitle: 'BIR-compliant journal entries', dateRange: `${from} to ${to}`, orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'Auditor' }));
+  }
   res.type('html').send(layout('General Journal', 'gl-journal', content, { subtitle: `${from} to ${to}` }));
 }));
 

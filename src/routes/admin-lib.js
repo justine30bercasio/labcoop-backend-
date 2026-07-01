@@ -820,4 +820,45 @@ function printLayout(title, content, opts = {}) {
 </html>`;
 }
 
-module.exports = { layout, printLayout, h };
+function reportTable(headers, rows, opts = {}) {
+  const { totalText = 'TOTAL', totalCells, showRowNumbers = false, classMap = {} } = opts;
+  const th = headers.map((h, i) => {
+    const cls = (i > 0 && typeof h === 'string' && h.toLowerCase() !== 'code') ? ' class="num"' : '';
+    return `<th${cls}>${h}</th>`;
+  }).join('');
+  const tr = rows.map((r, ri) => {
+    const cls = r.cls || '';
+    const num = showRowNumbers ? `<td class="num mono" style="color:#999">${ri + 1}</td>` : '';
+    const cells = r.cells.map((c, ci) => {
+      const isNum = ci > 0 && typeof c === 'string' && (c.includes('₱') || /^[\d,\.]+$/.test(c.replace(/[₱,\(\)]/g, '')));
+      return `<td${isNum ? ' class="num mono"' : ''}>${c}</td>`;
+    }).join('');
+    return `<tr class="${cls}">${num}${cells}</tr>`;
+  }).join('');
+  const total = totalCells ? `<tr class="total-row">${totalCells.map((c, i) => {
+    const isNum = i > 0;
+    return `<td${isNum ? ' class="num mono"' : ''} style="font-weight:700">${c}</td>`;
+  }).join('')}</tr>` : '';
+  return `<table>${th ? `<thead><tr>${th}</tr></thead>` : ''}<tbody>${tr}${total}</tbody></table>`;
+}
+
+function reportSection(title, items, total, opts = {}) {
+  const { color = '#000', totalLabel = 'TOTAL ' + title.toUpperCase() } = opts;
+  const rows = items.map(i => ({
+    cells: [i.name, `<span style="color:${color};font-weight:600">${i.amount || i.balance || 0}</span>`]
+  }));
+  return `<div class="section-title">${title}</div>
+  <table>
+    <thead><tr><th>Account</th><th class="num">Amount</th></tr></thead>
+    <tbody>
+      ${rows.map(r => `<tr><td>${r.cells[0]}</td><td class="num mono">${r.cells[1]}</td></tr>`).join('')}
+      <tr class="total-row"><td style="font-weight:700">${totalLabel}</td><td class="num mono" style="font-weight:700;color:${color}">${total}</td></tr>
+    </tbody>
+  </table>`;
+}
+
+function reportStats(items) {
+  return `<div class="stats-grid-print">${items.map(i => `<div><div class="val">${i.value}</div><div>${i.label}</div></div>`).join('')}</div>`;
+}
+
+module.exports = { layout, printLayout, h, reportTable, reportSection, reportStats };

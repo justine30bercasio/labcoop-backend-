@@ -2,7 +2,7 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const { store, isPostgres } = require('../db');
 const { asyncHandler } = require('../async-handler');
-const { layout, printLayout } = require('./admin-lib');
+const { layout, printLayout, reportTable, reportSection, reportStats } = require('./admin-lib');
 
 const _p = (...p) => p.length === 1 && Array.isArray(p[0]) ? p[0] : p;
 const sql = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows);
@@ -687,8 +687,38 @@ router.get('/cash-flow', requireRole(1), asyncHandler(async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="cash_flow_${from}_${to}.csv"`);
     return res.send(csv);
   }
-  if (req.query.print) return res.type('html').send(printLayout('Cash Flow Statement', content, { subtitle: `${from} to ${to}`, dateRange: `${from} to ${to}`, orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
-  res.type('html').send(layout('Cash Flow Statement', 'cash-flow', content, { subtitle: `${from} to ${to}` }));
+  if (req.query.print) {
+    const fmtAmt = v => '\u20B1' + Number(v || 0).toFixed(2);
+    const signedCat = (types, signs) => categories.filter(c => types.includes(c.type)).map(c => ({ name: c.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), amount: Number(c.total) * (signs[c.type] || 1) }));
+    const s = { deposit: 1, interest_credit: 1, fee: -1, withdrawal: -1, loan_disbursement: -1, loan_payment: 1 };
+    const operating = signedCat(['deposit','interest_credit','fee','withdrawal'], s);
+    const investing = signedCat(['loan_disbursement'], s);
+    const financing = signedCat(['loan_payment'], s);
+    const operatingTotal = operating.reduce((a, i) => a + i.amount, 0);
+    const investingTotal = investing.reduce((a, i) => a + i.amount, 0);
+    const financingTotal = financing.reduce((a, i) => a + i.amount, 0);
+    let printContent = '';
+    const makeSection = (title, items, total, color) => {
+      const rows = items.map(i => ({ cells: [i.name, i.amount < 0 ? '(' + fmtAmt(Math.abs(i.amount)) + ')' : fmtAmt(i.amount)] }));
+      printContent += `<div class="section-title">${title}</div>` + reportTable(['Item', 'Amount'], rows, { totalCells: ['TOTAL ' + title.toUpperCase(), '<span style="color:' + color + ';font-weight:700">' + fmtAmt(total) + '</span>'] });
+    };
+    makeSection('Operating Activities', operating, operatingTotal, '#16a34a');
+    makeSection('Investing Activities', investing, investingTotal, '#2563eb');
+    makeSection('Financing Activities', financing, financingTotal, '#8b5cf6');
+    printContent += '<div class="section-title">Net Cash Flow</div>' + reportTable(['', 'Amount'], [
+      { cells: ['Net Cash from Operations', fmtAmt(operatingTotal)] },
+      { cells: ['Net Cash from Investing', fmtAmt(investingTotal)] },
+      { cells: ['Net Cash from Financing', fmtAmt(financingTotal)] },
+      { cells: ['NET CASH FLOW', '<span style="font-weight:700;color:' + (net >= 0 ? '#16a34a' : '#dc2626') + '">' + (net < 0 ? '(' + fmtAmt(Math.abs(net)) + ')' : fmtAmt(net)) + '</span>'], cls: 'total-row' },
+    ], { totalCells: false });
+    printContent += '<div class="section-title">Beg/End Cash</div>' + reportTable(['', 'Amount'], [
+      { cells: ['Beginning Cash Balance', fmtAmt(op)] },
+      { cells: ['Net Cash Flow', fmtAmt(net)] },
+      { cells: ['ENDING CASH BALANCE', '<span style="font-weight:700;color:#2563eb">' + fmtAmt(cl) + '</span>'], cls: 'total-row' },
+    ], { totalCells: false });
+    return res.type('html').send(printLayout('Cash Flow Statement', printContent, { subtitle: from + ' to ' + to, dateRange: from + ' to ' + to, orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
+  }
+  res.type('html').send(layout('Cash Flow Statement', 'cash-flow', content, { subtitle: from + ' to ' + to }));
 }));
 
 // ============================================================
@@ -797,7 +827,27 @@ router.get('/budget', requireRole(3), asyncHandler(async (req, res) => {
     return res.send(csv);
   }
 
-  if (req.query.print) return res.type('html').send(printLayout('Budget vs Actual', content, { subtitle: 'Year ' + year, asOf: String(year), orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
+  if (req.query.print) {
+    const fmtAmt = v => '\u20B1' + Number(v || 0).toFixed(2);
+    const rows = actuals.map(r => {
+      const b = Number(budgets[r.code] || 0);
+      const a = Number(r.bal);
+      const v = b - a;
+      return { cells: [r.code + ' \u2014 ' + r.name, fmtAmt(b), fmtAmt(a), (v >= 0 ? '+' : '') + fmtAmt(v)] };
+    });
+    const printContent = reportStats([
+      { label: 'Budgeted Income', value: fmtAmt(incBudget) },
+      { label: 'Actual Income', value: fmtAmt(incTotal) },
+      { label: 'Budgeted Expenses', value: fmtAmt(expBudget) },
+      { label: 'Actual Expenses', value: fmtAmt(expTotal) },
+      { label: 'Budgeted Net', value: fmtAmt(incBudget - expBudget) },
+      { label: 'Actual Net', value: fmtAmt(incTotal - expTotal) },
+    ]) + reportTable(['Account', 'Budget', 'Actual', 'Variance'], rows, { totalCells: ['TOTAL INCOME', fmtAmt(incBudget), fmtAmt(incTotal), (incTotal - incBudget >= 0 ? '+' : '') + fmtAmt(incTotal - incBudget)] })
+      + reportTable(['', '', '', ''], [
+        { cells: ['TOTAL EXPENSES', fmtAmt(expBudget), fmtAmt(expTotal), (expTotal - expBudget >= 0 ? '+' : '') + fmtAmt(expTotal - expBudget)] }
+      ], { totalCells: ['NET SURPLUS/(DEFICIT)', fmtAmt(incBudget - expBudget), fmtAmt(incTotal - expTotal), fmtAmt((incTotal - expTotal) - (incBudget - expBudget))] });
+    return res.type('html').send(printLayout('Budget vs Actual', printContent, { subtitle: 'Year ' + year, asOf: String(year), orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'General Manager' }));
+  }
   res.type('html').send(layout('Budget vs Actual', 'budget', content, { subtitle: 'Year ' + year }));
 }));
 
@@ -939,7 +989,21 @@ router.get('/withholding-tax', requireRole(3), asyncHandler(async (req, res) => 
     return res.send(csv);
   }
 
-  if (req.query.print) return res.type('html').send(printLayout('Withholding Tax Report', content, { subtitle: 'BIR Form 2307 Equivalent', asOf: String(year), orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'Auditor' }));
+  if (req.query.print) {
+    const fmtAmt = v => '\u20B1' + Number(v || 0).toFixed(2);
+    const printContent = reportStats([
+      { label: 'Interest Tax Rate', value: iRate + '%' },
+      { label: 'Dividend Tax Rate', value: dRate + '%' },
+      { label: 'Gross Interest', value: fmtAmt(interestGross) },
+      { label: 'Gross Dividends', value: fmtAmt(divGross) },
+      { label: 'Total Tax Withheld', value: fmtAmt(totalWithheld) },
+      { label: 'GL Balance (2400)', value: fmtAmt(glBalance) },
+    ]) + reportTable(['Income Type', 'Gross Amount', 'Tax Rate', 'Tax Withheld', 'Net Amount'], [
+      { cells: ['Interest Income', fmtAmt(interestGross), iRate + '%', fmtAmt(interestWithheld), fmtAmt(interestGross - interestWithheld)] },
+      { cells: ['Dividend Income', fmtAmt(divGross), dRate + '%', fmtAmt(divWithheld), fmtAmt(divGross - divWithheld)] },
+    ], { totalCells: ['TOTAL', fmtAmt(interestGross + divGross), '', fmtAmt(totalWithheld), fmtAmt(interestGross + divGross - totalWithheld)] });
+    return res.type('html').send(printLayout('Withholding Tax Report', printContent, { subtitle: 'BIR Form 2307 Equivalent', asOf: String(year), orientation: 'landscape', signatureLine1: 'Prepared by:', signatureLine2: 'Accountant', signatureLine3: 'Auditor' }));
+  }
 res.type('html').send(layout('Withholding Tax', 'withholding-tax', content, { subtitle: 'BIR Form 2307 equivalent — tax withheld on interest & dividends' }));
 }));
 

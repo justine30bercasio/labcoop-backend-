@@ -35,7 +35,14 @@ workflows:
           source: true
     scripts:
       - flutter pub get
-      - flutter build ios --release --no-codesign
+      # First attempt: compiles Dart, generates Podfile, but pod install fails on Firebase
+      - flutter build ios --release --no-codesign || true
+      # Patch Podfile to allow non-modular headers in frameworks (Firebase fix)
+      - sed -i '' "s/flutter_additional_ios_build_settings(target)/flutter_additional_ios_build_settings(target)\n    target.build_configurations.each do |config|\n      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'\n    end/" ios/Podfile
+      # Run pod install manually with fix
+      - cd ios && pod install && cd ..
+      # Build with xcodebuild directly (Dart already compiled in first attempt)
+      - xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" build
       - mkdir -p Payload
       - cp -r build/ios/iphoneos/Runner.app Payload/
       - zip -r app.ipa Payload/

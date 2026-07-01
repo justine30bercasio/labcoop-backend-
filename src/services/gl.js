@@ -10,11 +10,19 @@ async function postDoubleEntry(transactionId, entries) {
   if (Math.abs(totalDebit - totalCredit) > 0.001) {
     throw new Error('GL entries not balanced: debits=' + totalDebit + ' credits=' + totalCredit);
   }
-  for (const e of entries) {
-    await store.query(
-      'INSERT INTO gl_entries (entry_id, transaction_id, account_code, debit, credit, description, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-      [uuidv4(), transactionId || null, e.account_code, e.debit || 0, e.credit || 0, e.description || '', new Date().toISOString()]
-    );
+  const doInserts = async (tx) => {
+    const q = (tx && tx.query) ? tx.query.bind(tx) : (sql, p) => store.query(sql, p);
+    for (const e of entries) {
+      await q(
+        'INSERT INTO gl_entries (entry_id, transaction_id, account_code, debit, credit, description, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+        [uuidv4(), transactionId || null, e.account_code, e.debit || 0, e.credit || 0, e.description || '', new Date().toISOString()]
+      );
+    }
+  };
+  if (typeof store.transaction === 'function') {
+    await store.transaction(doInserts);
+  } else {
+    await doInserts();
   }
 }
 

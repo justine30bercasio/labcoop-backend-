@@ -545,7 +545,7 @@ router.get('/cash-flow', requireRole(1), asyncHandler(async (req, res) => {
   categories.forEach(c => { if (c.type === 'loan_payment') breakdown.loan_payments = Number(c.total); if (c.type === 'fee') breakdown.fees = Number(c.total); });
 
   // Monthly breakdown
-  const monthExpr = isPostgres ? "to_char(created_at, 'YYYY-MM')" : "strftime('%Y-%m', created_at)";
+  const monthExpr = isPostgres ? "to_char(created_at::timestamp, 'YYYY-MM')" : "strftime('%Y-%m', created_at)";
   const monthly = await sql(`
     SELECT ${monthExpr} as month,
       COALESCE(SUM(CASE WHEN type IN ('deposit','interest_credit') THEN amount ELSE 0 END),0) as inflows,

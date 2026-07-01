@@ -1594,7 +1594,7 @@ router.post('/accounts/create', requireRole(2), asyncHandler(async (req, res) =>
           { account_code: '1000', debit: membershipAmt, description: 'Membership fee: ' + displayName },
           { account_code: '4100', credit: membershipAmt, description: 'Membership fee: ' + displayName },
         ]);
-      } catch (e) {}
+      } catch (e) { console.error('Membership fee GL posting error', e); }
     }
 
     // Insurance fee transaction + GL
@@ -1615,7 +1615,7 @@ router.post('/accounts/create', requireRole(2), asyncHandler(async (req, res) =>
           { account_code: '1000', debit: insuranceAmt, description: 'Insurance fee: ' + displayName },
           { account_code: '4200', credit: insuranceAmt, description: 'Insurance fee: ' + displayName },
         ]);
-      } catch (e) {}
+      } catch (e) { console.error('Insurance fee GL posting error', e); }
     }
 
     // Initial savings deposit transaction + GL
@@ -1636,7 +1636,7 @@ router.post('/accounts/create', requireRole(2), asyncHandler(async (req, res) =>
           { account_code: '1000', debit: savingsAmt, description: 'Initial savings deposit: ' + displayName },
           { account_code: '2000', credit: savingsAmt, description: 'Initial savings deposit: ' + displayName },
         ]);
-      } catch (e) {}
+      } catch (e) { console.error('Savings deposit GL posting error', e); }
     }
 
     res.redirect('/admin/accounts?added=ok');

@@ -90,18 +90,15 @@ function getDb() {
     try { db.exec("CREATE TABLE IF NOT EXISTS tax_config (tax_id TEXT PRIMARY KEY, name TEXT NOT NULL, rate DECIMAL(5,2) NOT NULL, applies_to TEXT DEFAULT 'interest' CHECK(applies_to IN ('interest','fee','dividend','all')), is_active INTEGER DEFAULT 1, created_at TEXT)"); } catch (_) {}
     try { db.exec("INSERT OR IGNORE INTO tax_config (tax_id, name, rate, applies_to) VALUES ('tax_interest', 'Interest Income Tax', 20, 'interest')"); } catch (_) {}
     try { db.exec("INSERT OR IGNORE INTO tax_config (tax_id, name, rate, applies_to) VALUES ('tax_dividend', 'Dividend Tax', 10, 'dividend')"); } catch (_) {}
-    const count = db.prepare("SELECT COUNT(*) as c FROM gl_accounts").get();
-    if (count.c === 0) {
-      const insert = db.prepare('INSERT INTO gl_accounts (code, name, type) VALUES (?,?,?)');
-      const accounts = [
-        ['1000','Cash on Hand','asset'], ['1100','Loans Receivable','asset'], ['1200','Accrued Interest','asset'],
-        ['2000','Savings Deposits','liability'], ['2100','Time Deposits','liability'], ['2200','Interest Payable','liability'],
-        ['3000','Share Capital','equity'], ['3100','Retained Earnings','equity'],
-        ['4000','Interest Income','income'], ['4100','Fee Income','income'], ['4200','Insurance Income','income'],
-        ['5000','Interest Expense','expense'],
-      ];
-      for (const a of accounts) insert.run(...a);
-    }
+    const insert = db.prepare('INSERT OR IGNORE INTO gl_accounts (code, name, type) VALUES (?,?,?)');
+    const accounts = [
+      ['1000','Cash on Hand','asset'], ['1100','Loans Receivable','asset'], ['1200','Accrued Interest','asset'],
+      ['2000','Savings Deposits','liability'], ['2100','Time Deposits','liability'], ['2200','Interest Payable','liability'],
+      ['3000','Share Capital','equity'], ['3100','Retained Earnings','equity'],
+      ['4000','Interest Income','income'], ['4100','Fee Income','income'], ['4200','Insurance Income','income'],
+      ['5000','Interest Expense','expense'],
+    ];
+    for (const a of accounts) insert.run(...a);
   }
   return db;
 }

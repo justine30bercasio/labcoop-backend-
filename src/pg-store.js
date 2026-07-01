@@ -429,8 +429,6 @@ class PgStore {
   }
 
   async _seedGlAccounts() {
-    const existing = await this.pool.query("SELECT COUNT(*) as c FROM gl_accounts");
-    if (Number(existing.rows[0].c) > 0) return;
     const accounts = [
       ['1000', 'Cash on Hand', 'asset'],
       ['1100', 'Loans Receivable', 'asset'],

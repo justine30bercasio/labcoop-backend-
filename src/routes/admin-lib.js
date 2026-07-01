@@ -59,6 +59,7 @@ function layout(title, active, content, opts = {}) {
     { icon: '<i class="fas fa-arrows-spin"></i>', label: 'Operations', key: 'operations', children: [
       { icon: '<i class="fas fa-arrows-spin"></i>', label: 'Transactions', href: '/admin/transactions', key: 'transactions' },
       { icon: '<i class="fas fa-calendar-check"></i>', label: 'End of Day', href: '/admin/eod', key: 'eod' },
+      { icon: '<i class="fas fa-calendar-alt"></i>', label: 'End of Month', href: '/admin/eom', key: 'eom' },
       { icon: '<i class="fas fa-calendar-alt"></i>', label: 'Year-End', href: '/admin/eoy', key: 'eoy' },
       { icon: '<i class="fas fa-file-invoice"></i>', label: 'Statements', href: '/admin/statements', key: 'statements' },
       { icon: '<i class="fas fa-door-closed"></i>', label: 'Account Closure', href: '/admin/account-closure', key: 'account-closure' },

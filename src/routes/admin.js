@@ -4992,6 +4992,157 @@ router.post('/eod/close', requireRole(2), asyncHandler(async (req, res) => {
   res.redirect('/admin/eod?date=' + date + '&closed=1');
 }));
 
+// ── End of Month ──
+router.get('/eom', requireRole(1), asyncHandler(async (req, res) => {
+  const sql = (q, p) => store.query(q, p || []).then(r => r.rows);
+  const one = (q, p) => store.query(q, p || []).then(r => r.rows[0]);
+  const now = new Date();
+  const year = Number(req.query.year || now.getFullYear());
+  const month = Number(req.query.month || now.getMonth() + 1);
+  const monthStr = String(month).padStart(2, '0');
+  const monthPrefix = year + '-' + monthStr;
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const firstDay = monthPrefix + '-01';
+  const lastDay = monthPrefix + '-' + String(daysInMonth).padStart(2, '0');
+
+  // Accounting period
+  const period = await one("SELECT * FROM accounting_periods WHERE year=$1 AND month=$2", [year, month]);
+
+  // EOD closes for this month
+  const eodLogs = await sql("SELECT * FROM eod_logs WHERE date LIKE $1 ORDER BY date", [monthPrefix + '%']);
+  const closedDays = eodLogs.length;
+  const allClosed = closedDays >= daysInMonth;
+
+  // Monthly transaction stats
+  const txStats = await one(`SELECT
+    COALESCE(SUM(CASE WHEN type IN ('deposit','interest_credit') THEN amount ELSE 0 END),0) as deposits,
+    COALESCE(SUM(CASE WHEN type IN ('withdrawal','loan_payment') THEN amount ELSE 0 END),0) as withdrawals,
+    COALESCE(SUM(CASE WHEN type='loan_disbursement' THEN amount ELSE 0 END),0) as loans_granted,
+    COALESCE(SUM(CASE WHEN type='fee' THEN amount ELSE 0 END),0) as fees,
+    COUNT(*) as tx_count
+    FROM transactions WHERE created_at LIKE $1`, [monthPrefix + '%']);
+
+  // Monthly GL totals
+  const glIncome = await one("SELECT COALESCE(SUM(credit)-SUM(debit),0) as total FROM gl_entries WHERE created_at LIKE $1 AND account_code IN (SELECT code FROM gl_accounts WHERE type='income')", [monthPrefix + '%']);
+  const glExpense = await one("SELECT COALESCE(SUM(debit)-SUM(credit),0) as total FROM gl_entries WHERE created_at LIKE $1 AND account_code IN (SELECT code FROM gl_accounts WHERE type='expense')", [monthPrefix + '%']);
+  const netIncome = Number(glIncome?.total||0) - Number(glExpense?.total||0);
+
+  // Last accrual run
+  const lastAccrual = await store.getSetting('last_accrual_run') || '';
+
+  const content = `
+  <form method="get" action="/admin/eom" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-bottom:16px">
+    <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:3px">Year</label>
+      <select name="year" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+        ${Array.from({length:5}, (_,i) => { const y = now.getFullYear() - i; return '<option value="' + y + '" ' + (year === y ? 'selected' : '') + '>' + y + '</option>'; }).join('')}
+      </select></div>
+    <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:3px">Month</label>
+      <select name="month" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+        ${Array.from({length:12}, (_,i) => '<option value="' + (i+1) + '" ' + (month === i+1 ? 'selected' : '') + '>' + new Date(2000,i).toLocaleString('en',{month:'long'}) + '</option>').join('')}
+      </select></div>
+    <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-search"></i> View</button>
+  </form>
+  <div class="stats-grid">
+    <div class="stat-card" style="border-left:4px solid var(--accent)"><div class="stat-icon"><i class="fas fa-calendar-alt"></i></div><div class="stat-value">${closedDays}/${daysInMonth}</div><div class="stat-label">Days Closed</div></div>
+    <div class="stat-card" style="border-left:4px solid #16a34a"><div class="stat-icon"><i class="fas fa-arrow-up"></i></div><div class="stat-value" style="color:#16a34a">${fmt(Number(txStats?.deposits||0))}</div><div class="stat-label">Deposits & Interest</div></div>
+    <div class="stat-card" style="border-left:4px solid #dc2626"><div class="stat-icon"><i class="fas fa-arrow-down"></i></div><div class="stat-value" style="color:#dc2626">${fmt(Number(txStats?.withdrawals||0))}</div><div class="stat-label">Withdrawals & Payments</div></div>
+    <div class="stat-card" style="border-left:4px solid #8b5cf6"><div class="stat-icon"><i class="fas fa-hand-holding-dollar"></i></div><div class="stat-value" style="color:#8b5cf6">${fmt(Number(txStats?.loans_granted||0))}</div><div class="stat-label">Loans Granted</div></div>
+    <div class="stat-card" style="border-left:4px solid #f59e0b"><div class="stat-icon"><i class="fas fa-receipt"></i></div><div class="stat-value" style="color:#f59e0b">${fmt(Number(txStats?.fees||0))}</div><div class="stat-label">Fees Collected</div></div>
+    <div class="stat-card" style="border-left:4px solid #2563eb"><div class="stat-icon"><i class="fas fa-chart-line"></i></div><div class="stat-value" style="color:${netIncome >= 0 ? '#16a34a' : '#dc2626'}">${fmt(Math.abs(netIncome))}</div><div class="stat-label">Net ${netIncome >= 0 ? 'Income' : 'Loss'}</div></div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <h3><i class="fas fa-list"></i> ${new Date(year, month-1).toLocaleString('en', { month: 'long', year: 'numeric' })} — Summary</h3>
+      <span class="count">${Number(txStats?.tx_count||0)} transactions</span>
+    </div>
+    <div class="card-body" style="padding:0">
+    <table>
+      <tr><th style="width:60%">Metric</th><th class="num">Amount</th></tr>
+      <tr><td>Total Deposits & Interest Credits</td><td class="num mono" style="color:#16a34a">${fmt(Number(txStats?.deposits||0))}</td></tr>
+      <tr><td>Total Withdrawals & Payments</td><td class="num mono" style="color:#dc2626">${fmt(Number(txStats?.withdrawals||0))}</td></tr>
+      <tr><td>Loans Granted</td><td class="num mono" style="color:#8b5cf6">${fmt(Number(txStats?.loans_granted||0))}</td></tr>
+      <tr><td>Fees Collected</td><td class="num mono" style="color:#f59e0b">${fmt(Number(txStats?.fees||0))}</td></tr>
+      <tr class="total-row"><td>NET OPERATIONS</td>
+        <td class="num mono" style="color:${netIncome >= 0 ? '#16a34a' : '#dc2626'};font-weight:700">${fmt(Math.abs(netIncome))} ${netIncome >= 0 ? '(Surplus)' : '(Deficit)'}</td></tr>
+      <tr><td>Transaction Count</td><td class="num mono">${txStats?.tx_count||0}</td></tr>
+      <tr><td>Days Closed</td><td class="num mono">${closedDays}/${daysInMonth} ${allClosed ? '<span class="badge badge-green">All Closed</span>' : '<span class="badge badge-yellow">' + (daysInMonth - closedDays) + ' Remaining</span>'}</td></tr>
+      <tr><td>Accounting Period</td><td class="num mono">${period ? (period.is_closed ? '<span class="badge badge-green">Closed</span>' : '<span class="badge badge-yellow">Open</span>') : '<span class="badge badge-gray">Not Created</span>'}</td></tr>
+      <tr><td>Last Accrual Run</td><td class="num mono">${lastAccrual === monthPrefix ? '<span class="badge badge-green">Completed</span>' : lastAccrual ? lastAccrual : '<span class="badge badge-yellow">Not Run</span>'}</td></tr>
+      <tr><td>GL Income</td><td class="num mono" style="color:#16a34a">${fmt(Number(glIncome?.total||0))}</td></tr>
+      <tr><td>GL Expenses</td><td class="num mono" style="color:#dc2626">${fmt(Number(glExpense?.total||0))}</td></tr>
+    </table></div>
+    ${!allClosed ? `<div class="card-body-padded" style="border-top:1px solid var(--border);background:#fff8e1;display:flex;align-items:center;gap:8px;font-size:13px;color:#92400e"><i class="fas fa-info-circle"></i> Complete all End of Day closes before month-end closing.</div>` : ''}
+    ${allClosed && period && !period.is_closed ? `
+    <div class="card-body-padded" style="border-top:1px solid var(--border);display:flex;gap:8px">
+      <a href="/admin/accounting-periods/close/${period.period_id}" class="btn btn-primary btn-sm" data-confirm="Close accounting period for ${new Date(year, month-1).toLocaleString('en',{month:'long',year:'numeric'})}? This prevents new GL entries for this period."><i class="fas fa-lock"></i> Close Accounting Period</a>
+      <a href="/admin/eom?year=${year}&month=${month}&run_accrual=1" class="btn btn-outline btn-sm" onclick="return confirm('Run monthly accrual for ${new Date(year, month-1).toLocaleString('en',{month:'long',year:'numeric'})}?')"><i class="fas fa-calculator"></i> Run Accrual</a>
+    </div>` : ''}
+  </div>
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-calendar-check"></i> Daily Close Status</h3><span class="count">${closedDays} closed</span></div>
+    <div class="card-body" style="padding:0">
+    <table>
+      <tr><th>Day</th><th>Date</th><th>Opening</th><th>Collections</th><th>Disbursements</th><th>Closing Cash</th><th>Tx Count</th><th>Status</th></tr>
+      ${Array.from({length: daysInMonth}, (_, i) => {
+        const day = i + 1;
+        const dayStr = String(day).padStart(2, '0');
+        const dateStr = monthPrefix + '-' + dayStr;
+        const eod = eodLogs.find(l => l.date === dateStr);
+        const isToday = year === now.getFullYear() && month === now.getMonth() + 1 && day === now.getDate();
+        return `<tr style="${isToday ? 'background:var(--bg2)' : ''}">
+          <td class="mono" style="font-weight:600;text-align:center">${dayStr}</td>
+          <td class="mono">${dateStr}</td>
+          ${eod ? `
+          <td class="mono">${fmt(Number(eod.opening_cash))}</td>
+          <td class="mono" style="color:#16a34a">${fmt(Number(eod.total_collections))}</td>
+          <td class="mono" style="color:#dc2626">${fmt(Number(eod.total_disbursements))}</td>
+          <td class="mono" style="font-weight:600">${fmt(Number(eod.closing_cash))}</td>
+          <td>${eod.tx_count}</td>
+          <td><span class="badge badge-green"><i class="fas fa-check"></i> Closed</span></td>` : `
+          <td colspan="6" style="color:var(--text-muted);text-align:center">${isToday ? '<span class="badge badge-yellow"><i class="fas fa-clock"></i> Today</span>' : '<span class="badge badge-gray">Pending</span>'}</td>
+          <td><span class="badge badge-gray">Open</span></td>`}
+        </tr>`;
+      }).join('')}
+    </table></div>
+  </div>`;
+
+  // Handle accrual trigger
+  if (req.query.run_accrual === '1') {
+    try {
+      const gl = require('../services/gl');
+      const loans = await sql("SELECT l.loan_id, l.account_id, l.principal, l.interest_rate, a.child_name as name FROM loans l JOIN accounts a ON l.account_id = a.account_id WHERE l.status='active' AND l.principal > 0");
+      const savings = await sql("SELECT account_id, actual_balance FROM accounts WHERE type='savings' AND actual_balance > 0");
+      const savingsRate = await store.getSetting('savings_interest_rate') || '2';
+      const sRate = Number(savingsRate) / 100 / 12;
+      let accCount = 0;
+      for (const loan of loans) {
+        const monthlyInt = Math.round(Number(loan.principal) * Number(loan.interest_rate) / 100 / 12 * 100) / 100;
+        if (monthlyInt <= 0) continue;
+        await gl.postDoubleEntry(uuidv4(), [
+          { account_code: '1300', debit: monthlyInt, description: `Accrued interest — ${loan.name}` },
+          { account_code: '4000', credit: monthlyInt, description: `Interest income — ${loan.name}` }
+        ], { postedBy: req.session.adminName || 'admin', referenceType: 'accrual', referenceNumber: `EOM-${monthPrefix}-${loan.loan_id.slice(0,8)}` });
+        accCount++;
+      }
+      for (const s of savings) {
+        const monthlyInt = Math.round(Number(s.actual_balance) * sRate * 100) / 100;
+        if (monthlyInt <= 0) continue;
+        await gl.postDoubleEntry(uuidv4(), [
+          { account_code: '5000', debit: monthlyInt, description: 'Interest expense accrual — savings' },
+          { account_code: '2500', credit: monthlyInt, description: 'Accrued interest payable — savings' }
+        ], { postedBy: req.session.adminName || 'admin', referenceType: 'accrual', referenceNumber: `EOM-${monthPrefix}-${s.account_id.slice(0,8)}` });
+        accCount++;
+      }
+      await store.setSetting('last_accrual_run', monthPrefix);
+      return res.redirect('/admin/eom?year=' + year + '&month=' + month + '&msg=Accrual+completed:+' + accCount + '+entries');
+    } catch (err) {
+      return res.redirect('/admin/eom?year=' + year + '&month=' + month + '&error=' + encodeURIComponent(err.message));
+    }
+  }
+
+  res.type('html').send(layout('End of Month', 'eom', content, { subtitle: new Date(year, month-1).toLocaleString('en', { month: 'long', year: 'numeric' }) }));
+}));
+
 // ── EOD Full History ──
 router.get('/eod/history', requireRole(1), asyncHandler(async (req, res) => {
   const sql = (q, p) => store.query(q, p || []).then(r => r.rows);

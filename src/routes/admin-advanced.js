@@ -527,8 +527,8 @@ router.get('/cash-flow', requireRole(1), asyncHandler(async (req, res) => {
   const now = new Date(); const firstDay = new Date(now.getFullYear(),now.getMonth(),1).toISOString().slice(0,10);
   const today = now.toISOString().slice(0,10);
   const from = req.query.from || firstDay; const to = req.query.to || today;
-  const deposits = await one("SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type IN ($1,$2) AND created_at BETWEEN $3 AND $4", ['deposit','interest_credit', from+'T00:00:00', to+'T23:59:59']);
-  const withdrawals = await one("SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type IN ($1,$2,$3) AND created_at BETWEEN $4 AND $5", ['withdrawal','loan_payment','fee', from+'T00:00:00', to+'T23:59:59']);
+  const deposits = await one("SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type IN ($1,$2,$3) AND created_at BETWEEN $4 AND $5", ['deposit','interest_credit','fee', from+'T00:00:00', to+'T23:59:59']);
+  const withdrawals = await one("SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type IN ($1,$2) AND created_at BETWEEN $3 AND $4", ['withdrawal','loan_payment', from+'T00:00:00', to+'T23:59:59']);
   const loanDisb = await one("SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type=$1 AND created_at BETWEEN $2 AND $3", ['loan_disbursement', from+'T00:00:00', to+'T23:59:59']);
   const opCash = await one("SELECT COALESCE(SUM(debit),0) - COALESCE(SUM(credit),0) as bal FROM gl_entries WHERE account_code='1000' AND created_at < $1", [from+'T00:00:00']);
   const op = Number(opCash?.bal||0);
@@ -548,8 +548,8 @@ router.get('/cash-flow', requireRole(1), asyncHandler(async (req, res) => {
   const monthExpr = isPostgres ? "to_char(created_at::timestamp, 'YYYY-MM')" : "strftime('%Y-%m', created_at)";
   const monthly = await sql(`
     SELECT ${monthExpr} as month,
-      COALESCE(SUM(CASE WHEN type IN ('deposit','interest_credit') THEN amount ELSE 0 END),0) as inflows,
-      COALESCE(SUM(CASE WHEN type IN ('withdrawal','loan_payment','fee','loan_disbursement') THEN amount ELSE 0 END),0) as outflows
+      COALESCE(SUM(CASE WHEN type IN ('deposit','interest_credit','fee') THEN amount ELSE 0 END),0) as inflows,
+      COALESCE(SUM(CASE WHEN type IN ('withdrawal','loan_payment','loan_disbursement') THEN amount ELSE 0 END),0) as outflows
     FROM transactions WHERE created_at BETWEEN $1 AND $2 GROUP BY month ORDER BY month
   `, [from+'T00:00:00', to+'T23:59:59']);
 

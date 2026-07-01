@@ -5836,7 +5836,7 @@ router.get('/gl/trial-balance', requireRole(1), asyncHandler(async (req, res) =>
         <td><span class="badge ${r.type === 'asset' || r.type === 'expense' ? 'badge-red' : r.type === 'liability' || r.type === 'equity' ? 'badge-blue' : 'badge-green'}">${r.type}</span></td>
         <td class="num mono">${r.debit ? '&#x20B1;' + r.debit.toFixed(2) : '-'}</td>
         <td class="num mono">${r.credit ? '&#x20B1;' + r.credit.toFixed(2) : '-'}</td>
-        <td class="num mono" style="color:${r.balance >= 0 ? '#16a34a' : '#dc2626'};font-weight:600">&#x20B1;${Math.abs(r.balance).toFixed(2)} ${r.balance < 0 ? 'CR' : 'DR'}</td>
+        <td class="num mono" style="color:${r.balance >= 0 ? '#16a34a' : '#dc2626'};font-weight:600">&#x20B1;${Math.abs(r.balance).toFixed(2)} ${(r.type === 'asset' || r.type === 'expense') ? (r.balance >= 0 ? 'DR' : 'CR') : (r.balance >= 0 ? 'CR' : 'DR')}</td>
       </tr>`).join('')}
       <tr style="font-weight:700;background:var(--bg2)"><td colspan="3">TOTAL</td>
         <td class="num mono">&#x20B1;${totalD.toFixed(2)}</td>
@@ -5959,17 +5959,17 @@ router.get('/gl/ledger', requireRole(1), asyncHandler(async (req, res) => {
     <table>
       <tr><th>Date</th><th>Transaction</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Running Balance</th></tr>
       ${entries.length === 0 ? '<tr><td colspan="6" style="text-align:center;padding:16px;color:var(--text-muted)">No entries for this account</td></tr>' :
-        entries.map((e, i) => {
+        entries.slice().reverse().map((e, i, arr) => {
           const d = Number(e.debit), c = Number(e.credit);
           const isAssetExpense = ['asset','expense'].includes(accounts.find(x => x.code === selected)?.type);
-          const balance = d - c;
+          const entryBalance = isAssetExpense ? d - c : c - d;
           return `<tr>
             <td class="mono" style="font-size:11px">${(e.created_at||'').slice(0,16).replace('T',' ')}</td>
             <td class="mono" style="font-size:10px;color:var(--text-muted)">${(e.transaction_id||'').slice(0,8)}</td>
             <td>${e.description || '-'}</td>
             <td class="num mono" style="color:#16a34a">${d ? '&#x20B1;' + d.toFixed(2) : '-'}</td>
             <td class="num mono" style="color:#dc2626">${c ? '&#x20B1;' + c.toFixed(2) : '-'}</td>
-            <td class="num mono" style="font-weight:600;color:${balance >= 0 ? '#16a34a' : '#dc2626'}">${balance >= 0 ? '' : '-'}&#x20B1;${Math.abs(balance).toFixed(2)}</td>
+            <td class="num mono" style="font-weight:600;color:${entryBalance >= 0 ? '#16a34a' : '#dc2626'}">${entryBalance >= 0 ? '' : '-'}&#x20B1;${Math.abs(entryBalance).toFixed(2)}</td>
           </tr>`;
         }).join('')}
     </table></div>

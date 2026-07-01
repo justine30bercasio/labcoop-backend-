@@ -271,6 +271,8 @@ class PgStore {
         code TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         type TEXT NOT NULL CHECK(type IN ('asset','liability','equity','income','expense')),
+        category TEXT DEFAULT '' CHECK(category IN ('','current_asset','non_current_asset','current_liability','non_current_liability','equity','operating_income','other_income','operating_expense','other_expense')),
+        is_contra INTEGER DEFAULT 0,
         is_active INTEGER DEFAULT 1
       );
       CREATE TABLE IF NOT EXISTS gl_entries (
@@ -280,7 +282,28 @@ class PgStore {
         debit DECIMAL(12,2) DEFAULT 0,
         credit DECIMAL(12,2) DEFAULT 0,
         description TEXT DEFAULT '',
+        posted_by TEXT,
+        approved_by TEXT,
+        reference_type TEXT,
+        reference_number TEXT,
+        period_id TEXT,
         created_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS accounting_periods (
+        period_id TEXT PRIMARY KEY,
+        year INTEGER NOT NULL,
+        month INTEGER NOT NULL,
+        is_closed INTEGER DEFAULT 0,
+        closed_by TEXT,
+        closed_at TEXT,
+        UNIQUE(year, month)
+      );
+      CREATE TABLE IF NOT EXISTS or_series (
+        series_id TEXT PRIMARY KEY,
+        prefix TEXT NOT NULL,
+        current_number INTEGER DEFAULT 1,
+        end_number INTEGER,
+        type TEXT NOT NULL CHECK(type IN ('deposit','withdrawal','collection'))
       );
       CREATE TABLE IF NOT EXISTS online_deposits (
         deposit_id TEXT PRIMARY KEY,
@@ -391,6 +414,14 @@ class PgStore {
     await this.pool.query("ALTER TABLE gl_entries ADD COLUMN IF NOT EXISTS voided_by TEXT").catch(() => {});
     await this.pool.query("ALTER TABLE gl_entries ADD COLUMN IF NOT EXISTS void_reason TEXT").catch(() => {});
     await this.pool.query("ALTER TABLE gl_entries ADD COLUMN IF NOT EXISTS voided_at TEXT").catch(() => {});
+    await this.pool.query("ALTER TABLE gl_entries ADD COLUMN IF NOT EXISTS posted_by TEXT").catch(() => {});
+    await this.pool.query("ALTER TABLE gl_entries ADD COLUMN IF NOT EXISTS approved_by TEXT").catch(() => {});
+    await this.pool.query("ALTER TABLE gl_entries ADD COLUMN IF NOT EXISTS reference_type TEXT").catch(() => {});
+    await this.pool.query("ALTER TABLE gl_entries ADD COLUMN IF NOT EXISTS reference_number TEXT").catch(() => {});
+    await this.pool.query("ALTER TABLE gl_entries ADD COLUMN IF NOT EXISTS period_id TEXT").catch(() => {});
+    await this.pool.query("ALTER TABLE gl_accounts ADD COLUMN IF NOT EXISTS category TEXT DEFAULT ''").catch(() => {});
+    await this.pool.query("ALTER TABLE gl_accounts ADD COLUMN IF NOT EXISTS is_contra INTEGER DEFAULT 0").catch(() => {});
+    await this.pool.query("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS or_number TEXT").catch(() => {});
     await this.pool.query("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS email TEXT DEFAULT ''").catch(() => {});
     await this.pool.query("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS branch_id TEXT").catch(() => {});
     await this.pool.query("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS branch_id TEXT").catch(() => {});
@@ -421,23 +452,36 @@ class PgStore {
 
   async _seedGlAccounts() {
     const accounts = [
-      ['1000', 'Cash on Hand', 'asset'],
-      ['1100', 'Loans Receivable', 'asset'],
-      ['1200', 'Accrued Interest', 'asset'],
-      ['2000', 'Savings Deposits', 'liability'],
-      ['2100', 'Time Deposits', 'liability'],
-      ['2200', 'Interest Payable', 'liability'],
-      ['3000', 'Share Capital', 'equity'],
-      ['3100', 'Retained Earnings', 'equity'],
-      ['4000', 'Interest Income', 'income'],
-      ['4100', 'Fee Income', 'income'],
-      ['4200', 'Insurance Income', 'income'],
-      ['5000', 'Interest Expense', 'expense'],
+      ['1000', 'Cash on Hand', 'asset', 'current_asset', 0],
+      ['1010', 'Cash in Bank', 'asset', 'current_asset', 0],
+      ['1020', 'Petty Cash', 'asset', 'current_asset', 0],
+      ['1100', 'Loans Receivable', 'asset', 'current_asset', 0],
+      ['1200', 'Accrued Interest Receivable', 'asset', 'current_asset', 0],
+      ['1300', 'Prepaid Expenses', 'asset', 'current_asset', 0],
+      ['1400', 'Property & Equipment', 'asset', 'non_current_asset', 0],
+      ['1401', 'Accumulated Depreciation', 'asset', 'non_current_asset', 1],
+      ['1500', 'Accounts Receivable - Loans', 'asset', 'current_asset', 0],
+      ['2000', 'Savings Deposits', 'liability', 'current_liability', 0],
+      ['2100', 'Time Deposits', 'liability', 'current_liability', 0],
+      ['2200', 'Interest Payable', 'liability', 'current_liability', 0],
+      ['2300', 'Accounts Payable', 'liability', 'current_liability', 0],
+      ['2400', 'Income Tax Payable', 'liability', 'current_liability', 0],
+      ['2500', 'Accrued Expenses', 'liability', 'current_liability', 0],
+      ['3000', 'Share Capital', 'equity', 'equity', 0],
+      ['3100', 'Retained Earnings', 'equity', 'equity', 0],
+      ['4000', 'Interest Income', 'income', 'operating_income', 0],
+      ['4100', 'Fee Income', 'income', 'operating_income', 0],
+      ['4200', 'Insurance Income', 'income', 'operating_income', 0],
+      ['4300', 'Miscellaneous Income', 'income', 'other_income', 0],
+      ['5000', 'Interest Expense', 'expense', 'operating_expense', 0],
+      ['5100', 'Other Operating Expenses', 'expense', 'operating_expense', 0],
+      ['5200', 'Depreciation Expense', 'expense', 'operating_expense', 0],
+      ['5300', 'Tax Expense', 'expense', 'operating_expense', 0],
     ];
-    for (const [code, name, type] of accounts) {
+    for (const [code, name, type, category, isContra] of accounts) {
       await this.pool.query(
-        'INSERT INTO gl_accounts (code, name, type) VALUES ($1,$2,$3) ON CONFLICT (code) DO NOTHING',
-        [code, name, type]
+        'INSERT INTO gl_accounts (code, name, type, category, is_contra) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (code) DO UPDATE SET category = EXCLUDED.category',
+        [code, name, type, category, isContra]
       );
     }
   }
@@ -1307,6 +1351,50 @@ class PgStore {
     await this.query(
       'DELETE FROM fcm_tokens WHERE account_id = $1 AND fcm_token = $2',
       [accountId, fcmToken]
+    );
+  }
+
+  async assignOrNumber(type) {
+    const year = new Date().getFullYear();
+    await this.query(
+      'INSERT INTO or_series (series_id, prefix, current_number, type) VALUES ($1, $2, 1, $3) ON CONFLICT (series_id) DO NOTHING',
+      ['or_' + type, 'LABCOOP', type]
+    );
+    const res = await this.query(
+      'UPDATE or_series SET current_number = current_number + 1 WHERE series_id = $1 RETURNING current_number, prefix',
+      ['or_' + type]
+    );
+    const row = res.rows[0];
+    const num = String(row.current_number - 1).padStart(5, '0');
+    return `${row.prefix}-${year}-${num}`;
+  }
+
+  async getOrCreatePeriod(createdAt) {
+    const d = new Date(createdAt);
+    const y = d.getFullYear();
+    const m = d.getMonth() + 1;
+    const periodId = `${y}-${String(m).padStart(2, '0')}`;
+    await this.query(
+      'INSERT INTO accounting_periods (period_id, year, month) VALUES ($1, $2, $3) ON CONFLICT (period_id) DO NOTHING',
+      [periodId, y, m]
+    );
+    const res = await this.query('SELECT * FROM accounting_periods WHERE period_id = $1', [periodId]);
+    return res.rows[0] || null;
+  }
+
+  async isPeriodClosed(createdAt) {
+    const d = new Date(createdAt);
+    const y = d.getFullYear();
+    const m = d.getMonth() + 1;
+    const periodId = `${y}-${String(m).padStart(2, '0')}`;
+    const res = await this.query('SELECT is_closed FROM accounting_periods WHERE period_id = $1', [periodId]);
+    return res.rows[0] ? res.rows[0].is_closed === 1 : false;
+  }
+
+  async closePeriod(periodId, closedBy) {
+    await this.query(
+      'UPDATE accounting_periods SET is_closed = 1, closed_by = $1, closed_at = $2 WHERE period_id = $3',
+      [closedBy, new Date().toISOString(), periodId]
     );
   }
 

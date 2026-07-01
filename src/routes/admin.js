@@ -1589,7 +1589,7 @@ router.post('/accounts/create', requireRole(2), asyncHandler(async (req, res) =>
         await gl.postDoubleEntry(mfTx.transaction_id, [
           { account_code: '1000', debit: membershipAmt, description: 'Membership fee: ' + displayName },
           { account_code: '4100', credit: membershipAmt, description: 'Membership fee: ' + displayName },
-        ]);
+        ], { postedBy: req.session.adminName || 'admin', referenceType: 'fee', referenceNumber: mfTx.transaction_id });
       } catch (e) { console.error('Membership fee GL posting error', e); }
     }
 
@@ -1610,7 +1610,7 @@ router.post('/accounts/create', requireRole(2), asyncHandler(async (req, res) =>
         await gl.postDoubleEntry(insTx.transaction_id, [
           { account_code: '1000', debit: insuranceAmt, description: 'Insurance fee: ' + displayName },
           { account_code: '4200', credit: insuranceAmt, description: 'Insurance fee: ' + displayName },
-        ]);
+        ], { postedBy: req.session.adminName || 'admin', referenceType: 'fee', referenceNumber: insTx.transaction_id });
       } catch (e) { console.error('Insurance fee GL posting error', e); }
     }
 
@@ -1631,7 +1631,7 @@ router.post('/accounts/create', requireRole(2), asyncHandler(async (req, res) =>
         await gl.postDoubleEntry(depTx.transaction_id, [
           { account_code: '1000', debit: savingsAmt, description: 'Initial savings deposit: ' + displayName },
           { account_code: '2000', credit: savingsAmt, description: 'Initial savings deposit: ' + displayName },
-        ]);
+        ], { postedBy: req.session.adminName || 'admin', referenceType: 'tx', referenceNumber: depTx.transaction_id });
       } catch (e) { console.error('Savings deposit GL posting error', e); }
     }
 
@@ -1714,7 +1714,7 @@ router.post('/accounts/deposit/:id', requireRole(2), asyncHandler(async (req, re
       await gl.postDoubleEntry(txId, [
         { account_code: '1000', debit: val, description: 'Admin deposit: ' + account.child_name },
         { account_code: '2000', credit: val, description: 'Admin deposit: ' + account.child_name },
-      ]);
+      ], { postedBy: req.session.adminName || 'admin', referenceType: 'tx', referenceNumber: txId });
       const audit = require('../services/audit');
       await audit.log(req, 'ADMIN_DEPOSIT', 'account', req.params.id, { amount: val, txId, desc: description || 'Admin deposit' });
     } catch (glErr) { console.error('GL post failed (non-fatal):', glErr.message); }
@@ -1750,7 +1750,7 @@ router.post('/accounts/withdraw/:id', requireRole(2), asyncHandler(async (req, r
       await gl.postDoubleEntry(txId, [
         { account_code: '2000', debit: val, description: 'Admin withdrawal: ' + account.child_name },
         { account_code: '1000', credit: val, description: 'Admin withdrawal: ' + account.child_name },
-      ]);
+      ], { postedBy: req.session.adminName || 'admin', referenceType: 'tx', referenceNumber: txId });
       const audit = require('../services/audit');
       await audit.log(req, 'ADMIN_WITHDRAWAL', 'account', req.params.id, { amount: val, txId, desc: description || 'Admin withdrawal' });
     } catch (glErr) { console.error('GL post failed (non-fatal):', glErr.message); }
@@ -2365,7 +2365,7 @@ router.post('/loans/disburse/:id', requireRole(3), asyncHandler(async (req, res)
       await gl.postDoubleEntry(loan.loan_id, [
         { account_code: '1100', debit: Number(loan.principal), description: 'Loan disbursement: ' + (loan.purpose || 'Loan') },
         { account_code: '1000', credit: Number(loan.principal), description: 'Loan disbursement to member' },
-      ]);
+      ], { postedBy: req.session.adminName || 'admin', referenceType: 'loan', referenceNumber: loan.loan_id });
       const audit = require('../services/audit');
       await audit.log(req, 'LOAN_DISBURSE', 'loan', req.params.id, { principal: loan.principal, account: loan.account_id });
     } catch (e) { console.error('GL post failed (non-fatal):', e.message); }
@@ -3868,7 +3868,7 @@ router.post('/teller/deposit/:id', requireRole(2), asyncHandler(async (req, res)
     await gl.postDoubleEntry(glTxId, [
       { account_code: '1000', debit: val, description: 'Counter deposit: ' + account.child_name },
       { account_code: '2000', credit: val, description: 'Counter deposit: ' + account.child_name },
-    ]);
+    ], { postedBy: req.session.adminName || 'admin', referenceType: 'teller', referenceNumber: glTxId });
 
     // Now update account and create transaction
     await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=unallocated_balance+$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3", [newBalance, val, req.params.id]);
@@ -3914,7 +3914,7 @@ router.post('/teller/withdraw/:id', requireRole(2), asyncHandler(async (req, res
     await gl.postDoubleEntry(glTxId, [
       { account_code: '2000', debit: val, description: 'Counter withdrawal: ' + account.child_name },
       { account_code: '1000', credit: val, description: 'Counter withdrawal: ' + account.child_name },
-    ]);
+    ], { postedBy: req.session.adminName || 'admin', referenceType: 'teller', referenceNumber: glTxId });
 
     // Then update account and create transaction
     await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3", [newBalance, Math.max(0, newUnallocated), req.params.id]);
@@ -3976,7 +3976,7 @@ router.post('/teller/loan-pay/:id', requireRole(2), asyncHandler(async (req, res
     if (interestPortion > 0) {
       entries.push({ account_code: '4000', credit: interestPortion, description: 'Interest income' });
     }
-    await gl.postDoubleEntry(glTxId, entries);
+    await gl.postDoubleEntry(glTxId, entries, { postedBy: req.session.adminName || 'admin', referenceType: 'teller', referenceNumber: glTxId });
 
     // Record loan payment
     await store.addLoanPayment({
@@ -4071,12 +4071,12 @@ router.post('/teller/void/:txId', requireRole(3), asyncHandler(async (req, res) 
       await gl.postDoubleEntry(glTxId, [
         { account_code: '2000', debit: val, description: 'VOID reversal: ' + voidDesc },
         { account_code: '1000', credit: val, description: 'VOID reversal: ' + voidDesc },
-      ]);
+      ], { postedBy: req.session.adminName || 'admin', referenceType: 'void' });
     } else if (tx.type === 'withdrawal' || tx.type === 'fee' || tx.type === 'auto_save') {
       await gl.postDoubleEntry(glTxId, [
         { account_code: '1000', debit: val, description: 'VOID reversal: ' + voidDesc },
         { account_code: '2000', credit: val, description: 'VOID reversal: ' + voidDesc },
-      ]);
+      ], { postedBy: req.session.adminName || 'admin', referenceType: 'void' });
     } else if (tx.type === 'loan_payment') {
       // Reverse loan payment: debit Loans Receivable, credit Cash, debit Interest Income
       const loanPayments = await store.query('SELECT * FROM loan_payments WHERE transaction_id = $1 ORDER BY created_at DESC LIMIT 1', [txId]);
@@ -4090,7 +4090,7 @@ router.post('/teller/void/:txId', requireRole(3), asyncHandler(async (req, res) 
       if (interestPortion > 0) {
         entries.push({ account_code: '4000', debit: interestPortion, description: 'VOID reversal: interest income' });
       }
-      await gl.postDoubleEntry(glTxId, entries);
+    await gl.postDoubleEntry(glTxId, entries, { postedBy: req.session.adminName || 'admin', referenceType: 'void' });
 
       // Restore the loan balance
       const loan = await one('SELECT * FROM loans WHERE loan_id = $1', [tx.reference_id]);
@@ -4978,6 +4978,17 @@ router.post('/eod/close', requireRole(2), asyncHandler(async (req, res) => {
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
     [uuidv4(), date, Number(opening_cash||0), Number(total_collections||0), Number(total_disbursements||0), Number(closing_cash||0), Number(tx_count||0), req.session.adminName || 'admin', notes || '', new Date().toISOString()]
   );
+  // Auto-close accounting period if all days in month are closed
+  const monthPrefix = date.slice(0, 7);
+  const daysInMonth = new Date(Number(date.slice(0,4)), Number(date.slice(5,7)), 0).getDate();
+  const closedDays = await store.query("SELECT COUNT(*) as c FROM eod_logs WHERE date LIKE $1", [monthPrefix + '%']).then(r => r.rows[0]);
+  if (Number(closedDays.c) >= daysInMonth) {
+    const periodId = monthPrefix;
+    const existing = await store.query("SELECT * FROM accounting_periods WHERE period_id = $1", [periodId]).then(r => r.rows[0]);
+    if (existing && !existing.is_closed) {
+      await store.closePeriod(periodId, req.session.adminName || 'system');
+    }
+  }
   res.redirect('/admin/eod?date=' + date + '&closed=1');
 }));
 
@@ -5256,7 +5267,7 @@ router.post('/eoy/close', requireRole(3), asyncHandler(async (req, res) => {
   for (const exp of pnl.expense) { if (exp.amount > 0) entries.push({ account_code: exp.code, debit: 0, credit: exp.amount, description: 'P&L close ' + year }); }
   if (pnl.netProfit >= 0) entries.push({ account_code: '3100', debit: 0, credit: pnl.netProfit, description: 'Net profit ' + year });
   else entries.push({ account_code: '3100', debit: Math.abs(pnl.netProfit), credit: 0, description: 'Net loss ' + year });
-  await gl.postDoubleEntry(closeTxId, entries);
+  await gl.postDoubleEntry(closeTxId, entries, { postedBy: req.session.adminName || 'admin', referenceType: 'eoy' });
 
   const txs = await sql("SELECT * FROM transactions WHERE created_at LIKE $1", [year + '%']);
   for (const tx of txs) {
@@ -5273,6 +5284,43 @@ router.post('/eoy/close', requireRole(3), asyncHandler(async (req, res) => {
     [uuidv4(), year, pnl.totalIncome, pnl.totalExpense, pnl.netProfit, txs.length, req.session.adminName || 'admin', new Date().toISOString()]
   );
   res.redirect('/admin/eoy?year=' + year + '&closed=1');
+}));
+
+// ── Accounting Periods Management ──
+
+router.get('/accounting-periods', requireRole(3), asyncHandler(async (req, res) => {
+  const sql = (q, p) => store.query(q, p || []).then(r => r.rows);
+  const one = (q, p) => store.query(q, p || []).then(r => r.rows[0]);
+  const periods = await sql('SELECT * FROM accounting_periods ORDER BY year DESC, month DESC');
+  const content = `
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-calendar-lock"></i> Accounting Periods</h3></div>
+    <div class="card-body" style="padding:0">
+    <table>
+      <tr><th>Period</th><th>Year</th><th>Month</th><th>Status</th><th>Closed By</th><th>Closed At</th><th>Action</th></tr>
+      ${periods.map(p => `
+      <tr>
+        <td class="mono" style="font-weight:600">${p.period_id}</td>
+        <td>${p.year}</td>
+        <td>${String(p.month).padStart(2,'0')}</td>
+        <td>${p.is_closed ? '<span class="badge badge-green"><i class="fas fa-lock"></i> Closed</span>' : '<span class="badge badge-yellow"><i class="fas fa-lock-open"></i> Open</span>'}</td>
+        <td>${p.closed_by || '-'}</td>
+        <td class="mono" style="font-size:11px">${(p.closed_at||'').slice(0,16).replace('T',' ')}</td>
+        <td>${p.is_closed ? '' : `<a href="/admin/accounting-periods/close/${p.period_id}" class="btn btn-danger btn-xs" data-confirm="Close period ${p.period_id}? This will prevent any new GL entries for this period."><i class="fas fa-lock"></i> Close</a>`}</td>
+      </tr>`).join('')}
+      ${periods.length === 0 ? '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">No accounting periods found. They are auto-created when GL entries are posted.</td></tr>' : ''}
+    </table></div>
+  </div>`;
+  res.type('html').send(layout('Accounting Periods', 'accounting-periods', content, { subtitle: 'Manage period locks for GL posting' }));
+}));
+
+router.get('/accounting-periods/close/:periodId', requireRole(3), asyncHandler(async (req, res) => {
+  try {
+    await store.closePeriod(req.params.periodId, req.session.adminName || 'admin');
+    res.redirect('/admin/accounting-periods?closed=ok');
+  } catch (err) {
+    res.redirect('/admin/accounting-periods?error=' + encodeURIComponent(err.message));
+  }
 }));
 
 // ── Backup & Restore — Advanced Data Security ──
@@ -5684,6 +5732,19 @@ router.post('/reset-database', requireRole(4), asyncHandler(async (req, res) => 
 
 // ── GL Reports ──
 
+function bsSection(title, items, total, color) {
+  return `
+    <div class="card">
+      <div class="card-header"><h4>${title}</h4><span class="count">${items.length} accounts</span></div>
+      <div class="card-body" style="padding:0">
+      <table>
+        <tr><th>Account</th><th class="num">Amount</th></tr>
+        ${items.map(r => `<tr><td>${r.name}</td><td class="num mono" style="color:${color};font-weight:600">&#x20B1;${Math.abs(r.balance).toFixed(2)}</td></tr>`).join('')}
+        <tr style="font-weight:700;background:var(--bg2)"><td>TOTAL ${title.toUpperCase()}</td><td class="num mono" style="color:${color}">&#x20B1;${total.toFixed(2)}</td></tr>
+      </table></div>
+    </div>`;
+}
+
 router.get('/gl/trial-balance', requireRole(1), asyncHandler(async (req, res) => {
   const { getTrialBalance } = require('../services/gl');
   const date = req.query.date || '';
@@ -5691,12 +5752,24 @@ router.get('/gl/trial-balance', requireRole(1), asyncHandler(async (req, res) =>
   const totalD = result.rows.reduce((s, r) => s + r.debit, 0);
   const totalC = result.rows.reduce((s, r) => s + r.credit, 0);
   const balanced = Math.abs(totalD - totalC) < 0.01;
+
+  if (req.query.export === 'csv') {
+    let csv = 'Code,Account,Type,Debit,Credit,Balance\n';
+    result.rows.forEach(r => { csv += `${r.code},${r.name},${r.type},${r.debit.toFixed(2)},${r.credit.toFixed(2)},${r.balance.toFixed(2)}\n`; });
+    csv += `TOTAL,,,${totalD.toFixed(2)},${totalC.toFixed(2)},${(totalD - totalC).toFixed(2)}\n`;
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="trial_balance_${date||'all'}.csv"`);
+    return res.send(csv);
+  }
+
   const content = `
   <form method="get" action="/admin/gl/trial-balance" style="display:flex;gap:8px;align-items:end;margin-bottom:16px">
     <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:3px">As of date</label><input type="date" name="date" value="${date}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px"></div>
     <button type="submit" class="btn btn-primary btn-sm">&#x1F50D; View</button>
     <a href="/admin/gl/trial-balance" class="btn btn-outline btn-sm">&#x1F504; Reset</a>
     <div style="margin-left:auto;display:flex;gap:8px">
+      <a href="/admin/gl/trial-balance?${date ? 'date='+date+'&' : ''}export=csv" class="btn btn-outline btn-sm"><i class="fas fa-file-csv"></i> CSV</a>
+      <a href="/admin/gl/trial-balance?${date ? 'date='+date+'&' : ''}print=1" class="btn btn-outline btn-sm" target="_blank"><i class="fas fa-print"></i> Print</a>
       <a href="/admin/gl/balance-sheet" class="btn btn-outline btn-sm">&#x1F4C8; Balance Sheet</a>
       <a href="/admin/gl/profit-and-loss" class="btn btn-outline btn-sm">&#x1F4C9; P&amp;L</a>
       <a href="/admin/gl/ledger" class="btn btn-outline btn-sm">&#x1F4CB; Ledger</a>
@@ -5712,21 +5785,23 @@ router.get('/gl/trial-balance', requireRole(1), asyncHandler(async (req, res) =>
     <div class="card-header"><h3>&#x1F4CA; Trial Balance${date ? ' as of ' + date : ''}</h3></div>
     <div class="card-body" style="padding:0">
     <table>
-      <tr><th>Code</th><th>Account</th><th>Type</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr>
+      <tr><th>Code</th><th>Account</th><th>Type</th><th>Category</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr>
       ${result.rows.map(r => `<tr>
         <td class="mono">${r.code}</td><td>${r.name}</td>
         <td><span class="badge ${r.type === 'asset' || r.type === 'expense' ? 'badge-red' : r.type === 'liability' || r.type === 'equity' ? 'badge-blue' : 'badge-green'}">${r.type}</span></td>
+        <td><span class="badge badge-gray" style="font-size:10px">${r.category || '-'}</span></td>
         <td class="num mono">${r.debit ? '&#x20B1;' + r.debit.toFixed(2) : '-'}</td>
         <td class="num mono">${r.credit ? '&#x20B1;' + r.credit.toFixed(2) : '-'}</td>
         <td class="num mono" style="color:${r.balance >= 0 ? '#16a34a' : '#dc2626'};font-weight:600">&#x20B1;${Math.abs(r.balance).toFixed(2)} ${(r.type === 'asset' || r.type === 'expense') ? (r.balance >= 0 ? 'DR' : 'CR') : (r.balance >= 0 ? 'CR' : 'DR')}</td>
       </tr>`).join('')}
-      <tr style="font-weight:700;background:var(--bg2)"><td colspan="3">TOTAL</td>
+      <tr style="font-weight:700;background:var(--bg2)"><td colspan="4">TOTAL</td>
         <td class="num mono">&#x20B1;${totalD.toFixed(2)}</td>
         <td class="num mono">&#x20B1;${totalC.toFixed(2)}</td>
         <td class="num mono" style="color:${balanced ? '#16a34a' : '#dc2626'}">${balanced ? '&#x2705;' : '&#x26A0; Diff: &#x20B1;' + Math.abs(totalD - totalC).toFixed(2)}</td>
       </tr>
     </table></div>
   </div>`;
+  if (req.query.print) return res.type('html').send(printLayout('Trial Balance', content, { subtitle: date ? 'As of ' + date : 'All periods' }));
   res.type('html').send(layout('Trial Balance', 'gl-trial', content, { subtitle: 'All GL accounts with debit/credit totals' }));
 }));
 
@@ -5734,37 +5809,74 @@ router.get('/gl/balance-sheet', requireRole(1), asyncHandler(async (req, res) =>
   const { getBalanceSheet } = require('../services/gl');
   const date = req.query.date || '';
   const result = await getBalanceSheet(date || null);
+
+  // Prior year comparison
+  let priorAssets = 0, priorLiabilities = 0, priorEquity = 0;
+  if (date) {
+    const priorDate = (Number(date.slice(0,4)) - 1) + date.slice(4);
+    const prior = await getBalanceSheet(priorDate);
+    priorAssets = prior.totalAssets;
+    priorLiabilities = prior.totalLiabilities;
+    priorEquity = prior.totalEquity;
+  }
+
+  // Notes text
+  const notes = await store.getSetting('fs_notes_bs') || '';
   const diff = result.totalAssets - (result.totalLiabilities + result.totalEquity);
-  const section = (title, items, total, color) => `
-    <div class="card">
-      <div class="card-header"><h4>${title}</h4><span class="count">${items.length} accounts</span></div>
-      <div class="card-body" style="padding:0">
-      <table>
-        <tr><th>Account</th><th class="num">Amount</th></tr>
-        ${items.map(r => `<tr><td>${r.name}</td><td class="num mono" style="color:${color};font-weight:600">&#x20B1;${Math.abs(r.balance).toFixed(2)}</td></tr>`).join('')}
-        <tr style="font-weight:700;background:var(--bg2)"><td>TOTAL ${title.toUpperCase()}</td><td class="num mono" style="color:${color}">&#x20B1;${total.toFixed(2)}</td></tr>
-      </table></div>
-    </div>`;
+
   const content = `
     <form method="get" action="/admin/gl/balance-sheet" style="display:flex;gap:8px;align-items:end;margin-bottom:16px">
       <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:3px">As of date</label><input type="date" name="date" value="${date}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px"></div>
       <button type="submit" class="btn btn-primary btn-sm">&#x1F50D; View</button>
       <a href="/admin/gl/balance-sheet" class="btn btn-outline btn-sm">&#x1F504; Reset</a>
       <div style="margin-left:auto;display:flex;gap:8px">
+        <a href="/admin/gl/balance-sheet?${date ? 'date='+date+'&' : ''}export=csv" class="btn btn-outline btn-sm"><i class="fas fa-file-csv"></i> CSV</a>
+        <a href="/admin/gl/balance-sheet?${date ? 'date='+date+'&' : ''}print=1" class="btn btn-outline btn-sm" target="_blank"><i class="fas fa-print"></i> Print</a>
         <a href="/admin/gl/trial-balance" class="btn btn-outline btn-sm">&#x1F4CA; Trial Balance</a>
         <a href="/admin/gl/profit-and-loss" class="btn btn-outline btn-sm">&#x1F4C9; P&amp;L</a>
       </div>
     </form>
     <div class="stats-grid">
-      <div class="stat-card" style="border-left:3px solid var(--accent)"><div class="stat-icon">&#x1F4B0;</div><div class="stat-value" style="color:#16a34a">&#x20B1;${result.totalAssets.toFixed(2)}</div><div class="stat-label">Total Assets</div></div>
-      <div class="stat-card"><div class="stat-icon">&#x1F4B3;</div><div class="stat-value" style="color:#dc2626">&#x20B1;${result.totalLiabilities.toFixed(2)}</div><div class="stat-label">Total Liabilities</div></div>
-      <div class="stat-card"><div class="stat-icon">&#x1F511;</div><div class="stat-value" style="color:#2563eb">&#x20B1;${result.totalEquity.toFixed(2)}</div><div class="stat-label">Total Equity</div></div>
+      <div class="stat-card" style="border-left:3px solid var(--accent)"><div class="stat-icon">&#x1F4B0;</div><div class="stat-value" style="color:#16a34a">&#x20B1;${result.totalAssets.toFixed(2)}</div><div class="stat-label">Total Assets ${date ? '| Prior: &#x20B1;' + priorAssets.toFixed(2) : ''}</div></div>
+      <div class="stat-card"><div class="stat-icon">&#x1F4B3;</div><div class="stat-value" style="color:#dc2626">&#x20B1;${result.totalLiabilities.toFixed(2)}</div><div class="stat-label">Total Liabilities ${date ? '| Prior: &#x20B1;' + priorLiabilities.toFixed(2) : ''}</div></div>
+      <div class="stat-card"><div class="stat-icon">&#x1F511;</div><div class="stat-value" style="color:#2563eb">&#x20B1;${result.totalEquity.toFixed(2)}</div><div class="stat-label">Total Equity ${date ? '| Prior: &#x20B1;' + priorEquity.toFixed(2) : ''}</div></div>
       <div class="stat-card"><div class="stat-icon">&#x2696;</div><div class="stat-value" style="color:${diff === 0 ? '#16a34a' : '#dc2626'}">${diff === 0 ? '&#x2705; A = L + E' : '&#x26A0; Off by &#x20B1;' + diff.toFixed(2)}</div><div class="stat-label">Accounting Equation</div></div>
     </div>
-    ${section('Assets', result.assets, result.totalAssets, '#16a34a')}
-    ${section('Liabilities', result.liabilities, result.totalLiabilities, '#dc2626')}
-    ${section('Equity', result.equity, result.totalEquity, '#2563eb')}`;
+    ${result.currentAssets.length ? bsSection('Current Assets', result.currentAssets, result.totalCurrentAssets, '#16a34a') : ''}
+    ${result.nonCurrentAssets.length ? bsSection('Non-Current Assets', result.nonCurrentAssets, result.totalNonCurrentAssets, '#22c55e') : ''}
+    ${result.currentLiabilities.length ? bsSection('Current Liabilities', result.currentLiabilities, result.totalCurrentLiabilities, '#dc2626') : ''}
+    ${result.nonCurrentLiabilities.length ? bsSection('Non-Current Liabilities', result.nonCurrentLiabilities, result.totalNonCurrentLiabilities, '#ef4444') : ''}
+    ${bsSection('Equity', result.equity, result.totalEquity, '#2563eb')}
+    <div class="card">
+      <div class="card-header"><h3><i class="fas fa-sticky-note"></i> Notes to Financial Statements</h3></div>
+      <div class="card-body-padded">
+        <form method="post" action="/admin/gl/balance-sheet/notes" style="display:flex;flex-direction:column;gap:8px">
+          <textarea name="notes" style="width:100%;min-height:80px;padding:10px;border:2px solid var(--border);border-radius:8px;font-size:13px">${h(notes)}</textarea>
+          <button type="submit" class="btn btn-primary btn-xs" style="align-self:flex-end"><i class="fas fa-save"></i> Save Notes</button>
+        </form>
+      </div>
+    </div>`;
+
+  if (req.query.export === 'csv') {
+    let csv = 'Category,Account,Amount\n';
+    const writeSection = (label, items) => items.forEach(i => { csv += `${label},${i.name},${i.balance.toFixed(2)}\n`; });
+    writeSection('Current Assets', result.currentAssets);
+    writeSection('Non-Current Assets', result.nonCurrentAssets);
+    writeSection('Current Liabilities', result.currentLiabilities);
+    writeSection('Non-Current Liabilities', result.nonCurrentLiabilities);
+    writeSection('Equity', result.equity);
+    csv += `TOTAL ASSETS,,${result.totalAssets.toFixed(2)}\nTOTAL LIABILITIES,,${result.totalLiabilities.toFixed(2)}\nTOTAL EQUITY,,${result.totalEquity.toFixed(2)}\n`;
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="balance_sheet_${date||'all'}.csv"`);
+    return res.send(csv);
+  }
+  if (req.query.print) return res.type('html').send(printLayout('Balance Sheet', content, { subtitle: date ? 'As of ' + date : 'All periods' }));
   res.type('html').send(layout('Balance Sheet', 'gl-bsheet', content, { subtitle: 'Assets = Liabilities + Equity' }));
+}));
+
+router.post('/gl/balance-sheet/notes', requireRole(3), asyncHandler(async (req, res) => {
+  await store.setSetting('fs_notes_bs', req.body.notes || '');
+  res.redirect('/admin/gl/balance-sheet' + (req.query.date ? '?date=' + req.query.date : ''));
 }));
 
 router.get('/gl/profit-and-loss', requireRole(1), asyncHandler(async (req, res) => {
@@ -5775,7 +5887,21 @@ router.get('/gl/profit-and-loss', requireRole(1), asyncHandler(async (req, res) 
   const from = req.query.from || firstDay;
   const to = req.query.to || todayStr;
   const result = await getProfitAndLoss(from, to);
-  const section = (title, items, total, color) => `
+
+  // Prior year comparison
+  let priorIncome = 0, priorExpense = 0, priorNet = 0;
+  if (from && to) {
+    const priorFrom = (Number(from.slice(0,4)) - 1) + from.slice(4);
+    const priorTo = (Number(to.slice(0,4)) - 1) + to.slice(4);
+    const prior = await getProfitAndLoss(priorFrom, priorTo);
+    priorIncome = prior.totalIncome;
+    priorExpense = prior.totalExpense;
+    priorNet = prior.netProfit;
+  }
+
+  const notes = await store.getSetting('fs_notes_pnl') || '';
+
+  const pnlSection = (title, items, total, color) => `
     <div class="card">
       <div class="card-header"><h4>${title}</h4><span class="count">${items.length} accounts</span></div>
       <div class="card-body" style="padding:0">
@@ -5792,18 +5918,63 @@ router.get('/gl/profit-and-loss', requireRole(1), asyncHandler(async (req, res) 
       <button type="submit" class="btn btn-primary btn-sm">&#x1F50D; View</button>
       <a href="/admin/gl/profit-and-loss" class="btn btn-outline btn-sm">&#x1F504; Reset</a>
       <div style="margin-left:auto;display:flex;gap:8px">
+        <a href="/admin/gl/profit-and-loss?from=${from}&to=${to}&export=csv" class="btn btn-outline btn-sm"><i class="fas fa-file-csv"></i> CSV</a>
+        <a href="/admin/gl/profit-and-loss?from=${from}&to=${to}&print=1" class="btn btn-outline btn-sm" target="_blank"><i class="fas fa-print"></i> Print</a>
         <a href="/admin/gl/trial-balance" class="btn btn-outline btn-sm">&#x1F4CA; Trial Balance</a>
         <a href="/admin/gl/balance-sheet" class="btn btn-outline btn-sm">&#x1F4C8; Balance Sheet</a>
       </div>
     </form>
     <div class="stats-grid">
-      <div class="stat-card" style="border-left:3px solid #16a34a"><div class="stat-icon">&#x1F4B5;</div><div class="stat-value" style="color:#16a34a">&#x20B1;${result.totalIncome.toFixed(2)}</div><div class="stat-label">Total Income</div></div>
-      <div class="stat-card"><div class="stat-icon">&#x1F4B8;</div><div class="stat-value" style="color:#dc2626">&#x20B1;${result.totalExpense.toFixed(2)}</div><div class="stat-label">Total Expenses</div></div>
-      <div class="stat-card"><div class="stat-icon">&#x1F3C6;</div><div class="stat-value" style="color:${result.netProfit >= 0 ? '#16a34a' : '#dc2626'}">${result.netProfit >= 0 ? '+' : ''}&#x20B1;${result.netProfit.toFixed(2)}</div><div class="stat-label">Net ${result.netProfit >= 0 ? 'Profit' : 'Loss'}</div></div>
+      <div class="stat-card" style="border-left:3px solid #16a34a"><div class="stat-icon">&#x1F4B5;</div><div class="stat-value" style="color:#16a34a">&#x20B1;${result.totalIncome.toFixed(2)}</div><div class="stat-label">Total Income ${priorIncome ? '| Prior: &#x20B1;' + priorIncome.toFixed(2) : ''}</div></div>
+      <div class="stat-card"><div class="stat-icon">&#x1F4B8;</div><div class="stat-value" style="color:#dc2626">&#x20B1;${result.totalExpense.toFixed(2)}</div><div class="stat-label">Total Expenses ${priorExpense ? '| Prior: &#x20B1;' + priorExpense.toFixed(2) : ''}</div></div>
+      <div class="stat-card"><div class="stat-icon">&#x1F3C6;</div><div class="stat-value" style="color:${result.netProfit >= 0 ? '#16a34a' : '#dc2626'}">${result.netProfit >= 0 ? '+' : ''}&#x20B1;${result.netProfit.toFixed(2)}</div><div class="stat-label">Net ${result.netProfit >= 0 ? 'Profit' : 'Loss'} ${priorNet ? '| Prior: &#x20B1;' + priorNet.toFixed(2) : ''}</div></div>
     </div>
-    ${result.income.length ? section('Income', result.income, result.totalIncome, '#16a34a') : ''}
-    ${result.expense.length ? section('Expenses', result.expense, result.totalExpense, '#dc2626') : ''}`;
+    ${result.operatingIncome.length ? pnlSection('Operating Income', result.operatingIncome, result.totalOperatingIncome, '#16a34a') : ''}
+    ${result.otherIncome.length ? pnlSection('Other Income', result.otherIncome, result.totalOtherIncome, '#22c55e') : ''}
+    <div class="card">
+      <div class="card-body-padded" style="display:flex;justify-content:space-between;font-size:15px;font-weight:600;background:var(--bg2)">
+        <span>Gross Income (Total Income)</span><span style="color:#16a34a">&#x20B1;${result.totalIncome.toFixed(2)}</span>
+      </div>
+    </div>
+    ${result.operatingExpense.length ? pnlSection('Operating Expenses', result.operatingExpense, result.totalOperatingExpense, '#dc2626') : ''}
+    ${result.otherExpense.length ? pnlSection('Other Expenses', result.otherExpense, result.totalOtherExpense, '#ef4444') : ''}
+    <div class="card" style="border:2px solid ${result.netProfit >= 0 ? '#16a34a' : '#dc2626'}">
+      <div class="card-body-padded" style="display:flex;justify-content:space-between;font-size:18px;font-weight:700">
+        <span>NET ${result.netProfit >= 0 ? 'PROFIT' : 'LOSS'}</span>
+        <span style="color:${result.netProfit >= 0 ? '#16a34a' : '#dc2626'}">${result.netProfit >= 0 ? '+' : ''}&#x20B1;${result.netProfit.toFixed(2)}</span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><h3><i class="fas fa-sticky-note"></i> Notes to Financial Statements</h3></div>
+      <div class="card-body-padded">
+        <form method="post" action="/admin/gl/profit-and-loss/notes" style="display:flex;flex-direction:column;gap:8px">
+          <input type="hidden" name="from" value="${from}">
+          <input type="hidden" name="to" value="${to}">
+          <textarea name="notes" style="width:100%;min-height:80px;padding:10px;border:2px solid var(--border);border-radius:8px;font-size:13px">${h(notes)}</textarea>
+          <button type="submit" class="btn btn-primary btn-xs" style="align-self:flex-end"><i class="fas fa-save"></i> Save Notes</button>
+        </form>
+      </div>
+    </div>`;
+
+  if (req.query.export === 'csv') {
+    let csv = 'Category,Account,Amount\n';
+    const w = (cat, items) => items.forEach(i => { csv += `${cat},${i.name},${i.amount.toFixed(2)}\n`; });
+    w('Operating Income', result.operatingIncome);
+    w('Other Income', result.otherIncome);
+    w('Operating Expenses', result.operatingExpense);
+    w('Other Expenses', result.otherExpense);
+    csv += `NET PROFIT,,${result.netProfit.toFixed(2)}\n`;
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="pnl_${from}_${to}.csv"`);
+    return res.send(csv);
+  }
+  if (req.query.print) return res.type('html').send(printLayout('Profit & Loss Statement', content, { subtitle: `${from} to ${to}` }));
   res.type('html').send(layout('Profit & Loss', 'gl-pnl', content, { subtitle: 'Income - Expenses = Net Profit/Loss' }));
+}));
+
+router.post('/gl/profit-and-loss/notes', requireRole(3), asyncHandler(async (req, res) => {
+  await store.setSetting('fs_notes_pnl', req.body.notes || '');
+  res.redirect('/admin/gl/profit-and-loss?from=' + (req.body.from || '') + '&to=' + (req.body.to || ''));
 }));
 
 router.get('/gl/ledger', requireRole(1), asyncHandler(async (req, res) => {
@@ -5829,6 +6000,7 @@ router.get('/gl/ledger', requireRole(1), asyncHandler(async (req, res) => {
       <button type="submit" class="btn btn-primary btn-sm" style="margin-top:18px">&#x1F50D; View</button>
     </form>
     <div style="display:flex;gap:8px">
+      <a href="/admin/gl/ledger?account=${selected}&export=csv" class="btn btn-outline btn-sm"><i class="fas fa-file-csv"></i> CSV</a>
       <a href="/admin/gl/trial-balance" class="btn btn-outline btn-sm">&#x1F4CA; Trial Balance</a>
       <a href="/admin/gl/balance-sheet" class="btn btn-outline btn-sm">&#x1F4C8; Balance Sheet</a>
       <a href="/admin/gl/profit-and-loss" class="btn btn-outline btn-sm">&#x1F4C9; P&amp;L</a>
@@ -5839,8 +6011,8 @@ router.get('/gl/ledger', requireRole(1), asyncHandler(async (req, res) => {
     <div class="card-header"><h3>&#x1F4CB; ${accName}</h3><span class="count">${entries.length} entries</span></div>
     <div class="card-body" style="padding:0">
     <table>
-      <tr><th>Date</th><th>Transaction</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Running Balance</th></tr>
-      ${entries.length === 0 ? '<tr><td colspan="6" style="text-align:center;padding:16px;color:var(--text-muted)">No entries for this account</td></tr>' :
+      <tr><th>Date</th><th>Transaction</th><th>Reference</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Running Balance</th></tr>
+      ${entries.length === 0 ? '<tr><td colspan="7" style="text-align:center;padding:16px;color:var(--text-muted)">No entries for this account</td></tr>' :
         entries.slice().reverse().map((e, i, arr) => {
           const d = Number(e.debit), c = Number(e.credit);
           const isAssetExpense = ['asset','expense'].includes(accounts.find(x => x.code === selected)?.type);
@@ -5848,6 +6020,7 @@ router.get('/gl/ledger', requireRole(1), asyncHandler(async (req, res) => {
           return `<tr>
             <td class="mono" style="font-size:11px">${(e.created_at||'').slice(0,16).replace('T',' ')}</td>
             <td class="mono" style="font-size:10px;color:var(--text-muted)">${(e.transaction_id||'').slice(0,8)}</td>
+            <td class="mono" style="font-size:10px;color:var(--text-muted)">${e.reference_number || '-'}</td>
             <td>${e.description || '-'}</td>
             <td class="num mono" style="color:#16a34a">${d ? '&#x20B1;' + d.toFixed(2) : '-'}</td>
             <td class="num mono" style="color:#dc2626">${c ? '&#x20B1;' + c.toFixed(2) : '-'}</td>
@@ -5856,7 +6029,100 @@ router.get('/gl/ledger', requireRole(1), asyncHandler(async (req, res) => {
         }).join('')}
     </table></div>
   </div>` : '<div style="text-align:center;padding:48px;color:var(--text-muted);font-size:14px">&#x1F4CB; Select a GL account above to view its ledger entries</div>'}`;
+
+  if (req.query.export === 'csv' && selected) {
+    let csv = 'Date,Transaction,Reference,Description,Debit,Credit,RunningBalance\n';
+    entries.slice().reverse().forEach(e => {
+      const d = Number(e.debit), c = Number(e.credit);
+      const isAE = ['asset','expense'].includes(accounts.find(x => x.code === selected)?.type);
+      const bal = isAE ? d - c : c - d;
+      csv += `${(e.created_at||'').slice(0,10)},${(e.transaction_id||'').slice(0,8)},${e.reference_number||''},${e.description||''},${d.toFixed(2)},${c.toFixed(2)},${bal.toFixed(2)}\n`;
+    });
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="ledger_${selected}.csv"`);
+    return res.send(csv);
+  }
+
   res.type('html').send(layout('General Ledger', 'gl-ledger', content, { subtitle: 'View individual account entries' }));
+}));
+
+// ── General Journal (BIR Format) ──
+
+router.get('/gl/journal', requireRole(1), asyncHandler(async (req, res) => {
+  const { getGeneralJournal } = require('../services/gl');
+  const now = new Date();
+  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+  const todayStr = now.toISOString().slice(0,10);
+  const from = req.query.from || firstDay;
+  const to = req.query.to || todayStr;
+  const entries = await getGeneralJournal(from + 'T00:00:00', to + 'T23:59:59');
+
+  // Group by transaction_id for folio
+  const folios = {};
+  entries.forEach(e => {
+    const key = e.transaction_id || e.entry_id;
+    if (!folios[key]) folios[key] = [];
+    folios[key].push(e);
+  });
+  const folioKeys = Object.keys(folios);
+
+  if (req.query.export === 'csv') {
+    let csv = 'Date,Folio,AccountCode,AccountName,Debit,Credit,Reference,Description\n';
+    entries.forEach(e => {
+      csv += `${(e.created_at||'').slice(0,10)},${(e.transaction_id||'').slice(0,8)},${e.account_code},${e.account_name},${Number(e.debit).toFixed(2)},${Number(e.credit).toFixed(2)},${e.reference_number||''},${(e.description||'').replace(/"/g,'""')}\n`;
+    });
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="general_journal_${from}_${to}.csv"`);
+    return res.send(csv);
+  }
+
+  const content = `
+  <form method="get" action="/admin/gl/journal" style="display:flex;gap:8px;align-items:end;margin-bottom:16px">
+    <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:3px">From</label><input type="date" name="from" value="${from}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px"></div>
+    <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:3px">To</label><input type="date" name="to" value="${to}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px"></div>
+    <button type="submit" class="btn btn-primary btn-sm">&#x1F50D; View</button>
+    <a href="/admin/gl/journal" class="btn btn-outline btn-sm">&#x1F504; Reset</a>
+    <div style="margin-left:auto;display:flex;gap:8px">
+      <a href="/admin/gl/journal?from=${from}&to=${to}&export=csv" class="btn btn-outline btn-sm"><i class="fas fa-file-csv"></i> CSV</a>
+      <a href="/admin/gl/journal?from=${from}&to=${to}&print=1" class="btn btn-outline btn-sm" target="_blank"><i class="fas fa-print"></i> Print</a>
+    </div>
+  </form>
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-book"></i></div><div class="stat-value">${entries.length}</div><div class="stat-label">Journal Entries</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-layer-group"></i></div><div class="stat-value">${folioKeys.length}</div><div class="stat-label">Folios (Transactions)</div></div>
+  </div>
+  ${folioKeys.map(folio => {
+    const folioEntries = folios[folio];
+    const first = folioEntries[0];
+    const dTotal = folioEntries.reduce((s, e) => s + Number(e.debit), 0);
+    const cTotal = folioEntries.reduce((s, e) => s + Number(e.credit), 0);
+    return `<div class="card">
+      <div class="card-header">
+        <h3><i class="fas fa-folder-open"></i> Folio: ${folio.slice(0,12)}</h3>
+        <span class="count">${(first.created_at||'').slice(0,16).replace('T',' ')} | Posted by: ${first.posted_by || 'system'}</span>
+      </div>
+      <div class="card-body" style="padding:0">
+      <table>
+        <tr><th>Account Code</th><th>Account Name</th><th class="num">Debit</th><th class="num">Credit</th><th>Reference</th><th>Description</th></tr>
+        ${folioEntries.map(e => `<tr>
+          <td class="mono">${e.account_code}</td>
+          <td>${e.account_name}</td>
+          <td class="num mono" style="color:#16a34a">${Number(e.debit) ? '&#x20B1;' + Number(e.debit).toFixed(2) : '-'}</td>
+          <td class="num mono" style="color:#dc2626">${Number(e.credit) ? '&#x20B1;' + Number(e.credit).toFixed(2) : '-'}</td>
+          <td class="mono" style="font-size:11px;color:var(--text-muted)">${e.reference_number || '-'}</td>
+          <td>${e.description || '-'}</td>
+        </tr>`).join('')}
+        <tr style="font-weight:700;background:var(--bg2)">
+          <td colspan="2">TOTAL</td>
+          <td class="num mono" style="color:#16a34a">&#x20B1;${dTotal.toFixed(2)}</td>
+          <td class="num mono" style="color:#dc2626">&#x20B1;${cTotal.toFixed(2)}</td>
+          <td colspan="2"></td>
+        </tr>
+      </table></div>
+    </div>`;
+  }).join('') || '<div class="card"><div class="card-body-padded" style="text-align:center;padding:40px;color:var(--text-muted)">No journal entries for this period.</div></div>'}`;
+  if (req.query.print) return res.type('html').send(printLayout('General Journal', content, { subtitle: `${from} to ${to}` }));
+  res.type('html').send(layout('General Journal', 'gl-journal', content, { subtitle: `${from} to ${to}` }));
 }));
 
 // ── Audit Log ──

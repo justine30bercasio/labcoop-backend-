@@ -229,7 +229,7 @@ router.get('/late-fees/charge/:id', requireRole(2), asyncHandler(async (req, res
     [txId, loan.account_id, 'fee', fee, Number(acc.actual_balance), Number(acc.actual_balance)-fee, 'Late payment fee - Loan '+loan.loan_id.slice(0,8), new Date().toISOString()]);
   await store.query('UPDATE accounts SET actual_balance = actual_balance - $1 WHERE account_id = $2', [fee, loan.account_id]);
   const gl = require('../services/gl');
-  await gl.postDoubleEntry(txId, [{account_code:'1000',credit:fee,description:'Late fee charged'},{account_code:'4100',debit:fee,description:'Late fee income'}]);
+  await gl.postDoubleEntry(txId, [{account_code:'1000',credit:fee,description:'Late fee charged'},{account_code:'4100',debit:fee,description:'Late fee income'}], { postedBy: req.session.adminName || 'admin', referenceType: 'late_fee' });
   res.redirect('/admin/late-fees?charged=ok');
 }));
 
@@ -416,10 +416,20 @@ router.get('/dividends', requireRole(3), asyncHandler(async (req, res) => {
 router.post('/dividends/declare', requireRole(3), asyncHandler(async (req, res) => {
   const { year, rate, total_amount, per_share } = req.body;
   if (!year||!rate) return res.redirect('/admin/dividends?error=Missing+fields');
+  const totalAmt = Number(total_amount) || 0;
   await store.query('INSERT INTO dividends (dividend_id,year,total_amount,rate,per_share,declared_date,status,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
-    [uuidv4(), Number(year), Number(total_amount)||0, Number(rate), Number(per_share)||0, new Date().toISOString(), 'declared', new Date().toISOString()]);
+    [uuidv4(), Number(year), totalAmt, Number(rate), Number(per_share)||0, new Date().toISOString(), 'declared', new Date().toISOString()]);
+  // Withholding tax on dividends (10% per tax_config)
+  const taxConfig = await one("SELECT * FROM tax_config WHERE applies_to = 'dividend' AND is_active = 1 LIMIT 1");
+  const taxRate = taxConfig ? Number(taxConfig.rate) / 100 : 0;
+  const taxAmount = Math.round(totalAmt * taxRate * 100) / 100;
+  const netDividend = Math.round((totalAmt - taxAmount) * 100) / 100;
   const gl = require('../services/gl');
-  await gl.postDoubleEntry(uuidv4(), [{account_code:'3100',debit:Number(total_amount)||0,description:'Dividend declared '+year},{account_code:'3000',credit:Number(total_amount)||0,description:'Dividend payable '+year}]);
+  await gl.postDoubleEntry(uuidv4(), [
+    {account_code:'3100', debit: totalAmt, description:'Dividend declared (gross) '+year},
+    {account_code:'2400', credit: taxAmount, description:'Dividend withholding tax '+year},
+    {account_code:'3000', credit: netDividend, description:'Dividend payable (net) '+year},
+  ], { postedBy: req.session.adminName || 'admin', referenceType: 'dividend' });
   res.redirect('/admin/dividends?declared=ok');
 }));
 
@@ -686,24 +696,120 @@ router.get('/cash-flow', requireRole(1), asyncHandler(async (req, res) => {
 // ============================================================
 router.get('/budget', requireRole(3), asyncHandler(async (req, res) => {
   const year = req.query.year || new Date().getFullYear();
-  const income = await sql("SELECT account_code, COALESCE(SUM(credit),0)-COALESCE(SUM(debit),0) as bal FROM gl_entries WHERE created_at LIKE $1 AND account_code IN ($2,$3) GROUP BY account_code",
-    [year+'%', '4000', '4100']);
-  const expense = await sql("SELECT account_code, COALESCE(SUM(debit),0)-COALESCE(SUM(credit),0) as bal FROM gl_entries WHERE created_at LIKE $1 AND account_code=$2 GROUP BY account_code",
-    [year+'%', '5000']);
-  const incTotal = income.reduce((s,i)=>s+Number(i.bal),0);
-  const expTotal = expense.reduce((s,e)=>s+Number(e.bal),0);
-  const content = `<div class="card"><div class="card-header"><h3>Budget vs Actual ${year}</h3></div>
-  <div class="card-body" style="padding:0">
-  <table><tr><th>Category</th><th>Budget</th><th>Actual</th><th>Variance</th></tr>
-    <tr><td><b>Income</b></td><td class="num mono">--</td><td class="num mono" style="color:#16a34a">${fmt(incTotal)}</td><td class="num mono">--</td></tr>
-    <tr><td style="padding-left:24px">Interest Income</td><td class="num mono">--</td><td class="num mono">${fmt(income.find(i=>i.account_code==='4000')?.bal||0)}</td><td class="num mono">--</td></tr>
-    <tr><td style="padding-left:24px">Fee Income</td><td class="num mono">--</td><td class="num mono">${fmt(income.find(i=>i.account_code==='4100')?.bal||0)}</td><td class="num mono">--</td></tr>
-    <tr><td><b>Expenses</b></td><td class="num mono">--</td><td class="num mono" style="color:#dc2626">${fmt(expTotal)}</td><td class="num mono">--</td></tr>
-    <tr><td style="padding-left:24px">Interest Expense</td><td class="num mono">--</td><td class="num mono">${fmt(expTotal)}</td><td class="num mono">--</td></tr>
-    <tr style="border-top:2px solid var(--border);font-weight:700"><td>Net Surplus/(Deficit)</td>
-      <td class="num mono">--</td><td class="num mono" style="color:${incTotal-expTotal>=0?'#16a34a':'#dc2626'}">${fmt(incTotal-expTotal)}</td><td class="num mono">--</td></tr>
-  </table></div></div>`;
-  res.type('html').send(layout('Budget vs Actual', 'budget', content, { subtitle: 'Compare budgeted vs actual financial performance' }));
+
+  // Get actuals from GL for ALL income/expense accounts
+  const actuals = await sql(`SELECT g.code, g.name, g.type, g.category,
+    COALESCE(SUM(CASE WHEN e.id IS NOT NULL THEN
+      CASE WHEN g.type='income' THEN e.credit - e.debit ELSE e.debit - e.credit END
+    ELSE 0 END),0) as bal
+    FROM gl_accounts g LEFT JOIN gl_entries e ON g.code = e.account_code AND e.created_at LIKE $1
+    WHERE g.type IN ('income','expense') GROUP BY g.code, g.name, g.type, g.category ORDER BY g.code`,
+    [year + '%']);
+
+  // Get budgets from settings (stored as JSON)
+  const budgetJson = await store.getSetting('budget_' + year) || '{}';
+  let budgets = {};
+  try { budgets = JSON.parse(budgetJson); } catch(e) {}
+
+  const incTotal = actuals.filter(r => r.type === 'income').reduce((s, r) => s + Number(r.bal), 0);
+  const expTotal = actuals.filter(r => r.type === 'expense').reduce((s, r) => s + Number(r.bal), 0);
+  const incBudget = actuals.filter(r => r.type === 'income').reduce((s, r) => s + Number(budgets[r.code] || 0), 0);
+  const expBudget = actuals.filter(r => r.type === 'expense').reduce((s, r) => s + Number(budgets[r.code] || 0), 0);
+
+  const budgetForm = actuals.map(r => {
+    const b = Number(budgets[r.code] || 0);
+    const a = Number(r.bal);
+    const v = b - a;
+    const color = r.type === 'income' ? (a >= b ? '#16a34a' : '#dc2626') : (a <= b ? '#16a34a' : '#dc2626');
+    return `<tr>
+      <td>${r.code} — ${r.name}</td>
+      <td class="num mono"><input type="number" name="budget_${r.code}" value="${b.toFixed(2)}" step="0.01" style="width:100px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;text-align:right"></td>
+      <td class="num mono" style="color:#16a34a">${fmt(a)}</td>
+      <td class="num mono" style="color:${color};font-weight:600">${v >= 0 ? '+' : ''}${fmt(v)}</td>
+    </tr>`;
+  }).join('');
+
+  const content = `
+  <div class="card">
+    <div class="card-body-padded" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap">
+      <div class="field" style="flex:0 0 160px"><label>Year</label>
+        <select id="bYear" onchange="location.href='/admin/budget?year='+this.value">
+          ${Array.from({length: 5}, (_, i) => { const y = new Date().getFullYear() - i; return '<option value="' + y + '" ' + (Number(year) === y ? 'selected' : '') + '>' + y + '</option>'; }).join('')}
+        </select>
+      </div>
+      <div style="flex:1;text-align:right">
+        <a href="/admin/budget?year=${year}&export=csv" class="btn btn-outline btn-sm"><i class="fas fa-file-csv"></i> CSV</a>
+      </div>
+    </div>
+  </div>
+  <div class="stats-grid">
+    <div class="stat-card" style="border-left:4px solid #16a34a"><div class="stat-icon"><i class="fas fa-arrow-trend-up"></i></div><div class="stat-value" style="color:#16a34a">${fmt(incBudget)}</div><div class="stat-label">Budgeted Income</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-arrow-trend-up"></i></div><div class="stat-value" style="color:#16a34a">${fmt(incTotal)}</div><div class="stat-label">Actual Income</div></div>
+    <div class="stat-card" style="border-left:4px solid #dc2626"><div class="stat-icon"><i class="fas fa-arrow-trend-down"></i></div><div class="stat-value" style="color:#dc2626">${fmt(expBudget)}</div><div class="stat-label">Budgeted Expenses</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-arrow-trend-down"></i></div><div class="stat-value" style="color:#dc2626">${fmt(expTotal)}</div><div class="stat-label">Actual Expenses</div></div>
+    <div class="stat-card" style="border-left:4px solid #8b5cf6"><div class="stat-icon"><i class="fas fa-chart-line"></i></div><div class="stat-value" style="color:#8b5cf6">${fmt(incBudget - expBudget)}</div><div class="stat-label">Budgeted Net</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-chart-line"></i></div><div class="stat-value" style="color:${incTotal - expTotal >= 0 ? '#16a34a' : '#dc2626'}">${fmt(incTotal - expTotal)}</div><div class="stat-label">Actual Net</div></div>
+  </div>
+  <form method="post" action="/admin/budget/save">
+    <input type="hidden" name="year" value="${year}">
+    <div class="card">
+      <div class="card-header"><h3>Budget vs Actual ${year}</h3>
+        <button type="submit" class="btn btn-primary btn-xs"><i class="fas fa-save"></i> Save Budget</button>
+      </div>
+      <div class="card-body" style="padding:0">
+      <table>
+        <tr><th>Account</th><th class="num">Budget (&#x20B1;)</th><th class="num">Actual (&#x20B1;)</th><th class="num">Variance (&#x20B1;)</th></tr>
+        ${budgetForm}
+        <tr style="font-weight:700;background:var(--bg2)">
+          <td>TOTAL INCOME</td>
+          <td class="num mono" style="color:#16a34a">${fmt(incBudget)}</td>
+          <td class="num mono" style="color:#16a34a">${fmt(incTotal)}</td>
+          <td class="num mono" style="color:${incTotal - incBudget >= 0 ? '#16a34a' : '#dc2626'}">${incTotal - incBudget >= 0 ? '+' : ''}${fmt(incTotal - incBudget)}</td>
+        </tr>
+        <tr style="font-weight:700;background:var(--bg2)">
+          <td>TOTAL EXPENSES</td>
+          <td class="num mono" style="color:#dc2626">${fmt(expBudget)}</td>
+          <td class="num mono" style="color:#dc2626">${fmt(expTotal)}</td>
+          <td class="num mono" style="color:${expTotal - expBudget <= 0 ? '#16a34a' : '#dc2626'}">${expTotal - expBudget >= 0 ? '+' : ''}${fmt(expTotal - expBudget)}</td>
+        </tr>
+        <tr style="font-weight:700;border-top:2px solid var(--border)">
+          <td>NET SURPLUS/(DEFICIT)</td>
+          <td class="num mono" style="color:#8b5cf6">${fmt(incBudget - expBudget)}</td>
+          <td class="num mono" style="color:${incTotal - expTotal >= 0 ? '#16a34a' : '#dc2626'}">${fmt(incTotal - expTotal)}</td>
+          <td class="num mono" style="color:#8b5cf6">${fmt((incTotal - expTotal) - (incBudget - expBudget)) >= 0 ? '+' : ''}${fmt((incTotal - expTotal) - (incBudget - expBudget))}</td>
+        </tr>
+      </table></div>
+    </div>
+  </form>`;
+
+  if (req.query.export === 'csv') {
+    let csv = 'Account,Budget,Actual,Variance\n';
+    actuals.forEach(r => {
+      const b = Number(budgets[r.code] || 0);
+      const a = Number(r.bal);
+      csv += `${r.code} - ${r.name},${b.toFixed(2)},${a.toFixed(2)},${(a-b).toFixed(2)}\n`;
+    });
+    csv += `TOTAL INCOME,${incBudget.toFixed(2)},${incTotal.toFixed(2)},${(incTotal-incBudget).toFixed(2)}\n`;
+    csv += `TOTAL EXPENSES,${expBudget.toFixed(2)},${expTotal.toFixed(2)},${(expTotal-expBudget).toFixed(2)}\n`;
+    csv += `NET,,,${(incTotal-expTotal).toFixed(2)}\n`;
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="budget_${year}.csv"`);
+    return res.send(csv);
+  }
+
+  res.type('html').send(layout('Budget vs Actual', 'budget', content, { subtitle: 'Year ' + year }));
+}));
+
+router.post('/budget/save', requireRole(3), asyncHandler(async (req, res) => {
+  const year = req.body.year || new Date().getFullYear();
+  const budgets = {};
+  const glAccounts = await sql('SELECT code FROM gl_accounts WHERE type IN ($1,$2)', ['income','expense']);
+  for (const a of glAccounts) {
+    const val = req.body['budget_' + a.code];
+    if (val !== undefined) budgets[a.code] = Number(val) || 0;
+  }
+  await store.setSetting('budget_' + year, JSON.stringify(budgets));
+  res.redirect('/admin/budget?year=' + year + '&saved=ok');
 }));
 
 // ============================================================
@@ -741,6 +847,98 @@ router.get('/regulatory-reports', requireRole(3), asyncHandler(async (req, res) 
     <tr><td>Past Due Count / Amount</td><td class="num mono">${pd} / ${fmt(pdAmt)}</td><td colspan="2"></td></tr>
   </table></div></div>`;
   res.type('html').send(layout('Regulatory Reports', 'regulatory-reports', content, { subtitle: 'BSP compliance and regulatory reporting' }));
+}));
+
+// ============================================================
+// ── Withholding Tax Report ──
+
+router.get('/withholding-tax', requireRole(3), asyncHandler(async (req, res) => {
+  const year = req.query.year || new Date().getFullYear();
+  const one = (q, p) => store.query(q, p || []).then(r => r.rows[0]);
+  const sql = (q, p) => store.query(q, p || []).then(r => r.rows);
+
+  // Total interest credited (gross)
+  const interest = await one("SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type='interest_credit' AND created_at LIKE $1", [year + '%']);
+  const interestGross = Number(interest.total);
+
+  // Total dividends declared
+  const divs = await one("SELECT COALESCE(SUM(total_amount),0) as total FROM dividends WHERE year=$1", [Number(year)]);
+  const divGross = Number(divs.total);
+
+  // Tax rates from config
+  const interestTax = await one("SELECT rate FROM tax_config WHERE tax_id='tax_interest'");
+  const divTax = await one("SELECT rate FROM tax_config WHERE tax_id='tax_dividend'");
+  const iRate = interestTax ? Number(interestTax.rate) : 20;
+  const dRate = divTax ? Number(divTax.rate) : 10;
+
+  const interestWithheld = Math.round(interestGross * iRate / 100 * 100) / 100;
+  const divWithheld = Math.round(divGross * dRate / 100 * 100) / 100;
+  const totalWithheld = interestWithheld + divWithheld;
+
+  // GL balances for tax payable
+  const taxPayable = await one("SELECT COALESCE(SUM(credit),0)-COALESCE(SUM(debit),0) as bal FROM gl_entries WHERE account_code='2400' AND created_at LIKE $1", [year + '%']);
+  const glBalance = Number(taxPayable.bal);
+
+  const content = `
+  <div class="card">
+    <div class="card-body-padded" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap">
+      <div class="field" style="flex:0 0 160px"><label>Year</label>
+        <select id="wtYear" onchange="location.href='/admin/withholding-tax?year='+this.value">
+          ${Array.from({length: 5}, (_, i) => { const y = new Date().getFullYear() - i; return '<option value="' + y + '" ' + (Number(year) === y ? 'selected' : '') + '>' + y + '</option>'; }).join('')}
+        </select>
+      </div>
+      <div style="flex:1;text-align:right">
+        <a href="/admin/withholding-tax?year=${year}&export=csv" class="btn btn-outline btn-sm"><i class="fas fa-file-csv"></i> Export CSV</a>
+      </div>
+    </div>
+  </div>
+  <div class="stats-grid">
+    <div class="stat-card" style="border-left:4px solid #8b5cf6"><div class="stat-icon"><i class="fas fa-percent"></i></div><div class="stat-value">${iRate}%</div><div class="stat-label">Interest Tax Rate</div></div>
+    <div class="stat-card" style="border-left:4px solid #f59e0b"><div class="stat-icon"><i class="fas fa-percent"></i></div><div class="stat-value">${dRate}%</div><div class="stat-label">Dividend Tax Rate</div></div>
+    <div class="stat-card" style="border-left:4px solid #16a34a"><div class="stat-icon"><i class="fas fa-coins"></i></div><div class="stat-value">${fmt(interestGross)}</div><div class="stat-label">Gross Interest Credited</div></div>
+    <div class="stat-card" style="border-left:4px solid #dc2626"><div class="stat-icon"><i class="fas fa-money-bill-transfer"></i></div><div class="stat-value">${fmt(interestWithheld)}</div><div class="stat-label">Interest Tax Withheld (${iRate}%)</div></div>
+    <div class="stat-card" style="border-left:4px solid #2563eb"><div class="stat-icon"><i class="fas fa-building-columns"></i></div><div class="stat-value">${fmt(divGross)}</div><div class="stat-label">Gross Dividends Declared</div></div>
+    <div class="stat-card" style="border-left:4px solid #ef4444"><div class="stat-icon"><i class="fas fa-hand-holding-dollar"></i></div><div class="stat-value">${fmt(divWithheld)}</div><div class="stat-label">Dividend Tax Withheld (${dRate}%)</div></div>
+    <div class="stat-card" style="border-left:4px solid #8b5cf6"><div class="stat-icon"><i class="fas fa-file-invoice"></i></div><div class="stat-value">${fmt(totalWithheld)}</div><div class="stat-label">Total Tax Withheld</div></div>
+    <div class="stat-card" style="border-left:4px solid #f59e0b"><div class="stat-icon"><i class="fas fa-wallet"></i></div><div class="stat-value">${fmt(glBalance)}</div><div class="stat-label">GL Balance (2400 Tax Payable)</div></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-list"></i> Withholding Tax Summary — BIR Form 2307 Equivalent</h3><span class="count">Year ${year}</span></div>
+    <div class="card-body" style="padding:0">
+    <table>
+      <tr><th>Income Type</th><th>Gross Amount</th><th>Tax Rate</th><th>Tax Withheld</th><th>Net Amount</th></tr>
+      <tr><td><b>Interest Income</b></td>
+        <td class="num mono">${fmt(interestGross)}</td>
+        <td class="num mono">${iRate}%</td>
+        <td class="num mono" style="color:#dc2626">${fmt(interestWithheld)}</td>
+        <td class="num mono" style="color:#16a34a">${fmt(interestGross - interestWithheld)}</td>
+      </tr>
+      <tr><td><b>Dividend Income</b></td>
+        <td class="num mono">${fmt(divGross)}</td>
+        <td class="num mono">${dRate}%</td>
+        <td class="num mono" style="color:#dc2626">${fmt(divWithheld)}</td>
+        <td class="num mono" style="color:#16a34a">${fmt(divGross - divWithheld)}</td>
+      </tr>
+      <tr style="font-weight:700;background:var(--bg2)">
+        <td>TOTAL</td><td class="num mono">${fmt(interestGross + divGross)}</td>
+        <td></td>
+        <td class="num mono" style="color:#dc2626">${fmt(totalWithheld)}</td>
+        <td class="num mono" style="color:#16a34a">${fmt(interestGross + divGross - totalWithheld)}</td>
+      </tr>
+    </table></div>
+  </div>`;
+
+  if (req.query.export === 'csv') {
+    let csv = 'IncomeType,GrossAmount,TaxRate,TaxWithheld,NetAmount\n';
+    csv += `Interest Income,${interestGross.toFixed(2)},${iRate}%,${interestWithheld.toFixed(2)},${(interestGross - interestWithheld).toFixed(2)}\n`;
+    csv += `Dividend Income,${divGross.toFixed(2)},${dRate}%,${divWithheld.toFixed(2)},${(divGross - divWithheld).toFixed(2)}\n`;
+    csv += `TOTAL,${(interestGross + divGross).toFixed(2)},,${totalWithheld.toFixed(2)},${(interestGross + divGross - totalWithheld).toFixed(2)}\n`;
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="withholding_tax_${year}.csv"`);
+    return res.send(csv);
+  }
+
+res.type('html').send(layout('Withholding Tax', 'withholding-tax', content, { subtitle: 'BIR Form 2307 equivalent — tax withheld on interest & dividends' }));
 }));
 
 // ============================================================
@@ -1089,7 +1287,7 @@ router.post('/account-closure/settle/:id', requireRole(3), asyncHandler(async (r
   if (totalPayout > 0) {
     await gl.postDoubleEntry(txId, [
       {account_code:'2000',debit:totalPayout,description:'Account closure payout - '+acc.child_name},
-      {account_code:'1000',credit:totalPayout,description:'Account closure - '+acc.child_name}]);
+      {account_code:'1000',credit:totalPayout,description:'Account closure - '+acc.child_name}], { postedBy: req.session.adminName || 'admin', referenceType: 'closure' });
   }
   res.redirect('/admin/account-closure?closed=ok');
 }));

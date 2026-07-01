@@ -480,7 +480,7 @@ router.get('/checks/clear/:id', requireRole(3), asyncHandler(async (req, res) =>
   await gl.postDoubleEntry(txId, [
     { account_code: '1000', debit: Number(check.amount), description: 'Check cleared #' + check.check_number },
     { account_code: '2000', credit: Number(check.amount), description: 'Check deposit #' + check.check_number },
-  ]);
+  ], { postedBy: req.session.adminName || 'admin', referenceType: 'check' });
   res.redirect('/admin/checks?cleared=ok');
 }));
 

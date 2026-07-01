@@ -50,7 +50,9 @@ function layout(title, active, content, opts = {}) {
       { icon: '<i class="fas fa-file-invoice"></i>', label: 'Balance Sheet', href: '/admin/gl/balance-sheet', key: 'gl-bsheet' },
       { icon: '<i class="fas fa-chart-line"></i>', label: 'Profit & Loss', href: '/admin/gl/profit-and-loss', key: 'gl-pnl' },
       { icon: '<i class="fas fa-book"></i>', label: 'General Ledger', href: '/admin/gl/ledger', key: 'gl-ledger' },
+      { icon: '<i class="fas fa-book-open"></i>', label: 'General Journal', href: '/admin/gl/journal', key: 'gl-journal' },
       { icon: '<i class="fas fa-money-bill-wave"></i>', label: 'Cash Flow', href: '/admin/cash-flow', key: 'cash-flow' },
+      { icon: '<i class="fas fa-calculator"></i>', label: 'Withholding Tax', href: '/admin/withholding-tax', key: 'withholding-tax' },
       { icon: '<i class="fas fa-chart-bar"></i>', label: 'Budget vs Actual', href: '/admin/budget', key: 'budget' },
       { icon: '<i class="fas fa-clipboard-check"></i>', label: 'Regulatory', href: '/admin/regulatory-reports', key: 'regulatory-reports' },
     ]},
@@ -61,6 +63,7 @@ function layout(title, active, content, opts = {}) {
       { icon: '<i class="fas fa-file-invoice"></i>', label: 'Statements', href: '/admin/statements', key: 'statements' },
       { icon: '<i class="fas fa-door-closed"></i>', label: 'Account Closure', href: '/admin/account-closure', key: 'account-closure' },
       { icon: '<i class="fas fa-tags"></i>', label: 'Fees', href: '/admin/fees', key: 'fees' },
+      { icon: '<i class="fas fa-calendar-lock"></i>', label: 'Accounting Periods', href: '/admin/accounting-periods', key: 'accounting-periods' },
     ]},
     { icon: '<i class="fas fa-gamepad"></i>', label: 'Gamification', key: 'gamification', children: [
       { icon: '<i class="fas fa-store"></i>', label: 'Shop', href: '/admin/shop', key: 'shop' },

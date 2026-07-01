@@ -38,6 +38,16 @@ function getDb() {
     try { db.exec("ALTER TABLE gl_entries ADD COLUMN voided_by TEXT"); } catch (_) {}
     try { db.exec("ALTER TABLE gl_entries ADD COLUMN void_reason TEXT"); } catch (_) {}
     try { db.exec("ALTER TABLE gl_entries ADD COLUMN voided_at TEXT"); } catch (_) {}
+    try { db.exec("ALTER TABLE gl_entries ADD COLUMN posted_by TEXT"); } catch (_) {}
+    try { db.exec("ALTER TABLE gl_entries ADD COLUMN approved_by TEXT"); } catch (_) {}
+    try { db.exec("ALTER TABLE gl_entries ADD COLUMN reference_type TEXT"); } catch (_) {}
+    try { db.exec("ALTER TABLE gl_entries ADD COLUMN reference_number TEXT"); } catch (_) {}
+    try { db.exec("ALTER TABLE gl_entries ADD COLUMN period_id TEXT"); } catch (_) {}
+    try { db.exec("ALTER TABLE gl_accounts ADD COLUMN category TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE gl_accounts ADD COLUMN is_contra INTEGER DEFAULT 0"); } catch (_) {}
+    try { db.exec("ALTER TABLE transactions ADD COLUMN or_number TEXT"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS accounting_periods (period_id TEXT PRIMARY KEY, year INTEGER NOT NULL, month INTEGER NOT NULL, is_closed INTEGER DEFAULT 0, closed_by TEXT, closed_at TEXT, UNIQUE(year, month))"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS or_series (series_id TEXT PRIMARY KEY, prefix TEXT NOT NULL, current_number INTEGER DEFAULT 1, end_number INTEGER, type TEXT NOT NULL CHECK(type IN ('deposit','withdrawal','collection')))"); } catch (_) {}
     try { db.exec("ALTER TABLE accounts ADD COLUMN profile_pic_url TEXT DEFAULT ''"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS teller_cash (cash_id TEXT PRIMARY KEY, teller_id TEXT NOT NULL, opening_balance DECIMAL(12,2) DEFAULT 0, current_balance DECIMAL(12,2) DEFAULT 0, date TEXT NOT NULL, status TEXT DEFAULT 'open' CHECK(status IN ('open','closed')), closed_at TEXT, notes TEXT DEFAULT '', created_at TEXT)"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS checks (check_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, check_number TEXT NOT NULL, bank_name TEXT DEFAULT '', amount DECIMAL(12,2) NOT NULL, status TEXT DEFAULT 'pending' CHECK(status IN ('pending','cleared','bounced','deposited')), deposit_date TEXT, clear_date TEXT, created_at TEXT)"); } catch (_) {}
@@ -90,15 +100,25 @@ function getDb() {
     try { db.exec("CREATE TABLE IF NOT EXISTS tax_config (tax_id TEXT PRIMARY KEY, name TEXT NOT NULL, rate DECIMAL(5,2) NOT NULL, applies_to TEXT DEFAULT 'interest' CHECK(applies_to IN ('interest','fee','dividend','all')), is_active INTEGER DEFAULT 1, created_at TEXT)"); } catch (_) {}
     try { db.exec("INSERT OR IGNORE INTO tax_config (tax_id, name, rate, applies_to) VALUES ('tax_interest', 'Interest Income Tax', 20, 'interest')"); } catch (_) {}
     try { db.exec("INSERT OR IGNORE INTO tax_config (tax_id, name, rate, applies_to) VALUES ('tax_dividend', 'Dividend Tax', 10, 'dividend')"); } catch (_) {}
-    const insert = db.prepare('INSERT OR IGNORE INTO gl_accounts (code, name, type) VALUES (?,?,?)');
     const accounts = [
-      ['1000','Cash on Hand','asset'], ['1100','Loans Receivable','asset'], ['1200','Accrued Interest','asset'],
-      ['2000','Savings Deposits','liability'], ['2100','Time Deposits','liability'], ['2200','Interest Payable','liability'],
-      ['3000','Share Capital','equity'], ['3100','Retained Earnings','equity'],
-      ['4000','Interest Income','income'], ['4100','Fee Income','income'], ['4200','Insurance Income','income'],
-      ['5000','Interest Expense','expense'],
+      ['1000','Cash on Hand','asset','current_asset',0], ['1010','Cash in Bank','asset','current_asset',0],
+      ['1020','Petty Cash','asset','current_asset',0], ['1100','Loans Receivable','asset','current_asset',0],
+      ['1200','Accrued Interest Receivable','asset','current_asset',0], ['1300','Prepaid Expenses','asset','current_asset',0],
+      ['1400','Property & Equipment','asset','non_current_asset',0], ['1401','Accumulated Depreciation','asset','non_current_asset',1],
+      ['1500','Accounts Receivable - Loans','asset','current_asset',0],
+      ['2000','Savings Deposits','liability','current_liability',0], ['2100','Time Deposits','liability','current_liability',0],
+      ['2200','Interest Payable','liability','current_liability',0], ['2300','Accounts Payable','liability','current_liability',0],
+      ['2400','Income Tax Payable','liability','current_liability',0], ['2500','Accrued Expenses','liability','current_liability',0],
+      ['3000','Share Capital','equity','equity',0], ['3100','Retained Earnings','equity','equity',0],
+      ['4000','Interest Income','income','operating_income',0], ['4100','Fee Income','income','operating_income',0],
+      ['4200','Insurance Income','income','operating_income',0], ['4300','Miscellaneous Income','income','other_income',0],
+      ['5000','Interest Expense','expense','operating_expense',0], ['5100','Other Operating Expenses','expense','operating_expense',0],
+      ['5200','Depreciation Expense','expense','operating_expense',0], ['5300','Tax Expense','expense','operating_expense',0],
     ];
+    const insert = db.prepare('INSERT OR IGNORE INTO gl_accounts (code, name, type, category, is_contra) VALUES (?,?,?,?,?)');
     for (const a of accounts) insert.run(...a);
+    const updateCat = db.prepare('UPDATE gl_accounts SET category = ? WHERE code = ?');
+    for (const a of accounts) updateCat.run(a[3], a[0]);
   }
   return db;
 }
@@ -276,6 +296,35 @@ function unlockBadges(accountId, currentXp) {
     badge.unlocked_at = now;
   }
   return toUnlock;
+}
+
+// ── OR Series & Accounting Periods ──
+
+function assignOrNumber(type) {
+  const year = new Date().getFullYear();
+  const seriesId = 'or_' + type;
+  getDb().prepare("INSERT OR IGNORE INTO or_series (series_id, prefix, current_number, type) VALUES (?, 'LABCOOP', 1, ?)").run(seriesId, type);
+  const row = getDb().prepare('UPDATE or_series SET current_number = current_number + 1 WHERE series_id = ? RETURNING current_number, prefix').get(seriesId);
+  const num = String(Number(row.current_number) - 1).padStart(5, '0');
+  return row.prefix + '-' + year + '-' + num;
+}
+
+function getOrCreatePeriod(createdAt) {
+  const d = new Date(createdAt);
+  const periodId = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  getDb().prepare("INSERT OR IGNORE INTO accounting_periods (period_id, year, month) VALUES (?, ?, ?)").run(periodId, d.getFullYear(), d.getMonth() + 1);
+  return getDb().prepare('SELECT * FROM accounting_periods WHERE period_id = ?').get(periodId);
+}
+
+function isPeriodClosed(createdAt) {
+  const d = new Date(createdAt);
+  const periodId = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  const row = getDb().prepare('SELECT is_closed FROM accounting_periods WHERE period_id = ?').get(periodId);
+  return row ? row.is_closed === 1 : false;
+}
+
+function closePeriod(periodId, closedBy) {
+  getDb().prepare('UPDATE accounting_periods SET is_closed = 1, closed_by = ?, closed_at = ? WHERE period_id = ?').run(closedBy, new Date().toISOString(), periodId);
 }
 
 function addTransaction(tx) {
@@ -927,6 +976,10 @@ module.exports = {
   registerFcmToken,
   unregisterFcmToken,
   query,
+  assignOrNumber,
+  getOrCreatePeriod,
+  isPeriodClosed,
+  closePeriod,
   getQuizQuestions,
   getQuizQuestion,
   createQuizQuestion,

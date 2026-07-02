@@ -595,7 +595,7 @@ p { color:#64748b; font-size:14px; margin-bottom:8px; }
   <h1>404</h1>
   <h2>Page Not Found</h2>
   <p>Oops! The page you're looking for got lost in the litter box.</p>
-  <lottie-player src="/cat.json" background="transparent" speed="1" loop autoplay></lottie-player>
+  <lottie-player src="/404_error.json" background="transparent" speed="1" loop autoplay></lottie-player>
   <p class="quote">${quote}</p>
   <a class="btn" href="/">🏠 Go Home</a>
   <div class="footer">LabCoop &middot; ${new Date().getFullYear()}</div>

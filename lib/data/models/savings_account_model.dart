@@ -13,6 +13,8 @@ class SavingsAccountModel {
   final String photo2x2Url;
   final String birthCertUrl;
   final String idPhotoUrl;
+  final String kycStatus;
+  final String selfieUrl;
   final double actualBalance;
   final double unallocatedBalance;
   final int currentXp;
@@ -32,6 +34,8 @@ class SavingsAccountModel {
     this.photo2x2Url = '',
     this.birthCertUrl = '',
     this.idPhotoUrl = '',
+    this.kycStatus = '',
+    this.selfieUrl = '',
     required this.actualBalance,
     required this.unallocatedBalance,
     required this.currentXp,
@@ -55,6 +59,8 @@ class SavingsAccountModel {
       photo2x2Url: (json['photo_2x2_url'] as String?) ?? '',
       birthCertUrl: (json['birth_cert_url'] as String?) ?? '',
       idPhotoUrl: (json['id_photo_url'] as String?) ?? '',
+      kycStatus: (json['kyc_status'] as String?) ?? '',
+      selfieUrl: (json['selfie_url'] as String?) ?? '',
       actualBalance: n(json['actual_balance']),
       unallocatedBalance: n(json['unallocated_balance']),
       currentXp: i(json['current_xp']),
@@ -77,6 +83,8 @@ class SavingsAccountModel {
       'photo_2x2_url': photo2x2Url,
       'birth_cert_url': birthCertUrl,
       'id_photo_url': idPhotoUrl,
+      'kyc_status': kycStatus,
+      'selfie_url': selfieUrl,
       'actual_balance': actualBalance,
       'unallocated_balance': unallocatedBalance,
       'current_xp': currentXp,
@@ -99,6 +107,8 @@ class SavingsAccountModel {
       photo2x2Url: photo2x2Url,
       birthCertUrl: birthCertUrl,
       idPhotoUrl: idPhotoUrl,
+      kycStatus: kycStatus,
+      selfieUrl: selfieUrl,
       actualBalance: actualBalance,
       unallocatedBalance: unallocatedBalance,
       currentXp: currentXp,
@@ -121,6 +131,8 @@ class SavingsAccountModel {
       photo2x2Url: entity.photo2x2Url,
       birthCertUrl: entity.birthCertUrl,
       idPhotoUrl: entity.idPhotoUrl,
+      kycStatus: entity.kycStatus,
+      selfieUrl: entity.selfieUrl,
       actualBalance: entity.actualBalance,
       unallocatedBalance: entity.unallocatedBalance,
       currentXp: entity.currentXp,

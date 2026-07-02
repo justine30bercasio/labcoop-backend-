@@ -293,4 +293,23 @@ class RemoteApiSource {
         .map((e) => SavingsProductModel.fromJson(e as Map<String, dynamic>))
         .toList();
   }
+
+  Future<Map<String, dynamic>> submitKyc({
+    required List<int> selfieBytes,
+    required String selfieFilename,
+    required List<int> birthCertBytes,
+    required String birthCertFilename,
+  }) async {
+    final form = FormData.fromMap({
+      'selfie': MultipartFile.fromBytes(selfieBytes, filename: selfieFilename),
+      'birth_cert': MultipartFile.fromBytes(birthCertBytes, filename: birthCertFilename),
+    });
+    final response = await _dio.post('/api/kyc/submit', data: form);
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getKycStatus() async {
+    final response = await _dio.get('/api/kyc/status');
+    return response.data as Map<String, dynamic>;
+  }
 }

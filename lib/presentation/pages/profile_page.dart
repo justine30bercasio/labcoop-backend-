@@ -16,6 +16,7 @@ import '../blocs/savings_state.dart';
 import '../widgets/animated_counter.dart';
 import '../widgets/app_card.dart';
 import '../../core/network/banking_api_service.dart';
+import 'kyc_page.dart';
 import 'login_page.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -266,9 +267,54 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
   }
 
   Widget _buildQuickActions() {
+    final state = context.watch<SavingsBloc>().state;
+    final kycStatus = state is SavingsLoaded ? state.account.kycStatus : '';
+    final kycLabel = kycStatus == 'verified'
+        ? 'Verified'
+        : kycStatus == 'pending'
+            ? 'Under Review'
+            : kycStatus == 'rejected'
+                ? 'Rejected — Resubmit'
+                : 'Verify Identity';
+    final kycIcon = kycStatus == 'verified' ? Icons.verified : Icons.verified_user;
+    final kycColor = kycStatus == 'verified'
+        ? Colors.green
+        : kycStatus == 'rejected'
+            ? Colors.red.shade400
+            : const Color(0xFF8B4513);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (kycStatus != 'verified')
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _actionButton(kycIcon, 'KYC: $kycLabel', kycColor, () {
+              Navigator.push(context, PageTransition.slideUp(const KycPage())).then((_) => _load());
+            }),
+          ),
+        if (kycStatus == 'verified')
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.green.shade200),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.verified, color: Colors.green, size: 22),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text('Identity Verified', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.green.shade800, fontSize: 13)),
+                  ),
+                  Icon(Icons.check_circle, color: Colors.green.shade400, size: 18),
+                ],
+              ),
+            ),
+          ),
         _actionButton(Icons.auto_awesome, 'Rare Unlocks', AppTheme.coinGold, _showRareUnlocks),
         const SizedBox(height: Spacing.sm),
         _actionButton(Icons.store, 'Shop — Avatars & Borders', AppTheme.accentAmber, () {

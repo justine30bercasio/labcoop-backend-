@@ -537,8 +537,10 @@ app.use('/api/settings', authMiddleware, requireOwnership, settingsRouter);
 function csrfProtection(req, res, next) {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
   const headerToken = req.headers['x-csrf-token'];
+  const bodyToken = req.body?._csrf;
   const cookieToken = req.session?.csrfToken;
-  if (!cookieToken || !headerToken || headerToken !== cookieToken) {
+  const token = headerToken || bodyToken;
+  if (!cookieToken || !token || token !== cookieToken) {
     return res.status(403).json({ message: 'CSRF token mismatch. Reload the page and try again.' });
   }
   next();
@@ -549,6 +551,17 @@ app.use('/admin', (req, res, next) => {
     req.session.csrfToken = crypto.randomBytes(32).toString('hex');
   }
   res.locals.csrfToken = req.session.csrfToken;
+  next();
+});
+// Inject CSRF into all admin HTML forms via script
+app.use('/admin', (req, res, next) => {
+  const origSend = res.send.bind(res);
+  res.send = function(body) {
+    if (typeof body === 'string' && body.includes('</body>') && res.locals.csrfToken) {
+      body = body.replace('</body>', `<script>document.querySelectorAll('form').forEach(f=>{const i=document.createElement('input');i.type='hidden';i.name='_csrf';i.value='${res.locals.csrfToken}';f.appendChild(i)})</script>\n</body>`);
+    }
+    return origSend(body);
+  };
   next();
 });
 app.use('/admin', adminAuthRouter);

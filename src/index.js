@@ -557,7 +557,7 @@ app.use('/admin', csrfProtection, microbankRouter);
 app.use('/admin', csrfProtection, advancedRouter);
 
 // ── Custom 404 — Lottie animation directly embedded ──
-const lottieData = JSON.stringify(require('./public/404.json'));
+const lottieData = JSON.stringify(require('../public/404.json'));
 app.use((req, res, next) => {
   if (res.headersSent) return next();
   if (req.path.startsWith('/api/')) {

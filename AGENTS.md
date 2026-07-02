@@ -168,3 +168,14 @@ Flutter app data disappeared on logout/refresh because:
 - **Professional report layouts**: Upgraded `printLayout()` in `admin-lib.js` with company header (name, address, TIN), report title/subtitle, date range, proper table formatting (Courier New monospace, alternating rows, total rows), 3-column signature blocks (Prepared by / Reviewed by / Approved by), page numbers via CSS counters, A4 portrait/landscape orientation support, disclaimer footer, PH timezone generation timestamp.
 - **All 10 reports now use professional print layout**: Trial Balance, Balance Sheet, P&L, GL Ledger, General Journal, Cash Flow, Withholding Tax, Budget vs Actual (plus Loan reports too).
 - Pushed to Render: backend `main` (a0f3661) + parent `master` (44adbb9).
+
+=====
+### Security Hardening (2026-07-02)
+- **JWT_SECRET/SESSION_SECRET**: Production now refuses to start without proper secrets in env vars — `process.exit(1)` if unset or still default. Dev mode auto-generates as before.
+- **Health endpoint**: Removed `paymongoKeyLength` leak from `/api/health` response.
+- **Reset database**: Gated with `super_admin` role check + audit log.
+- **CSRF protection**: Double-submit cookie pattern for all admin POST/PUT/DELETE routes. Token embedded in sessions, must match `X-CSRF-Token` header.
+- **Role-based middleware**: `requireRole('super_admin', 'manager', ...)` available via `middleware/auth.js`.
+- **Audit logging**: All admin logins (success + failure), OTP verifications, and reset-database events logged to `audit_log` table with IP and details.
+- **OTP rate-limiting**: Max 3 forgot-password requests per email per 15 minutes. Username enumeration prevented — generic response whether user exists or not. OTP success message no longer reveals email.
+- **AGENTS.md**: Separated into `Removed`, `In Progress`, `Blocked`, `Session History` sections for clarity.

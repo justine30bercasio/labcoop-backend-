@@ -467,9 +467,11 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
   // Inject transaction data as a global variable for the chart script
   const chartDataScript = `<script>var transactions = ${JSON.stringify(transactions.map(t => ({ type: t.type, amount: t.amount })))};<\/script>`;
 
+  const msg = req.query.msg;
   res.type('html').send(layout('Dashboard', 'dashboard', chartDataScript + content, {
     subtitle: now.toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
     headerActions: '<a href="/admin/gl/trial-balance" class="btn btn-outline btn-sm"><i class="fas fa-scale-balanced"></i> Trial Balance</a><a href="/api/excel/export/all" class="btn btn-secondary btn-sm"><i class="fas fa-download"></i> Export</a>',
+    toast: msg ? `success:${msg}` : undefined,
   }));
 }));
 

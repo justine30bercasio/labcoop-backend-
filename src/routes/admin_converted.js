@@ -265,10 +265,12 @@ router.get('/', requireSession, asyncHandler(async (req, res) => {
   </div>
   `;
 
+  const msg = req.query.msg;
   res.type('html').send(layout('Dashboard', 'dashboard', content, {
     subtitle: `${new Date().toLocaleString()}`,
     counts: { dashboard: accounts.length },
     headerActions: '<a href="/api/excel/export/all" class="btn btn-secondary btn-sm">&#x1F4E5; Export All</a><a href="/api/excel/template" class="btn btn-outline btn-sm">&#x1F4C4; Template</a>',
+    toast: msg ? `success:${msg}` : undefined,
   }));
 }));
 

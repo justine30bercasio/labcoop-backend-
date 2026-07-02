@@ -102,7 +102,7 @@ class _KycPageState extends State<KycPage> {
             const SizedBox(height: 8),
             const Text('Identity Verification', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF3E2723))),
             const SizedBox(height: 4),
-            const Text('Complete live face verification (blink to confirm liveness) and upload your birth certificate.', textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: Color(0xFF6D4C41))),
+                  const Text('Complete live face verification (3-frame liveness check) and upload your birth certificate.', textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: Color(0xFF6D4C41))),
             const SizedBox(height: 24),
 
             // Face Verification (live camera)
@@ -139,7 +139,7 @@ class _KycPageState extends State<KycPage> {
                           Icon(Icons.check_circle, color: Colors.green.shade600, size: 20),
                           const SizedBox(width: 8),
                           Expanded(
-                            child: Text('Face verified — liveness confirmed', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.green.shade800, fontSize: 13)),
+                            child:                   Text('Face verified — 3-Frame Liveness Check Passed', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.green.shade800, fontSize: 13)),
                           ),
                           IconButton(
                             icon: Icon(Icons.refresh, color: Colors.green.shade600, size: 18),

@@ -556,7 +556,8 @@ app.use('/admin', csrfProtection, adminRouter);
 app.use('/admin', csrfProtection, microbankRouter);
 app.use('/admin', csrfProtection, advancedRouter);
 
-// ── Custom 404 — Lottie animation only ──
+// ── Custom 404 — Lottie animation directly embedded ──
+const lottieData = JSON.stringify(require('./public/404.json'));
 app.use((req, res, next) => {
   if (res.headersSent) return next();
   if (req.path.startsWith('/api/')) {
@@ -575,7 +576,9 @@ body { background:#0d2818; min-height:100vh; display:flex; align-items:center; j
 <body>
 <div id="lottie-box"></div>
 <script>
-fetch('/404.json').then(r=>r.json()).then(d=>{lottie.loadAnimation({container:document.getElementById('lottie-box'),animationData:d,loop:true,autoplay:true})}).catch(()=>{});
+try {
+  lottie.loadAnimation({container:document.getElementById('lottie-box'),animationData:${lottieData},loop:true,autoplay:true});
+} catch(e){}
 </script>
 </body></html>`);
 });

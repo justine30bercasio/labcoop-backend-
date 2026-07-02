@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/design_system.dart';
+import '../../core/services/inactivity_timer.dart';
 import '../blocs/savings_bloc.dart';
 import '../blocs/savings_event.dart';
 import '../blocs/savings_state.dart';
@@ -27,11 +28,34 @@ class _HomePageState extends State<HomePage> {
   int _currentIndex = 0;
   String _accountId = '';
   bool _loading = true;
+  InactivityTimer? _inactivityTimer;
 
   @override
   void initState() {
     super.initState();
     _loadSession();
+  }
+
+  void _onSessionExpired() {
+    if (!mounted) return;
+    const FlutterSecureStorage().deleteAll();
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+      (route) => false,
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Session expired. Please log in again.'),
+        backgroundColor: Colors.red,
+        duration: Duration(seconds: 4),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _inactivityTimer?.dispose();
+    super.dispose();
   }
 
   Future<void> _loadSession() async {
@@ -51,6 +75,8 @@ class _HomePageState extends State<HomePage> {
       _accountId = accountId;
       _loading = false;
     });
+    _inactivityTimer = InactivityTimer(_onSessionExpired);
+    if (!mounted) return;
     context.read<SavingsBloc>().add(LoadSavings(accountId));
   }
 

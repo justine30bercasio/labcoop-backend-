@@ -14,8 +14,9 @@ class DioClient {
   );
 
   /// Called when the server returns 401 (except login/register).
-  /// main.dart sets this to clear the session and navigate to LoginPage.
-  static Future<void> Function()? onSessionExpired;
+  /// Storage is cleared before this callback runs.
+  /// main.dart sets this to navigate to LoginPage.
+  static void Function()? onSessionExpired;
 
   static Future<String?> get _authToken async {
     return await _secureStorage.read(key: 'auth_token');
@@ -50,11 +51,12 @@ class DioClient {
           if (statusCode == 401 &&
               !path.contains('/auth/login') &&
               !path.contains('/auth/register')) {
+            _secureStorage.deleteAll();
             onSessionExpired?.call();
-            handler.next(DioException(
+            handler.resolve(Response(
               requestOptions: error.requestOptions,
-              error: 'Session expired. Please log in again.',
-              type: error.type,
+              statusCode: 200,
+              data: {'_session_expired': true},
             ));
             return;
           }

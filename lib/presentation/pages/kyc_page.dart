@@ -1,10 +1,9 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:get_it/get_it.dart';
 import '../../data/datasources/remote_api_source.dart';
-import '../widgets/kyc_selfie_capture.dart';
+import '../widgets/face_verification_screen.dart';
 
 class KycPage extends StatefulWidget {
   const KycPage({super.key});
@@ -15,11 +14,21 @@ class KycPage extends StatefulWidget {
 
 class _KycPageState extends State<KycPage> {
   final _picker = ImagePicker();
-  final _selfieCaptureKey = GlobalKey<KycSelfieCaptureState>();
+  FaceVerificationResult? _selfieResult;
   XFile? _birthCert;
   bool _loading = false;
   String? _error;
   bool _success = false;
+
+  Future<void> _takeSelfie() async {
+    final result = await Navigator.push<FaceVerificationResult>(
+      context,
+      MaterialPageRoute(builder: (_) => const FaceVerificationScreen()),
+    );
+    if (result != null) {
+      setState(() => _selfieResult = result);
+    }
+  }
 
   Future<void> _pickBirthCert() async {
     final x = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
@@ -27,10 +36,8 @@ class _KycPageState extends State<KycPage> {
   }
 
   Future<void> _submit() async {
-    final selfieBytes = _selfieCaptureKey.currentState?.validatedImageBytes;
-    final selfieName = _selfieCaptureKey.currentState?.imageFilename ?? 'selfie.jpg';
-    if (selfieBytes == null && _birthCert == null) {
-      setState(() => _error = 'Please take a valid selfie (face detected and centered) and/or upload a birth certificate');
+    if (_selfieResult == null && _birthCert == null) {
+      setState(() => _error = 'Please complete face verification and/or upload a birth certificate');
       return;
     }
 
@@ -39,14 +46,14 @@ class _KycPageState extends State<KycPage> {
     try {
       final api = GetIt.instance<RemoteApiSource>();
       await api.submitKyc(
-        selfieBytes: selfieBytes ?? Uint8List(0),
-        selfieFilename: selfieName,
-        birthCertBytes: await _birthCert!.readAsBytes(),
-        birthCertFilename: _birthCert!.name,
+        selfieBytes: _selfieResult?.imageBytes,
+        selfieFilename: _selfieResult?.filename,
+        birthCertBytes: _birthCert != null ? await _birthCert!.readAsBytes() : null,
+        birthCertFilename: _birthCert?.name,
       );
       setState(() { _success = true; _loading = false; });
     } catch (e) {
-      setState(() { _error = 'Failed to submit KYC. Please try again.'; _loading = false; });
+      setState(() { _error = 'Failed to submit KYC: ${e.toString().replaceAll('Exception: ', '')}'; _loading = false; });
     }
   }
 
@@ -95,10 +102,10 @@ class _KycPageState extends State<KycPage> {
             const SizedBox(height: 8),
             const Text('Identity Verification', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF3E2723))),
             const SizedBox(height: 4),
-            const Text('Please take a clear selfie and upload your birth certificate.', textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: Color(0xFF6D4C41))),
+            const Text('Complete live face verification (blink to confirm liveness) and upload your birth certificate.', textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: Color(0xFF6D4C41))),
             const SizedBox(height: 24),
 
-            // Selfie with face detection
+            // Face Verification (live camera)
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -111,15 +118,54 @@ class _KycPageState extends State<KycPage> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.face, size: 20, color: Color(0xFF2E7D32)),
+                      const Icon(Icons.face_retouching_natural, size: 20, color: Color(0xFF2E7D32)),
                       const SizedBox(width: 8),
                       const Text('Face Verification', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF3E2723))),
                     ],
                   ),
                   const SizedBox(height: 4),
-                  Text('Position your face in the center with good lighting. Keep your eyes open.', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                  Text('Live face scan with blink detection and glasses check', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                   const SizedBox(height: 12),
-                  KycSelfieCapture(key: _selfieCaptureKey),
+                  if (_selfieResult != null)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.green.shade300),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.check_circle, color: Colors.green.shade600, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text('Face verified — liveness confirmed', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.green.shade800, fontSize: 13)),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.refresh, color: Colors.green.shade600, size: 18),
+                            onPressed: _takeSelfie,
+                            tooltip: 'Redo face scan',
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    SizedBox(
+                      height: 100,
+                      child: Center(
+                        child: OutlinedButton.icon(
+                          onPressed: _takeSelfie,
+                          icon: const Icon(Icons.camera_alt, size: 20),
+                          label: const Text('Start Face Scan', style: TextStyle(fontSize: 15)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF2E7D32),
+                            side: const BorderSide(color: Color(0xFF2E7D32), width: 1.5),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),

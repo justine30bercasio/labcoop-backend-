@@ -269,17 +269,29 @@ const { authMiddleware, requireOwnership } = require('./middleware/auth');
 const crypto = require('crypto');
 
 const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET || JWT_SECRET === 'change-this-to-a-secure-random-string-in-production') {
-  const generated = crypto.randomBytes(32).toString('hex');
-  process.env.JWT_SECRET = generated;
-  console.warn('WARN: JWT_SECRET not configured. Generated a temporary random secret (will change on restart).');
-  console.warn('      Set JWT_SECRET in environment variables for persistence.');
-}
-if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET === 'labcoop-session-secret-2026') {
-  const generated = crypto.randomBytes(32).toString('hex');
-  process.env.SESSION_SECRET = generated;
-  console.warn('WARN: SESSION_SECRET not configured. Generated a temporary random secret (will change on restart).');
-  console.warn('      Set SESSION_SECRET in environment variables for persistence.');
+const SESSION_SECRET = process.env.SESSION_SECRET;
+const isProduction = process.env.NODE_ENV === 'production';
+
+if (isProduction) {
+  if (!JWT_SECRET || JWT_SECRET === 'change-this-to-a-secure-random-string-in-production') {
+    console.error('FATAL: JWT_SECRET must be set in production. Generate one: openssl rand -hex 32');
+    process.exit(1);
+  }
+  if (!SESSION_SECRET || SESSION_SECRET === 'labcoop-session-secret-2026') {
+    console.error('FATAL: SESSION_SECRET must be set in production. Generate one: openssl rand -hex 32');
+    process.exit(1);
+  }
+} else {
+  if (!JWT_SECRET || JWT_SECRET === 'change-this-to-a-secure-random-string-in-production') {
+    const generated = crypto.randomBytes(32).toString('hex');
+    process.env.JWT_SECRET = generated;
+    console.warn('WARN: JWT_SECRET not configured. Generated a temporary random secret (will change on restart).');
+  }
+  if (!SESSION_SECRET || SESSION_SECRET === 'labcoop-session-secret-2026') {
+    const generated = crypto.randomBytes(32).toString('hex');
+    process.env.SESSION_SECRET = generated;
+    console.warn('WARN: SESSION_SECRET not configured. Generated a temporary random secret (will change on restart).');
+  }
 }
 if (!process.env.PORT) {
   console.warn('PORT not set, defaulting to 3000');
@@ -454,7 +466,6 @@ app.get('/api/health', async (req, res) => {
     status: 'ok',
     dbConnected: dbOk,
     paymongoConfigured,
-    paymongoKeyLength: process.env.PAYMONGO_SECRET ? process.env.PAYMONGO_SECRET.length : 0,
     timestamp: new Date().toISOString(),
   });
 });
@@ -478,10 +489,15 @@ app.get('/api/test-paymongo-key', async (req, res) => {
   }
 });
 
-// ── Clear all user data (keep reference tables) — requires admin session ──
+// ── Clear all user data (keep reference tables) — requires super_admin role ──
 app.post('/reset-database', async (req, res) => {
   if (!req.session || !req.session.adminId) {
     return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+  if (req.session.adminRole !== 'super_admin') {
+    const { log } = require('./services/audit');
+    await log(req, 'reset_database_denied', 'system', null, { reason: 'insufficient_role', role: req.session.adminRole });
+    return res.status(403).json({ success: false, message: 'Only super_admin can reset the database' });
   }
   const tables = ['gl_entries','loan_payments','transactions','badges','goal_jars','loans','withdrawal_requests','standing_orders','savings_applications','coop_contributions','coop_goals','accounts'];
   try {
@@ -502,6 +518,8 @@ app.post('/reset-database', async (req, res) => {
         try { store.query(`DELETE FROM ${t}`); } catch (_) {}
       }
     }
+    const { log } = require('./services/audit');
+    await log(req, 'reset_database', 'system', null, { tables });
     res.json({ success: true, message: 'Database reset successful' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -514,10 +532,28 @@ app.use('/api', authMiddleware, requireOwnership, bankingFeaturesRouter);
 app.use('/api/fcm', fcmRouter);
 app.use('/api/paymongo', paymongoRouter);
 app.use('/api/settings', authMiddleware, requireOwnership, settingsRouter);
+// ── CSRF protection for admin session routes ──
+function csrfProtection(req, res, next) {
+  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
+  const headerToken = req.headers['x-csrf-token'];
+  const cookieToken = req.session?.csrfToken;
+  if (!cookieToken || !headerToken || headerToken !== cookieToken) {
+    return res.status(403).json({ message: 'CSRF token mismatch. Reload the page and try again.' });
+  }
+  next();
+}
+// Inject CSRF token into all admin page renders
+app.use('/admin', (req, res, next) => {
+  if (!req.session.csrfToken) {
+    req.session.csrfToken = crypto.randomBytes(32).toString('hex');
+  }
+  res.locals.csrfToken = req.session.csrfToken;
+  next();
+});
 app.use('/admin', adminAuthRouter);
-app.use('/admin', adminRouter);
-app.use('/admin', microbankRouter);
-app.use('/admin', advancedRouter);
+app.use('/admin', csrfProtection, adminRouter);
+app.use('/admin', csrfProtection, microbankRouter);
+app.use('/admin', csrfProtection, advancedRouter);
 
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);

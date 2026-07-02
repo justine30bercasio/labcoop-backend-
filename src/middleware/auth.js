@@ -43,4 +43,16 @@ function adminAuthMiddleware(req, res, next) {
   next();
 }
 
-module.exports = { authMiddleware, adminAuthMiddleware, requireOwnership };
+function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!req.session || !req.session.adminRole) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+    if (!roles.includes(req.session.adminRole)) {
+      return res.status(403).json({ message: `Requires one of roles: ${roles.join(', ')}` });
+    }
+    next();
+  };
+}
+
+module.exports = { authMiddleware, adminAuthMiddleware, requireOwnership, requireRole };

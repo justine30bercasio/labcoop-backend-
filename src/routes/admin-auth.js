@@ -25,6 +25,7 @@ function getTransporter() {
 }
 
 const otpStore = new Map();
+const otpRateLimit = new Map(); // email → count per window
 
 function loginPage(error) {
   return `<!DOCTYPE html>
@@ -205,13 +206,17 @@ router.post('/login', async (req, res) => {
   }
   const match = await bcrypt.compare(password, adminUser.password_hash);
   if (!match) {
+    const { log } = require('../services/audit');
+    await log(req, 'admin_login_failed', 'admin_user', null, { username, reason: 'wrong_password' });
     return res.type('html').send(loginPage('Invalid username or password.'));
   }
-  req.session.regenerate((err) => {
+  req.session.regenerate(async (err) => {
     if (err) return res.type('html').send(loginPage('Session error. Please try again.'));
     req.session.adminId = adminUser.admin_id;
     req.session.adminName = adminUser.display_name || adminUser.username;
     req.session.adminRole = adminUser.role;
+    const { log } = require('../services/audit');
+    await log(req, 'admin_login', 'admin_user', adminUser.admin_id, { username: adminUser.username, role: adminUser.role });
     res.redirect('/admin');
   });
 });
@@ -223,14 +228,34 @@ router.get('/login/forgot', (req, res) => {
 router.post('/login/forgot', async (req, res) => {
   const { email } = req.body;
   if (!email) return res.type('html').send(forgotPage('err:Please enter your email.'));
+  // Rate-limit: max 3 OTP requests per email per 15 minutes
+  const now = Date.now();
+  const windowMs = 15 * 60 * 1000;
+  const entry = otpRateLimit.get(email);
+  if (entry && entry.count >= 3 && (now - entry.windowStart) < windowMs) {
+    return res.type('html').send(forgotPage('Too many OTP requests. Try again later.'));
+  }
+  if (!entry || (now - entry.windowStart) >= windowMs) {
+    otpRateLimit.set(email, { count: 1, windowStart: now });
+  } else {
+    entry.count++;
+  }
+  // Check user exists (but return generic message to prevent enumeration)
+  const userResult = await store.query('SELECT admin_id, email FROM admin_users WHERE username = $1', [email]);
+  if (userResult.rows.length === 0) {
+    // Return same message whether user exists or not — prevents username enumeration
+    return res.type('html').send(forgotPage('If that username exists, an OTP has been sent to the registered email.'));
+  }
+  const adminUser = userResult.rows[0];
+  const targetEmail = adminUser.email || email;
   const otp = crypto.randomInt(100000, 999999).toString();
-  otpStore.set(email, { otp, expires: Date.now() + 600000 });
-  const sent = sendOtpEmail(email, otp);
+  otpStore.set(email, { otp, expires: now + 600000 });
+  const sent = sendOtpEmail(targetEmail, otp);
   if (!sent) {
     console.log(`[OTP] Password reset requested for ${email}. OTP: ${otp} (server log only)`);
     return res.type('html').send(forgotPage('err:Cannot send email — SMTP is not configured. Contact your administrator to reset your password.'));
   }
-  res.type('html').send(forgotPage(`OTP sent to ${email}. Check your inbox.`));
+  res.type('html').send(forgotPage('If that username exists, an OTP has been sent to the registered email.'));
 });
 
 router.post('/login/verify-otp', async (req, res) => {
@@ -243,20 +268,23 @@ router.post('/login/verify-otp', async (req, res) => {
     return res.type('html').send(loginPage('OTP expired. Please request a new one.'));
   }
   if (stored.otp !== otp.trim()) {
+    await log(req, 'otp_verify_failed', 'admin_user', null, { email, reason: 'invalid_otp' });
     return res.type('html').send(loginPage('Invalid OTP.'));
   }
   otpStore.delete(email);
+  otpRateLimit.delete(email);
   // Look up the actual admin user from the database
   const result = await store.query('SELECT admin_id, display_name, role FROM admin_users WHERE username = $1', [email]);
   if (result.rows.length === 0) {
     return res.type('html').send(loginPage('No admin account found for this email.'));
   }
   const adminUser = result.rows[0];
-  req.session.regenerate((err) => {
+  req.session.regenerate(async (err) => {
     if (err) return res.type('html').send(loginPage('Session error. Please try again.'));
     req.session.adminId = adminUser.admin_id;
     req.session.adminName = adminUser.display_name || email;
     req.session.adminRole = adminUser.role;
+    await log(req, 'admin_otp_login', 'admin_user', adminUser.admin_id, { username: email, role: adminUser.role });
     res.redirect('/admin');
   });
 });

@@ -3,6 +3,7 @@ const bcrypt = require('bcrypt');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const { store } = require('../db');
+const { log } = require('../services/audit');
 
 const router = express.Router();
 
@@ -206,7 +207,6 @@ router.post('/login', async (req, res) => {
   }
   const match = await bcrypt.compare(password, adminUser.password_hash);
   if (!match) {
-    const { log } = require('../services/audit');
     await log(req, 'admin_login_failed', 'admin_user', null, { username, reason: 'wrong_password' });
     return res.type('html').send(loginPage('Invalid username or password.'));
   }
@@ -215,7 +215,6 @@ router.post('/login', async (req, res) => {
     req.session.adminId = adminUser.admin_id;
     req.session.adminName = adminUser.display_name || adminUser.username;
     req.session.adminRole = adminUser.role;
-    const { log } = require('../services/audit');
     await log(req, 'admin_login', 'admin_user', adminUser.admin_id, { username: adminUser.username, role: adminUser.role });
     res.redirect('/admin');
   });

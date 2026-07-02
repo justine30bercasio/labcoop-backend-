@@ -262,6 +262,7 @@ const bankingFeaturesRouter = require('./routes/banking-features');
 const fcmRouter = require('./routes/fcm');
 const paymongoRouter = require('./routes/paymongo');
 const settingsRouter = require('./routes/settings');
+const kycRouter = require('./routes/kyc');
 const { webhookRouter } = require('./routes/paymongo');
 const { startScheduler } = require('./services/scheduler');
 const { authMiddleware, requireOwnership } = require('./middleware/auth');
@@ -531,6 +532,7 @@ app.use('/api/webhooks', webhookRouter);
 app.use('/api', authMiddleware, requireOwnership, loansRouter);
 app.use('/api', authMiddleware, requireOwnership, bankingFeaturesRouter);
 app.use('/api/fcm', fcmRouter);
+app.use('/api/kyc', kycRouter);
 app.use('/api/paymongo', paymongoRouter);
 app.use('/api/settings', authMiddleware, requireOwnership, settingsRouter);
 // ── CSRF protection for admin session routes ──
@@ -606,7 +608,7 @@ app.use((err, req, res, next) => {
 });
 
   // Ensure upload directories exist
-  const dirs = ['uploads', 'uploads/profiles'];
+  const dirs = ['uploads', 'uploads/profiles', 'uploads/kyc'];
   for (const d of dirs) {
     const p = path.join(__dirname, d);
     if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });

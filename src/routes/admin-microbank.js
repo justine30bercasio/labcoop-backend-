@@ -25,22 +25,7 @@ function requireRole(minLevel) {
   };
 }
 
-const kycUpload = multer({
-  storage: multer.diskStorage({
-    destination: path.join(__dirname, '../../uploads'),
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname);
-      cb(null, 'kyc_' + req.params.id + '_' + Date.now() + ext);
-    },
-  }),
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.pdf'];
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (allowed.includes(ext)) cb(null, true);
-    else cb(new Error('JPG/PNG/GIF/PDF only'));
-  },
-});
+
 
 // ═══════════════════════════════════════════════════════════════
 // 1. CHART OF ACCOUNTS UI
@@ -242,91 +227,128 @@ router.get('/teller-cash/close/:id', requireRole(2), asyncHandler(async (req, re
 }));
 
 // ═══════════════════════════════════════════════════════════════
-// 3. MEMBER KYC — Photo Upload (photo_2x2, birth_cert, id_photo)
+// 3. MEMBER KYC — Selfie + Birth Cert Upload + Approval
 // ═══════════════════════════════════════════════════════════════
 router.get('/kyc', requireRole(1), asyncHandler(async (req, res) => {
-  const accounts = await sql('SELECT account_id, child_name, member_id, photo_2x2_url, birth_cert_url, id_photo_url, profile_pic_url FROM accounts ORDER BY child_name');
+  const tab = req.query.tab || 'pending';
+  const statusFilter = tab === 'all' ? '' : `WHERE kyc_status = '${tab === 'verified' ? 'verified' : tab === 'rejected' ? 'rejected' : 'pending'}'`;
+  const allAccounts = await sql('SELECT * FROM accounts ORDER BY child_name');
+  const accounts = tab === 'all' ? allAccounts : allAccounts.filter(a => {
+    if (tab === 'pending') return a.kyc_status === 'pending';
+    if (tab === 'verified') return a.kyc_status === 'verified';
+    if (tab === 'rejected') return a.kyc_status === 'rejected';
+    return true;
+  });
   const q = req.query;
-  const toast = q.uploaded ? 'success:KYC document uploaded.'
+  const toast = q.approved ? 'success:' + q.approved
+    : q.rejected ? 'success:' + q.rejected
     : q.error ? 'error:' + q.error : '';
-  const content = `
-  <div class="stats-grid">
-    <div class="stat-card"><div class="stat-icon">&#x1F464;</div><div class="stat-value">${accounts.length}</div><div class="stat-label">Total Members</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F5BC;</div><div class="stat-value">${accounts.filter(a => a.photo_2x2_url).length}</div><div class="stat-label">With Photo</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F4C4;</div><div class="stat-value">${accounts.filter(a => a.birth_cert_url).length}</div><div class="stat-label">Birth Certs</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F4F1;</div><div class="stat-value">${accounts.filter(a => a.id_photo_url).length}</div><div class="stat-label">ID Photos</div></div>
-  </div>
+
+  const pendingCount = allAccounts.filter(a => a.kyc_status === 'pending').length;
+  const verifiedCount = allAccounts.filter(a => a.kyc_status === 'verified').length;
+  const rejectedCount = allAccounts.filter(a => a.kyc_status === 'rejected').length;
+  const noKycCount = allAccounts.filter(a => !a.kyc_status).length;
+
+  const tabs = (current) => `
+  <div class="tabs" style="display:flex;gap:4px;margin-bottom:16px">
+    <a href="/admin/kyc?tab=pending" class="btn ${current === 'pending' ? 'btn-primary' : 'btn-outline'} btn-sm">&#x23F3; Pending (${pendingCount})</a>
+    <a href="/admin/kyc?tab=verified" class="btn ${current === 'verified' ? 'btn-primary' : 'btn-outline'} btn-sm">&#x2705; Verified (${verifiedCount})</a>
+    <a href="/admin/kyc?tab=rejected" class="btn ${current === 'rejected' ? 'btn-primary' : 'btn-outline'} btn-sm">&#x274C; Rejected (${rejectedCount})</a>
+    <a href="/admin/kyc?tab=all" class="btn ${current === 'all' ? 'btn-primary' : 'btn-outline'} btn-sm">&#x1F4CB; All (${allAccounts.length})</a>
+  </div>`;
+
+  const statsRow = `
+  <div class="stats-grid" style="margin-bottom:16px">
+    <div class="stat-card"><div class="stat-icon">&#x1F464;</div><div class="stat-value">${allAccounts.length}</div><div class="stat-label">Total Members</div></div>
+    <div class="stat-card"><div class="stat-icon" style="color:var(--warning)">&#x23F3;</div><div class="stat-value">${pendingCount}</div><div class="stat-label">Pending</div></div>
+    <div class="stat-card"><div class="stat-icon" style="color:var(--success)">&#x2705;</div><div class="stat-value">${verifiedCount}</div><div class="stat-label">Verified</div></div>
+    <div class="stat-card"><div class="stat-icon" style="color:var(--danger)">&#x274C;</div><div class="stat-value">${rejectedCount}</div><div class="stat-label">Rejected</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4ED;</div><div class="stat-value">${noKycCount}</div><div class="stat-label">Not Submitted</div></div>
+  </div>`;
+
+  const content = tabs(tab) + statsRow + `
   <div class="card">
-    <div class="card-header"><h3>&#x1F9D1;&#x200D;&#x1F4BC; Member KYC Documents</h3></div>
+    <div class="card-header"><h3>&#x1F9D1;&#x200D;&#x1F4BC; ${tab.charAt(0).toUpperCase() + tab.slice(1)} KYC Verification</h3></div>
     <div class="card-body" style="padding:0">
     <table>
-      <tr><th>Member</th><th>Member ID</th><th>Photo (2x2)</th><th>Birth Cert</th><th>ID Photo</th><th></th></tr>
-      ${accounts.length === 0 ? '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)">No members registered</td></tr>' :
+      <tr><th>Member</th><th>Member ID</th><th>Selfie</th><th>Birth Cert</th><th>Status</th><th>Submitted</th><th>Action</th></tr>
+      ${accounts.length === 0 ? '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">No members in this category</td></tr>' :
         accounts.map(a => {
-          const hasPhoto = a.photo_2x2_url ? `<a href="${a.photo_2x2_url}" target="_blank"><img src="${a.photo_2x2_url}" style="width:40px;height:40px;border-radius:4px;object-fit:cover" alt=""></a>` : '<span style="color:var(--text-muted)">--</span>';
-          const hasBirth = a.birth_cert_url ? `<a href="${a.birth_cert_url}" target="_blank" class="btn btn-outline btn-xs">&#x1F4C4; View</a>` : '<span style="color:var(--text-muted)">--</span>';
-          const hasId = a.id_photo_url ? `<a href="${a.id_photo_url}" target="_blank" class="btn btn-outline btn-xs">&#x1F4F1; View</a>` : '<span style="color:var(--text-muted)">--</span>';
+          const statusBadge = !a.kyc_status ? '<span class="badge badge-gray">Not Submitted</span>'
+            : a.kyc_status === 'pending' ? '<span class="badge badge-warning">Pending</span>'
+            : a.kyc_status === 'verified' ? '<span class="badge badge-green">Verified</span>'
+            : '<span class="badge badge-red">Rejected</span>';
+          const selfieHtml = a.selfie_url
+            ? `<a href="${a.selfie_url}" target="_blank"><img src="${a.selfie_url}" style="width:50px;height:50px;border-radius:50%;object-fit:cover;border:2px solid var(--border)" alt="selfie"></a>`
+            : '<span style="color:var(--text-muted)">--</span>';
+          const birthHtml = a.birth_cert_url
+            ? `<a href="${a.birth_cert_url}" target="_blank"><img src="${a.birth_cert_url}" style="width:50px;height:50px;border-radius:4px;object-fit:cover;border:2px solid var(--border)" alt="birth cert"></a>`
+            : '<span style="color:var(--text-muted)">--</span>';
+          const submittedDate = a.kyc_submitted_at ? new Date(a.kyc_submitted_at).toLocaleDateString() : '-';
+          const rejectReason = a.kyc_rejected_reason ? `<div style="font-size:11px;color:var(--danger);margin-top:4px">${a.kyc_rejected_reason}</div>` : '';
+
+          let actions = '';
+          if (a.kyc_status === 'pending') {
+            actions = `
+              <form method="post" action="/admin/kyc/approve/${a.account_id}" style="display:inline">
+                <button class="btn btn-sm btn-success">&#x2705; Approve</button>
+              </form>
+              <button class="btn btn-sm btn-danger" onclick="document.getElementById('reject-${a.account_id}').style.display='block'">&#x274C; Reject</button>
+              <div id="reject-${a.account_id}" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:999;display:none;align-items:center;justify-content:center" onclick="if(event.target===this)this.style.display='none'">
+                <div style="background:var(--card);padding:24px;border-radius:12px;max-width:400px;width:90%" onclick="event.stopPropagation()">
+                  <h3 style="margin-bottom:12px">&#x274C; Reject KYC — ${a.child_name}</h3>
+                  <form method="post" action="/admin/kyc/reject/${a.account_id}">
+                    <div class="field">
+                      <label>Reason for rejection</label>
+                      <textarea name="reason" rows="3" required style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-family:inherit"></textarea>
+                    </div>
+                    <div style="display:flex;gap:8px;margin-top:12px">
+                      <button type="submit" class="btn btn-danger">&#x274C; Confirm Reject</button>
+                      <button type="button" class="btn btn-cancel" onclick="document.getElementById('reject-${a.account_id}').style.display='none'">Cancel</button>
+                    </div>
+                  </form>
+                </div>
+              </div>`;
+          } else if (a.kyc_status === 'verified') {
+            const verifiedDate = a.kyc_verified_at ? new Date(a.kyc_verified_at).toLocaleDateString() : '';
+            actions = `<span style="font-size:12px;color:var(--success)">Verified ${verifiedDate}</span>`;
+          } else if (a.kyc_status === 'rejected') {
+            actions = `<button class="btn btn-sm btn-outline" onclick="document.getElementById('reject-${a.account_id}').style.display='block'">&#x1F4C4; View Reason</button>
+              <div id="reject-${a.account_id}" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:999;display:none;align-items:center;justify-content:center" onclick="if(event.target===this)this.style.display='none'">
+                <div style="background:var(--card);padding:24px;border-radius:12px;max-width:400px;width:90%" onclick="event.stopPropagation()">
+                  <h3 style="margin-bottom:12px">&#x274C; Rejection Reason — ${a.child_name}</h3>
+                  <p style="color:var(--danger);background:var(--bg-danger);padding:12px;border-radius:8px">${a.kyc_rejected_reason || 'No reason provided'}</p>
+                  <button class="btn btn-cancel" onclick="this.closest('div[style]').style.display='none'" style="margin-top:12px">Close</button>
+                </div>
+              </div>`;
+          }
+
           return `<tr>
             <td><b>${a.child_name}</b></td>
             <td class="mono">${a.member_id || '-'}</td>
-            <td>${hasPhoto}</td>
-            <td>${hasBirth}</td>
-            <td>${hasId}</td>
-            <td><a href="#kyc-${a.account_id}" class="btn btn-secondary btn-xs">&#x1F4C2; Upload</a></td>
+            <td style="text-align:center">${selfieHtml}</td>
+            <td style="text-align:center">${birthHtml}</td>
+            <td>${statusBadge}${rejectReason}</td>
+            <td style="font-size:12px">${submittedDate}</td>
+            <td style="white-space:nowrap">${actions}</td>
           </tr>`;
         }).join('')}
     </table></div>
-  </div>
-  ${accounts.map(a => `
-  <div id="kyc-${a.account_id}" class="modal-overlay">
-  <div class="modal" style="max-width:480px">
-  <a href="#" class="close">&times;</a>
-  <h2>&#x1F4C2; KYC Documents — ${a.child_name}</h2>
-  <div style="display:grid;gap:16px;margin-top:8px">
-    <div style="padding:12px;background:var(--bg-secondary);border-radius:8px">
-      <div style="font-weight:600;margin-bottom:6px">&#x1F5BC; 2x2 Photo</div>
-      ${a.photo_2x2_url ? `<img src="${a.photo_2x2_url}" style="width:80px;height:80px;border-radius:4px;object-fit:cover;margin-bottom:6px;display:block" alt=""><br>` : ''}
-      <form method="post" action="/admin/kyc/upload/${a.account_id}" enctype="multipart/form-data">
-        <input type="hidden" name="field" value="photo_2x2_url">
-        <input type="file" name="file" accept="image/*" required style="font-size:13px">
-        <button type="submit" class="btn btn-sm btn-primary" style="margin-top:6px">&#x1F4C2; Upload Photo</button>
-      </form>
-    </div>
-    <div style="padding:12px;background:var(--bg-secondary);border-radius:8px">
-      <div style="font-weight:600;margin-bottom:6px">&#x1F4C4; Birth Certificate</div>
-      ${a.birth_cert_url ? `<div style="margin-bottom:6px"><a href="${a.birth_cert_url}" target="_blank">&#x1F4C4; View Current</a></div>` : ''}
-      <form method="post" action="/admin/kyc/upload/${a.account_id}" enctype="multipart/form-data">
-        <input type="hidden" name="field" value="birth_cert_url">
-        <input type="file" name="file" accept="image/*,.pdf" required style="font-size:13px">
-        <button type="submit" class="btn btn-sm btn-primary" style="margin-top:6px">&#x1F4C2; Upload Birth Cert</button>
-      </form>
-    </div>
-    <div style="padding:12px;background:var(--bg-secondary);border-radius:8px">
-      <div style="font-weight:600;margin-bottom:6px">&#x1F4F1; Government ID</div>
-      ${a.id_photo_url ? `<div style="margin-bottom:6px"><a href="${a.id_photo_url}" target="_blank">&#x1F4F1; View Current</a></div>` : ''}
-      <form method="post" action="/admin/kyc/upload/${a.account_id}" enctype="multipart/form-data">
-        <input type="hidden" name="field" value="id_photo_url">
-        <input type="file" name="file" accept="image/*,.pdf" required style="font-size:13px">
-        <button type="submit" class="btn btn-sm btn-primary" style="margin-top:6px">&#x1F4C2; Upload ID Photo</button>
-      </form>
-    </div>
-  </div>
-  </div>
-  </div>`).join('')}`;
-  res.type('html').send(layout('Member KYC', 'kyc', content, { subtitle: 'Upload and manage member identification documents', toast }));
+  </div>`;
+  res.type('html').send(layout('KYC Verification', 'kyc', content, { subtitle: 'Review and approve member identity verification', toast }));
 }));
 
-router.post('/kyc/upload/:id', requireRole(2), asyncHandler(async (req, res) => {
-  kycUpload.single('file')(req, res, async (err) => {
-    if (err) return res.redirect('/admin/kyc?error=' + encodeURIComponent(err.message));
-    if (!req.file) return res.redirect('/admin/kyc?error=No+file+selected');
-    const field = req.body.field || 'photo_2x2_url';
-    const url = '/uploads/' + req.file.filename;
-    const validFields = ['photo_2x2_url', 'birth_cert_url', 'id_photo_url', 'profile_pic_url'];
-    if (!validFields.includes(field)) return res.redirect('/admin/kyc?error=Invalid+field');
-    await store.query(`UPDATE accounts SET ${field}=$1 WHERE account_id=$2`, [url, req.params.id]);
-    res.redirect('/admin/kyc?uploaded=ok');
-  });
+router.post('/kyc/approve/:id', requireRole(2), asyncHandler(async (req, res) => {
+  await store.updateAccount(req.params.id, { kyc_status: 'verified', kyc_verified_at: new Date().toISOString() });
+  const account = await one('SELECT child_name FROM accounts WHERE account_id = $1', [req.params.id]);
+  res.redirect('/admin/kyc?tab=pending&approved=KYC+approved+for+' + encodeURIComponent(account?.child_name || ''));
+}));
+
+router.post('/kyc/reject/:id', requireRole(2), asyncHandler(async (req, res) => {
+  const reason = req.body.reason || 'No reason provided';
+  await store.updateAccount(req.params.id, { kyc_status: 'rejected', kyc_rejected_reason: reason });
+  const account = await one('SELECT child_name FROM accounts WHERE account_id = $1', [req.params.id]);
+  res.redirect('/admin/kyc?tab=pending&rejected=KYC+rejected+for+' + encodeURIComponent(account?.child_name || ''));
 }));
 
 // ═══════════════════════════════════════════════════════════════

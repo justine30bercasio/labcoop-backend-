@@ -57,6 +57,11 @@ function getDb() {
     try { db.exec("ALTER TABLE accounts ADD COLUMN photo_2x2_url TEXT DEFAULT ''"); } catch (_) {}
     try { db.exec("ALTER TABLE accounts ADD COLUMN birth_cert_url TEXT DEFAULT ''"); } catch (_) {}
     try { db.exec("ALTER TABLE accounts ADD COLUMN id_photo_url TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN kyc_status TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN selfie_url TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN kyc_submitted_at TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN kyc_verified_at TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN kyc_rejected_reason TEXT DEFAULT ''"); } catch (_) {}
     try { db.exec("ALTER TABLE admin_users ADD COLUMN branch_id TEXT REFERENCES branches(branch_id)"); } catch (_) {}
     try { db.exec("ALTER TABLE teller_cash ADD COLUMN branch_id TEXT REFERENCES branches(branch_id)"); } catch (_) {}
     try { db.exec("INSERT OR IGNORE INTO branches (branch_id, name, code, address) VALUES ('main', 'Main Branch', 'MAIN', 'Head Office')"); } catch (_) {}
@@ -155,6 +160,8 @@ function createAccount(fields) {
     birth_cert_url: fields.birth_cert_url || '',
     id_photo_url: fields.id_photo_url || '',
     profile_pic_url: fields.profile_pic_url || '',
+    kyc_status: fields.kyc_status || '',
+    selfie_url: fields.selfie_url || '',
     is_active: fields.is_active ?? 1,
     savings_product_id: fields.savings_product_id || null,
     maintaining_balance: fields.maintaining_balance || 0,
@@ -163,8 +170,8 @@ function createAccount(fields) {
     updated_at: new Date().toISOString(),
   };
   getDb().prepare(`
-    INSERT INTO accounts (account_id, child_name, member_id, password, password_changed, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, age, gender, savings_schedule, photo_2x2_url, birth_cert_url, id_photo_url, profile_pic_url, is_active, savings_product_id, maintaining_balance, regular_savings_number, created_at, updated_at)
-    VALUES (@account_id, @child_name, @member_id, @password, @password_changed, @actual_balance, @unallocated_balance, @current_xp, @parent_phone, @last_name, @first_name, @middle_name, @birthday, @age, @gender, @savings_schedule, @photo_2x2_url, @birth_cert_url, @id_photo_url, @profile_pic_url, @is_active, @savings_product_id, @maintaining_balance, @regular_savings_number, @created_at, @updated_at)
+    INSERT INTO accounts (account_id, child_name, member_id, password, password_changed, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, age, gender, savings_schedule, photo_2x2_url, birth_cert_url, id_photo_url, profile_pic_url, kyc_status, selfie_url, is_active, savings_product_id, maintaining_balance, regular_savings_number, created_at, updated_at)
+    VALUES (@account_id, @child_name, @member_id, @password, @password_changed, @actual_balance, @unallocated_balance, @current_xp, @parent_phone, @last_name, @first_name, @middle_name, @birthday, @age, @gender, @savings_schedule, @photo_2x2_url, @birth_cert_url, @id_photo_url, @profile_pic_url, @kyc_status, @selfie_url, @is_active, @savings_product_id, @maintaining_balance, @regular_savings_number, @created_at, @updated_at)
   `).run(account);
   return account;
 }
@@ -199,7 +206,7 @@ function _computeAge(birthday) {
 }
 
 function updateAccount(accountId, fields) {
-  const allowed = ['actual_balance', 'unallocated_balance', 'current_xp', 'child_name', 'parent_phone', 'last_name', 'first_name', 'middle_name', 'birthday', 'age', 'gender', 'savings_schedule', 'photo_2x2_url', 'birth_cert_url', 'id_photo_url', 'profile_pic_url', 'is_active', 'maintaining_balance', 'regular_savings_number', 'savings_product_id'];
+  const allowed = ['actual_balance', 'unallocated_balance', 'current_xp', 'child_name', 'parent_phone', 'last_name', 'first_name', 'middle_name', 'birthday', 'age', 'gender', 'savings_schedule', 'photo_2x2_url', 'birth_cert_url', 'id_photo_url', 'profile_pic_url', 'kyc_status', 'selfie_url', 'kyc_submitted_at', 'kyc_verified_at', 'kyc_rejected_reason', 'is_active', 'maintaining_balance', 'regular_savings_number', 'savings_product_id'];
   const setClauses = [];
   const values = [];
 

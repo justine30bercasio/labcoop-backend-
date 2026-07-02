@@ -5,13 +5,17 @@ import '../constants/app_constants.dart';
 import '../errors/exceptions.dart';
 
 class DioClient {
-  static final _secureStorage = FlutterSecureStorage(
+  static final FlutterSecureStorage _secureStorage = const FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
     iOptions: IOSOptions(
       accessibility: KeychainAccessibility.unlocked_this_device,
       synchronizable: false,
     ),
   );
+
+  /// Called when the server returns 401 (except login/register).
+  /// main.dart sets this to clear the session and navigate to LoginPage.
+  static Future<void> Function()? onSessionExpired;
 
   static Future<String?> get _authToken async {
     return await _secureStorage.read(key: 'auth_token');
@@ -40,6 +44,21 @@ class DioClient {
           handler.next(options);
         },
         onError: (error, handler) {
+          final statusCode = error.response?.statusCode;
+          final path = error.requestOptions.path;
+
+          if (statusCode == 401 &&
+              !path.contains('/auth/login') &&
+              !path.contains('/auth/register')) {
+            onSessionExpired?.call();
+            handler.next(DioException(
+              requestOptions: error.requestOptions,
+              error: 'Session expired. Please log in again.',
+              type: error.type,
+            ));
+            return;
+          }
+
           if (error.type == DioExceptionType.connectionTimeout ||
               error.type == DioExceptionType.receiveTimeout ||
               error.type == DioExceptionType.sendTimeout) {
@@ -54,9 +73,7 @@ class DioClient {
               error: NetworkException('No internet connection'),
               type: error.type,
             ));
-          } else if (error.response != null &&
-              error.response!.statusCode != null &&
-              error.response!.statusCode! >= 500) {
+          } else if (statusCode != null && statusCode >= 500) {
             handler.next(error);
           } else {
             handler.next(error);
@@ -66,11 +83,6 @@ class DioClient {
     );
 
     // Certificate pinning — reject untrusted certificates
-    // To pin a specific certificate, add its SHA-256 fingerprint check here:
-    //   client.badCertificateCallback = (cert, host, port) {
-    //     final fingerprint = sha256.convert(cert.pem.codeUnits).toString();
-    //     return pinnedFingerprints.contains(fingerprint);
-    //   };
     try {
       (dio.httpClientAdapter as IOHttpClientAdapter).onHttpClientCreate = (client) {
         client.badCertificateCallback = (cert, host, port) => false;

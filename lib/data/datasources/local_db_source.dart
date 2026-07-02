@@ -15,13 +15,7 @@ class LocalDbSource {
   static const _accountBoxName = 'accounts';
   static const _goalBoxName = 'goals';
   static const _badgeBoxName = 'badges';
-  static const _secureStorage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-    iOptions: IOSOptions(
-      accessibility: KeychainAccessibility.first_unlock_this_device,
-      synchronizable: false,
-    ),
-  );
+  static final _secureStorage = FlutterSecureStorage();
   static Uint8List? _cachedKey;
 
   Future<Uint8List> _getKey() async {

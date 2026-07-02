@@ -5,13 +5,7 @@ import '../constants/app_constants.dart';
 import '../errors/exceptions.dart';
 
 class DioClient {
-  static final FlutterSecureStorage _secureStorage = const FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-    iOptions: IOSOptions(
-      accessibility: KeychainAccessibility.unlocked_this_device,
-      synchronizable: false,
-    ),
-  );
+  static final FlutterSecureStorage _secureStorage = FlutterSecureStorage();
 
   /// Called when the server returns 401 (except login/register).
   /// Storage is cleared before this callback runs.

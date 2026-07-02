@@ -4,13 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 class InactivityTimer with WidgetsBindingObserver {
   static const _inactivityKey = 'last_active_timestamp';
   static const _timeout = Duration(hours: 1);
-  static const _secureStorage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-    iOptions: IOSOptions(
-      accessibility: KeychainAccessibility.unlocked_this_device,
-      synchronizable: false,
-    ),
-  );
+  static final _secureStorage = FlutterSecureStorage();
 
   final VoidCallback _onExpired;
 
@@ -45,13 +39,7 @@ class InactivityTimer with WidgetsBindingObserver {
 
     if (DateTime.now().difference(lastActive) > _timeout) {
       await clear();
-      await const FlutterSecureStorage(
-        aOptions: AndroidOptions(encryptedSharedPreferences: true),
-        iOptions: IOSOptions(
-          accessibility: KeychainAccessibility.unlocked_this_device,
-          synchronizable: false,
-        ),
-      ).deleteAll();
+      await FlutterSecureStorage().deleteAll();
       _onExpired();
     }
   }

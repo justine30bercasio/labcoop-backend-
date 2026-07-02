@@ -446,6 +446,7 @@ app.use('/api/transactions', authMiddleware, requireOwnership, transactionsRoute
 app.use('/api/excel', authMiddleware, excelRouter);
 app.use('/api/coop', authMiddleware, requireOwnership, coopRouter);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api/shop', authMiddleware, shopRouter);
 app.use('/api/quiz', authMiddleware, quizRouter);
 app.use('/api/games', authMiddleware, gamesRouter);
@@ -555,19 +556,12 @@ app.use('/admin', csrfProtection, adminRouter);
 app.use('/admin', csrfProtection, microbankRouter);
 app.use('/admin', csrfProtection, advancedRouter);
 
-// ── Custom 404 — cat-themed error page ──
-app.use(async (req, res, next) => {
+// ── Custom 404 — cat-themed error page with Lottie animation ──
+app.use((req, res, next) => {
   if (res.headersSent) return next();
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ message: 'Not found' });
   }
-  let catUrl = 'https://cdn2.thecatapi.com/images/MTYzOTUwOQ.jpg';
-  try {
-    const fetch = require('node-fetch');
-    const resp = await fetch('https://api.thecatapi.com/v1/images/search', { timeout: 3000 });
-    const data = await resp.json();
-    if (data && data[0] && data[0].url) catUrl = data[0].url;
-  } catch (_) {}
   const cats = [
     '"I fits, I sits."', '"No step on the tum."', '"Hmm... this isn\'t the page I ordered."',
     '"You have been visited by the 404 Kitty."', '"Meow-sage in a bottle: page not found."',
@@ -579,13 +573,14 @@ app.use(async (req, res, next) => {
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>404 — Page Not Found</title>
+<script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family:'Nunito',sans-serif; background:#0d2818; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
 .card { background:#fff; border-radius:24px; padding:40px; max-width:520px; width:100%; text-align:center; box-shadow:0 10px 50px rgba(0,0,0,0.25); animation:fadeUp .5s ease; }
 @keyframes fadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
-.cat-img { width:200px; height:200px; border-radius:20px; object-fit:cover; margin:0 auto 20px; display:block; box-shadow:0 4px 20px rgba(0,0,0,0.12); }
+lottie-player { width:200px; height:200px; margin:0 auto 20px; }
 h1 { font-size:72px; font-weight:900; color:#2E7D32; line-height:1; margin-bottom:4px; }
 h2 { font-size:20px; font-weight:700; color:#1e293b; margin-bottom:8px; }
 p { color:#64748b; font-size:14px; margin-bottom:8px; }
@@ -600,7 +595,7 @@ p { color:#64748b; font-size:14px; margin-bottom:8px; }
   <h1>404</h1>
   <h2>Page Not Found</h2>
   <p>Oops! The page you're looking for got lost in the litter box.</p>
-  <img class="cat-img" src="${catUrl}" alt="Random cat" loading="lazy">
+  <lottie-player src="/cat.json" background="transparent" speed="1" loop autoplay></lottie-player>
   <p class="quote">${quote}</p>
   <a class="btn" href="/">🏠 Go Home</a>
   <div class="footer">LabCoop &middot; ${new Date().getFullYear()}</div>

@@ -305,12 +305,12 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", 'code.jquery.com', 'cdn.datatables.net', 'cdn.jsdelivr.net', 'unpkg.com'],
+      scriptSrc: ["'self'", "'unsafe-inline'", 'code.jquery.com', 'cdn.datatables.net', 'cdn.jsdelivr.net'],
       scriptSrcAttr: ["'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'", 'cdn.datatables.net', 'cdnjs.cloudflare.com', 'unpkg.com'],
+      styleSrc: ["'self'", "'unsafe-inline'", 'cdn.datatables.net', 'cdnjs.cloudflare.com'],
       imgSrc: ["'self'", 'data:', 'https://*'],
       fontSrc: ["'self'", 'cdnjs.cloudflare.com', 'data:'],
-      connectSrc: ["'self'", 'cdn.jsdelivr.net', 'unpkg.com'],
+      connectSrc: ["'self'", 'cdn.jsdelivr.net'],
       formAction: ["'self'"],
     },
   },
@@ -573,14 +573,14 @@ app.use((req, res, next) => {
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>404 — Page Not Found</title>
-<script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lottie-web@5.12.2/build/player/lottie.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family:'Nunito',sans-serif; background:#0d2818; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
 .card { background:#fff; border-radius:24px; padding:40px; max-width:520px; width:100%; text-align:center; box-shadow:0 10px 50px rgba(0,0,0,0.25); animation:fadeUp .5s ease; }
 @keyframes fadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
-lottie-player { width:200px; height:200px; margin:0 auto 20px; }
+#lottie-box { width:220px; height:220px; margin:0 auto 20px; }
 h1 { font-size:72px; font-weight:900; color:#2E7D32; line-height:1; margin-bottom:4px; }
 h2 { font-size:20px; font-weight:700; color:#1e293b; margin-bottom:8px; }
 p { color:#64748b; font-size:14px; margin-bottom:8px; }
@@ -595,11 +595,15 @@ p { color:#64748b; font-size:14px; margin-bottom:8px; }
   <h1>404</h1>
   <h2>Page Not Found</h2>
   <p>Oops! The page you're looking for got lost in the litter box.</p>
-  <lottie-player src="/404.json" background="transparent" speed="1" loop autoplay></lottie-player>
+  <div id="lottie-box"></div>
   <p class="quote">${quote}</p>
   <a class="btn" href="/">🏠 Go Home</a>
   <div class="footer">LabCoop &middot; ${new Date().getFullYear()}</div>
-</div></body></html>`);
+</div>
+<script>
+fetch('/404.json').then(r=>r.json()).then(d=>{lottie.loadAnimation({container:document.getElementById('lottie-box'),animationData:d,loop:true,autoplay:true})}).catch(()=>{document.getElementById('lottie-box').innerHTML='<span style="font-size:64px">🐱</span>'});
+</script>
+</body></html>`);
 });
 
 app.use((err, req, res, next) => {

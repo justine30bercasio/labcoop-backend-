@@ -17,6 +17,7 @@ import '../widgets/animated_counter.dart';
 import '../widgets/app_card.dart';
 import '../../core/network/banking_api_service.dart';
 import 'kyc_page.dart';
+import 'board_page.dart';
 import 'login_page.dart';
 import 'terms_page.dart';
 
@@ -333,6 +334,10 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
         const SizedBox(height: Spacing.sm),
         _actionButton(Icons.description_outlined, 'Terms & Conditions', const Color(0xFF6366F1), () {
           Navigator.push(context, PageTransition.slideUp(const TermsPage()));
+        }),
+        const SizedBox(height: Spacing.sm),
+        _actionButton(Icons.people, 'Board of Directors', const Color(0xFF7B1FA2), () {
+          Navigator.push(context, PageTransition.slideUp(const BoardPage()));
         }),
         const SizedBox(height: Spacing.sm),
         _actionButton(Icons.logout, 'Logout', Colors.red.shade400, () async {

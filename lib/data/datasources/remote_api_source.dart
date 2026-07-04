@@ -313,4 +313,9 @@ class RemoteApiSource {
     final response = await _dio.get('/api/kyc/status');
     return response.data as Map<String, dynamic>;
   }
+
+  Future<List<Map<String, dynamic>>> getBoardMembers() async {
+    final response = await _dio.get('/api/board');
+    return (response.data as List).cast<Map<String, dynamic>>();
+  }
 }

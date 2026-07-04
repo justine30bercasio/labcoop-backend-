@@ -88,7 +88,7 @@ Flutter app data disappeared on logout/refresh because:
 #### Flutter (lib/data/)
 - `local_db_source.dart:413` — `clearAll()` now clears all 10 Hive boxes
 - `banking_repository_impl.dart:36` — `getTransactions()` checks `_isOnline` first, clears only after API success
-- `savings_repository_impl.dart` — `getAccount`/`getGoals`/`getBadges` changed to cache-first: read cache → return → API refresh in background
+- `savings_repository_impl.dart` — `getAccount`/`getGoals`/`getBadges` changed to server-first: fetch API → save cache → return; fall back to cache only when offline (2026-07-04, was cache-first before which caused stale kycStatus not updating)
 
 #### Backend (backend/src/)
 - `pg-store.js` — full PostgreSQL store (async, `pg.Pool`) mirroring sqlite-store.js API

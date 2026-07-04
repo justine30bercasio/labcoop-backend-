@@ -105,6 +105,7 @@ function getDb() {
     try { db.exec("CREATE TABLE IF NOT EXISTS tax_config (tax_id TEXT PRIMARY KEY, name TEXT NOT NULL, rate DECIMAL(5,2) NOT NULL, applies_to TEXT DEFAULT 'interest' CHECK(applies_to IN ('interest','fee','dividend','all')), is_active INTEGER DEFAULT 1, created_at TEXT)"); } catch (_) {}
     try { db.exec("INSERT OR IGNORE INTO tax_config (tax_id, name, rate, applies_to) VALUES ('tax_interest', 'Interest Income Tax', 20, 'interest')"); } catch (_) {}
     try { db.exec("INSERT OR IGNORE INTO tax_config (tax_id, name, rate, applies_to) VALUES ('tax_dividend', 'Dividend Tax', 10, 'dividend')"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS face_templates (template_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, face_descriptor TEXT NOT NULL, image_url TEXT DEFAULT '', created_at TEXT, updated_at TEXT)"); } catch (_) {}
     const accounts = [
       ['1000','Cash on Hand','asset','current_asset',0], ['1010','Cash in Bank','asset','current_asset',0],
       ['1020','Petty Cash','asset','current_asset',0], ['1100','Loans Receivable','asset','current_asset',0],

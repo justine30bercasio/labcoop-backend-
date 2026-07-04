@@ -5929,6 +5929,14 @@ router.post('/reset-database', requireRole(4), asyncHandler(async (req, res) => 
       try { store.query(`DELETE FROM ${t}`); } catch (_) {}
     }
   }
+  // Clean up uploaded KYC files
+  const kycDir = path.join(__dirname, '..', 'uploads', 'kyc');
+  if (fs.existsSync(kycDir)) {
+    const files = fs.readdirSync(kycDir);
+    for (const f of files) {
+      try { fs.unlinkSync(path.join(kycDir, f)); } catch (_) {}
+    }
+  }
   res.redirect('/admin?msg=Database+reset+successful');
 }));
 

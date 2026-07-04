@@ -520,6 +520,14 @@ app.post('/reset-database', async (req, res) => {
         try { store.query(`DELETE FROM ${t}`); } catch (_) {}
       }
     }
+    // Clean up uploaded KYC files
+    const kycDir = path.join(__dirname, 'uploads', 'kyc');
+    if (fs.existsSync(kycDir)) {
+      const files = fs.readdirSync(kycDir);
+      for (const f of files) {
+        try { fs.unlinkSync(path.join(kycDir, f)); } catch (_) {}
+      }
+    }
     const { log } = require('./services/audit');
     await log(req, 'reset_database', 'system', null, { tables });
     res.json({ success: true, message: 'Database reset successful' });

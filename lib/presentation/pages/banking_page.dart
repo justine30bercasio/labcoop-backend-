@@ -177,92 +177,233 @@ class _BankingPageState extends State<BankingPage> {
   }
 
   Widget _buildKycGate(String kyc) {
-    if (kyc == 'pending') {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(
-                width: 80, height: 80,
-                child: CircularProgressIndicator(strokeWidth: 4, color: AppTheme.primaryGreen),
-              ),
-              const SizedBox(height: 24),
-              const Icon(Icons.hourglass_empty, size: 48, color: AppTheme.primaryGreen),
-              const SizedBox(height: 16),
-              const Text(
-                'KYC Under Review',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.textDark),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Your identity documents are being reviewed.\nYou can access banking features once approved.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-              ),
-              const SizedBox(height: 32),
-              OutlinedButton(
-                onPressed: () => Navigator.push(context, PageTransition.slideUp(const KycPage())).then((_) {
-                  context.read<SavingsBloc>().add(LoadSavings(widget.accountId));
-                }),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.primaryGreen,
-                  side: const BorderSide(color: AppTheme.primaryGreen),
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                ),
-                child: const Text('Check Status'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
+    final isPending = kyc == 'pending';
+    final isRejected = kyc == 'rejected';
 
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+      child: Column(
+        children: [
+          const SizedBox(height: 20),
+          // ── decorative icon ──
+          Container(
+            width: 100, height: 100,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: isPending
+                    ? [const Color(0xFFF59E0B), const Color(0xFFF97316)]
+                    : isRejected
+                        ? [const Color(0xFFEF4444), const Color(0xFFDC2626)]
+                        : [const Color(0xFF2E7D32), const Color(0xFF1B5E20)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: (isPending ? const Color(0xFFF59E0B) : isRejected ? const Color(0xFFEF4444) : const Color(0xFF2E7D32)).withValues(alpha: 0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Icon(
+              isPending ? Icons.hourglass_empty : Icons.verified_user,
+              color: Colors.white, size: 44,
+            ),
+          ),
+          const SizedBox(height: 36),
+          // ── main card ──
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 24, offset: const Offset(0, 8)),
+                BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 2)),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
+              child: Column(
+                children: [
+                  // ── status badge ──
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isPending
+                          ? const Color(0xFFFEF3C7)
+                          : isRejected
+                              ? const Color(0xFFFEE2E2)
+                              : const Color(0xFFE8F5E9),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isPending ? Icons.schedule : isRejected ? Icons.cancel : Icons.verified,
+                          size: 16,
+                          color: isPending
+                              ? const Color(0xFFD97706)
+                              : isRejected
+                                  ? const Color(0xFFDC2626)
+                                  : const Color(0xFF2E7D32),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          isPending ? 'UNDER REVIEW' : isRejected ? 'REJECTED' : 'NOT STARTED',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1,
+                            color: isPending
+                                ? const Color(0xFFD97706)
+                                : isRejected
+                                    ? const Color(0xFFDC2626)
+                                    : const Color(0xFF2E7D32),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  // ── title ──
+                  Text(
+                    isPending
+                        ? 'KYC Under Review'
+                        : isRejected
+                            ? 'Verification Rejected'
+                            : 'Verify Your Identity',
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF1F2937)),
+                  ),
+                  const SizedBox(height: 10),
+                  // ── description ──
+                  Text(
+                    isPending
+                        ? 'Your documents are being reviewed by our team. This usually takes 1–2 business days.'
+                        : isRejected
+                            ? 'Your previous submission did not pass verification. Please submit correct documents to proceed.'
+                            : 'You need to verify your identity before you can use banking features.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 14, color: Colors.grey.shade600, height: 1.5),
+                  ),
+                  const SizedBox(height: 32),
+                  // ── progress stepper ──
+                  _kycStepper(isPending ? 1 : 0),
+                  const SizedBox(height: 32),
+                  // ── button ──
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.push(context, PageTransition.slideUp(const KycPage())).then((_) {
+                        context.read<SavingsBloc>().add(LoadSavings(widget.accountId));
+                      }),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: isPending
+                            ? const Color(0xFFF59E0B)
+                            : const Color(0xFF2E7D32),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                      ),
+                      child: Text(isPending ? 'Check Status' : 'Submit KYC Now'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          // ── info footer ──
+          if (isPending)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFFBEB),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFFDE68A)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, size: 18, color: Color(0xFFD97706)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'You\'ll be able to access all banking features once your identity is verified.',
+                      style: TextStyle(fontSize: 12, color: const Color(0xFF92400E), height: 1.4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _kycStepper(int activeStep) {
+    final steps = ['Submit', 'Review', 'Approved'];
+    return Row(
+      children: List.generate(steps.length * 2 - 1, (i) {
+        if (i.isOdd) {
+          final stepIdx = i ~/ 2;
+          final done = stepIdx < activeStep;
+          return Expanded(
+            child: Container(
+              height: 3,
+              decoration: BoxDecoration(
+                color: done ? const Color(0xFF2E7D32) : Colors.grey.shade200,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          );
+        }
+        final stepIdx = i ~/ 2;
+        final isActive = stepIdx == activeStep;
+        final done = stepIdx < activeStep;
+        return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 80, height: 80,
+              width: 36, height: 36,
               decoration: BoxDecoration(
-                color: AppTheme.primaryGreen.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(20),
+                shape: BoxShape.circle,
+                color: done
+                    ? const Color(0xFF2E7D32)
+                    : isActive
+                        ? const Color(0xFFF59E0B)
+                        : Colors.grey.shade200,
+                boxShadow: isActive
+                    ? [BoxShadow(color: const Color(0xFFF59E0B).withValues(alpha: 0.4), blurRadius: 8)]
+                    : [],
               ),
-              child: const Icon(Icons.verified_user, size: 40, color: AppTheme.primaryGreen),
+              child: Center(
+                child: done
+                    ? const Icon(Icons.check, color: Colors.white, size: 18)
+                    : isActive
+                        ? const SizedBox(
+                            width: 16, height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                          )
+                        : Text('${stepIdx + 1}', style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.w600, fontSize: 14)),
+              ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 6),
             Text(
-              kyc == 'rejected' ? 'KYC Verification Rejected' : 'Verify Your Identity',
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.textDark),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              kyc == 'rejected'
-                  ? 'Your previous KYC submission was rejected. Please resubmit with correct documents to access banking features.'
-                  : 'You need to verify your identity first before using banking features.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton.icon(
-              onPressed: () => Navigator.push(context, PageTransition.slideUp(const KycPage())).then((_) {
-                context.read<SavingsBloc>().add(LoadSavings(widget.accountId));
-              }),
-              icon: const Icon(Icons.verified_user, size: 18),
-              label: const Text('Submit KYC Now'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryGreen,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              steps[stepIdx],
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                color: isActive ? const Color(0xFFF59E0B) : done ? const Color(0xFF2E7D32) : Colors.grey.shade400,
               ),
             ),
           ],
-        ),
-      ),
+        );
+      }),
     );
   }
 

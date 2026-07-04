@@ -17,6 +17,7 @@ import 'core/services/notification_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
+  await Hive.openBox('app_settings');
   await di.initDependencies();
   try {
     await Firebase.initializeApp();

@@ -35,11 +35,14 @@ class BoardOrgChart extends StatelessWidget {
         final width = constraints.maxWidth.isFinite
             ? constraints.maxWidth
             : MediaQuery.of(context).size.width;
-        final cardWidth = width > 900
-            ? (width - 48) / 3
-            : width > 650
-                ? (width - 32) / 2
-                : width - 32;
+        final heroWidth = width > 820 ? 760.0 : width - 32;
+        final tileMaxWidth = width > 900
+            ? (width - 80) / 4
+            : width > 700
+                ? (width - 64) / 3
+                : width > 520
+                    ? (width - 48) / 2
+                    : width - 32;
 
         return SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
@@ -57,7 +60,7 @@ class BoardOrgChart extends StatelessWidget {
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.blue.withOpacity(0.18),
+                      color: Colors.blue.withValues(alpha: 0.18),
                       blurRadius: 22,
                       offset: const Offset(0, 12),
                     ),
@@ -95,7 +98,7 @@ class BoardOrgChart extends StatelessWidget {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 12, vertical: 8),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.16),
+                              color: Colors.white.withValues(alpha: 0.16),
                               borderRadius: BorderRadius.circular(999),
                             ),
                             child: const Text(
@@ -112,7 +115,7 @@ class BoardOrgChart extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.18),
+                        color: Colors.white.withValues(alpha: 0.18),
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: const Icon(Icons.groups_2_rounded,
@@ -121,7 +124,7 @@ class BoardOrgChart extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
               const Text(
                 'Leadership Team',
                 style: TextStyle(
@@ -131,21 +134,47 @@ class BoardOrgChart extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               if (featured != null)
-                _buildFeaturedCard(context, featured, cardWidth),
-              const SizedBox(height: 18),
-              if (rest.isNotEmpty)
+                Center(
+                  child: SizedBox(
+                    width: width > 700 ? 600 : width - 32,
+                    child: _buildFeaturedCard(context, featured, heroWidth),
+                  ),
+                ),
+              if (rest.isNotEmpty) ...[
+                const SizedBox(height: 22),
+                Center(
+                  child: Container(
+                    width: 2,
+                    height: 18,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Center(
+                  child: Container(
+                    width: 100,
+                    height: 2,
+                    color: Colors.grey.shade300,
+                  ),
+                ),
+                const SizedBox(height: 18),
                 Wrap(
                   spacing: 16,
                   runSpacing: 16,
+                  alignment: WrapAlignment.center,
                   children: rest
                       .map(
                         (member) => SizedBox(
-                          width: cardWidth.clamp(220.0, 320.0),
+                          width: tileMaxWidth.clamp(240.0, 280.0),
                           child: _buildMemberCard(context, member),
                         ),
                       )
                       .toList(),
                 ),
+              ],
             ],
           ),
         );
@@ -161,66 +190,68 @@ class BoardOrgChart extends StatelessWidget {
     final accent = _accentForRole(position);
 
     return InkWell(
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(28),
       onTap: () => _showMemberDetails(context, member),
       child: Container(
         width: width,
-        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(28),
           boxShadow: const [
             BoxShadow(
-                color: Colors.black12, blurRadius: 14, offset: Offset(0, 8))
+                color: Colors.black12, blurRadius: 20, offset: Offset(0, 12))
           ],
         ),
-        child: Row(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            _buildAvatar(76, imageUrl, name, accent),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: accent.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      'Chairperson / Lead',
-                      style: TextStyle(
-                          color: accent,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    name,
-                    style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1E293B)),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    position,
-                    style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: accent),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Providing strategic direction, governance oversight, and community leadership.',
-                    style: TextStyle(
-                        fontSize: 12, color: Color(0xFF64748B), height: 1.4),
-                  ),
-                ],
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(999),
               ),
+              child: Text(
+                position.isNotEmpty ? position.toUpperCase() : 'CHAIRPERSON',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    color: accent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8),
+              ),
+            ),
+            const SizedBox(height: 18),
+            _buildAvatar(96, imageUrl, name, accent),
+            const SizedBox(height: 18),
+            Text(
+              name,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0F172A)),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              position,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: accent),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Providing strategic direction, governance oversight, and community leadership.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF475569),
+                  height: 1.5),
             ),
           ],
         ),
@@ -235,55 +266,47 @@ class BoardOrgChart extends StatelessWidget {
     final accent = _accentForRole(position);
 
     return InkWell(
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(24),
       onTap: () => _showMemberDetails(context, member),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.grey.shade200),
           boxShadow: const [
             BoxShadow(
                 color: Colors.black12, blurRadius: 10, offset: Offset(0, 6))
           ],
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Row(
-              children: [
-                _buildAvatar(54, imageUrl, name, accent),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name,
-                        style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF1E293B)),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        position,
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: accent),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+            _buildAvatar(64, imageUrl, name, accent),
             const SizedBox(height: 12),
+            Text(
+              name,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1E293B)),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              position,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w600, color: accent),
+            ),
+            const SizedBox(height: 14),
             Container(
-              height: 3,
-              width: 42,
+              height: 4,
+              width: 56,
               decoration: BoxDecoration(
-                  color: accent, borderRadius: BorderRadius.circular(999)),
+                color: accent.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(999),
+              ),
             ),
           ],
         ),
@@ -298,8 +321,8 @@ class BoardOrgChart extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: accent.withOpacity(0.12),
-        border: Border.all(color: accent.withOpacity(0.25), width: 2),
+        color: accent.withValues(alpha: 0.12),
+        border: Border.all(color: accent.withValues(alpha: 0.25), width: 2),
       ),
       child: imageUrl != null && imageUrl.isNotEmpty
           ? ClipOval(

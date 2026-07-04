@@ -318,4 +318,9 @@ class RemoteApiSource {
     final response = await _dio.get('/api/board');
     return (response.data as List).cast<Map<String, dynamic>>();
   }
+
+  Future<List<Map<String, dynamic>>> getLeaderboard() async {
+    final response = await _dio.get('/api/leaderboard');
+    return (response.data as List).cast<Map<String, dynamic>>();
+  }
 }

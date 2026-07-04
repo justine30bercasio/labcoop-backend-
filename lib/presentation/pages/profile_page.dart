@@ -268,79 +268,117 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
     );
   }
 
+  Widget _kycCard({required String status, required String label, required VoidCallback onTap}) {
+    final isVerified = status == 'verified';
+    final isRejected = status == 'rejected';
+
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: isVerified ? null : onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isVerified
+                  ? Colors.green.shade200
+                  : isRejected
+                      ? Colors.red.shade200
+                      : Colors.amber.shade200,
+            ),
+            color: isVerified
+                ? Colors.green.shade50
+                : isRejected
+                    ? Colors.red.shade50
+                    : Colors.amber.shade50,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: isVerified
+                      ? Colors.green.withValues(alpha: 0.15)
+                      : isRejected
+                          ? Colors.red.withValues(alpha: 0.15)
+                          : Colors.amber.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  isVerified ? Icons.verified_rounded : Icons.fingerprint,
+                  color: isVerified
+                      ? Colors.green
+                      : isRejected
+                          ? Colors.red
+                          : Colors.amber.shade800,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isVerified ? 'Identity Verified' : 'KYC Verification',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: isVerified
+                              ? Colors.green.shade800
+                              : const Color(0xFF1E293B)),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      isVerified ? 'You are fully verified' : label,
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: isVerified
+                              ? Colors.green.shade600
+                              : isRejected
+                                  ? Colors.red.shade600
+                                  : Colors.amber.shade800),
+                    ),
+                  ],
+                ),
+              ),
+              if (isVerified)
+                Icon(Icons.check_circle, color: Colors.green.shade400, size: 20)
+              else
+                Icon(Icons.chevron_right, color: Colors.grey.shade300, size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildQuickActions() {
     final state = context.watch<SavingsBloc>().state;
     final kycStatus = state is SavingsLoaded ? state.account.kycStatus : '';
-    final kycLabel = kycStatus == 'verified'
-        ? 'Verified'
-        : kycStatus == 'pending'
-            ? 'Under Review'
-            : kycStatus == 'rejected'
-                ? 'Rejected — Resubmit'
-                : 'Verify Identity';
-    final kycIcon = kycStatus == 'verified' ? Icons.verified : Icons.verified_user;
-    final kycColor = kycStatus == 'verified'
-        ? Colors.green
+    final kycLabel = kycStatus == 'pending'
+        ? 'Under Review'
         : kycStatus == 'rejected'
-            ? Colors.red.shade400
-            : const Color(0xFF8B4513);
+            ? 'Rejected'
+            : 'Verify Identity';
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (kycStatus != 'verified')
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: _actionButton(kycIcon, 'KYC: $kycLabel', kycColor, () {
-              Navigator.push(context, PageTransition.slideUp(const KycPage())).then((_) => _load());
-            }),
-          ),
-        if (kycStatus == 'verified')
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-              decoration: BoxDecoration(
-                color: Colors.green.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.green.shade200),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.verified, color: Colors.green, size: 22),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text('Identity Verified', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.green.shade800, fontSize: 13)),
-                  ),
-                  Icon(Icons.check_circle, color: Colors.green.shade400, size: 18),
-                ],
-              ),
-            ),
-          ),
-        _actionButton(Icons.auto_awesome, 'Rare Unlocks', AppTheme.coinGold, _showRareUnlocks),
-        const SizedBox(height: Spacing.sm),
-        const SizedBox(height: Spacing.sm),
-        _actionButton(Icons.store, 'Shop — Avatars & Borders', AppTheme.accentAmber, () {
-          Navigator.push(context, PageTransition.slideUp(const _ShopPage())).then((_) => _load());
+        _sectionHeader('Account', Icons.shield_outlined),
+        _kycCard(status: kycStatus, label: kycLabel, onTap: () {
+          Navigator.push(context, PageTransition.slideUp(const KycPage())).then((_) => _load());
         }),
-        const SizedBox(height: Spacing.sm),
-        _actionButton(Icons.emoji_events, 'Leaderboard', AppTheme.primaryGreen, () {
-          Navigator.push(context, PageTransition.slideUp(const _LeaderboardPage()));
-        }),
-        const SizedBox(height: Spacing.sm),
-        _actionButton(Icons.settings, 'Settings', Colors.grey.shade600, () {
+        const SizedBox(height: 10),
+        _actionTile(Icons.settings_rounded, 'Settings', 'Personalize your experience', Colors.grey.shade600, () {
           Navigator.push(context, PageTransition.slideUp(const _SettingsPage())).then((_) => _load());
         }),
-        const SizedBox(height: Spacing.sm),
-        _actionButton(Icons.description_outlined, 'Terms & Conditions', const Color(0xFF6366F1), () {
-          Navigator.push(context, PageTransition.slideUp(const TermsPage()));
-        }),
-        const SizedBox(height: Spacing.sm),
-        _actionButton(Icons.people, 'Board of Directors', const Color(0xFF7B1FA2), () {
-          Navigator.push(context, PageTransition.slideUp(const BoardPage()));
-        }),
-        const SizedBox(height: Spacing.sm),
-        _actionButton(Icons.logout, 'Logout', Colors.red.shade400, () async {
+        const SizedBox(height: 10),
+        _actionTile(Icons.logout_rounded, 'Logout', 'Clear local data & sign out', Colors.red.shade400, () async {
           final confirm = await showDialog<bool>(
             context: context,
             builder: (ctx) => AlertDialog(
@@ -356,30 +394,96 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
           await const FlutterSecureStorage().deleteAll();
           await LocalDbSource().clearAll();
           if (!context.mounted) return;
-          Navigator.pushAndRemoveUntil(
-            context,
-            PageTransition.slideUp(const LoginPage()),
-            (route) => false,
-          );
+          Navigator.pushAndRemoveUntil(context, PageTransition.slideUp(const LoginPage()), (route) => false);
         }),
+        const SizedBox(height: 24),
+        _sectionHeader('Rewards', Icons.auto_awesome),
+        _actionTile(Icons.auto_awesome, 'Rare Unlocks', 'Milestones & hidden achievements', AppTheme.coinGold, _showRareUnlocks),
+        const SizedBox(height: 10),
+        _actionTile(Icons.store_rounded, 'Shop', 'Avatars & borders', AppTheme.accentAmber, () {
+          Navigator.push(context, PageTransition.slideUp(const _ShopPage())).then((_) => _load());
+        }),
+        const SizedBox(height: 24),
+        _sectionHeader('Community', Icons.groups_rounded),
+        _actionTile(Icons.emoji_events_rounded, 'Leaderboard', 'Top savers & earners', AppTheme.primaryGreen, () {
+          Navigator.push(context, PageTransition.slideUp(const _LeaderboardPage()));
+        }),
+        const SizedBox(height: 10),
+        _actionTile(Icons.people_rounded, 'Board of Directors', 'Cooperative leadership', const Color(0xFF7B1FA2), () {
+          Navigator.push(context, PageTransition.slideUp(const BoardPage()));
+        }),
+        const SizedBox(height: 10),
+        _actionTile(Icons.description_outlined, 'Terms & Conditions', 'App usage policies', const Color(0xFF6366F1), () {
+          Navigator.push(context, PageTransition.slideUp(const TermsPage()));
+        }),
+        const SizedBox(height: 32),
       ],
     );
   }
 
-  Widget _actionButton(IconData icon, String label, Color color, VoidCallback onTap) {
-    return SizedBox(
-      height: 56,
-      child: ElevatedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon),
-        label: Text(label),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: color,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: Spacing.md),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(RadiusTokens.lg)),
-          elevation: 2,
-          shadowColor: color.withValues(alpha: 0.3),
+  Widget _sectionHeader(String title, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 12),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: Colors.grey.shade400),
+          const SizedBox(width: 6),
+          Text(title,
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.grey.shade500,
+                  letterSpacing: 0.6)),
+        ],
+      ),
+    );
+  }
+
+  Widget _actionTile(IconData icon, String title, String subtitle, Color color, VoidCallback onTap) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      elevation: 0,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey.shade100),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2)),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: color, size: 22),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
+                    const SizedBox(height: 2),
+                    Text(subtitle,
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: Colors.grey.shade300, size: 20),
+            ],
+          ),
         ),
       ),
     );
@@ -788,47 +892,64 @@ class _LeaderboardPage extends StatefulWidget {
 }
 
 class _LeaderboardPageState extends State<_LeaderboardPage> {
-  final _source = LocalDbSource();
-  Uint8List? _myImageBytes;
+  List<Map<String, dynamic>> _entries = [];
+  bool _loading = true;
+  String? _error;
   String _myName = '';
 
   @override
   void initState() {
     super.initState();
-    _loadMyData();
+    _load();
   }
 
-  Future<void> _loadMyData() async {
-    final bytes = await _source.getProfileImageBytes();
-    final state = context.read<SavingsBloc>().state;
-    final name = state is SavingsLoaded ? state.account.childName : 'User';
-    if (!mounted) return;
-    setState(() {
-      _myImageBytes = bytes;
-      _myName = name;
-    });
+  Future<void> _load() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final api = GetIt.instance<RemoteApiSource>();
+      final data = await api.getLeaderboard();
+      final state = context.read<SavingsBloc>().state;
+      final name = state is SavingsLoaded ? state.account.childName : '';
+      if (!mounted) return;
+      setState(() { _entries = data; _myName = name; _loading = false; });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { _error = e.toString(); _loading = false; });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Leaderboard — Top Savers')),
-      body: BlocBuilder<SavingsBloc, SavingsState>(
-        builder: (context, state) {
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              _buildHeader(),
-              const SizedBox(height: 16),
-              _leaderboardCard(
-                rank: 1, name: _myName, saved: state is SavingsLoaded ? state.goals.fold<double>(0, (s, g) => s + g.currentAllocated) : 0,
-                avatar: '🐱', isYou: true,
-                borderId: 'b_gold', imageBytes: _myImageBytes,
-              ),
-            ],
-          );
-        },
-      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.cloud_off, size: 48, color: Colors.grey),
+                  const SizedBox(height: 12),
+                  Text('Could not load leaderboard', style: TextStyle(color: Colors.grey[600])),
+                  const SizedBox(height: 16),
+                  TextButton.icon(onPressed: _load, icon: const Icon(Icons.refresh), label: const Text('Retry')),
+                ]))
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      _buildHeader(),
+                      const SizedBox(height: 20),
+                      ..._entries.asMap().entries.map((e) => _leaderboardCard(
+                        rank: e.key + 1,
+                        name: e.value['child_name'] as String? ?? '',
+                        saved: (e.value['actual_balance'] as num?)?.toDouble() ?? 0,
+                        xp: (e.value['current_xp'] as num?)?.toInt() ?? 0,
+                        imageUrl: e.value['profile_pic_url'] as String?,
+                        isYou: (e.value['child_name'] as String? ?? '') == _myName,
+                      )),
+                    ],
+                  ),
+                ),
     );
   }
 
@@ -839,12 +960,13 @@ class _LeaderboardPageState extends State<_LeaderboardPage> {
         gradient: const LinearGradient(colors: [AppTheme.primaryGreen, Color(0xFF1B5E20)]),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: const Column(
+      child: Column(
         children: [
-          Icon(Icons.emoji_events, color: AppTheme.coinGold, size: 48),
-          SizedBox(height: 8),
-          Text('Who saves the most?', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-          Text('Save more to reach the top!', style: TextStyle(color: Colors.white70, fontSize: 13)),
+          const Icon(Icons.emoji_events, color: AppTheme.coinGold, size: 48),
+          const SizedBox(height: 8),
+          const Text('Who saves the most?', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Text('${_entries.length} members competing', style: const TextStyle(color: Colors.white70, fontSize: 13)),
         ],
       ),
     );
@@ -853,33 +975,31 @@ class _LeaderboardPageState extends State<_LeaderboardPage> {
   Widget _buildRankWidget(int rank) {
     if (rank == 1) {
       return Container(
-        width: 36, height: 36,
+        width: 40, height: 40,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: Colors.amber.shade100,
-          border: Border.all(color: Colors.amber.shade700, width: 2),
+          gradient: const LinearGradient(colors: [Color(0xFFFFD700), Color(0xFFFFA000)]),
+          boxShadow: [BoxShadow(color: Colors.amber.withValues(alpha: 0.4), blurRadius: 8)],
         ),
-        child: const Center(child: Text('👑', style: TextStyle(fontSize: 20))),
+        child: const Center(child: Text('👑', style: TextStyle(fontSize: 22))),
       );
     } else if (rank == 2) {
       return Container(
         width: 36, height: 36,
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           shape: BoxShape.circle,
-          color: Colors.grey.shade200,
-          border: Border.all(color: Colors.grey.shade500, width: 2),
+          gradient: LinearGradient(colors: [Color(0xFFE0E0E0), Color(0xFF9E9E9E)]),
         ),
-        child: const Center(child: Text('👑', style: TextStyle(fontSize: 20))),
+        child: const Center(child: Text('🥈', style: TextStyle(fontSize: 20))),
       );
     } else if (rank == 3) {
       return Container(
         width: 36, height: 36,
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           shape: BoxShape.circle,
-          color: Colors.orange.shade100,
-          border: Border.all(color: Colors.orange.shade700, width: 2),
+          gradient: LinearGradient(colors: [Color(0xFFFFCC80), Color(0xFFFF8A65)]),
         ),
-        child: const Center(child: Text('👑', style: TextStyle(fontSize: 20))),
+        child: const Center(child: Text('🥉', style: TextStyle(fontSize: 20))),
       );
     }
     return Container(
@@ -889,65 +1009,108 @@ class _LeaderboardPageState extends State<_LeaderboardPage> {
         color: Colors.grey.shade100,
       ),
       child: Center(
-        child: Text('$rank', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade600)),
+        child: Text('$rank', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.grey.shade600)),
       ),
     );
+  }
+
+  String _formatMoney(double amount) {
+    return '₱${amount.toStringAsFixed(2)}';
   }
 
   Widget _leaderboardCard({
     required int rank,
     required String name,
     required double saved,
-    required String avatar,
+    required int xp,
+    String? imageUrl,
     required bool isYou,
-    required String borderId,
-    Uint8List? imageBytes,
   }) {
-    final border = fallbackBorderItems.firstWhere((b) => b.id == borderId, orElse: () => fallbackBorderItems[0]);
+    final initials = name.trim().split(RegExp(r'\s+'));
+    final displayInitials = initials.length >= 2
+        ? '${initials[0][0]}${initials.last[0]}'.toUpperCase()
+        : name.isNotEmpty ? name[0].toUpperCase() : '?';
 
-    return Card(
+    return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      color: isYou ? AppTheme.primaryGreen.withValues(alpha: 0.08) : null,
-      child: ListTile(
-        leading: _buildRankWidget(rank),
-        title: Row(
-          children: [
-            Container(
-              width: 36, height: 36,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: border.color1, width: 2),
-                color: Colors.white,
-                image: imageBytes != null
-                    ? DecorationImage(image: MemoryImage(imageBytes), fit: BoxFit.cover)
-                    : null,
-              ),
-              child: imageBytes == null
-                  ? Center(child: Text(avatar, style: const TextStyle(fontSize: 18)))
-                  : null,
-            ),
-            const SizedBox(width: 8),
-            Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-            if (isYou)
-              Container(
-                margin: const EdgeInsets.only(left: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryGreen,
-                  borderRadius: BorderRadius.circular(8),
+      decoration: BoxDecoration(
+        color: isYou ? Colors.green.shade50 : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isYou ? Colors.green.shade200 : Colors.grey.shade100),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isYou ? 0.08 : 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                _buildRankWidget(rank),
+                const SizedBox(width: 12),
+                Container(
+                  width: 44, height: 44,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.grey.shade100,
+                    border: Border.all(color: Colors.grey.shade200, width: 1.5),
+                  ),
+                  child: imageUrl != null && imageUrl.isNotEmpty
+                      ? ClipOval(child: Image.network(imageUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Center(child: Text(displayInitials, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.grey.shade600)))))
+                      : Center(child: Text(displayInitials, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.grey.shade600))),
                 ),
-                child: const Text('YOU', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-              ),
-          ],
-        ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text('₱${saved.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textDark)),
-            Text('saved', style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
-          ],
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(name, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: isYou ? Colors.green.shade800 : const Color(0xFF1E293B)), overflow: TextOverflow.ellipsis),
+                          ),
+                          if (isYou)
+                            Container(
+                              margin: const EdgeInsets.only(left: 6),
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(color: Colors.green.shade100, borderRadius: BorderRadius.circular(6)),
+                              child: Text('YOU', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.green.shade700)),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Text(_formatMoney(saved), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: isYou ? Colors.green.shade700 : const Color(0xFF0F172A))),
+                          const SizedBox(width: 8),
+                          Icon(Icons.star, size: 13, color: Colors.amber.shade600),
+                          const SizedBox(width: 2),
+                          Text('$xp XP', style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                if (rank == 1)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.amber.shade200),
+                    ),
+                    child: Text('TOP', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.amber.shade800)),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );

@@ -2202,8 +2202,9 @@ router.get('/face-verification', requireRole(1), asyncHandler(async (req, res) =
   <div class="card">
     <div class="card-header"><h3>&#x1F9DA; Face Verification</h3></div>
     <div class="card-body">
-    <table><tr><th>Child</th><th>Member ID</th><th>Enrolled At</th><th>Last Updated</th><th>Actions</th></tr>
-    ${faces.length === 0 ? '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted)">No face templates enrolled.</td></tr>' : faces.map(f => `<tr>
+    <table><tr><th>Selfie</th><th>Child</th><th>Member ID</th><th>Enrolled At</th><th>Last Updated</th><th>Actions</th></tr>
+    ${faces.length === 0 ? '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)">No face templates enrolled.</td></tr>' : faces.map(f => `<tr>
+      <td>${f.image_url ? `<a href="${f.image_url}" target="_blank"><img src="${f.image_url}" style="width:48px;height:48px;border-radius:50%;object-fit:cover;border:2px solid var(--border);cursor:pointer" title="Click to view full size"></a>` : '<span style="color:var(--text-muted)">No image</span>'}</td>
       <td><b>${f.child_name || '-'}</b></td>
       <td class="mono">${f.member_id || '-'}</td>
       <td class="mono">${f.created_at ? f.created_at.slice(0, 19).replace('T', ' ') : '-'}</td>

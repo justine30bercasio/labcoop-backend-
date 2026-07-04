@@ -293,26 +293,25 @@ class _BankingPageState extends State<BankingPage> {
                   // ── progress stepper ──
                   _kycStepper(isPending ? 1 : 0),
                   const SizedBox(height: 32),
-                  // ── button ──
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
-                      onPressed: () => Navigator.push(context, PageTransition.slideUp(const KycPage())).then((_) {
-                        context.read<SavingsBloc>().add(LoadSavings(widget.accountId));
-                      }),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: isPending
-                            ? const Color(0xFFF59E0B)
-                            : const Color(0xFF2E7D32),
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  // ── button (only for not-started / rejected) ──
+                  if (!isPending)
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.push(context, PageTransition.slideUp(const KycPage())).then((_) {
+                          context.read<SavingsBloc>().add(LoadSavings(widget.accountId));
+                        }),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2E7D32),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                        ),
+                        child: const Text('Submit KYC Now'),
                       ),
-                      child: Text(isPending ? 'Check Status' : 'Submit KYC Now'),
                     ),
-                  ),
                 ],
               ),
             ),

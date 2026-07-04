@@ -28,7 +28,7 @@ class TermsPage extends StatelessWidget {
             icon: Icons.child_care,
             title: '1. Who Can Use LabCoop',
             children: [
-              'LabCoop is for children and teenagers under 18 years old.',
+              'LabCoop is for children ages 5–17 years old.',
               'A parent or legal guardian must open and manage the account.',
               'You may only have ONE account.',
               'You promise to use your real name and information.',

@@ -109,7 +109,7 @@ class _TermsAcceptPageState extends State<TermsAcceptPage>
                       _tcCard(
                         Icons.child_care,
                         '1. Who Can Use',
-                        'LabCoop is for children under 18 with a parent or guardian managing the account.',
+                        'LabCoop is for children ages 5–17 with a parent or guardian managing the account.',
                       ),
                       _tcCard(
                         Icons.family_restroom,

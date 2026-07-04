@@ -16,7 +16,6 @@ import '../blocs/savings_state.dart';
 import '../widgets/animated_counter.dart';
 import '../widgets/app_card.dart';
 import '../../core/network/banking_api_service.dart';
-import 'face_enroll_screen.dart';
 import 'kyc_page.dart';
 import 'login_page.dart';
 
@@ -318,20 +317,6 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
           ),
         _actionButton(Icons.auto_awesome, 'Rare Unlocks', AppTheme.coinGold, _showRareUnlocks),
         const SizedBox(height: Spacing.sm),
-        _actionButton(Icons.face, 'Face Setup', const Color(0xFF6366F1), () {
-          final state = context.read<SavingsBloc>().state;
-          if (state is SavingsLoaded) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => FaceEnrollScreen(
-                  accountId: state.account.accountId,
-                  childName: state.account.childName,
-                ),
-              ),
-            );
-          }
-        }),
         const SizedBox(height: Spacing.sm),
         _actionButton(Icons.store, 'Shop — Avatars & Borders', AppTheme.accentAmber, () {
           Navigator.push(context, PageTransition.slideUp(const _ShopPage())).then((_) => _load());

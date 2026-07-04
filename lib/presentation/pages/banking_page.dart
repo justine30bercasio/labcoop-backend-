@@ -10,6 +10,7 @@ import '../blocs/savings_state.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/design_system.dart';
 import 'auto_save_page.dart';
+import 'kyc_page.dart';
 import 'loan_apply_page.dart';
 import 'loan_products_page.dart';
 import 'my_loans_page.dart';
@@ -127,6 +128,12 @@ class _BankingPageState extends State<BankingPage> {
       body: BlocBuilder<SavingsBloc, SavingsState>(
         builder: (context, savingsState) {
           final acct = savingsState is SavingsLoaded ? savingsState.account : null;
+          final kyc = acct?.kycStatus ?? '';
+
+          if (kyc != 'verified') {
+            return _buildKycGate(kyc);
+          }
+
           final balance = acct?.actualBalance ?? 0.0;
           final unallocated = acct?.unallocatedBalance ?? 0.0;
           final withdrawable = acct?.withdrawableBalance ?? 0.0;
@@ -165,6 +172,96 @@ class _BankingPageState extends State<BankingPage> {
             },
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildKycGate(String kyc) {
+    if (kyc == 'pending') {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 80, height: 80,
+                child: CircularProgressIndicator(strokeWidth: 4, color: AppTheme.primaryGreen),
+              ),
+              const SizedBox(height: 24),
+              const Icon(Icons.hourglass_empty, size: 48, color: AppTheme.primaryGreen),
+              const SizedBox(height: 16),
+              const Text(
+                'KYC Under Review',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Your identity documents are being reviewed.\nYou can access banking features once approved.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 32),
+              OutlinedButton(
+                onPressed: () => Navigator.push(context, PageTransition.slideUp(const KycPage())).then((_) {
+                  context.read<SavingsBloc>().add(LoadSavings(widget.accountId));
+                }),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppTheme.primaryGreen,
+                  side: const BorderSide(color: AppTheme.primaryGreen),
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+                child: const Text('Check Status'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 80, height: 80,
+              decoration: BoxDecoration(
+                color: AppTheme.primaryGreen.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(Icons.verified_user, size: 40, color: AppTheme.primaryGreen),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              kyc == 'rejected' ? 'KYC Verification Rejected' : 'Verify Your Identity',
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              kyc == 'rejected'
+                  ? 'Your previous KYC submission was rejected. Please resubmit with correct documents to access banking features.'
+                  : 'You need to verify your identity first before using banking features.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 32),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.push(context, PageTransition.slideUp(const KycPage())).then((_) {
+                context.read<SavingsBloc>().add(LoadSavings(widget.accountId));
+              }),
+              icon: const Icon(Icons.verified_user, size: 18),
+              label: const Text('Submit KYC Now'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryGreen,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -20,6 +20,28 @@ class _KycPageState extends State<KycPage> {
   bool _loading = false;
   String? _error;
   bool _success = false;
+  String _existingStatus = '';
+  bool _checkingStatus = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkExistingStatus();
+  }
+
+  Future<void> _checkExistingStatus() async {
+    try {
+      final api = GetIt.instance<RemoteApiSource>();
+      final status = await api.getKycStatus();
+      if (!mounted) return;
+      setState(() {
+        _existingStatus = status['kyc_status']?.toString() ?? '';
+        _checkingStatus = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _checkingStatus = false);
+    }
+  }
 
   Future<void> _pickBirthCert() async {
     final x = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
@@ -59,6 +81,81 @@ class _KycPageState extends State<KycPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_checkingStatus) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_existingStatus == 'verified') {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF5F0E8),
+        appBar: AppBar(
+          title: const Text('Already Verified', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          backgroundColor: const Color(0xFF2E7D32),
+          iconTheme: const IconThemeData(color: Colors.white),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.check_circle, size: 80, color: Colors.green),
+                const SizedBox(height: 16),
+                const Text('Identity Verified!', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF3E2723))),
+                const SizedBox(height: 8),
+                const Text('Your identity has been verified. You can now use all banking features.', textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: Color(0xFF6D4C41))),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF8B4513), foregroundColor: Colors.white),
+                  child: const Text('Done'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (_existingStatus == 'pending') {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF5F0E8),
+        appBar: AppBar(
+          title: const Text('Under Review', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          backgroundColor: const Color(0xFF2E7D32),
+          iconTheme: const IconThemeData(color: Colors.white),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(
+                  width: 80, height: 80,
+                  child: CircularProgressIndicator(strokeWidth: 4, color: Color(0xFF2E7D32)),
+                ),
+                const SizedBox(height: 16),
+                const Icon(Icons.hourglass_empty, size: 48, color: Color(0xFF2E7D32)),
+                const SizedBox(height: 16),
+                const Text('KYC Under Review', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF3E2723))),
+                const SizedBox(height: 8),
+                const Text('Your documents are currently being reviewed by our team. You will be able to use banking features once approved.', textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: Color(0xFF6D4C41))),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF8B4513), foregroundColor: Colors.white),
+                  child: const Text('Back'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     if (_success) {
       return Scaffold(
         backgroundColor: const Color(0xFFF5F0E8),

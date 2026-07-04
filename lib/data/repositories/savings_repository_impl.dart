@@ -36,56 +36,48 @@ class SavingsRepositoryImpl implements SavingsRepository {
 
   @override
   Future<SavingsAccount> getAccount(String accountId) async {
-    final cached = await _localSource.getAccount(accountId);
-    if (cached != null) return cached.toEntity();
-
     if (await _isOnline) {
       try {
         final model = await _remoteSource.fetchAccount(accountId);
         await _localSource.saveAccount(model);
         return model.toEntity();
-      } on ServerException {
-        rethrow;
-      } on NetworkException {
-        throw NetworkException('Unable to reach server');
-      }
+      } catch (_) {}
     }
+
+    final cached = await _localSource.getAccount(accountId);
+    if (cached != null) return cached.toEntity();
 
     throw NetworkException('No internet connection');
   }
 
   @override
   Future<List<GoalJar>> getGoals(String accountId) async {
-    final cached = await _localSource.getGoals(accountId);
-    if (cached.isNotEmpty) return cached.map((m) => m.toEntity()).toList();
-
     if (await _isOnline) {
       try {
         final models = await _remoteSource.fetchGoals(accountId);
         await _localSource.saveGoals(models);
         return models.map((m) => m.toEntity()).toList();
-      } on NetworkException {
-        throw NetworkException('Unable to reach server');
-      }
+      } catch (_) {}
     }
+
+    final cached = await _localSource.getGoals(accountId);
+    if (cached.isNotEmpty) return cached.map((m) => m.toEntity()).toList();
 
     throw NetworkException('No internet connection');
   }
 
   @override
   Future<List<Badge>> getBadges(String accountId) async {
-    final cached = await _localSource.getBadges(accountId);
-    if (cached.isNotEmpty) return cached.map((m) => m.toEntity()).toList();
-
     if (await _isOnline) {
       try {
         final models = await _remoteSource.fetchBadges(accountId);
         await _localSource.saveBadges(models);
         return models.map((m) => m.toEntity()).toList();
-      } on NetworkException {
-        throw NetworkException('Unable to reach server');
-      }
+      } catch (_) {}
     }
+
+    final cached = await _localSource.getBadges(accountId);
+    if (cached.isNotEmpty) return cached.map((m) => m.toEntity()).toList();
 
     throw NetworkException('No internet connection');
   }

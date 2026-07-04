@@ -260,6 +260,7 @@ const adminAuthRouter = require('./routes/admin-auth');
 const loansRouter = require('./routes/loans');
 const bankingFeaturesRouter = require('./routes/banking-features');
 const fcmRouter = require('./routes/fcm');
+const boardRouter = require('./routes/board');
 const paymongoRouter = require('./routes/paymongo');
 const settingsRouter = require('./routes/settings');
 const kycRouter = require('./routes/kyc');
@@ -541,6 +542,7 @@ app.use('/api', authMiddleware, requireOwnership, loansRouter);
 app.use('/api', authMiddleware, requireOwnership, bankingFeaturesRouter);
 app.use('/api/fcm', fcmRouter);
 app.use('/api/kyc', kycRouter);
+app.use('/api/board', boardRouter);
 app.use('/api/paymongo', paymongoRouter);
 app.use('/api/settings', authMiddleware, requireOwnership, settingsRouter);
 // ── CSRF protection for admin session routes ──

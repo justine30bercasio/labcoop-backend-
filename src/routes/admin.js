@@ -6587,6 +6587,127 @@ router.post('/users/update/:id', requireRole(4), asyncHandler(async (req, res) =
 }));
 
 // ── First-run setup (no session required) ──
+// ── Board of Directors Management ──
+
+router.get('/board', requireRole(2), asyncHandler(async (req, res) => {
+  const members = await sql('SELECT * FROM board_members ORDER BY sort_order ASC, created_at ASC');
+  const q = req.query;
+  const toast = q.added ? 'success:Board member added.'
+    : q.updated ? 'success:Board member updated.'
+    : q.deleted ? 'success:Board member deleted.'
+    : q.uploaded ? 'success:Photo uploaded.'
+    : q.error ? `error:${q.error}`
+    : '';
+  const content = `
+  <div class="card">
+    <div class="card-header"><h3>&#x1F465; Board of Directors</h3>
+      <a href="/admin/board/add" class="btn btn-primary btn-xs">&#x2795; Add Member</a>
+    </div>
+    <div class="card-body">
+    <table>
+      <tr><th>Photo</th><th>Name</th><th>Position</th><th>Order</th><th>Actions</th></tr>
+      ${members.length === 0 ? '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted)">No board members yet.</td></tr>' : members.map(m => `<tr>
+        <td>${m.image_url ? `<img src="${m.image_url}" style="width:48px;height:48px;border-radius:50%;object-fit:cover;border:2px solid var(--border)">` : '<span style="color:var(--text-muted)">\u2014</span>'}</td>
+        <td><b>${h(m.name)}</b></td>
+        <td>${h(m.position)}</td>
+        <td class="mono">${m.sort_order}</td>
+        <td>
+          <a href="/admin/board/edit/${m.id}" class="btn btn-amber btn-xs">&#x270F;</a>
+          <form class="inline" method="post" action="/admin/board/delete/${m.id}" data-confirm="Delete ${h(m.name)}?">
+            <button type="submit" class="btn btn-danger btn-xs">&#x1F5D1;</button>
+          </form>
+        </td>
+      </tr>`).join('')}
+    </table></div>
+  </div>`;
+  res.type('html').send(layout('Board of Directors', 'board', content, { toast, subtitle: `${members.length} member${members.length !== 1 ? 's' : ''}` }));
+}));
+
+router.get('/board/add', requireRole(2), asyncHandler(async (req, res) => {
+  const content = `
+  <div class="card">
+    <div class="card-header"><h3>&#x2795; Add Board Member</h3></div>
+    <div class="card-body">
+    <form method="post" action="/admin/board/add" enctype="multipart/form-data" style="max-width:500px">
+      <div class="form-group"><label>Name *</label><input type="text" name="name" required class="form-control"></div>
+      <div class="form-group"><label>Position *</label><input type="text" name="position" required class="form-control" placeholder="e.g. Chairman, Treasurer"></div>
+      <div class="form-group"><label>Sort Order</label><input type="number" name="sort_order" value="0" class="form-control" style="width:100px"></div>
+      <div class="form-group"><label>Photo</label><input type="file" name="photo" accept="image/*" class="form-control"></div>
+      <div class="form-actions"><button type="submit" class="btn btn-primary">&#x2795; Add</button> <a href="/admin/board" class="btn btn-secondary">Cancel</a></div>
+    </form></div>
+  </div>`;
+  res.type('html').send(layout('Add Board Member', 'board', content));
+}));
+
+const boardUpload = multer({ dest: path.join(__dirname, '..', 'uploads', 'board') });
+
+router.post('/board/add', requireRole(2), boardUpload.single('photo'), asyncHandler(async (req, res) => {
+  const { name, position, sort_order } = req.body;
+  if (!name || !position) return res.redirect('/admin/board/add?error=Name+and+position+are+required');
+  const id = require('uuid').v4();
+  let imageUrl = '';
+  if (req.file) {
+    const ext = path.extname(req.file.originalname) || '.jpg';
+    const filename = 'board-' + id + ext;
+    const dest = path.join(__dirname, '..', 'uploads', 'board', filename);
+    try { fs.renameSync(req.file.path, dest); } catch (_) { fs.copyFileSync(req.file.path, dest); }
+    imageUrl = '/uploads/board/' + filename;
+  }
+  await store.query('INSERT INTO board_members (id, name, position, image_url, sort_order, created_at) VALUES ($1,$2,$3,$4,$5,$6)',
+    [id, name, position, imageUrl, parseInt(sort_order || '0', 10), new Date().toISOString()]);
+  res.redirect('/admin/board?added=ok');
+}));
+
+router.get('/board/edit/:id', requireRole(2), asyncHandler(async (req, res) => {
+  const m = await one('SELECT * FROM board_members WHERE id = $1', [req.params.id]);
+  if (!m) return res.redirect('/admin/board?error=Not+found');
+  const content = `
+  <div class="card">
+    <div class="card-header"><h3>&#x270F; Edit Board Member</h3></div>
+    <div class="card-body">
+    <form method="post" action="/admin/board/edit/${m.id}" enctype="multipart/form-data" style="max-width:500px">
+      <div class="form-group"><label>Name *</label><input type="text" name="name" value="${h(m.name)}" required class="form-control"></div>
+      <div class="form-group"><label>Position *</label><input type="text" name="position" value="${h(m.position)}" required class="form-control"></div>
+      <div class="form-group"><label>Sort Order</label><input type="number" name="sort_order" value="${m.sort_order || 0}" class="form-control" style="width:100px"></div>
+      <div class="form-group"><label>Photo</label>
+        ${m.image_url ? `<div style="margin-bottom:8px"><img src="${m.image_url}" style="width:80px;height:80px;border-radius:50%;object-fit:cover"></div>` : ''}
+        <input type="file" name="photo" accept="image/*" class="form-control">
+      </div>
+      <div class="form-actions"><button type="submit" class="btn btn-primary">&#x1F4BE; Save</button> <a href="/admin/board" class="btn btn-secondary">Cancel</a></div>
+    </form></div>
+  </div>`;
+  res.type('html').send(layout('Edit Board Member', 'board', content));
+}));
+
+router.post('/board/edit/:id', requireRole(2), boardUpload.single('photo'), asyncHandler(async (req, res) => {
+  const { name, position, sort_order } = req.body;
+  const m = await one('SELECT * FROM board_members WHERE id = $1', [req.params.id]);
+  if (!m) return res.redirect('/admin/board?error=Not+found');
+  let imageUrl = m.image_url;
+  if (req.file) {
+    const ext = path.extname(req.file.originalname) || '.jpg';
+    const filename = 'board-' + req.params.id + ext;
+    const dest = path.join(__dirname, '..', 'uploads', 'board', filename);
+    try { fs.renameSync(req.file.path, dest); } catch (_) { fs.copyFileSync(req.file.path, dest); }
+    imageUrl = '/uploads/board/' + filename;
+    if (m.image_url && m.image_url.startsWith('/uploads/')) {
+      try { fs.unlinkSync(path.join(__dirname, '..', m.image_url.replace(/^\//, ''))); } catch (_) {}
+    }
+  }
+  await store.query('UPDATE board_members SET name=$1, position=$2, image_url=$3, sort_order=$4 WHERE id=$5',
+    [name || m.name, position || m.position, imageUrl, parseInt(sort_order || '0', 10), req.params.id]);
+  res.redirect('/admin/board?updated=ok');
+}));
+
+router.post('/board/delete/:id', requireRole(3), asyncHandler(async (req, res) => {
+  const m = await one('SELECT * FROM board_members WHERE id = $1', [req.params.id]);
+  if (m && m.image_url && m.image_url.startsWith('/uploads/')) {
+    try { fs.unlinkSync(path.join(__dirname, '..', m.image_url.replace(/^\//, ''))); } catch (_) {}
+  }
+  await store.query('DELETE FROM board_members WHERE id = $1', [req.params.id]);
+  res.redirect('/admin/board?deleted=ok');
+}));
+
 router.get('/setup', asyncHandler(async (req, res) => {
   const result = await store.query('SELECT COUNT(*) as c FROM admin_users');
   if (parseInt(result.rows[0]?.c || '0', 10) > 0) {

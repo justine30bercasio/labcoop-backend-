@@ -71,6 +71,7 @@ function layout(title, active, content, opts = {}) {
       { icon: '<i class="fas fa-circle-question"></i>', label: 'Quiz', href: '/admin/quiz', key: 'quiz' },
       { icon: '<i class="fas fa-bullseye"></i>', label: 'Goals', href: '/admin/goals', key: 'goals' },
       { icon: '<i class="fas fa-medal"></i>', label: 'Badges', href: '/admin/badges', key: 'badges' },
+      { icon: '<i class="fas fa-users"></i>', label: 'Board of Directors', href: '/admin/board', key: 'board' },
     ]},
     { icon: '<i class="fas fa-clipboard-list"></i>', label: 'Administration', key: 'admin-group', children: [
       { icon: '<i class="fas fa-user-shield"></i>', label: 'Admin Users', href: '/admin/users', key: 'users' },

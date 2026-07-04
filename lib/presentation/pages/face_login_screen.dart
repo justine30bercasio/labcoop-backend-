@@ -1,11 +1,11 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:get_it/get_it.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/datasources/remote_api_source.dart';
 import '../../data/services/face_auth_service.dart';
 import '../widgets/liveness_detector.dart';
+import 'face_enroll_screen.dart';
 
 class FaceLoginScreen extends StatefulWidget {
   const FaceLoginScreen({super.key});
@@ -19,9 +19,10 @@ class _FaceLoginScreenState extends State<FaceLoginScreen> {
   final _api = GetIt.instance<RemoteApiSource>();
   bool _verifying = false;
   String? _error;
-  String? _memberIdController;
   bool _checkingStatus = true;
   bool _faceEnrolled = false;
+  String? _sessionAccountId;
+  String? _sessionChildName;
 
   @override
   void initState() {
@@ -35,6 +36,8 @@ class _FaceLoginScreenState extends State<FaceLoginScreen> {
       if (mounted) setState(() => _checkingStatus = false);
       return;
     }
+    _sessionAccountId = session['accountId'];
+    _sessionChildName = session['childName'];
     try {
       final status = await _faceAuth.getStatus(session['accountId']!);
       if (mounted) {
@@ -106,24 +109,53 @@ class _FaceLoginScreenState extends State<FaceLoginScreen> {
               children: [
                 Icon(Icons.face, size: 80, color: Colors.grey.shade400),
                 const SizedBox(height: 24),
-                const Text(
-                  'Face login not set up yet',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                Text(
+                  _sessionAccountId != null
+                      ? 'Face login not set up yet'
+                      : 'Please log in first',
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Please set up face recognition first in your profile settings.',
+                  _sessionAccountId != null
+                      ? 'Set up face recognition now to enable face login.'
+                      : 'Log in with your password first, then set up face recognition from your profile.',
                   style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 32),
+                if (_sessionAccountId != null)
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => FaceEnrollScreen(
+                            accountId: _sessionAccountId!,
+                            childName: _sessionChildName ?? '',
+                          ),
+                        ),
+                      );
+                      _checkFaceStatus();
+                    },
+                    icon: const Icon(Icons.add_a_photo),
+                    label: const Text('Set Up Now'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryGreen,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                    ),
+                  ),
+                if (_sessionAccountId != null) const SizedBox(height: 12),
                 ElevatedButton(
                   onPressed: () => Navigator.pop(context),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryGreen,
+                    backgroundColor: _sessionAccountId != null
+                        ? Colors.grey.shade400
+                        : AppTheme.primaryGreen,
                     foregroundColor: Colors.white,
                   ),
-                  child: const Text('Go Back'),
+                  child: Text(_sessionAccountId != null ? 'Cancel' : 'Go Back'),
                 ),
               ],
             ),

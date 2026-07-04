@@ -2183,6 +2183,56 @@ router.post('/badges/delete/:id', requireRole(3), asyncHandler(async (req, res) 
   }
 }));
 
+// ── Face Verification Management ──
+
+router.get('/face-verification', requireRole(1), asyncHandler(async (req, res) => {
+  const faces = await sql(`SELECT f.*, a.child_name, a.member_id FROM face_templates f LEFT JOIN accounts a ON f.account_id = a.account_id ORDER BY f.created_at DESC`);
+  const accounts = await sql("SELECT account_id, child_name FROM accounts WHERE account_id NOT IN (SELECT account_id FROM face_templates) ORDER BY child_name ASC");
+  const q = req.query;
+  const toast = q.deleted ? 'success:Face template deleted.'
+    : q.error ? `error:${q.error}`
+    : '';
+
+  const content = `
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-icon">&#x1F9DA;</div><div class="stat-value" data-count="${faces.length}">0</div><div class="stat-label">Face Enrolled</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F464;</div><div class="stat-value" data-count="${accounts.length}">0</div><div class="stat-label">Not Enrolled</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3>&#x1F9DA; Face Verification</h3></div>
+    <div class="card-body">
+    <table><tr><th>Child</th><th>Member ID</th><th>Enrolled At</th><th>Last Updated</th><th>Actions</th></tr>
+    ${faces.length === 0 ? '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted)">No face templates enrolled.</td></tr>' : faces.map(f => `<tr>
+      <td><b>${f.child_name || '-'}</b></td>
+      <td class="mono">${f.member_id || '-'}</td>
+      <td class="mono">${f.created_at ? f.created_at.slice(0, 19).replace('T', ' ') : '-'}</td>
+      <td class="mono">${f.updated_at ? f.updated_at.slice(0, 19).replace('T', ' ') : '-'}</td>
+      <td>
+        <form class="inline" method="post" action="/admin/face-verification/delete/${f.account_id}" data-confirm="Remove face template for ${f.child_name || f.account_id}?">
+          <button type="submit" class="btn btn-danger btn-xs">&#x1F5D1; Remove</button>
+        </form>
+      </td>
+    </tr>`).join('')}
+    </table></div>
+  </div>
+  `;
+
+  res.type('html').send(layout('Face Verification', 'face-verification', content, {
+    toast, subtitle: `${faces.length} face enrolled`,
+    counts: { faces: faces.length },
+  }));
+}));
+
+router.post('/face-verification/delete/:accountId', requireRole(3), asyncHandler(async (req, res) => {
+  try {
+    await store.query('DELETE FROM face_templates WHERE account_id = $1', [req.params.accountId]);
+    res.redirect('/admin/face-verification?deleted=ok');
+  } catch (err) {
+    res.redirect(`/admin/face-verification?error=${encodeURIComponent(err.message)}`);
+  }
+}));
+
 // ── Loans Management ──
 
 router.get('/loans', requireRole(1), asyncHandler(async (req, res) => {

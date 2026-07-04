@@ -18,6 +18,7 @@ import '../widgets/app_card.dart';
 import '../../core/network/banking_api_service.dart';
 import 'kyc_page.dart';
 import 'login_page.dart';
+import 'terms_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -328,6 +329,10 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
         const SizedBox(height: Spacing.sm),
         _actionButton(Icons.settings, 'Settings', Colors.grey.shade600, () {
           Navigator.push(context, PageTransition.slideUp(const _SettingsPage())).then((_) => _load());
+        }),
+        const SizedBox(height: Spacing.sm),
+        _actionButton(Icons.description_outlined, 'Terms & Conditions', const Color(0xFF6366F1), () {
+          Navigator.push(context, PageTransition.slideUp(const TermsPage()));
         }),
         const SizedBox(height: Spacing.sm),
         _actionButton(Icons.logout, 'Logout', Colors.red.shade400, () async {

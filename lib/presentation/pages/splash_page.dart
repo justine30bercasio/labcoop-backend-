@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/theme/app_theme.dart';
 import 'login_page.dart';
 import 'home_page.dart';
+import 'terms_accept_page.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -41,6 +43,23 @@ class _SplashPageState extends State<SplashPage>
 
     Future.delayed(const Duration(milliseconds: 3200), () async {
       if (!_disposed && mounted) {
+        final box = Hive.box('app_settings');
+        final termsAccepted = box.get('terms_accepted', defaultValue: false) as bool;
+
+        if (!termsAccepted) {
+          if (!mounted) return;
+          Navigator.pushReplacement(
+            context,
+            PageRouteBuilder(
+              pageBuilder: (_, __, ___) => const TermsAcceptPage(),
+              transitionsBuilder: (_, animation, __, child) =>
+                  FadeTransition(opacity: animation, child: child),
+              transitionDuration: const Duration(milliseconds: 600),
+            ),
+          );
+          return;
+        }
+
         const storage = FlutterSecureStorage();
         final token = await storage.read(key: 'auth_token');
         Widget destination;

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/theme/app_theme.dart';
+import 'login_page.dart';
+import 'home_page.dart';
 
 class TermsAcceptPage extends StatefulWidget {
-  final VoidCallback onAccepted;
-  const TermsAcceptPage({super.key, required this.onAccepted});
+  const TermsAcceptPage({super.key});
 
   @override
   State<TermsAcceptPage> createState() => _TermsAcceptPageState();
@@ -38,7 +40,24 @@ class _TermsAcceptPageState extends State<TermsAcceptPage>
   Future<void> _accept() async {
     await Hive.box('app_settings').put('terms_accepted', true);
     if (!mounted) return;
-    widget.onAccepted();
+    const storage = FlutterSecureStorage();
+    final token = await storage.read(key: 'auth_token');
+    Widget destination;
+    if (token != null) {
+      destination = const HomePage();
+    } else {
+      destination = const LoginPage();
+    }
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => destination,
+        transitionsBuilder: (_, animation, __, child) =>
+            FadeTransition(opacity: animation, child: child),
+        transitionDuration: const Duration(milliseconds: 600),
+      ),
+    );
   }
 
   @override

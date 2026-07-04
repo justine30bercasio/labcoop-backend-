@@ -2,7 +2,6 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/design_system.dart';
 import '../../core/services/inactivity_timer.dart';
@@ -17,7 +16,6 @@ import 'transfer_page.dart';
 import 'play_page.dart';
 import 'banking_page.dart';
 import 'login_page.dart';
-import 'terms_accept_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -30,7 +28,6 @@ class _HomePageState extends State<HomePage> {
   int _currentIndex = 0;
   String _accountId = '';
   bool _loading = true;
-  bool _needsTermsAcceptance = false;
   InactivityTimer? _inactivityTimer;
 
   @override
@@ -75,11 +72,9 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    final termsAccepted = Hive.box('app_settings').get('terms_accepted', defaultValue: false) as bool;
     setState(() {
       _accountId = accountId;
       _loading = false;
-      _needsTermsAcceptance = !termsAccepted;
     });
 
     _inactivityTimer = InactivityTimer(_onSessionExpired);
@@ -93,12 +88,6 @@ class _HomePageState extends State<HomePage> {
       return const Scaffold(
         backgroundColor: Colors.white,
         body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    if (_needsTermsAcceptance) {
-      return TermsAcceptPage(
-        onAccepted: () => setState(() => _needsTermsAcceptance = false),
       );
     }
 

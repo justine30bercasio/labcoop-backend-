@@ -6722,6 +6722,20 @@ router.get('/board', requireRole(2), asyncHandler(async (req, res) => {
   .stat-card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
   .stat-card .num { font-size:22px; font-weight:700; color:var(--text); }
   .stat-card .lbl { font-size:11px; color:var(--text-muted); margin-top:2px; }
+  .photo-upload-wrapper { text-align:center; padding:8px 0; }
+  .photo-upload-circle {
+    width:100px; height:100px; border-radius:50%;
+    border:3px dashed var(--border);
+    display:flex; align-items:center; justify-content:center;
+    margin:0 auto; cursor:pointer; transition:all 0.2s;
+    background:var(--bg); overflow:hidden; position:relative;
+  }
+  .photo-upload-circle:hover { border-color:var(--accent); background:#e8f5e9; transform:scale(1.05); }
+  .photo-upload-circle.has-photo { border-style:solid; border-color:var(--accent); }
+  .photo-upload-icon { font-size:32px; color:var(--text-muted); transition:all 0.2s; }
+  .photo-upload-circle:hover .photo-upload-icon { color:var(--accent); transform:scale(1.1); }
+  .photo-preview-img { width:100%; height:100%; object-fit:cover; border-radius:50%; }
+  .photo-hint { font-size:11px; color:var(--text-muted); margin-top:6px; }
   </style>`;
 
   const statsCards = members.length > 0 ? `
@@ -6764,12 +6778,13 @@ router.get('/board', requireRole(2), asyncHandler(async (req, res) => {
     <a href="#add-modal" class="btn btn-primary">&#x2795; Add Board Member</a>
   </div>` : '';
 
+  const csrfParam = `_csrf=${res.locals.csrfToken}`;
   const addModal = `
   <div id="add-modal" class="modal-overlay">
   <div class="modal">
     <a href="#" class="close">&times;</a>
     <h2>&#x2795; Add Board Member</h2>
-    <form method="post" action="/admin/board/add" enctype="multipart/form-data">
+    <form method="post" action="/admin/board/add?${csrfParam}" enctype="multipart/form-data">
       <label>Full Name *</label>
       <input type="text" name="name" required placeholder="e.g. Juan Dela Cruz">
       <label>Position / Title *</label>
@@ -6777,9 +6792,15 @@ router.get('/board', requireRole(2), asyncHandler(async (req, res) => {
       <label>Sort Order</label>
       <input type="number" name="sort_order" value="${members.length + 1}" min="1" style="width:100px">
       <label>Photo</label>
-      <input type="file" name="photo" accept="image/*" onchange="previewBoardPhoto(this, 'addPreview')">
-      <img id="addPreview" class="board-photo-preview" style="display:none">
-      <button type="submit" class="btn btn-primary">&#x2795; Add Member</button>
+      <div class="photo-upload-wrapper">
+        <div class="photo-upload-circle" onclick="document.getElementById('addPhotoInput').click()">
+          <img id="addPreview" class="photo-preview-img" style="display:none">
+          <span id="addPlaceholder" class="photo-upload-icon">&#x2795;</span>
+        </div>
+        <input type="file" id="addPhotoInput" name="photo" accept="image/*" onchange="previewBoardPhoto(this, 'addPreview', 'addPlaceholder')" style="display:none">
+        <div class="photo-hint">Click to upload photo</div>
+      </div>
+      <button type="submit" class="btn btn-primary" style="margin-top:18px">&#x2795; Add Member</button>
       <a href="#" class="btn btn-secondary">Cancel</a>
     </form>
   </div>
@@ -6792,7 +6813,7 @@ router.get('/board', requireRole(2), asyncHandler(async (req, res) => {
     <div style="font-size:48px;margin-bottom:12px">&#x26A0;&#xFE0F;</div>
     <h2 style="margin-bottom:4px">Delete Board Member?</h2>
     <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px">This will permanently remove <strong>${h(m.name)}</strong> from the board.</p>
-    <form method="post" action="/admin/board/delete/${m.id}">
+    <form method="post" action="/admin/board/delete/${m.id}?${csrfParam}">
       <button type="submit" class="btn btn-danger" style="padding:10px 28px">&#x1F5D1; Delete</button>
       <a href="#" class="btn btn-secondary">Cancel</a>
     </form>
@@ -6804,7 +6825,7 @@ router.get('/board', requireRole(2), asyncHandler(async (req, res) => {
   <div class="modal">
     <a href="#" class="close">&times;</a>
     <h2>&#x270F; ${h(m.name)}</h2>
-    <form method="post" action="/admin/board/edit/${m.id}" enctype="multipart/form-data">
+    <form method="post" action="/admin/board/edit/${m.id}?${csrfParam}" enctype="multipart/form-data">
       <label>Full Name *</label>
       <input type="text" name="name" value="${h(m.name)}" required>
       <label>Position / Title *</label>
@@ -6812,11 +6833,15 @@ router.get('/board', requireRole(2), asyncHandler(async (req, res) => {
       <label>Sort Order</label>
       <input type="number" name="sort_order" value="${m.sort_order || 0}" min="1" style="width:100px">
       <label>Photo</label>
-      <input type="file" name="photo" accept="image/*" onchange="previewBoardPhoto(this, 'editPreview${m.id}')">
-      <div>
-        <img id="editPreview${m.id}" src="${m.image_url || ''}" class="board-photo-preview" style="${m.image_url ? '' : 'display:none'}">
+      <div class="photo-upload-wrapper">
+        <div class="photo-upload-circle ${m.image_url ? 'has-photo' : ''}" onclick="document.getElementById('editPhotoInput${m.id}').click()">
+          <img id="editPreview${m.id}" src="${m.image_url || ''}" class="photo-preview-img" style="${m.image_url ? '' : 'display:none'}">
+          <span id="editPlaceholder${m.id}" class="photo-upload-icon" style="${m.image_url ? 'display:none' : ''}">&#x2795;</span>
+        </div>
+        <input type="file" id="editPhotoInput${m.id}" name="photo" accept="image/*" onchange="previewBoardPhoto(this, 'editPreview${m.id}', 'editPlaceholder${m.id}')" style="display:none">
+        <div class="photo-hint">Click to change photo</div>
       </div>
-      <button type="submit" class="btn btn-primary">&#x1F4BE; Save Changes</button>
+      <button type="submit" class="btn btn-primary" style="margin-top:18px">&#x1F4BE; Save Changes</button>
       <a href="#" class="btn btn-secondary">Cancel</a>
     </form>
   </div>
@@ -6824,12 +6849,18 @@ router.get('/board', requireRole(2), asyncHandler(async (req, res) => {
 
   const script = `
   <script>
-  function previewBoardPhoto(input, previewId) {
+  function previewBoardPhoto(input, previewId, placeholderId) {
     var preview = document.getElementById(previewId);
+    var ph = document.getElementById(placeholderId);
     if (!preview) return;
     if (input.files && input.files[0]) {
       var reader = new FileReader();
-      reader.onload = function(e) { preview.src = e.target.result; preview.style.display = 'block'; };
+      reader.onload = function(e) {
+        preview.src = e.target.result;
+        preview.style.display = 'block';
+        if (ph) ph.style.display = 'none';
+        preview.closest('.photo-upload-circle')?.classList.add('has-photo');
+      };
       reader.readAsDataURL(input.files[0]);
     }
   }

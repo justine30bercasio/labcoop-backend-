@@ -549,7 +549,7 @@ app.use('/api/settings', authMiddleware, requireOwnership, settingsRouter);
 function csrfProtection(req, res, next) {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
   const headerToken = req.headers['x-csrf-token'];
-  const bodyToken = req.body?._csrf;
+  const bodyToken = req.body?._csrf || req.query?._csrf;
   const cookieToken = req.session?.csrfToken;
   const token = headerToken || bodyToken;
   if (!cookieToken || !token || token !== cookieToken) {

@@ -413,7 +413,6 @@ class PgStore {
       CREATE TABLE IF NOT EXISTS tax_config (tax_id TEXT PRIMARY KEY, name TEXT NOT NULL, rate DECIMAL(5,2) NOT NULL, applies_to TEXT DEFAULT 'interest' CHECK(applies_to IN ('interest','fee','dividend','all')), is_active INTEGER DEFAULT 1, created_at TEXT);
       INSERT INTO tax_config (tax_id, name, rate, applies_to) VALUES ('tax_interest', 'Interest Income Tax', 20, 'interest') ON CONFLICT (tax_id) DO NOTHING;
       INSERT INTO tax_config (tax_id, name, rate, applies_to) VALUES ('tax_dividend', 'Dividend Tax', 10, 'dividend') ON CONFLICT (tax_id) DO NOTHING;
-      CREATE TABLE IF NOT EXISTS face_templates (template_id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE, face_descriptor TEXT NOT NULL, image_url TEXT DEFAULT '', created_at TEXT, updated_at TEXT);
     `;
     await this.pool.query(schema);
     // Migrations for existing tables

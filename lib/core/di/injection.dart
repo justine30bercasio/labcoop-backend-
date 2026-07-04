@@ -16,6 +16,7 @@ import '../../presentation/blocs/savings_bloc.dart';
 import '../../presentation/blocs/goal_bloc.dart';
 import '../../presentation/blocs/banking_bloc.dart';
 import '../../presentation/blocs/loan_bloc.dart';
+import '../../data/services/face_auth_service.dart';
 import '../network/dio_client.dart';
 
 final sl = GetIt.instance;
@@ -27,6 +28,9 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton<LocalDbSource>(() => LocalDbSource());
   sl.registerLazySingleton<RemoteApiSource>(
     () => RemoteApiSource(sl<Dio>()),
+  );
+  sl.registerLazySingleton<FaceAuthService>(
+    () => FaceAuthService(sl<Dio>()),
   );
   sl.registerLazySingleton<SampleApiSource>(() => SampleApiSource());
 

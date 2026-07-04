@@ -295,22 +295,16 @@ class RemoteApiSource {
   }
 
   Future<Map<String, dynamic>> submitKyc({
-    List<int>? selfieBytes,
-    String? selfieFilename,
+    required List<int> selfieBytes,
+    required String selfieFilename,
     List<int>? birthCertBytes,
-    String? birthCertFilename,
+    String birthCertFilename = 'birth_cert.jpg',
   }) async {
-    final map = <String, dynamic>{};
-    if (selfieBytes != null && selfieFilename != null) {
-      map['selfie'] = MultipartFile.fromBytes(selfieBytes, filename: selfieFilename);
-    }
-    if (birthCertBytes != null && birthCertFilename != null) {
-      map['birth_cert'] = MultipartFile.fromBytes(birthCertBytes, filename: birthCertFilename);
-    }
-    if (map.isEmpty) {
-      throw Exception('At least one document (selfie or birth cert) is required');
-    }
-    final form = FormData.fromMap(map);
+    final form = FormData.fromMap({
+      'selfie': MultipartFile.fromBytes(selfieBytes, filename: selfieFilename),
+      if (birthCertBytes != null)
+        'birth_cert': MultipartFile.fromBytes(birthCertBytes, filename: birthCertFilename),
+    });
     final response = await _dio.post('/api/kyc/submit', data: form);
     return response.data as Map<String, dynamic>;
   }

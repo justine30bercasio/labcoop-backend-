@@ -5,6 +5,7 @@ import '../../core/theme/app_theme.dart';
 import '../../data/datasources/local_db_source.dart';
 import '../../data/datasources/remote_api_source.dart';
 import 'change_password_page.dart';
+import 'face_login_screen.dart';
 import 'home_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -320,6 +321,28 @@ class _LoginPageState extends State<LoginPage>
                                         Icon(Icons.arrow_forward_rounded, size: 18),
                                       ],
                                     ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const FaceLoginScreen(),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.face, size: 18),
+                              label: const Text('Login with Face'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.white.withValues(alpha: 0.8),
+                                side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
                             ),
                           ),
                           const SizedBox(height: 16),

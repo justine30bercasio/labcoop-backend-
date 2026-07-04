@@ -45,7 +45,11 @@ class SavingsBloc extends Bloc<SavingsEvent, SavingsState> {
       ));
       _repository.processPendingOps();
     } catch (e) {
-      emit(SavingsError('Something went wrong.'));
+      if (state is SavingsLoaded) {
+        emit((state as SavingsLoaded).copyWith(syncStatus: SyncStatus.error));
+      } else {
+        emit(SavingsError('Something went wrong.'));
+      }
     }
   }
 

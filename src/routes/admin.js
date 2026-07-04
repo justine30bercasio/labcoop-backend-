@@ -6586,8 +6586,9 @@ router.post('/users/update/:id', requireRole(4), asyncHandler(async (req, res) =
   res.redirect('/admin/users?updated=ok');
 }));
 
-// ── First-run setup (no session required) ──
-// ── Board of Directors Management ──
+// ── Board of Directors Management (Advanced UI) ──
+
+const _boardUpload = multer({ dest: path.join(__dirname, '..', 'uploads', 'board') });
 
 router.get('/board', requireRole(2), asyncHandler(async (req, res) => {
   const members = await sql('SELECT * FROM board_members ORDER BY sort_order ASC, created_at ASC');
@@ -6598,52 +6599,270 @@ router.get('/board', requireRole(2), asyncHandler(async (req, res) => {
     : q.uploaded ? 'success:Photo uploaded.'
     : q.error ? `error:${q.error}`
     : '';
-  const content = `
-  <div class="card">
-    <div class="card-header"><h3>&#x1F465; Board of Directors</h3>
-      <a href="/admin/board/add" class="btn btn-primary btn-xs">&#x2795; Add Member</a>
+
+  const style = `
+  <style>
+  .board-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+    padding: 4px 0;
+  }
+  .board-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    transition: all 0.25s ease;
+    position: relative;
+  }
+  .board-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+    border-color: var(--accent);
+  }
+  .board-card-photo {
+    width: 100%;
+    height: 140px;
+    background: linear-gradient(135deg, #e8eaf6, #c5cae9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+  }
+  .board-card-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .board-card-photo .no-photo {
+    font-size: 48px;
+    color: #7986cb;
+    opacity: 0.5;
+  }
+  .board-card-body {
+    padding: 12px 14px 10px;
+  }
+  .board-card-body h4 {
+    margin: 0 0 2px 0;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .board-card-body .position {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 0 0 8px 0;
+  }
+  .board-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 14px 10px;
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .board-card-footer .sort-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: #f1f5f9;
+    padding: 2px 10px;
+    border-radius: 20px;
+  }
+  .board-card-actions {
+    display: flex;
+    gap: 4px;
+  }
+  .board-card-actions .btn-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    border: none;
+    font-size: 13px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    text-decoration: none;
+    color: #fff;
+  }
+  .btn-icon-edit { background: #f59e0b; }
+  .btn-icon-edit:hover { background: #d97706; }
+  .btn-icon-delete { background: #ef4444; }
+  .btn-icon-delete:hover { background: #dc2626; }
+  .board-photo-preview {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid var(--accent);
+    margin: 4px 0 8px;
+  }
+  .sort-arrows {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-left: 6px;
+  }
+  .sort-arrows a {
+    text-decoration: none;
+    font-size: 10px;
+    line-height: 1;
+    color: var(--text-muted);
+    padding: 0 2px;
+  }
+  .sort-arrows a:hover { color: var(--accent); }
+  .stats-cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:12px; margin-bottom:16px; }
+  .stat-card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
+  .stat-card .num { font-size:22px; font-weight:700; color:var(--text); }
+  .stat-card .lbl { font-size:11px; color:var(--text-muted); margin-top:2px; }
+  </style>`;
+
+  const statsCards = members.length > 0 ? `
+  <div class="stats-cards">
+    <div class="stat-card"><div class="num">${members.length}</div><div class="lbl">Total Members</div></div>
+    <div class="stat-card"><div class="num">${members.filter(m => m.image_url).length}/${members.length}</div><div class="lbl">With Photos</div></div>
+    <div class="stat-card"><div class="num">#${members[0]?.sort_order || '-'}</div><div class="lbl">First Order</div></div>
+    <div class="stat-card"><div class="num">#${members[members.length-1]?.sort_order || '-'}</div><div class="lbl">Last Order</div></div>
+  </div>` : '';
+
+  const memberCards = members.map(m => `
+  <div class="board-card">
+    <div class="board-card-photo">
+      ${m.image_url ? `<img src="${m.image_url}" alt="${h(m.name)}">` : '<div class="no-photo">&#x1F465;</div>'}
     </div>
-    <div class="card-body">
-    <table>
-      <tr><th>Photo</th><th>Name</th><th>Position</th><th>Order</th><th>Actions</th></tr>
-      ${members.length === 0 ? '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted)">No board members yet.</td></tr>' : members.map(m => `<tr>
-        <td>${m.image_url ? `<img src="${m.image_url}" style="width:48px;height:48px;border-radius:50%;object-fit:cover;border:2px solid var(--border)">` : '<span style="color:var(--text-muted)">\u2014</span>'}</td>
-        <td><b>${h(m.name)}</b></td>
-        <td>${h(m.position)}</td>
-        <td class="mono">${m.sort_order}</td>
-        <td>
-          <a href="/admin/board/edit/${m.id}" class="btn btn-amber btn-xs">&#x270F;</a>
-          <form class="inline" method="post" action="/admin/board/delete/${m.id}" data-confirm="Delete ${h(m.name)}?">
-            <button type="submit" class="btn btn-danger btn-xs">&#x1F5D1;</button>
-          </form>
-        </td>
-      </tr>`).join('')}
-    </table></div>
+    <div class="board-card-body">
+      <h4>${h(m.name)}</h4>
+      <div class="position">${h(m.position)}</div>
+    </div>
+    <div class="board-card-footer">
+      <span class="sort-badge">
+        &#x1F4CB; #${m.sort_order}
+        <span class="sort-arrows">
+          <a href="/admin/board/sort/${m.id}/up" title="Move up">&#x25B2;</a>
+          <a href="/admin/board/sort/${m.id}/down" title="Move down">&#x25BC;</a>
+        </span>
+      </span>
+      <div class="board-card-actions">
+        <a href="#edit-${m.id}" class="btn-icon btn-icon-edit" title="Edit">&#x270F;</a>
+        <a href="#delete-${m.id}" class="btn-icon btn-icon-delete" title="Delete">&#x1F5D1;</a>
+      </div>
+    </div>
+  </div>`).join('');
+
+  const emptyState = members.length === 0 ? `
+  <div style="text-align:center;padding:48px 16px;color:var(--text-muted)">
+    <div style="font-size:64px;margin-bottom:16px;opacity:0.3">&#x1F465;</div>
+    <h3 style="margin:0 0 6px;font-weight:600">No Board Members Yet</h3>
+    <p style="margin:0 0 20px;font-size:13px">Add the first member of your Board of Directors.</p>
+    <a href="#add-modal" class="btn btn-primary">&#x2795; Add Board Member</a>
+  </div>` : '';
+
+  const addModal = `
+  <div id="add-modal" class="modal-overlay">
+  <div class="modal">
+    <a href="#" class="close">&times;</a>
+    <h2>&#x2795; Add Board Member</h2>
+    <form method="post" action="/admin/board/add" enctype="multipart/form-data">
+      <label>Full Name *</label>
+      <input type="text" name="name" required placeholder="e.g. Juan Dela Cruz">
+      <label>Position / Title *</label>
+      <input type="text" name="position" required placeholder="e.g. Chairman, Treasurer, Secretary">
+      <label>Sort Order</label>
+      <input type="number" name="sort_order" value="${members.length + 1}" min="1" style="width:100px">
+      <label>Photo</label>
+      <input type="file" name="photo" accept="image/*" onchange="previewBoardPhoto(this, 'addPreview')">
+      <img id="addPreview" class="board-photo-preview" style="display:none">
+      <button type="submit" class="btn btn-primary">&#x2795; Add Member</button>
+      <a href="#" class="btn btn-secondary">Cancel</a>
+    </form>
+  </div>
   </div>`;
-  res.type('html').send(layout('Board of Directors', 'board', content, { toast, subtitle: `${members.length} member${members.length !== 1 ? 's' : ''}` }));
+
+  const deleteModals = members.map(m => `
+  <div id="delete-${m.id}" class="modal-overlay">
+  <div class="modal" style="max-width:380px;text-align:center">
+    <a href="#" class="close">&times;</a>
+    <div style="font-size:48px;margin-bottom:12px">&#x26A0;&#xFE0F;</div>
+    <h2 style="margin-bottom:4px">Delete Board Member?</h2>
+    <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px">This will permanently remove <strong>${h(m.name)}</strong> from the board.</p>
+    <form method="post" action="/admin/board/delete/${m.id}">
+      <button type="submit" class="btn btn-danger" style="padding:10px 28px">&#x1F5D1; Delete</button>
+      <a href="#" class="btn btn-secondary">Cancel</a>
+    </form>
+  </div>
+  </div>`).join('');
+
+  const editModals = members.map(m => `
+  <div id="edit-${m.id}" class="modal-overlay">
+  <div class="modal">
+    <a href="#" class="close">&times;</a>
+    <h2>&#x270F; ${h(m.name)}</h2>
+    <form method="post" action="/admin/board/edit/${m.id}" enctype="multipart/form-data">
+      <label>Full Name *</label>
+      <input type="text" name="name" value="${h(m.name)}" required>
+      <label>Position / Title *</label>
+      <input type="text" name="position" value="${h(m.position)}" required>
+      <label>Sort Order</label>
+      <input type="number" name="sort_order" value="${m.sort_order || 0}" min="1" style="width:100px">
+      <label>Photo</label>
+      <input type="file" name="photo" accept="image/*" onchange="previewBoardPhoto(this, 'editPreview${m.id}')">
+      <div>
+        <img id="editPreview${m.id}" src="${m.image_url || ''}" class="board-photo-preview" style="${m.image_url ? '' : 'display:none'}">
+      </div>
+      <button type="submit" class="btn btn-primary">&#x1F4BE; Save Changes</button>
+      <a href="#" class="btn btn-secondary">Cancel</a>
+    </form>
+  </div>
+  </div>`).join('');
+
+  const script = `
+  <script>
+  function previewBoardPhoto(input, previewId) {
+    var preview = document.getElementById(previewId);
+    if (!preview) return;
+    if (input.files && input.files[0]) {
+      var reader = new FileReader();
+      reader.onload = function(e) { preview.src = e.target.result; preview.style.display = 'block'; };
+      reader.readAsDataURL(input.files[0]);
+    }
+  }
+  </script>`;
+
+  const content = style + statsCards + emptyState + (members.length > 0 ? `
+  <div class="board-grid">${memberCards}</div>` : '') + addModal + editModals + deleteModals + script;
+
+  res.type('html').send(layout('Board of Directors', 'board', content, {
+    toast,
+    subtitle: `${members.length} member${members.length !== 1 ? 's' : ''}`,
+    headerActions: members.length > 0 ? '<a href="#add-modal" class="btn btn-primary">&#x2795; Add Member</a>' : ''
+  }));
 }));
 
-router.get('/board/add', requireRole(2), asyncHandler(async (req, res) => {
-  const content = `
-  <div class="card">
-    <div class="card-header"><h3>&#x2795; Add Board Member</h3></div>
-    <div class="card-body">
-    <form method="post" action="/admin/board/add" enctype="multipart/form-data" style="max-width:500px">
-      <div class="form-group"><label>Name *</label><input type="text" name="name" required class="form-control"></div>
-      <div class="form-group"><label>Position *</label><input type="text" name="position" required class="form-control" placeholder="e.g. Chairman, Treasurer"></div>
-      <div class="form-group"><label>Sort Order</label><input type="number" name="sort_order" value="0" class="form-control" style="width:100px"></div>
-      <div class="form-group"><label>Photo</label><input type="file" name="photo" accept="image/*" class="form-control"></div>
-      <div class="form-actions"><button type="submit" class="btn btn-primary">&#x2795; Add</button> <a href="/admin/board" class="btn btn-secondary">Cancel</a></div>
-    </form></div>
-  </div>`;
-  res.type('html').send(layout('Add Board Member', 'board', content));
+router.get('/board/sort/:id/:dir', requireRole(2), asyncHandler(async (req, res) => {
+  const { id, dir } = req.params;
+  const members = await sql('SELECT * FROM board_members ORDER BY sort_order ASC, created_at ASC');
+  const idx = members.findIndex(m => m.id === id);
+  if (idx === -1 || (dir === 'up' && idx === 0) || (dir === 'down' && idx === members.length - 1))
+    return res.redirect('/admin/board');
+  const swapIdx = dir === 'up' ? idx - 1 : idx + 1;
+  const cur = members[idx];
+  const other = members[swapIdx];
+  const tmp = cur.sort_order;
+  await store.query('UPDATE board_members SET sort_order=$1 WHERE id=$2', [other.sort_order, cur.id]);
+  await store.query('UPDATE board_members SET sort_order=$1 WHERE id=$2', [tmp, other.id]);
+  res.redirect('/admin/board');
 }));
 
-const boardUpload = multer({ dest: path.join(__dirname, '..', 'uploads', 'board') });
-
-router.post('/board/add', requireRole(2), boardUpload.single('photo'), asyncHandler(async (req, res) => {
+router.post('/board/add', requireRole(2), _boardUpload.single('photo'), asyncHandler(async (req, res) => {
   const { name, position, sort_order } = req.body;
-  if (!name || !position) return res.redirect('/admin/board/add?error=Name+and+position+are+required');
+  if (!name || !position) return res.redirect('/admin/board?error=Name+and+position+are+required');
   const id = require('uuid').v4();
   let imageUrl = '';
   if (req.file) {
@@ -6658,28 +6877,7 @@ router.post('/board/add', requireRole(2), boardUpload.single('photo'), asyncHand
   res.redirect('/admin/board?added=ok');
 }));
 
-router.get('/board/edit/:id', requireRole(2), asyncHandler(async (req, res) => {
-  const m = await one('SELECT * FROM board_members WHERE id = $1', [req.params.id]);
-  if (!m) return res.redirect('/admin/board?error=Not+found');
-  const content = `
-  <div class="card">
-    <div class="card-header"><h3>&#x270F; Edit Board Member</h3></div>
-    <div class="card-body">
-    <form method="post" action="/admin/board/edit/${m.id}" enctype="multipart/form-data" style="max-width:500px">
-      <div class="form-group"><label>Name *</label><input type="text" name="name" value="${h(m.name)}" required class="form-control"></div>
-      <div class="form-group"><label>Position *</label><input type="text" name="position" value="${h(m.position)}" required class="form-control"></div>
-      <div class="form-group"><label>Sort Order</label><input type="number" name="sort_order" value="${m.sort_order || 0}" class="form-control" style="width:100px"></div>
-      <div class="form-group"><label>Photo</label>
-        ${m.image_url ? `<div style="margin-bottom:8px"><img src="${m.image_url}" style="width:80px;height:80px;border-radius:50%;object-fit:cover"></div>` : ''}
-        <input type="file" name="photo" accept="image/*" class="form-control">
-      </div>
-      <div class="form-actions"><button type="submit" class="btn btn-primary">&#x1F4BE; Save</button> <a href="/admin/board" class="btn btn-secondary">Cancel</a></div>
-    </form></div>
-  </div>`;
-  res.type('html').send(layout('Edit Board Member', 'board', content));
-}));
-
-router.post('/board/edit/:id', requireRole(2), boardUpload.single('photo'), asyncHandler(async (req, res) => {
+router.post('/board/edit/:id', requireRole(2), _boardUpload.single('photo'), asyncHandler(async (req, res) => {
   const { name, position, sort_order } = req.body;
   const m = await one('SELECT * FROM board_members WHERE id = $1', [req.params.id]);
   if (!m) return res.redirect('/admin/board?error=Not+found');

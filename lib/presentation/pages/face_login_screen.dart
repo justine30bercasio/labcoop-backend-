@@ -23,6 +23,7 @@ class _FaceLoginScreenState extends State<FaceLoginScreen> {
   bool _faceEnrolled = false;
   String? _sessionAccountId;
   String? _sessionChildName;
+  String? _debugStatus;
 
   @override
   void initState() {
@@ -33,7 +34,7 @@ class _FaceLoginScreenState extends State<FaceLoginScreen> {
   Future<void> _checkFaceStatus() async {
     final session = await _api.getStoredSession();
     if (session == null) {
-      if (mounted) setState(() => _checkingStatus = false);
+      if (mounted) setState(() { _checkingStatus = false; _debugStatus = 'No session'; });
       return;
     }
     _sessionAccountId = session['accountId'];
@@ -44,10 +45,11 @@ class _FaceLoginScreenState extends State<FaceLoginScreen> {
         setState(() {
           _faceEnrolled = status['enrolled'] == true;
           _checkingStatus = false;
+          _debugStatus = 'Account: ${session['accountId']} Enrolled: ${status['enrolled']}';
         });
       }
-    } catch (_) {
-      if (mounted) setState(() => _checkingStatus = false);
+    } catch (e) {
+      if (mounted) setState(() { _checkingStatus = false; _debugStatus = 'Error: $e'; });
     }
   }
 
@@ -122,6 +124,10 @@ class _FaceLoginScreenState extends State<FaceLoginScreen> {
                       : 'Log in with your password first, then set up face recognition from your profile.',
                   style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
                   textAlign: TextAlign.center,
+                ),
+                if (_debugStatus != null) Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(_debugStatus!, style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
                 ),
                 const SizedBox(height: 32),
                 if (_sessionAccountId != null)

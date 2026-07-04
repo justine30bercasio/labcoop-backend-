@@ -13,6 +13,16 @@ if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
+// Ensure face_templates table exists (in case batch schema didn't create it)
+store.query(`CREATE TABLE IF NOT EXISTS face_templates (
+  template_id TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL,
+  face_descriptor TEXT NOT NULL,
+  image_url TEXT DEFAULT '',
+  created_at TEXT,
+  updated_at TEXT
+)`).catch(err => console.error('Face: create table error:', err.message));
+
 const faceUpload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => cb(null, UPLOAD_DIR),
@@ -56,6 +66,7 @@ function compareSignatures(a, b) {
 router.post('/enroll', faceUpload.single('selfie'), asyncHandler(async (req, res) => {
   try {
     const accountId = req.accountId;
+    console.log(`Face enroll: attempt for accountId=${accountId}, hasFile=${!!req.file}, sig=${req.body.face_signature ? req.body.face_signature.substring(0,40) : 'none'}`);
     if (!accountId) {
       return res.status(401).json({ message: 'Authentication required' });
     }
@@ -65,6 +76,7 @@ router.post('/enroll', faceUpload.single('selfie'), asyncHandler(async (req, res
 
     let signature = parseSignature(req.body.face_signature);
     if (!signature) {
+      console.warn(`Face enroll: invalid signature for ${accountId}`);
       fs.unlink(req.file.path, () => {});
       return res.status(400).json({ message: 'Valid face signature is required' });
     }
@@ -72,19 +84,34 @@ router.post('/enroll', faceUpload.single('selfie'), asyncHandler(async (req, res
     const imageUrl = '/uploads/faces/' + req.file.filename;
     const now = new Date().toISOString();
 
-    const existing = await store.query('SELECT template_id FROM face_templates WHERE account_id = $1', [accountId]);
+    let existing;
+    try {
+      existing = await store.query('SELECT template_id FROM face_templates WHERE account_id = $1', [accountId]);
+    } catch (err) {
+      console.error('Face enroll: query face_templates failed:', err.message);
+      fs.unlink(req.file.path, () => {});
+      return res.status(500).json({ message: 'Database error: face_templates table may not exist' });
+    }
 
-    if (existing.rows.length > 0) {
-      await store.query(
-        'UPDATE face_templates SET face_descriptor = $1, image_url = $2, updated_at = $3 WHERE account_id = $4',
-        [JSON.stringify(signature), imageUrl, now, accountId]
-      );
-    } else {
-      const templateId = uuidv4();
-      await store.query(
-        'INSERT INTO face_templates (template_id, account_id, face_descriptor, image_url, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)',
-        [templateId, accountId, JSON.stringify(signature), imageUrl, now, now]
-      );
+    try {
+      if (existing.rows.length > 0) {
+        await store.query(
+          'UPDATE face_templates SET face_descriptor = $1, image_url = $2, updated_at = $3 WHERE account_id = $4',
+          [JSON.stringify(signature), imageUrl, now, accountId]
+        );
+        console.log(`Face enroll: UPDATED template for ${accountId}`);
+      } else {
+        const templateId = uuidv4();
+        await store.query(
+          'INSERT INTO face_templates (template_id, account_id, face_descriptor, image_url, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)',
+          [templateId, accountId, JSON.stringify(signature), imageUrl, now, now]
+        );
+        console.log(`Face enroll: INSERTED template for ${accountId} (${templateId})`);
+      }
+    } catch (err) {
+      console.error('Face enroll: write failed:', err.message);
+      fs.unlink(req.file.path, () => {});
+      return res.status(500).json({ message: 'Failed to save face template: ' + err.message });
     }
 
     res.json({ success: true, message: 'Face enrolled successfully' });
@@ -145,16 +172,21 @@ router.post('/verify', faceUpload.single('selfie'), asyncHandler(async (req, res
 }));
 
 router.get('/status/:accountId', asyncHandler(async (req, res) => {
-  const result = await store.query(
-    'SELECT created_at, updated_at FROM face_templates WHERE account_id = $1',
-    [req.params.accountId]
-  );
-  const enrolled = result.rows.length > 0;
-  res.json({
-    enrolled,
-    enrolledAt: enrolled ? result.rows[0].created_at : null,
-    updatedAt: enrolled ? result.rows[0].updated_at : null,
-  });
+  try {
+    const result = await store.query(
+      'SELECT created_at, updated_at FROM face_templates WHERE account_id = $1',
+      [req.params.accountId]
+    );
+    const enrolled = result.rows.length > 0;
+    return res.json({
+      enrolled,
+      enrolledAt: enrolled ? result.rows[0].created_at : null,
+      updatedAt: enrolled ? result.rows[0].updated_at : null,
+    });
+  } catch (err) {
+    console.error('Face status error:', err.message);
+    return res.json({ enrolled: false, enrolledAt: null, updatedAt: null });
+  }
 }));
 
 router.delete('/:accountId', asyncHandler(async (req, res) => {

@@ -910,8 +910,15 @@ class _LeaderboardPageState extends State<_LeaderboardPage> {
       final data = await api.getLeaderboard();
       final state = context.read<SavingsBloc>().state;
       final name = state is SavingsLoaded ? state.account.childName : '';
+      final parsed = data.map((e) => <String, dynamic>{
+        'account_id': e['account_id'],
+        'child_name': e['child_name'],
+        'actual_balance': (e['actual_balance'] is num ? (e['actual_balance'] as num).toDouble() : double.tryParse('${e['actual_balance']}') ?? 0),
+        'current_xp': (e['current_xp'] is num ? (e['current_xp'] as num).toInt() : int.tryParse('${e['current_xp']}') ?? 0),
+        'profile_pic_url': e['profile_pic_url'],
+      }).toList();
       if (!mounted) return;
-      setState(() { _entries = data; _myName = name; _loading = false; });
+      setState(() { _entries = parsed; _myName = name; _loading = false; });
     } catch (e) {
       if (!mounted) return;
       setState(() { _error = e.toString(); _loading = false; });

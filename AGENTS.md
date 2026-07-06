@@ -179,3 +179,40 @@ Flutter app data disappeared on logout/refresh because:
 - **Audit logging**: All admin logins (success + failure), OTP verifications, and reset-database events logged to `audit_log` table with IP and details.
 - **OTP rate-limiting**: Max 3 forgot-password requests per email per 15 minutes. Username enumeration prevented — generic response whether user exists or not. OTP success message no longer reveals email.
 - **AGENTS.md**: Separated into `Removed`, `In Progress`, `Blocked`, `Session History` sections for clarity.
+
+=====
+### Session 2026-07-06 — Security Audit, Compliance Features, Flutter UI Cleanup
+- **Security audit**: 4 CRITICAL (live creds, xlsx RCE, SSRF, balance manipulation), 7 HIGH, 8 MEDIUM, 5 LOW findings
+- **xlsx→exceljs**: Migrated all xlsx usage in `excel.js` and `admin.js` to `exceljs`; uninstalled `xlsx` package
+- **SSRF fix**: `new URL()` hostname validation in games proxy (`admin.js`)
+- **Balance fields locked**: `actual_balance`/`unallocated_balance` removed from `PUT /api/accounts/:id` allowed arrays
+- **GCash admin-only**: Removed `PUT /settings/gcash`; only admin can manage GCash
+- **KYC file serving**: `express.static` replaced with auth-gated middleware
+- **OTP logging removed**, **account enumeration fixed**, **HSTS added** (helmet 1-year preload)
+- **XSS fixed**: innerHTML→textContent + `escHtml()` sanitizer in admin
+- **CSRF fixed**: accepts both `X-CSRF-Token` header and `_csrf` body/query
+- **Goal allocation**: Server-side atomic `unallocated_balance` deduction
+- **JWT expiry**: 1h → 24h
+- **Leaderboard pseudonyms**: `Player N` instead of real names
+- **Password policy**: Requires uppercase + lowercase + digit
+- **Dead files deleted**: `admin_converted.js`, `admin_section.js`, `admin_test2/3/4.js`
+- **Dependencies cleaned**: Removed duplicate `bcrypt`, updated `multer@2.2.0`, `uuid@14.0.1`
+- **Parental consent flow**: Schema + `POST /api/parental-consent/request`, `GET /approve?token=`, `GET /status` with privacy policy
+- **Account deletion flow**: Schema + `POST /api/account-deletion/request`, `GET /status`
+- **Transaction void**: `POST /api/transactions/:txId/void` with GL reversal, balance restore, audit logging
+- **Deposit rate limiting**: 10 requests/15min on `accounts.js` deposit route
+- **Legal pages**: `/legal/privacy` and `/legal/terms` (COPPA-compliant)
+- **All new routes registered** in `index.js`
+- **Flutter: Account deletion UI** in Settings — reason field, confirmation dialog, status banner
+- **Flutter: GCash UI removed** from Settings (fields + save button + state deleted); API methods kept for `online_deposit_page`
+- **Flutter: Profile picture moved** to Settings — removed picker from profile page; added photo circle + camera icon in Settings with `_pickProfileImage()`
+- **Flutter: Fix parse error** in `_buildAvatarSection` — refactored into `_buildAvatarWithBorder` sub-method to resolve `dart analyze` errors
+- **APK built** (44.1MB) — `dart analyze` 0 errors across all Flutter files
+- **Both branches pushed**: backend `main` (5755402), Flutter `master` (b5867ae, e6fd059)
+
+=====
+### Session 2026-07-06 (Session 2) — CSRF multipart fix + shop sidebar + public shop/board images
+- **CSRF multipart fix**: All `enctype="multipart/form-data"` forms now use `?_csrf=` query param because `req.body._csrf` is empty until multer runs (after CSRF protection). Fixed 5 forms: shop create, shop upload, Excel import buttons, account photo upload, backup restore.
+- **Shop sidebar fix**: Refactored `/admin/shop` to use shared `layout()` from `admin-lib.js` — was using its own hardcoded flat sidebar missing grouped nav sections.
+- **Public `/uploads/shop/` and `/uploads/board/`**: Shop border/avatar images and board of directors photos were behind JWT `authMiddleware`, but admin `<img>` tags and Flutter `Image.network` don't send auth headers → broken images. Added public `express.static` for both before the auth-gated `/uploads/` route. KYC, profile photos, and registration docs remain auth-protected.
+- Backend `main` pushed: `b9989b2`

@@ -618,32 +618,55 @@ class _ProfilePageState extends State<ProfilePage>
   }
 
   Widget _avatarCircle() {
-    final hasUrl = _profilePicUrl.isNotEmpty;
     final hasLocal = _profileImageBytes != null;
-    ImageProvider? image;
+    final hasUrl = _profilePicUrl.isNotEmpty;
     if (hasLocal) {
-      image = MemoryImage(_profileImageBytes!);
-    } else if (hasUrl) {
+      return Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white,
+          border: Border.all(color: Colors.white, width: 3),
+          image: DecorationImage(
+              image: MemoryImage(_profileImageBytes!), fit: BoxFit.cover),
+        ),
+      );
+    }
+    if (hasUrl) {
       final fullUrl = _profilePicUrl.startsWith('http')
           ? _profilePicUrl
           : '${AppConstants.baseUrl}$_profilePicUrl';
-      image = NetworkImage(fullUrl,
-          headers: _authToken.isNotEmpty
-              ? {'Authorization': 'Bearer $_authToken'}
-              : null);
+      return ClipOval(
+        child: Container(
+          width: 120,
+          height: 120,
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.white, width: 3),
+          ),
+          child: Image.network(
+            fullUrl,
+            width: 120,
+            height: 120,
+            fit: BoxFit.cover,
+            headers: _authToken.isNotEmpty
+                ? {'Authorization': 'Bearer $_authToken'}
+                : null,
+            errorBuilder: (_, __, ___) => Container(
+              color: Colors.white,
+              child: Center(
+                  child: Text(_avatar,
+                      style: const TextStyle(fontSize: 48))),
+            ),
+          ),
+        ),
+      );
     }
     return Container(
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: Colors.white,
         border: Border.all(color: Colors.white, width: 3),
-        image: image != null
-            ? DecorationImage(image: image, fit: BoxFit.cover)
-            : null,
       ),
-      child: image == null
-          ? Center(child: Text(_avatar, style: const TextStyle(fontSize: 48)))
-          : null,
+      child: Center(child: Text(_avatar, style: const TextStyle(fontSize: 48))),
     );
   }
 }

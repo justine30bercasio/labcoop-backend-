@@ -1,22 +1,23 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/design_system.dart';
 import '../../domain/entities/goal_jar.dart';
 import '../../domain/entities/savings_account.dart';
 import '../../domain/entities/badge.dart' as entities;
+import '../../data/datasources/local_db_source.dart';
 import '../blocs/savings_bloc.dart';
 import '../blocs/savings_event.dart';
 import '../blocs/savings_state.dart';
 import '../widgets/xp_bar_widget.dart';
-import '../widgets/badge_grid_widget.dart';
 import '../widgets/celebration_overlay.dart';
 import '../widgets/wishlist_item_card.dart';
 import '../widgets/streak_widget.dart';
 import '../widgets/growth_projection_widget.dart';
-import '../widgets/growable_piggy_widget.dart';
 import '../widgets/savings_tips_widget.dart';
 import '../widgets/challenges_widget.dart';
 import '../widgets/staggered_animation.dart';
@@ -35,6 +36,7 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
+  final _source = LocalDbSource();
   bool _balanceVisible = true;
   bool _showCelebration = false;
   double _lastAmount = 0;
@@ -42,6 +44,10 @@ class _DashboardPageState extends State<DashboardPage> {
   bool _justSaved = false;
   SavingsLoaded? _lastLoadedState;
   Timer? _autoRefreshTimer;
+  String _avatar = '🐱';
+  Uint8List? _profileImageBytes;
+  String _profilePicUrl = '';
+  String _authToken = '';
 
   double get _horizontalPadding {
     final width = MediaQuery.of(context).size.width;
@@ -54,8 +60,23 @@ class _DashboardPageState extends State<DashboardPage> {
   void initState() {
     super.initState();
     context.read<SavingsBloc>().add(LoadSavings(widget.accountId));
+    _loadProfile();
     _autoRefreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       context.read<SavingsBloc>().add(LoadSavings(widget.accountId));
+    });
+  }
+
+  Future<void> _loadProfile() async {
+    final avatar = await _source.getAvatar();
+    final imgBytes = await _source.getProfileImageBytes();
+    final token = await FlutterSecureStorage().read(key: 'auth_token');
+    final state = context.read<SavingsBloc>().state;
+    final picUrl = state is SavingsLoaded ? state.account.profilePicUrl : '';
+    if (mounted) setState(() {
+      _avatar = avatar;
+      _profileImageBytes = imgBytes;
+      _profilePicUrl = picUrl;
+      _authToken = token ?? '';
     });
   }
 
@@ -148,6 +169,12 @@ class _DashboardPageState extends State<DashboardPage> {
                 });
               }
             });
+          }
+          if (state is SavingsLoaded) {
+            final newUrl = state.account.profilePicUrl;
+            if (newUrl.isNotEmpty && _profilePicUrl != newUrl) {
+              setState(() => _profilePicUrl = newUrl);
+            }
           }
           if (state is SavingsError && _lastLoadedState != null) {
             setState(() { _showCelebration = false; _justSaved = false; });
@@ -366,10 +393,6 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildBalanceHeader(SavingsAccount account,
       {double? totalSavings, double? totalTargetAmount}) {
-    final saved = totalSavings ?? account.actualBalance;
-    final target = totalTargetAmount ?? saved;
-    final ratio = target > 0 ? saved / target : 0.0;
-
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: _horizontalPadding),
       child: GestureDetector(
@@ -398,11 +421,7 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
           child: Row(
             children: [
-              GrowablePiggyWidget(
-                savingsRatio: ratio,
-                size: 72,
-                justSaved: _justSaved,
-              ),
+              _buildAvatar(size: 72, profilePicUrl: account.profilePicUrl),
               const SizedBox(width: Spacing.md),
               Expanded(
                 child: Column(
@@ -519,6 +538,60 @@ class _DashboardPageState extends State<DashboardPage> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildAvatar({double size = 72, String profilePicUrl = ''}) {
+    final hasLocal = _profileImageBytes != null;
+    final picUrl = _profilePicUrl.isNotEmpty ? _profilePicUrl : profilePicUrl;
+    final emoji = Center(
+        child: Text(_avatar, style: TextStyle(fontSize: size * 0.55)));
+
+    if (hasLocal) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(size / 2),
+        child: Image.memory(_profileImageBytes!,
+            width: size, height: size, fit: BoxFit.cover),
+      );
+    }
+
+    if (picUrl.isNotEmpty) {
+      final fullUrl = picUrl.startsWith('http')
+          ? picUrl
+          : '${AppConstants.baseUrl}$picUrl';
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(size / 2),
+        child: Image.network(
+          fullUrl,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          headers: _authToken.isNotEmpty
+              ? {'Authorization': 'Bearer $_authToken'}
+              : null,
+          errorBuilder: (_, __, ___) => Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              color: Colors.white24,
+              borderRadius: BorderRadius.circular(size / 2),
+            ),
+            child: emoji,
+          ),
+        ),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(size / 2),
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: Colors.white24,
+        ),
+        child: emoji,
       ),
     );
   }

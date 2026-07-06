@@ -325,4 +325,142 @@ router.get('/online-deposits/:accountId',
   })
 );
 
+// ── Transaction Void / Reversal ──
+
+const VOIDABLE_TYPES = ['deposit', 'withdrawal', 'loan_payment', 'interest_credit', 'auto_save', 'fee', 'penalty'];
+
+router.post('/transactions/:txId/void',
+  param('txId').isString().notEmpty().trim(),
+  body('reason').isString().isLength({ min: 5 }).trim(),
+  asyncHandler(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const txId = req.params.txId;
+    const { reason } = req.body;
+
+    // Fetch original transaction
+    const txRows = await store.query('SELECT * FROM transactions WHERE transaction_id = $1', [txId]);
+    const tx = txRows.rows[0];
+    if (!tx) return res.status(404).json({ message: 'Transaction not found' });
+
+    // Validate not already voided
+    if (tx.voided_at) return res.status(400).json({ message: 'Transaction already voided' });
+
+    // Validate voidable type
+    if (!VOIDABLE_TYPES.includes(tx.type)) {
+      return res.status(400).json({ message: 'This transaction type cannot be voided' });
+    }
+
+    // Check age limit (30 days)
+    const txDate = new Date(tx.created_at);
+    const daysSince = (Date.now() - txDate.getTime()) / (1000 * 60 * 60 * 24);
+    if (daysSince > 30) return res.status(400).json({ message: 'Cannot void transactions older than 30 days' });
+
+    // Fetch account
+    const accountRows = await store.query('SELECT * FROM accounts WHERE account_id = $1', [tx.account_id]);
+    const account = accountRows.rows[0];
+    if (!account) return res.status(404).json({ message: 'Account not found' });
+
+    const val = Number(tx.amount);
+    const now = new Date().toISOString();
+    const voidDesc = 'VOID: ' + (tx.description || '') + ' — ' + reason;
+
+    // Determine reversal effect on balance
+    let reversedBalance = Number(account.actual_balance);
+    if (['deposit', 'interest_credit', 'loan_disbursement'].includes(tx.type)) {
+      reversedBalance = Math.round((reversedBalance - val) * 100) / 100;
+    } else if (['withdrawal', 'loan_payment', 'fee', 'auto_save'].includes(tx.type)) {
+      reversedBalance = Math.round((reversedBalance + val) * 100) / 100;
+    }
+    if (reversedBalance < 0) return res.status(400).json({ message: 'Void would cause negative balance' });
+
+    // ── Post reversing GL entries ──
+    const gl = require('../services/gl');
+    const glTxId = uuidv4();
+    if (['deposit', 'interest_credit', 'loan_disbursement'].includes(tx.type)) {
+      await gl.postDoubleEntry(glTxId, [
+        { account_code: '2000', debit: val, description: 'VOID reversal: ' + voidDesc },
+        { account_code: '1000', credit: val, description: 'VOID reversal: ' + voidDesc },
+      ], { postedBy: 'api', referenceType: 'void' });
+    } else if (['withdrawal', 'fee', 'auto_save'].includes(tx.type)) {
+      await gl.postDoubleEntry(glTxId, [
+        { account_code: '1000', debit: val, description: 'VOID reversal: ' + voidDesc },
+        { account_code: '2000', credit: val, description: 'VOID reversal: ' + voidDesc },
+      ], { postedBy: 'api', referenceType: 'void' });
+    } else if (tx.type === 'loan_payment') {
+      const loanPayments = await store.query('SELECT * FROM loan_payments WHERE transaction_id = $1 ORDER BY created_at DESC LIMIT 1', [txId]);
+      const lp = loanPayments.rows[0];
+      const principalPortion = lp ? Number(lp.principal_paid) : val;
+      const interestPortion = lp ? Number(lp.interest_paid) : 0;
+      const entries = [
+        { account_code: '1100', debit: principalPortion, description: 'VOID reversal: principal' },
+        { account_code: '1000', credit: val, description: 'VOID reversal: ' + voidDesc },
+      ];
+      if (interestPortion > 0) {
+        entries.push({ account_code: '4000', debit: interestPortion, description: 'VOID reversal: interest income' });
+      }
+      await gl.postDoubleEntry(glTxId, entries, { postedBy: 'api', referenceType: 'void' });
+
+      // Restore the loan balance
+      if (tx.reference_id) {
+        const loanRows = await store.query('SELECT * FROM loans WHERE loan_id = $1', [tx.reference_id]);
+        const loan = loanRows.rows[0];
+        if (loan) {
+          const restoredAmountPaid = Math.max(0, Math.round((Number(loan.amount_paid) - val) * 100) / 100);
+          const restoredRemaining = Math.round((Number(loan.remaining_balance) + val) * 100) / 100;
+          await store.query("UPDATE loans SET amount_paid = $1, remaining_balance = $2, status = 'active', updated_at = CURRENT_TIMESTAMP WHERE loan_id = $3",
+            [restoredAmountPaid, restoredRemaining, loan.loan_id]);
+        }
+      }
+    }
+
+    // ── Update account balance ──
+    if (tx.type !== 'loan_payment') {
+      if (['deposit', 'interest_credit', 'loan_disbursement'].includes(tx.type)) {
+        const newUnallocated = Math.max(0, Number(account.unallocated_balance) - val);
+        await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3",
+          [reversedBalance, newUnallocated, tx.account_id]);
+      } else {
+        const newUnallocated = Number(account.unallocated_balance) + val;
+        await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3",
+          [reversedBalance, newUnallocated, tx.account_id]);
+      }
+    }
+
+    // ── Create reversal transaction ──
+    const revResult = await store.addTransaction({
+      account_id: tx.account_id,
+      type: 'void',
+      amount: val,
+      description: voidDesc,
+      reference_type: 'void',
+      reference_id: txId,
+      balance_before: Number(account.actual_balance),
+      balance_after: reversedBalance,
+    });
+    const revTxId = revResult?.transaction_id || '';
+    await store.query('UPDATE gl_entries SET transaction_id = $1 WHERE entry_id = $2', [revTxId, glTxId]).catch(() => {});
+
+    // ── Mark original as voided ──
+    await store.query(
+      "UPDATE transactions SET voided_by=$1, void_reason=$2, voided_at=$3 WHERE transaction_id=$4",
+      ['api', reason, now, txId]
+    );
+
+    // ── Audit log ──
+    const audit = require('../services/audit');
+    await audit.log(req, 'TRANSACTION_VOID', 'transaction', txId, {
+      amount: val, reason, reversalTxId: revTxId, originalType: tx.type,
+      reversedBalance, voidedBy: 'api'
+    });
+
+    res.json({
+      message: 'Transaction voided successfully',
+      reversal_transaction_id: revTxId,
+      reversed_balance: reversedBalance,
+    });
+  })
+);
+
 module.exports = router;

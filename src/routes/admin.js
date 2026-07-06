@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const xlsx = require('xlsx');
+const ExcelJS = require('exceljs');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -60,14 +60,32 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-router.post('/upload', requireRole(2), upload.single('file'), (req, res) => {
+async function xlsxSheetToArray(worksheet) {
+  const rows = [];
+  const headerRow = worksheet.getRow(1);
+  const headers = [];
+  headerRow.eachCell((cell) => headers.push(cell.text));
+  worksheet.eachRow((row, rowNum) => {
+    if (rowNum === 1) return;
+    const obj = {};
+    row.eachCell((cell, colNum) => {
+      obj[headers[colNum - 1]] = cell.text;
+    });
+    rows.push(obj);
+  });
+  return rows;
+}
+
+router.post('/upload', requireRole(2), upload.single('file'), async (req, res) => {
   if (!req.file) return res.redirect('/admin?error=No+file+uploaded');
   try {
-    const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
-    const sheetNames = workbook.SheetNames;
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(req.file.buffer);
+    const sheetNames = workbook.worksheets.map(w => w.name);
     let totalRows = 0;
-    for (const name of sheetNames) {
-      totalRows += xlsx.utils.sheet_to_json(workbook.Sheets[name], { defval: '' }).length;
+    for (const worksheet of workbook.worksheets) {
+      const rows = await xlsxSheetToArray(worksheet);
+      totalRows += rows.length;
     }
     res.redirect(`/admin?import=ok&rows=${totalRows}&sheets=${sheetNames.length}&sheetNames=${encodeURIComponent(sheetNames.join(', '))}&mode=parse`);
   } catch (err) {
@@ -78,13 +96,15 @@ router.post('/upload', requireRole(2), upload.single('file'), (req, res) => {
 router.post('/upload-and-seed', requireRole(3), upload.single('file'), asyncHandler(async (req, res) => {
   if (!req.file) return res.redirect('/admin?error=No+file+uploaded');
   try {
-    const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
-    const sheetNames = workbook.SheetNames;
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(req.file.buffer);
+    const sheetNames = workbook.worksheets.map(w => w.name);
     let totalRows = 0;
     let accounts = 0, goals = 0, badges = 0, errorCount = 0;
 
-    for (const sheetName of sheetNames) {
-      const rows = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+    for (const worksheet of workbook.worksheets) {
+      const sheetName = worksheet.name;
+      const rows = await xlsxSheetToArray(worksheet);
       totalRows += rows.length;
 
       for (const row of rows) {

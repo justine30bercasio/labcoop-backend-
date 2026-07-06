@@ -327,6 +327,28 @@ class PgStore {
         created_at TEXT,
         resolved_at TEXT
       );
+      CREATE TABLE IF NOT EXISTS parental_consent (
+        consent_id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+        parent_phone TEXT NOT NULL,
+        consent_token TEXT NOT NULL,
+        status TEXT DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
+        rejected_reason TEXT DEFAULT '',
+        ip_address TEXT DEFAULT '',
+        created_at TEXT,
+        responded_at TEXT
+      );
+      ALTER TABLE accounts ADD COLUMN IF NOT EXISTS consent_status TEXT DEFAULT 'approved';
+      CREATE TABLE IF NOT EXISTS account_deletion_requests (
+        request_id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+        requested_by TEXT DEFAULT 'parent',
+        reason TEXT DEFAULT '',
+        status TEXT DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
+        admin_notes TEXT DEFAULT '',
+        created_at TEXT,
+        resolved_at TEXT
+      );
       CREATE TABLE IF NOT EXISTS audit_log (
         log_id TEXT PRIMARY KEY,
         admin_id TEXT,

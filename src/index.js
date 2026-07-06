@@ -266,6 +266,9 @@ const paymongoRouter = require('./routes/paymongo');
 const settingsRouter = require('./routes/settings');
 const kycRouter = require('./routes/kyc');
 const { webhookRouter } = require('./routes/paymongo');
+const parentalConsentRouter = require('./routes/parental-consent');
+const accountDeletionRouter = require('./routes/account-deletion');
+const { router: legalRouter } = require('./routes/legal');
 const { startScheduler } = require('./services/scheduler');
 const { authMiddleware, requireOwnership } = require('./middleware/auth');
 
@@ -358,6 +361,8 @@ const loginLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+
 
 app.get('/', (req, res) => {
   res.json({
@@ -549,6 +554,9 @@ app.use('/api/board', boardRouter);
 app.use('/api/leaderboard', authMiddleware, leaderboardRouter);
 app.use('/api/paymongo', paymongoRouter);
 app.use('/api/settings', authMiddleware, requireOwnership, settingsRouter);
+app.use('/api/parental-consent', parentalConsentRouter);
+app.use('/api/account-deletion', accountDeletionRouter);
+app.use('/legal', legalRouter);
 
 // ── Authenticated file serving — replaces express.static for uploads ──
 app.use('/uploads', authMiddleware, (req, res, next) => {

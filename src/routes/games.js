@@ -67,10 +67,14 @@ router.get('/:id', (req, res) => {
 });
 
 // GET /api/games/proxy/embed?url=...
-// Proxies game pages from GameZipper, stripping ads/analytics server-side
+// Proxies game pages, stripping ads/analytics server-side
 router.get('/proxy/embed', async (req, res) => {
   const gameUrl = req.query.url;
-  if (!gameUrl || !gameUrl.startsWith('https://gamezipper.com/')) {
+  if (!gameUrl) return res.status(400).json({ error: 'url parameter is required' });
+  // Use URL parser to verify hostname (prevents SSRF bypass via @ or . tricks)
+  let parsed;
+  try { parsed = new URL(gameUrl); } catch (e) { return res.status(400).json({ error: 'Invalid URL' }); }
+  if (parsed.hostname !== 'gamezipper.com') {
     return res.status(400).json({ error: 'Only gamezipper.com URLs are supported' });
   }
   try {

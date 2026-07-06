@@ -1,7 +1,16 @@
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
+const rateLimit = require('express-rate-limit');
 const { store, isPostgres } = require('../db');
 const { asyncHandler } = require('../async-handler');
+
+const depositLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { message: 'Too many deposit attempts. Try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 const router = express.Router();
 
@@ -43,6 +52,7 @@ router.put('/:accountId',
 );
 
 router.put('/:accountId/deposit',
+  depositLimiter,
   param('accountId').isString().notEmpty().trim(),
   body('amount').isFloat({ min: 0.01 }).withMessage('amount must be > 0'),
   asyncHandler(async (req, res) => {

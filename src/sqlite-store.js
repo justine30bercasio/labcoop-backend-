@@ -15,6 +15,8 @@ function getDb() {
       CREATE TABLE IF NOT EXISTS gl_accounts (code TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL CHECK(type IN ('asset','liability','equity','income','expense')), is_active INTEGER DEFAULT 1);
       CREATE TABLE IF NOT EXISTS gl_entries (entry_id TEXT PRIMARY KEY, transaction_id TEXT, account_code TEXT NOT NULL REFERENCES gl_accounts(code), debit DECIMAL(12,2) DEFAULT 0, credit DECIMAL(12,2) DEFAULT 0, description TEXT DEFAULT '', created_at TEXT);
       CREATE TABLE IF NOT EXISTS audit_log (log_id TEXT PRIMARY KEY, admin_id TEXT, admin_name TEXT, action TEXT NOT NULL, entity_type TEXT, entity_id TEXT, details TEXT DEFAULT '{}', ip_address TEXT DEFAULT '', created_at TEXT);
+      CREATE TABLE IF NOT EXISTS parental_consent (consent_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, parent_phone TEXT NOT NULL, consent_token TEXT NOT NULL, status TEXT DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')), rejected_reason TEXT DEFAULT '', ip_address TEXT DEFAULT '', created_at TEXT, responded_at TEXT);
+      CREATE TABLE IF NOT EXISTS account_deletion_requests (request_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, requested_by TEXT DEFAULT 'parent', reason TEXT DEFAULT '', status TEXT DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')), admin_notes TEXT DEFAULT '', created_at TEXT, resolved_at TEXT);
       CREATE TABLE IF NOT EXISTS admin_users (admin_id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role TEXT DEFAULT 'admin' CHECK(role IN ('super_admin','manager','teller','auditor')), display_name TEXT DEFAULT '', email TEXT DEFAULT '', is_active INTEGER DEFAULT 1, created_at TEXT);
     `);
     // Migrate existing admin_users table — add email column if missing
@@ -62,6 +64,7 @@ function getDb() {
     try { db.exec("ALTER TABLE accounts ADD COLUMN kyc_submitted_at TEXT DEFAULT ''"); } catch (_) {}
     try { db.exec("ALTER TABLE accounts ADD COLUMN kyc_verified_at TEXT DEFAULT ''"); } catch (_) {}
     try { db.exec("ALTER TABLE accounts ADD COLUMN kyc_rejected_reason TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN consent_status TEXT DEFAULT 'approved'"); } catch (_) {}
     try { db.exec("ALTER TABLE admin_users ADD COLUMN branch_id TEXT REFERENCES branches(branch_id)"); } catch (_) {}
     try { db.exec("ALTER TABLE teller_cash ADD COLUMN branch_id TEXT REFERENCES branches(branch_id)"); } catch (_) {}
     try { db.exec("INSERT OR IGNORE INTO branches (branch_id, name, code, address) VALUES ('main', 'Main Branch', 'MAIN', 'Head Office')"); } catch (_) {}

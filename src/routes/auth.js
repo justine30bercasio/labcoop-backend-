@@ -75,7 +75,7 @@ router.post('/login', asyncHandler(async (req, res) => {
   const token = jwt.sign(
     { accountId: account.account_id },
     JWT_SECRET,
-    { expiresIn: '1h' }
+    { expiresIn: '24h' }
   );
 
   res.json({
@@ -198,7 +198,7 @@ router.post('/register', regUpload.fields([
   const token = jwt.sign(
     { accountId: account.account_id, childName: account.child_name },
     JWT_SECRET,
-    { expiresIn: '1h' }
+    { expiresIn: '24h' }
   );
 
   res.status(201).json({

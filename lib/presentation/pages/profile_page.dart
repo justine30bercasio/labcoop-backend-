@@ -1383,9 +1383,12 @@ class _SettingsPageState extends State<_SettingsPage> {
   final _nameController = TextEditingController();
   final _gcashNumberCtrl = TextEditingController();
   final _gcashNameCtrl = TextEditingController();
+  final _deletionReasonCtrl = TextEditingController();
   bool _nameSaved = false;
   bool _loadingGcash = true;
   bool _gcashSaving = false;
+  bool _deleting = false;
+  Map<String, dynamic>? _deletionRequest;
 
   @override
   void initState() {
@@ -1409,6 +1412,12 @@ class _SettingsPageState extends State<_SettingsPage> {
           gcash['gcash_name']?.toString() ?? 'LabCoop Savings';
       _loadingGcash = false;
     });
+    _refreshDeletionStatus();
+  }
+
+  Future<void> _refreshDeletionStatus() async {
+    final status = await BankingApiService.getDeletionStatus();
+    if (mounted) setState(() => _deletionRequest = status?['request']);
   }
 
   Future<void> _saveName() async {
@@ -1426,6 +1435,62 @@ class _SettingsPageState extends State<_SettingsPage> {
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) setState(() => _nameSaved = false);
     });
+  }
+
+  Future<void> _requestDeletion() async {
+    final reason = _deletionReasonCtrl.text.trim();
+    if (reason.length < 5) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please provide a reason (at least 5 characters)'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Account?'),
+        content: const Text(
+          'This will permanently close your account and all associated data. '
+          'An admin will review your request. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Request Deletion'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    setState(() => _deleting = true);
+    final ok = await BankingApiService.requestDeletion(reason: reason);
+    if (!mounted) return;
+    setState(() => _deleting = false);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok
+              ? 'Deletion request submitted. An admin will review it.'
+              : 'Failed to submit request. Try again later.',
+        ),
+        backgroundColor: ok ? AppTheme.primaryGreen : Colors.red,
+      ),
+    );
+    if (ok) {
+      _deletionReasonCtrl.clear();
+      _refreshDeletionStatus();
+    }
   }
 
   Future<void> _saveGcash() async {
@@ -1457,6 +1522,7 @@ class _SettingsPageState extends State<_SettingsPage> {
     _nameController.dispose();
     _gcashNumberCtrl.dispose();
     _gcashNameCtrl.dispose();
+    _deletionReasonCtrl.dispose();
     super.dispose();
   }
 
@@ -1564,10 +1630,93 @@ class _SettingsPageState extends State<_SettingsPage> {
                   ),
                 ),
               ),
+              const SizedBox(height: 32),
+              const Divider(),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Icon(Icons.warning, color: Colors.red, size: 24),
+                  const SizedBox(width: 8),
+                  const Text('Account Deletion',
+                      style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.red)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Request to permanently close your account and delete all '
+                'associated data. An admin will review your request.',
+                style: TextStyle(color: AppTheme.textDark, fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              if (_deletionRequest != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline, color: Colors.orange),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Deletion request is ${_deletionRequest!['status'] ?? 'pending'}. '
+                          'Submitted ${_deletionRequest!['created_at']?.toString().substring(0, 10) ?? ''}',
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+              TextField(
+                controller: _deletionReasonCtrl,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: 'Reason for deletion...',
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton.icon(
+                  onPressed: _deleting ? null : _requestDeletion,
+                  icon: _deleting
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.delete_forever),
+                  label: Text(_deleting
+                      ? 'Submitting...'
+                      : 'Request Account Deletion'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red.shade600,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                    textStyle: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
             ],
           ],
         ),
       ),
     );
   }
+
 }

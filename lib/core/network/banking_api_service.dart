@@ -207,4 +207,25 @@ class BankingApiService {
       return false;
     }
   }
+
+  static Future<bool> requestDeletion({required String reason}) async {
+    try {
+      await _dio.post('/api/account-deletion/request', data: {
+        'reason': reason,
+        'requested_by': 'parent',
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> getDeletionStatus() async {
+    try {
+      final resp = await _dio.get('/api/account-deletion/status');
+      return resp.data as Map<String, dynamic>;
+    } on DioException {
+      return null;
+    }
+  }
 }

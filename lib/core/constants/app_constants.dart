@@ -1,6 +1,7 @@
 class AppConstants {
   static const String appName = 'LabCoop';
-  static const String baseUrl = 'https://labcoop-backend.onrender.com';
+  // Override at build time: flutter run --dart-define=BASE_URL=https://your-api.com
+  static const String baseUrl = String.fromEnvironment('BASE_URL', defaultValue: 'https://labcoop-backend.onrender.com');
   static const Duration cacheExpiry = Duration(hours: 1);
   static const int xpPerPesoAllocated = 1;
 

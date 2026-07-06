@@ -28,7 +28,8 @@ class ProfilePage extends StatefulWidget {
   State<ProfilePage> createState() => _ProfilePageState();
 }
 
-class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin {
+class _ProfilePageState extends State<ProfilePage>
+    with TickerProviderStateMixin {
   final _source = LocalDbSource();
   final _picker = ImagePicker();
   String _avatar = '🐱';
@@ -70,10 +71,13 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
       borders = raw.map((j) => BorderItem.fromJson(j)).toList();
       for (final b in borders) {
         if (b.imageUrl.isNotEmpty && !_profileBorderCache.containsKey(b.id)) {
-          final url = b.imageUrl.startsWith('http') ? b.imageUrl : '${AppConstants.baseUrl}${b.imageUrl}';
+          final url = b.imageUrl.startsWith('http')
+              ? b.imageUrl
+              : '${AppConstants.baseUrl}${b.imageUrl}';
           try {
             final resp = await http.get(Uri.parse(url));
-            if (resp.statusCode == 200) _profileBorderCache[b.id] = resp.bodyBytes;
+            if (resp.statusCode == 200)
+              _profileBorderCache[b.id] = resp.bodyBytes;
           } catch (_) {}
         }
       }
@@ -91,7 +95,8 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
   }
 
   Future<void> _pickImage() async {
-    final xFile = await _picker.pickImage(source: ImageSource.gallery, maxWidth: 256, maxHeight: 256);
+    final xFile = await _picker.pickImage(
+        source: ImageSource.gallery, maxWidth: 256, maxHeight: 256);
     if (xFile != null) {
       final bytes = await xFile.readAsBytes();
       await _source.setProfileImageBytes(bytes);
@@ -101,10 +106,12 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_loading)
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     final state = context.watch<SavingsBloc>().state;
-    final accountName = state is SavingsLoaded ? state.account.childName : _nameFromStorage();
+    final accountName =
+        state is SavingsLoaded ? state.account.childName : _nameFromStorage();
     final totalSaved = state is SavingsLoaded
         ? state.goals.fold<double>(0, (s, g) => s + g.currentAllocated)
         : 0.0;
@@ -129,8 +136,11 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
   }
 
   Widget _buildAvatarSection(String accountName) {
-    final border = _allBorders.firstWhere((b) => b.id == _borderId, orElse: () => _allBorders.isNotEmpty ? _allBorders[0] : fallbackBorderItems[0]);
-    final isAnimatable = border.rarity == 'Special' || border.rarity == 'Mythic';
+    final border = _allBorders.firstWhere((b) => b.id == _borderId,
+        orElse: () =>
+            _allBorders.isNotEmpty ? _allBorders[0] : fallbackBorderItems[0]);
+    final isAnimatable =
+        border.rarity == 'Special' || border.rarity == 'Mythic';
 
     return GestureDetector(
       onTap: _pickImage,
@@ -139,7 +149,8 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
           AnimatedBuilder(
             animation: _borderAnimController,
             builder: (context, child) {
-              final hasImageBorder = border.imageUrl.isNotEmpty && _profileBorderCache.containsKey(border.id);
+              final hasImageBorder = border.imageUrl.isNotEmpty &&
+                  _profileBorderCache.containsKey(border.id);
               return SizedBox(
                 width: 192,
                 height: 192,
@@ -148,14 +159,17 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
                         alignment: Alignment.center,
                         children: [
                           SizedBox(
-                            width: 120, height: 120,
+                            width: 120,
+                            height: 120,
                             child: _avatarCircle(),
                           ),
                           Container(
-                            width: 192, height: 192,
+                            width: 192,
+                            height: 192,
                             decoration: BoxDecoration(
                               image: DecorationImage(
-                                image: MemoryImage(_profileBorderCache[border.id]!),
+                                image: MemoryImage(
+                                    _profileBorderCache[border.id]!),
                                 fit: BoxFit.contain,
                               ),
                             ),
@@ -163,12 +177,18 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
                         ],
                       )
                     : Container(
-                        padding: EdgeInsets.all(isAnimatable ? 8 + (_borderAnimController.value * 4) : 8),
+                        padding: EdgeInsets.all(isAnimatable
+                            ? 8 + (_borderAnimController.value * 4)
+                            : 8),
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           gradient: isAnimatable
                               ? SweepGradient(
-                                  colors: [border.color1, border.color2, border.color1],
+                                  colors: [
+                                    border.color1,
+                                    border.color2,
+                                    border.color1
+                                  ],
                                   stops: const [0, 0.5, 1],
                                 )
                               : null,
@@ -187,8 +207,11 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
             },
           ),
           const SizedBox(height: 8),
-          Text(accountName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          Text('Tap avatar to change photo', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+          Text(accountName,
+              style:
+                  const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          Text('Tap avatar to change photo',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
         ],
       ),
     );
@@ -198,7 +221,8 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
     return AppCard(
       borderRadius: RadiusTokens.lg,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: Spacing.lg, vertical: Spacing.md),
+        padding: const EdgeInsets.symmetric(
+            horizontal: Spacing.lg, vertical: Spacing.md),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [Colors.orange.shade700, Colors.orange.shade500],
@@ -214,10 +238,14 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
             const SizedBox(width: Spacing.sm),
             AnimatedCounter(
               value: _coins.toDouble(),
-              style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+              style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white),
             ),
             const SizedBox(width: Spacing.xs),
-            const Text('coins', style: TextStyle(fontSize: 16, color: Colors.white70)),
+            const Text('coins',
+                style: TextStyle(fontSize: 16, color: Colors.white70)),
             const Spacer(),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -227,9 +255,14 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.local_fire_department, color: Colors.white, size: 16),
+                  const Icon(Icons.local_fire_department,
+                      color: Colors.white, size: 16),
                   const SizedBox(width: Spacing.xs),
-                  Text('$_streak', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                  Text('$_streak',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
@@ -246,14 +279,16 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           _statItem(Icons.savings, totalSaved, 'Saved', prefix: '₱'),
-          _statItem(Icons.local_fire_department, _streak.toDouble(), 'Day Streak'),
+          _statItem(
+              Icons.local_fire_department, _streak.toDouble(), 'Day Streak'),
           _statItem(Icons.stars, _coins.toDouble(), 'Coins'),
         ],
       ),
     );
   }
 
-  Widget _statItem(IconData icon, double value, String label, {String prefix = ''}) {
+  Widget _statItem(IconData icon, double value, String label,
+      {String prefix = ''}) {
     return Column(
       children: [
         Icon(icon, color: AppTheme.primaryGreen, size: 28),
@@ -261,14 +296,20 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
         AnimatedCounter(
           value: value,
           prefix: prefix,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppTheme.textDark),
+          style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+              color: AppTheme.textDark),
         ),
         Text(label, style: AppTextStyle.bodySmall),
       ],
     );
   }
 
-  Widget _kycCard({required String status, required String label, required VoidCallback onTap}) {
+  Widget _kycCard(
+      {required String status,
+      required String label,
+      required VoidCallback onTap}) {
     final isVerified = status == 'verified';
     final isRejected = status == 'rejected';
 
@@ -349,7 +390,8 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
               if (isVerified)
                 Icon(Icons.check_circle, color: Colors.green.shade400, size: 20)
               else
-                Icon(Icons.chevron_right, color: Colors.grey.shade300, size: 20),
+                Icon(Icons.chevron_right,
+                    color: Colors.grey.shade300, size: 20),
             ],
           ),
         ),
@@ -370,23 +412,34 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionHeader('Account', Icons.shield_outlined),
-        _kycCard(status: kycStatus, label: kycLabel, onTap: () {
-          Navigator.push(context, PageTransition.slideUp(const KycPage())).then((_) => _load());
+        _kycCard(
+            status: kycStatus,
+            label: kycLabel,
+            onTap: () {
+              Navigator.push(context, PageTransition.slideUp(const KycPage()))
+                  .then((_) => _load());
+            }),
+        const SizedBox(height: 10),
+        _actionTile(Icons.settings_rounded, 'Settings',
+            'Personalize your experience', Colors.grey.shade600, () {
+          Navigator.push(context, PageTransition.slideUp(const _SettingsPage()))
+              .then((_) => _load());
         }),
         const SizedBox(height: 10),
-        _actionTile(Icons.settings_rounded, 'Settings', 'Personalize your experience', Colors.grey.shade600, () {
-          Navigator.push(context, PageTransition.slideUp(const _SettingsPage())).then((_) => _load());
-        }),
-        const SizedBox(height: 10),
-        _actionTile(Icons.logout_rounded, 'Logout', 'Clear local data & sign out', Colors.red.shade400, () async {
+        _actionTile(Icons.logout_rounded, 'Logout',
+            'Clear local data & sign out', Colors.red.shade400, () async {
           final confirm = await showDialog<bool>(
             context: context,
             builder: (ctx) => AlertDialog(
               title: const Text('Logout'),
               content: const Text('This will clear all local data. Continue?'),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Logout')),
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Cancel')),
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('Logout')),
               ],
             ),
           );
@@ -394,26 +447,38 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
           await const FlutterSecureStorage().deleteAll();
           await LocalDbSource().clearAll();
           if (!context.mounted) return;
-          Navigator.pushAndRemoveUntil(context, PageTransition.slideUp(const LoginPage()), (route) => false);
+          Navigator.pushAndRemoveUntil(context,
+              PageTransition.slideUp(const LoginPage()), (route) => false);
         }),
         const SizedBox(height: 24),
         _sectionHeader('Rewards', Icons.auto_awesome),
-        _actionTile(Icons.auto_awesome, 'Rare Unlocks', 'Milestones & hidden achievements', AppTheme.coinGold, _showRareUnlocks),
+        _actionTile(
+            Icons.auto_awesome,
+            'Rare Unlocks',
+            'Milestones & hidden achievements',
+            AppTheme.coinGold,
+            _showRareUnlocks),
         const SizedBox(height: 10),
-        _actionTile(Icons.store_rounded, 'Shop', 'Avatars & borders', AppTheme.accentAmber, () {
-          Navigator.push(context, PageTransition.slideUp(const _ShopPage())).then((_) => _load());
+        _actionTile(Icons.store_rounded, 'Shop', 'Avatars & borders',
+            AppTheme.accentAmber, () {
+          Navigator.push(context, PageTransition.slideUp(const _ShopPage()))
+              .then((_) => _load());
         }),
         const SizedBox(height: 24),
         _sectionHeader('Community', Icons.groups_rounded),
-        _actionTile(Icons.emoji_events_rounded, 'Leaderboard', 'Top savers & earners', AppTheme.primaryGreen, () {
-          Navigator.push(context, PageTransition.slideUp(const _LeaderboardPage()));
+        _actionTile(Icons.emoji_events_rounded, 'Leaderboard',
+            'Top savers & earners', AppTheme.primaryGreen, () {
+          Navigator.push(
+              context, PageTransition.slideUp(const _LeaderboardPage()));
         }),
         const SizedBox(height: 10),
-        _actionTile(Icons.people_rounded, 'Board of Directors', 'Cooperative leadership', const Color(0xFF7B1FA2), () {
+        _actionTile(Icons.people_rounded, 'Board of Directors',
+            'Cooperative leadership', const Color(0xFF7B1FA2), () {
           Navigator.push(context, PageTransition.slideUp(const BoardPage()));
         }),
         const SizedBox(height: 10),
-        _actionTile(Icons.description_outlined, 'Terms & Conditions', 'App usage policies', const Color(0xFF6366F1), () {
+        _actionTile(Icons.description_outlined, 'Terms & Conditions',
+            'App usage policies', const Color(0xFF6366F1), () {
           Navigator.push(context, PageTransition.slideUp(const TermsPage()));
         }),
         const SizedBox(height: 32),
@@ -439,7 +504,8 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
     );
   }
 
-  Widget _actionTile(IconData icon, String title, String subtitle, Color color, VoidCallback onTap) {
+  Widget _actionTile(IconData icon, String title, String subtitle, Color color,
+      VoidCallback onTap) {
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(16),
@@ -454,7 +520,10 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: Colors.grey.shade100),
             boxShadow: [
-              BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2)),
+              BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2)),
             ],
           ),
           child: Row(
@@ -474,10 +543,14 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(title,
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
+                        style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF1E293B))),
                     const SizedBox(height: 2),
                     Text(subtitle,
-                        style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                        style: TextStyle(
+                            fontSize: 11, color: Colors.grey.shade500)),
                   ],
                 ),
               ),
@@ -507,23 +580,41 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _UnlockRow(emoji: '🐉', title: 'Legendary Pet', desc: 'Evolve Piggy to max stage'),
+            _UnlockRow(
+                emoji: '🐉',
+                title: 'Legendary Pet',
+                desc: 'Evolve Piggy to max stage'),
             SizedBox(height: 8),
-            _UnlockRow(emoji: '🏰', title: 'Dream Town Complete', desc: 'Build all 10 buildings'),
+            _UnlockRow(
+                emoji: '🏰',
+                title: 'Dream Town Complete',
+                desc: 'Build all 10 buildings'),
             SizedBox(height: 8),
-            _UnlockRow(emoji: '🏆', title: 'Quiz Champion', desc: 'Score 100+ in Financial Quiz'),
+            _UnlockRow(
+                emoji: '🏆',
+                title: 'Quiz Champion',
+                desc: 'Score 100+ in Financial Quiz'),
             SizedBox(height: 8),
-            _UnlockRow(emoji: '👑', title: 'Savings King', desc: 'Save ₱5,000 total'),
+            _UnlockRow(
+                emoji: '👑', title: 'Savings King', desc: 'Save ₱5,000 total'),
             SizedBox(height: 8),
-            _UnlockRow(emoji: '🎭', title: 'All Avatars', desc: 'Collect every avatar in the shop'),
+            _UnlockRow(
+                emoji: '🎭',
+                title: 'All Avatars',
+                desc: 'Collect every avatar in the shop'),
             SizedBox(height: 8),
-            _UnlockRow(emoji: '🌈', title: 'Mythic Border', desc: 'Unlock all borders'),
+            _UnlockRow(
+                emoji: '🌈',
+                title: 'Mythic Border',
+                desc: 'Unlock all borders'),
           ],
         ),
         actions: [
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx),
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGreen, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryGreen,
+                foregroundColor: Colors.white),
             child: const Text('Keep Going!'),
           ),
         ],
@@ -555,7 +646,8 @@ class _UnlockRow extends StatelessWidget {
   final String emoji;
   final String title;
   final String desc;
-  const _UnlockRow({required this.emoji, required this.title, required this.desc});
+  const _UnlockRow(
+      {required this.emoji, required this.title, required this.desc});
 
   @override
   Widget build(BuildContext context) {
@@ -567,8 +659,11 @@ class _UnlockRow extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              Text(desc, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+              Text(title,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 14)),
+              Text(desc,
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
             ],
           ),
         ),
@@ -601,7 +696,9 @@ class _ShopPageState extends State<_ShopPage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _glowController = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat(reverse: true);
+    _glowController =
+        AnimationController(vsync: this, duration: const Duration(seconds: 2))
+          ..repeat(reverse: true);
     _load();
   }
 
@@ -623,10 +720,13 @@ class _ShopPageState extends State<_ShopPage> with TickerProviderStateMixin {
       final borders = rawBorders.map((j) => BorderItem.fromJson(j)).toList();
       for (final b in borders) {
         if (b.imageUrl.isNotEmpty && !_borderImageCache.containsKey(b.id)) {
-          final url = b.imageUrl.startsWith('http') ? b.imageUrl : '${AppConstants.baseUrl}${b.imageUrl}';
+          final url = b.imageUrl.startsWith('http')
+              ? b.imageUrl
+              : '${AppConstants.baseUrl}${b.imageUrl}';
           try {
             final resp = await http.get(Uri.parse(url));
-            if (resp.statusCode == 200) _borderImageCache[b.id] = resp.bodyBytes;
+            if (resp.statusCode == 200)
+              _borderImageCache[b.id] = resp.bodyBytes;
           } catch (_) {}
         }
       }
@@ -650,10 +750,17 @@ class _ShopPageState extends State<_ShopPage> with TickerProviderStateMixin {
       return;
     }
     final success = await _source.spendCoins(item.cost);
-    if (!success) { _showMsg('Need ${item.cost} 🪙'); return; }
+    if (!success) {
+      _showMsg('Need ${item.cost} 🪙');
+      return;
+    }
     await _source.addPurchasedItem(item.id);
     await _source.setAvatar(item.emoji);
-    setState(() { _currentAvatar = item.emoji; _coins -= item.cost; _purchased.add(item.id); });
+    setState(() {
+      _currentAvatar = item.emoji;
+      _coins -= item.cost;
+      _purchased.add(item.id);
+    });
     _showMsg('${item.emoji} purchased!');
   }
 
@@ -665,10 +772,17 @@ class _ShopPageState extends State<_ShopPage> with TickerProviderStateMixin {
       return;
     }
     final success = await _source.spendCoins(item.cost);
-    if (!success) { _showMsg('Need ${item.cost} 🪙'); return; }
+    if (!success) {
+      _showMsg('Need ${item.cost} 🪙');
+      return;
+    }
     await _source.addPurchasedItem(item.id);
     await _source.setAvatarBorder(item.id);
-    setState(() { _currentBorder = item.id; _coins -= item.cost; _purchased.add(item.id); });
+    setState(() {
+      _currentBorder = item.id;
+      _coins -= item.cost;
+      _purchased.add(item.id);
+    });
     _showMsg('${item.name} border purchased!');
   }
 
@@ -689,9 +803,12 @@ class _ShopPageState extends State<_ShopPage> with TickerProviderStateMixin {
             padding: const EdgeInsets.only(right: 16),
             child: Row(
               children: [
-                const Icon(Icons.monetization_on, color: AppTheme.coinGold, size: 20),
+                const Icon(Icons.monetization_on,
+                    color: AppTheme.coinGold, size: 20),
                 const SizedBox(width: 4),
-                Text('$_coins', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Text('$_coins',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 16)),
               ],
             ),
           ),
@@ -710,8 +827,11 @@ class _ShopPageState extends State<_ShopPage> with TickerProviderStateMixin {
               width: double.infinity,
               padding: const EdgeInsets.all(10),
               color: AppTheme.primaryGreen.withValues(alpha: 0.1),
-              child: Text(_message!, textAlign: TextAlign.center,
-                  style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.primaryGreen)),
+              child: Text(_message!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.primaryGreen)),
             ),
           Expanded(
             child: _shopLoading
@@ -735,10 +855,16 @@ class _ShopPageState extends State<_ShopPage> with TickerProviderStateMixin {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: active ? AppTheme.primaryGreen : Colors.transparent, width: 3)),
+          border: Border(
+              bottom: BorderSide(
+                  color: active ? AppTheme.primaryGreen : Colors.transparent,
+                  width: 3)),
         ),
         child: Center(
-          child: Text(label, style: TextStyle(fontWeight: FontWeight.bold, color: active ? AppTheme.primaryGreen : Colors.grey)),
+          child: Text(label,
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: active ? AppTheme.primaryGreen : Colors.grey)),
         ),
       ),
     );
@@ -752,15 +878,21 @@ class _ShopPageState extends State<_ShopPage> with TickerProviderStateMixin {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ListTile(
         leading: Container(
-          width: 48, height: 48,
+          width: 48,
+          height: 48,
           decoration: BoxDecoration(
             color: AppTheme.primaryGreen.withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
-          child: Center(child: Text(item.emoji, style: const TextStyle(fontSize: 24))),
+          child: Center(
+              child: Text(item.emoji, style: const TextStyle(fontSize: 24))),
         ),
-        title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
-        subtitle: Text(owned ? (equipped ? '✅ Equipped' : 'Owned') : '${item.cost} 🪙', overflow: TextOverflow.ellipsis),
+        title: Text(item.name,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+            overflow: TextOverflow.ellipsis),
+        subtitle: Text(
+            owned ? (equipped ? '✅ Equipped' : 'Owned') : '${item.cost} 🪙',
+            overflow: TextOverflow.ellipsis),
         trailing: equipped
             ? const Icon(Icons.check_circle, color: AppTheme.primaryGreen)
             : SizedBox(
@@ -768,11 +900,15 @@ class _ShopPageState extends State<_ShopPage> with TickerProviderStateMixin {
                 child: ElevatedButton(
                   onPressed: () => _buyAvatar(item),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: owned ? Colors.grey.shade300 : AppTheme.accentAmber,
-                    foregroundColor: owned ? Colors.grey.shade700 : AppTheme.textDark,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    backgroundColor:
+                        owned ? Colors.grey.shade300 : AppTheme.accentAmber,
+                    foregroundColor:
+                        owned ? Colors.grey.shade700 : AppTheme.textDark,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8)),
                   ),
-                  child: Text(owned ? 'Use' : 'Buy', style: const TextStyle(fontSize: 12)),
+                  child: Text(owned ? 'Use' : 'Buy',
+                      style: const TextStyle(fontSize: 12)),
                 ),
               ),
       ),
@@ -793,52 +929,63 @@ class _ShopPageState extends State<_ShopPage> with TickerProviderStateMixin {
           border: equipped ? Border.all(color: rColor, width: 2) : null,
         ),
         child: ListTile(
-          leading: item.imageUrl.isNotEmpty && _borderImageCache.containsKey(item.id)
-              ? SizedBox(
-                  width: 44, height: 44,
-                  child: Stack(
-                    children: [
-                      ClipOval(
-                        child: Image.memory(
-                          _borderImageCache[item.id]!,
-                          width: 44, height: 44,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return const SizedBox.shrink();
-                          },
-                        ),
-                      ),
-                      Center(
-                        child: Container(
-                          width: 26, height: 26,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white,
-                            border: Border.all(color: Colors.grey.shade200, width: 1),
+          leading:
+              item.imageUrl.isNotEmpty && _borderImageCache.containsKey(item.id)
+                  ? SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: Stack(
+                        children: [
+                          ClipOval(
+                            child: Image.memory(
+                              _borderImageCache[item.id]!,
+                              width: 44,
+                              height: 44,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return const SizedBox.shrink();
+                              },
+                            ),
                           ),
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              : item.imageUrl.isNotEmpty
-                  ? ClipOval(
-                      child: Image.network(
-                        item.imageUrl.startsWith('http') ? item.imageUrl : '${AppConstants.baseUrl}${item.imageUrl}',
-                        width: 44, height: 44,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => _borderColorPreview(item),
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          return _borderColorPreview(item);
-                        },
+                          Center(
+                            child: Container(
+                              width: 26,
+                              height: 26,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.white,
+                                border: Border.all(
+                                    color: Colors.grey.shade200, width: 1),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     )
-                  : _borderColorPreview(item),
+                  : item.imageUrl.isNotEmpty
+                      ? ClipOval(
+                          child: Image.network(
+                            item.imageUrl.startsWith('http')
+                                ? item.imageUrl
+                                : '${AppConstants.baseUrl}${item.imageUrl}',
+                            width: 44,
+                            height: 44,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                _borderColorPreview(item),
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return _borderColorPreview(item);
+                            },
+                          ),
+                        )
+                      : _borderColorPreview(item),
           title: Row(
             children: [
               Flexible(
-                child: Text(item.name, style: const TextStyle(fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
+                child: Text(item.name,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis),
               ),
               const SizedBox(width: 8),
               Container(
@@ -847,11 +994,16 @@ class _ShopPageState extends State<_ShopPage> with TickerProviderStateMixin {
                   color: rColor.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text(item.rarity, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: rColor)),
+                child: Text(item.rarity,
+                    style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: rColor)),
               ),
             ],
           ),
-          subtitle: Text(owned ? (equipped ? '✅ Equipped' : 'Owned') : '${item.cost} 🪙'),
+          subtitle: Text(
+              owned ? (equipped ? '✅ Equipped' : 'Owned') : '${item.cost} 🪙'),
           trailing: equipped
               ? const Icon(Icons.check_circle, color: AppTheme.primaryGreen)
               : SizedBox(
@@ -859,13 +1011,17 @@ class _ShopPageState extends State<_ShopPage> with TickerProviderStateMixin {
                   child: ElevatedButton(
                     onPressed: () => _buyBorder(item),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: owned ? Colors.grey.shade300 : AppTheme.accentAmber,
-                      foregroundColor: owned ? Colors.grey.shade700 : AppTheme.textDark,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      backgroundColor:
+                          owned ? Colors.grey.shade300 : AppTheme.accentAmber,
+                      foregroundColor:
+                          owned ? Colors.grey.shade700 : AppTheme.textDark,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
                     ),
-                  child: Text(owned ? 'Use' : 'Buy', style: const TextStyle(fontSize: 12)),
+                    child: Text(owned ? 'Use' : 'Buy',
+                        style: const TextStyle(fontSize: 12)),
+                  ),
                 ),
-              ),
         ),
       ),
     );
@@ -873,12 +1029,15 @@ class _ShopPageState extends State<_ShopPage> with TickerProviderStateMixin {
 
   Widget _borderColorPreview(BorderItem item) {
     return Container(
-      width: 44, height: 44,
+      width: 44,
+      height: 44,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: Colors.white,
         border: Border.all(color: item.color1, width: 3),
-        boxShadow: [BoxShadow(color: item.color1.withValues(alpha: 0.3), blurRadius: 6)],
+        boxShadow: [
+          BoxShadow(color: item.color1.withValues(alpha: 0.3), blurRadius: 6)
+        ],
       ),
     );
   }
@@ -904,24 +1063,40 @@ class _LeaderboardPageState extends State<_LeaderboardPage> {
   }
 
   Future<void> _load() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final api = GetIt.instance<RemoteApiSource>();
       final data = await api.getLeaderboard();
       final state = context.read<SavingsBloc>().state;
       final name = state is SavingsLoaded ? state.account.childName : '';
-      final parsed = data.map((e) => <String, dynamic>{
-        'account_id': e['account_id'],
-        'child_name': e['child_name'],
-        'actual_balance': (e['actual_balance'] is num ? (e['actual_balance'] as num).toDouble() : double.tryParse('${e['actual_balance']}') ?? 0),
-        'current_xp': (e['current_xp'] is num ? (e['current_xp'] as num).toInt() : int.tryParse('${e['current_xp']}') ?? 0),
-        'profile_pic_url': e['profile_pic_url'],
-      }).toList();
+      final parsed = data
+          .map((e) => <String, dynamic>{
+                'account_id': e['account_id'],
+                'child_name': e['child_name'],
+                'actual_balance': (e['actual_balance'] is num
+                    ? (e['actual_balance'] as num).toDouble()
+                    : double.tryParse('${e['actual_balance']}') ?? 0),
+                'current_xp': (e['current_xp'] is num
+                    ? (e['current_xp'] as num).toInt()
+                    : int.tryParse('${e['current_xp']}') ?? 0),
+                'profile_pic_url': e['profile_pic_url'],
+              })
+          .toList();
       if (!mounted) return;
-      setState(() { _entries = parsed; _myName = name; _loading = false; });
+      setState(() {
+        _entries = parsed;
+        _myName = name;
+        _loading = false;
+      });
     } catch (e) {
       if (!mounted) return;
-      setState(() { _error = e.toString(); _loading = false; });
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
     }
   }
 
@@ -932,12 +1107,17 @@ class _LeaderboardPageState extends State<_LeaderboardPage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+              ? Center(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
                   const Icon(Icons.cloud_off, size: 48, color: Colors.grey),
                   const SizedBox(height: 12),
-                  Text('Could not load leaderboard', style: TextStyle(color: Colors.grey[600])),
+                  Text('Could not load leaderboard',
+                      style: TextStyle(color: Colors.grey[600])),
                   const SizedBox(height: 16),
-                  TextButton.icon(onPressed: _load, icon: const Icon(Icons.refresh), label: const Text('Retry')),
+                  TextButton.icon(
+                      onPressed: _load,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Retry')),
                 ]))
               : RefreshIndicator(
                   onRefresh: _load,
@@ -947,13 +1127,16 @@ class _LeaderboardPageState extends State<_LeaderboardPage> {
                       _buildHeader(),
                       const SizedBox(height: 20),
                       ..._entries.asMap().entries.map((e) => _leaderboardCard(
-                        rank: e.key + 1,
-                        name: e.value['child_name'] as String? ?? '',
-                        saved: (e.value['actual_balance'] as num?)?.toDouble() ?? 0,
-                        xp: (e.value['current_xp'] as num?)?.toInt() ?? 0,
-                        imageUrl: e.value['profile_pic_url'] as String?,
-                        isYou: (e.value['child_name'] as String? ?? '') == _myName,
-                      )),
+                            rank: e.key + 1,
+                            name: e.value['child_name'] as String? ?? '',
+                            saved: (e.value['actual_balance'] as num?)
+                                    ?.toDouble() ??
+                                0,
+                            xp: (e.value['current_xp'] as num?)?.toInt() ?? 0,
+                            imageUrl: e.value['profile_pic_url'] as String?,
+                            isYou: (e.value['child_name'] as String? ?? '') ==
+                                _myName,
+                          )),
                     ],
                   ),
                 ),
@@ -964,16 +1147,22 @@ class _LeaderboardPageState extends State<_LeaderboardPage> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [AppTheme.primaryGreen, Color(0xFF1B5E20)]),
+        gradient: const LinearGradient(
+            colors: [AppTheme.primaryGreen, Color(0xFF1B5E20)]),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
         children: [
           const Icon(Icons.emoji_events, color: AppTheme.coinGold, size: 48),
           const SizedBox(height: 8),
-          const Text('Who saves the most?', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+          const Text('Who saves the most?',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          Text('${_entries.length} members competing', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          Text('${_entries.length} members competing',
+              style: const TextStyle(color: Colors.white70, fontSize: 13)),
         ],
       ),
     );
@@ -982,41 +1171,54 @@ class _LeaderboardPageState extends State<_LeaderboardPage> {
   Widget _buildRankWidget(int rank) {
     if (rank == 1) {
       return Container(
-        width: 40, height: 40,
+        width: 40,
+        height: 40,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          gradient: const LinearGradient(colors: [Color(0xFFFFD700), Color(0xFFFFA000)]),
-          boxShadow: [BoxShadow(color: Colors.amber.withValues(alpha: 0.4), blurRadius: 8)],
+          gradient: const LinearGradient(
+              colors: [Color(0xFFFFD700), Color(0xFFFFA000)]),
+          boxShadow: [
+            BoxShadow(color: Colors.amber.withValues(alpha: 0.4), blurRadius: 8)
+          ],
         ),
         child: const Center(child: Text('👑', style: TextStyle(fontSize: 22))),
       );
     } else if (rank == 2) {
       return Container(
-        width: 36, height: 36,
+        width: 36,
+        height: 36,
         decoration: const BoxDecoration(
           shape: BoxShape.circle,
-          gradient: LinearGradient(colors: [Color(0xFFE0E0E0), Color(0xFF9E9E9E)]),
+          gradient:
+              LinearGradient(colors: [Color(0xFFE0E0E0), Color(0xFF9E9E9E)]),
         ),
         child: const Center(child: Text('🥈', style: TextStyle(fontSize: 20))),
       );
     } else if (rank == 3) {
       return Container(
-        width: 36, height: 36,
+        width: 36,
+        height: 36,
         decoration: const BoxDecoration(
           shape: BoxShape.circle,
-          gradient: LinearGradient(colors: [Color(0xFFFFCC80), Color(0xFFFF8A65)]),
+          gradient:
+              LinearGradient(colors: [Color(0xFFFFCC80), Color(0xFFFF8A65)]),
         ),
         child: const Center(child: Text('🥉', style: TextStyle(fontSize: 20))),
       );
     }
     return Container(
-      width: 36, height: 36,
+      width: 36,
+      height: 36,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: Colors.grey.shade100,
       ),
       child: Center(
-        child: Text('$rank', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.grey.shade600)),
+        child: Text('$rank',
+            style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey.shade600)),
       ),
     );
   }
@@ -1036,14 +1238,17 @@ class _LeaderboardPageState extends State<_LeaderboardPage> {
     final initials = name.trim().split(RegExp(r'\s+'));
     final displayInitials = initials.length >= 2
         ? '${initials[0][0]}${initials.last[0]}'.toUpperCase()
-        : name.isNotEmpty ? name[0].toUpperCase() : '?';
+        : name.isNotEmpty
+            ? name[0].toUpperCase()
+            : '?';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: isYou ? Colors.green.shade50 : Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isYou ? Colors.green.shade200 : Colors.grey.shade100),
+        border: Border.all(
+            color: isYou ? Colors.green.shade200 : Colors.grey.shade100),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: isYou ? 0.08 : 0.04),
@@ -1063,15 +1268,29 @@ class _LeaderboardPageState extends State<_LeaderboardPage> {
                 _buildRankWidget(rank),
                 const SizedBox(width: 12),
                 Container(
-                  width: 44, height: 44,
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: Colors.grey.shade100,
                     border: Border.all(color: Colors.grey.shade200, width: 1.5),
                   ),
                   child: imageUrl != null && imageUrl.isNotEmpty
-                      ? ClipOval(child: Image.network(imageUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Center(child: Text(displayInitials, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.grey.shade600)))))
-                      : Center(child: Text(displayInitials, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.grey.shade600))),
+                      ? ClipOval(
+                          child: Image.network(imageUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Center(
+                                  child: Text(displayInitials,
+                                      style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.grey.shade600)))))
+                      : Center(
+                          child: Text(displayInitials,
+                              style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.grey.shade600))),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -1081,25 +1300,48 @@ class _LeaderboardPageState extends State<_LeaderboardPage> {
                       Row(
                         children: [
                           Flexible(
-                            child: Text(name, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: isYou ? Colors.green.shade800 : const Color(0xFF1E293B)), overflow: TextOverflow.ellipsis),
+                            child: Text(name,
+                                style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: isYou
+                                        ? Colors.green.shade800
+                                        : const Color(0xFF1E293B)),
+                                overflow: TextOverflow.ellipsis),
                           ),
                           if (isYou)
                             Container(
                               margin: const EdgeInsets.only(left: 6),
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(color: Colors.green.shade100, borderRadius: BorderRadius.circular(6)),
-                              child: Text('YOU', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.green.shade700)),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                  color: Colors.green.shade100,
+                                  borderRadius: BorderRadius.circular(6)),
+                              child: Text('YOU',
+                                  style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.green.shade700)),
                             ),
                         ],
                       ),
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          Text(_formatMoney(saved), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: isYou ? Colors.green.shade700 : const Color(0xFF0F172A))),
+                          Text(_formatMoney(saved),
+                              style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                  color: isYou
+                                      ? Colors.green.shade700
+                                      : const Color(0xFF0F172A))),
                           const SizedBox(width: 8),
-                          Icon(Icons.star, size: 13, color: Colors.amber.shade600),
+                          Icon(Icons.star,
+                              size: 13, color: Colors.amber.shade600),
                           const SizedBox(width: 2),
-                          Text('$xp XP', style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                          Text('$xp XP',
+                              style: TextStyle(
+                                  fontSize: 11, color: Colors.grey.shade500)),
                         ],
                       ),
                     ],
@@ -1107,13 +1349,18 @@ class _LeaderboardPageState extends State<_LeaderboardPage> {
                 ),
                 if (rank == 1)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: Colors.amber.shade50,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: Colors.amber.shade200),
                     ),
-                    child: Text('TOP', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.amber.shade800)),
+                    child: Text('TOP',
+                        style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.amber.shade800)),
                   ),
               ],
             ),
@@ -1148,14 +1395,18 @@ class _SettingsPageState extends State<_SettingsPage> {
 
   Future<void> _load() async {
     final state = context.read<SavingsBloc>().state;
-    final name = state is SavingsLoaded ? state.account.childName : await _source.getChildName();
+    final name = state is SavingsLoaded
+        ? state.account.childName
+        : await _source.getChildName();
     _nameController.text = name;
 
     final gcash = await BankingApiService.getGcashSettings();
     if (!mounted) return;
     setState(() {
-      _gcashNumberCtrl.text = gcash['gcash_number']?.toString() ?? '09171234567';
-      _gcashNameCtrl.text = gcash['gcash_name']?.toString() ?? 'LabCoop Savings';
+      _gcashNumberCtrl.text =
+          gcash['gcash_number']?.toString() ?? '09171234567';
+      _gcashNameCtrl.text =
+          gcash['gcash_name']?.toString() ?? 'LabCoop Savings';
       _loadingGcash = false;
     });
   }
@@ -1167,7 +1418,9 @@ class _SettingsPageState extends State<_SettingsPage> {
     setState(() => _nameSaved = true);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Name saved!'), backgroundColor: AppTheme.primaryGreen),
+        const SnackBar(
+            content: Text('Name saved!'),
+            backgroundColor: AppTheme.primaryGreen),
       );
     }
     Future.delayed(const Duration(seconds: 2), () {
@@ -1180,7 +1433,9 @@ class _SettingsPageState extends State<_SettingsPage> {
     final name = _gcashNameCtrl.text.trim();
     if (number.isEmpty || name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill in both GCash fields'), backgroundColor: Colors.red),
+        const SnackBar(
+            content: Text('Please fill in both GCash fields'),
+            backgroundColor: Colors.red),
       );
       return;
     }
@@ -1190,7 +1445,8 @@ class _SettingsPageState extends State<_SettingsPage> {
     setState(() => _gcashSaving = false);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(ok ? 'GCash settings saved!' : 'Failed to save GCash settings'),
+        content: Text(
+            ok ? 'GCash settings saved!' : 'Failed to save GCash settings'),
         backgroundColor: ok ? AppTheme.primaryGreen : Colors.red,
       ),
     );
@@ -1219,8 +1475,10 @@ class _SettingsPageState extends State<_SettingsPage> {
               controller: _nameController,
               decoration: InputDecoration(
                 labelText: 'Your Name',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-                prefixIcon: const Icon(Icons.edit, color: AppTheme.primaryGreen),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                prefixIcon:
+                    const Icon(Icons.edit, color: AppTheme.primaryGreen),
                 filled: true,
                 fillColor: Colors.white,
               ),
@@ -1234,10 +1492,14 @@ class _SettingsPageState extends State<_SettingsPage> {
                 icon: Icon(_nameSaved ? Icons.check : Icons.save),
                 label: Text(_nameSaved ? 'Saved!' : 'Save Name'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _nameSaved ? AppTheme.primaryGreen : AppTheme.accentAmber,
-                  foregroundColor: _nameSaved ? Colors.white : AppTheme.textDark,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  backgroundColor:
+                      _nameSaved ? AppTheme.primaryGreen : AppTheme.accentAmber,
+                  foregroundColor:
+                      _nameSaved ? Colors.white : AppTheme.textDark,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                  textStyle: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ),
             ),
@@ -1245,7 +1507,7 @@ class _SettingsPageState extends State<_SettingsPage> {
             const Divider(),
             const SizedBox(height: 16),
             const Text('\u{1F4B1} GCash Settings',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             if (_loadingGcash)
               const Center(child: CircularProgressIndicator())
@@ -1255,8 +1517,10 @@ class _SettingsPageState extends State<_SettingsPage> {
                 controller: _gcashNumberCtrl,
                 decoration: InputDecoration(
                   labelText: 'GCash Number',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-                  prefixIcon: const Icon(Icons.phone_android, color: AppTheme.primaryGreen),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                  prefixIcon: const Icon(Icons.phone_android,
+                      color: AppTheme.primaryGreen),
                   filled: true,
                   fillColor: Colors.white,
                 ),
@@ -1267,8 +1531,10 @@ class _SettingsPageState extends State<_SettingsPage> {
                 controller: _gcashNameCtrl,
                 decoration: InputDecoration(
                   labelText: 'GCash Account Name',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-                  prefixIcon: const Icon(Icons.person_outline, color: AppTheme.primaryGreen),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                  prefixIcon: const Icon(Icons.person_outline,
+                      color: AppTheme.primaryGreen),
                   filled: true,
                   fillColor: Colors.white,
                 ),
@@ -1280,14 +1546,21 @@ class _SettingsPageState extends State<_SettingsPage> {
                 child: ElevatedButton.icon(
                   onPressed: _gcashSaving ? null : _saveGcash,
                   icon: _gcashSaving
-                      ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
                       : const Icon(Icons.save),
-                  label: Text(_gcashSaving ? 'Saving...' : 'Save GCash Settings'),
+                  label:
+                      Text(_gcashSaving ? 'Saving...' : 'Save GCash Settings'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.primaryGreen,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                    textStyle: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),

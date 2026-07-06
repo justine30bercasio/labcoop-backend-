@@ -559,15 +559,22 @@ app.use('/api/account-deletion', accountDeletionRouter);
 app.use('/legal', legalRouter);
 
 // ── Public uploads: shop images (avatars/borders) and board photos — no auth needed ──
+// Return 404 for missing files instead of falling through to auth-gated /uploads (which returns 401)
 for (const dir of ['shop', 'board']) {
   app.use(`/uploads/${dir}`, express.static(path.join(__dirname, 'uploads', dir), {
     dotfiles: 'deny',
     index: false,
+    fallthrough: true,
     setHeaders: (res) => {
       res.set('X-Content-Type-Options', 'nosniff');
       res.set('Cache-Control', 'public, max-age=86400');
     },
   }));
+  app.use(`/uploads/${dir}`, (req, res) => {
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      res.status(404).type('text').send('Not found');
+    }
+  });
 }
 // ── Authenticated file serving for sensitive uploads (KYC, profiles) ──
 app.use('/uploads', authMiddleware, (req, res, next) => {

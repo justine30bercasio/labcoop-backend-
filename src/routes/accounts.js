@@ -24,8 +24,6 @@ router.get('/:accountId',
 
 router.put('/:accountId',
   param('accountId').isString().notEmpty().trim(),
-  body('actual_balance').optional().isFloat({ min: 0 }).withMessage('actual_balance must be >= 0'),
-  body('unallocated_balance').optional().isFloat({ min: 0 }).withMessage('unallocated_balance must be >= 0'),
   body('current_xp').optional().isInt({ min: 0 }).withMessage('current_xp must be >= 0'),
   body('child_name').optional().isString().trim().isLength({ min: 1, max: 100 }),
   body('parent_phone').optional().isString().isLength({ max: 20 }),
@@ -33,10 +31,8 @@ router.put('/:accountId',
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { actual_balance, unallocated_balance, current_xp, child_name, parent_phone } = req.body;
+    const { current_xp, child_name, parent_phone } = req.body;
     const updated = await store.updateAccount(req.params.accountId, {
-      actual_balance,
-      unallocated_balance,
       current_xp,
       child_name,
       parent_phone,

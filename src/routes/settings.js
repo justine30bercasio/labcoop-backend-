@@ -16,16 +16,7 @@ router.get('/gcash',
   })
 );
 
-router.put('/gcash',
-  body('gcash_number').isString().notEmpty().trim(),
-  body('gcash_name').isString().notEmpty().trim(),
-  asyncHandler(async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-    await store.setSetting('gcash_number', req.body.gcash_number);
-    await store.setSetting('gcash_name', req.body.gcash_name);
-    res.json({ success: true, gcash_number: req.body.gcash_number, gcash_name: req.body.gcash_name });
-  })
-);
+// GCash settings are managed via admin Settings page only — no user-facing PUT endpoint
+// Users can only read the GCash info for reference purposes via GET /api/settings/gcash
 
 module.exports = router;

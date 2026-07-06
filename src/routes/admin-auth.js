@@ -1,5 +1,5 @@
 const express = require('express');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const { store } = require('../db');
@@ -251,7 +251,7 @@ router.post('/login/forgot', async (req, res) => {
   otpStore.set(email, { otp, expires: now + 600000 });
   const sent = sendOtpEmail(targetEmail, otp);
   if (!sent) {
-    console.log(`[OTP] Password reset requested for ${email}. OTP: ${otp} (server log only)`);
+    // OTP is never logged — only SMTP configuration status is reported
     return res.type('html').send(forgotPage('err:Cannot send email — SMTP is not configured. Contact your administrator to reset your password.'));
   }
   res.type('html').send(forgotPage('If that username exists, an OTP has been sent to the registered email.'));

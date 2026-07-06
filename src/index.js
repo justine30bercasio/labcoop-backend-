@@ -318,6 +318,7 @@ app.use(helmet({
     },
   },
   crossOriginResourcePolicy: { policy: 'cross-origin' },
+  strictTransportSecurity: process.env.NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
 }));
 app.set('trust proxy', 1);
 app.use(cors({
@@ -448,7 +449,8 @@ app.get('/api/accounts/:accountId/statement', authMiddleware, requireOwnership, 
 app.use('/api/transactions', authMiddleware, requireOwnership, transactionsRouter);
 app.use('/api/excel', authMiddleware, excelRouter);
 app.use('/api/coop', authMiddleware, requireOwnership, coopRouter);
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Uploaded files (KYC, registration) are served via authenticated route only — see /api/files/*
+// NEVER use express.static for user-uploaded content — it bypasses auth
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api/shop', authMiddleware, shopRouter);
 app.use('/api/quiz', authMiddleware, quizRouter);
@@ -547,14 +549,24 @@ app.use('/api/board', boardRouter);
 app.use('/api/leaderboard', authMiddleware, leaderboardRouter);
 app.use('/api/paymongo', paymongoRouter);
 app.use('/api/settings', authMiddleware, requireOwnership, settingsRouter);
-// ── CSRF protection for admin session routes ──
+
+// ── Authenticated file serving — replaces express.static for uploads ──
+app.use('/uploads', authMiddleware, (req, res, next) => {
+  express.static(path.join(__dirname, 'uploads'), {
+    dotfiles: 'deny',
+    index: false,
+    setHeaders: (res) => {
+      res.set('X-Content-Type-Options', 'nosniff');
+      res.set('Cache-Control', 'private, max-age=3600');
+    },
+  })(req, res, next);
+});
+// ── CSRF protection for admin session routes (header-only, no body/query fallback) ──
 function csrfProtection(req, res, next) {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
   const headerToken = req.headers['x-csrf-token'];
-  const bodyToken = req.body?._csrf || req.query?._csrf;
   const cookieToken = req.session?.csrfToken;
-  const token = headerToken || bodyToken;
-  if (!cookieToken || !token || token !== cookieToken) {
+  if (!cookieToken || !headerToken || headerToken !== cookieToken) {
     return res.status(403).json({ message: 'CSRF token mismatch. Reload the page and try again.' });
   }
   next();

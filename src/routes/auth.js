@@ -137,6 +137,9 @@ router.post('/register', regUpload.fields([
   if (!password || typeof password !== 'string' || password.length < 8) {
     return res.status(400).json({ message: 'password is required (min 8 characters)' });
   }
+  if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+    return res.status(400).json({ message: 'password must contain uppercase, lowercase, and a digit' });
+  }
 
   const ulast = lastName.trim().toUpperCase();
   const ufirst = firstName.trim().toUpperCase();
@@ -145,7 +148,8 @@ router.post('/register', regUpload.fields([
 
   const existing = await store.getAccountByName(displayName);
   if (existing) {
-    return res.status(409).json({ message: `Account "${displayName}" already exists. Please login.` });
+    // Generic message prevents username/account enumeration
+    return res.status(409).json({ message: 'An account with this information already exists. Please login or use different details.' });
   }
 
   const files = req.files || {};
@@ -162,7 +166,7 @@ router.post('/register', regUpload.fields([
     last_name: ulast,
     first_name: ufirst,
     middle_name: umid,
-    age: parseInt(age || '0', 10),
+    age: 0, // computed from birthday by store
     gender: gender || '',
     parent_phone: parentPhone || '',
     birthday: birthday || '',
@@ -237,6 +241,9 @@ router.post('/change-password', asyncHandler(async (req, res) => {
     const { oldPassword, newPassword } = req.body;
     if (!oldPassword || !newPassword || newPassword.length < 8) {
       return res.status(400).json({ message: 'oldPassword and newPassword (min 8 chars) are required' });
+    }
+    if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+      return res.status(400).json({ message: 'newPassword must contain uppercase, lowercase, and a digit' });
     }
 
     const account = await store.getAccount(decoded.accountId);

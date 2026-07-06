@@ -1502,16 +1502,21 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
   </div>
 
   <script>
+  function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function showTxDetail(id,type,amount,sign,balBefore,balAfter,date,time,desc,refType,refId,goal,txid) {
     var typeLabel = type.replace(/_/g,' ');
     var colors = {deposit:'badge-green',withdrawal:'badge-red',loan_disbursement:'badge-amber',loan_payment:'badge-blue',interest_credit:'badge-purple',interest:'badge-purple',allocation:'badge-blue',td_placement:'badge-amber',td_maturity:'badge-blue',fee:'badge-amber',reward:'badge-green',purchase:'badge-gray'};
-    document.getElementById('txd_type').innerHTML = '<span class="badge ' + (colors[type]||'badge-gray') + '">' + typeLabel + '</span>';
-    document.getElementById('txd_amount').innerHTML = '<span style="color:' + (sign === '+' ? 'var(--accent)' : 'var(--red)') + ';font-size:20px;font-weight:700">' + sign + amount + '</span>';
-    document.getElementById('txd_bal_after').innerHTML = balAfter + (balBefore !== '-' ? ' <span style="font-size:11px;color:var(--text-muted);font-weight:400">from ' + balBefore + '</span>' : '');
+    document.getElementById('txd_type').textContent = typeLabel;
+    document.getElementById('txd_type').className = 'badge ' + (colors[type]||'badge-gray');
+    document.getElementById('txd_amount').textContent = sign + amount;
+    document.getElementById('txd_amount').style.color = (sign === '+' ? 'var(--accent)' : 'var(--red)');
+    document.getElementById('txd_amount').style.fontSize = '20px';
+    document.getElementById('txd_amount').style.fontWeight = '700';
+    document.getElementById('txd_bal_after').textContent = balAfter + (balBefore !== '-' ? ' from ' + balBefore : '');
     document.getElementById('txd_date').textContent = date;
     document.getElementById('txd_time').textContent = time;
     document.getElementById('txd_desc').textContent = desc;
-    document.getElementById('txd_ref').innerHTML = (refType !== '-' ? '<span style="font-size:11px;color:var(--text-muted)">' + refType + ':</span> ' : '') + refId;
+    document.getElementById('txd_ref').innerHTML = escHtml(refType !== '-' ? refType + ': ' : '') + escHtml(refId);
     document.getElementById('txd_goal').textContent = goal || '-';
     document.getElementById('txModal').classList.add('show');
   }

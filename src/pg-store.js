@@ -620,7 +620,8 @@ class PgStore {
   }
 
   async updateAccount(accountId, fields) {
-    const allowed = ['actual_balance', 'unallocated_balance', 'current_xp', 'child_name', 'parent_phone', 'last_name', 'first_name', 'middle_name', 'birthday', 'age', 'gender', 'savings_schedule', 'photo_2x2_url', 'birth_cert_url', 'id_photo_url', 'profile_pic_url', 'kyc_status', 'selfie_url', 'kyc_submitted_at', 'kyc_verified_at', 'kyc_rejected_reason', 'is_active', 'maintaining_balance', 'regular_savings_number', 'savings_product_id'];
+    // actual_balance and unallocated_balance are SERVER-MANAGED only — never via user-facing API
+    const allowed = ['current_xp', 'child_name', 'parent_phone', 'last_name', 'first_name', 'middle_name', 'birthday', 'age', 'gender', 'savings_schedule', 'photo_2x2_url', 'birth_cert_url', 'id_photo_url', 'profile_pic_url', 'kyc_status', 'selfie_url', 'kyc_submitted_at', 'kyc_verified_at', 'kyc_rejected_reason', 'is_active', 'maintaining_balance', 'regular_savings_number', 'savings_product_id'];
     const setClauses = [];
     const values = [];
     let idx = 1;

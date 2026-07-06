@@ -561,12 +561,14 @@ app.use('/uploads', authMiddleware, (req, res, next) => {
     },
   })(req, res, next);
 });
-// ── CSRF protection for admin session routes (header-only, no body/query fallback) ──
+// ── CSRF protection for admin session routes ──
 function csrfProtection(req, res, next) {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
   const headerToken = req.headers['x-csrf-token'];
+  const bodyToken = req.body?._csrf || req.query?._csrf;
   const cookieToken = req.session?.csrfToken;
-  if (!cookieToken || !headerToken || headerToken !== cookieToken) {
+  const token = headerToken || bodyToken;
+  if (!cookieToken || !token || token !== cookieToken) {
     return res.status(403).json({ message: 'CSRF token mismatch. Reload the page and try again.' });
   }
   next();

@@ -558,7 +558,16 @@ app.use('/api/parental-consent', parentalConsentRouter);
 app.use('/api/account-deletion', accountDeletionRouter);
 app.use('/legal', legalRouter);
 
-// ── Authenticated file serving — replaces express.static for uploads ──
+// ── Public uploads: shop images (avatars/borders) — no auth needed ──
+app.use('/uploads/shop', express.static(path.join(__dirname, 'uploads', 'shop'), {
+  dotfiles: 'deny',
+  index: false,
+  setHeaders: (res) => {
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('Cache-Control', 'public, max-age=86400');
+  },
+}));
+// ── Authenticated file serving for sensitive uploads (KYC, profiles) ──
 app.use('/uploads', authMiddleware, (req, res, next) => {
   express.static(path.join(__dirname, 'uploads'), {
     dotfiles: 'deny',

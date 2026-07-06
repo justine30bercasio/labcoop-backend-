@@ -558,6 +558,12 @@ app.use('/api/parental-consent', parentalConsentRouter);
 app.use('/api/account-deletion', accountDeletionRouter);
 app.use('/legal', legalRouter);
 
+// ── Ensure upload directories exist (Render's ephemeral fs wipes them on deploy) ──
+for (const sub of ['shop', 'board', 'profiles', 'kyc', 'registration']) {
+  const d = path.join(__dirname, 'uploads', sub);
+  if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
+}
+
 // ── Public uploads: shop images (avatars/borders) and board photos — no auth needed ──
 // Return 404 for missing files instead of falling through to auth-gated /uploads (which returns 401)
 for (const dir of ['shop', 'board']) {

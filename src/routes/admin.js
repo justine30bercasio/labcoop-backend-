@@ -358,8 +358,8 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
       <div class="card-body-padded">
       <form method="post" enctype="multipart/form-data" style="display:flex;gap:8px;flex-wrap:wrap">
         <input type="file" name="file" accept=".xlsx,.xls,.csv" required style="flex:1;min-width:140px;padding:6px;border:2px solid var(--border);border-radius:6px;font-size:12px">
-        <button type="submit" formaction="/admin/upload" class="btn btn-secondary btn-xs"><i class="fas fa-file-import"></i> Parse</button>
-        <button type="submit" formaction="/admin/upload-and-seed" class="btn btn-primary btn-xs"><i class="fas fa-seedling"></i> Parse &amp; Seed</button>
+        <button type="submit" formaction="/admin/upload?_csrf=${res.locals.csrfToken}" class="btn btn-secondary btn-xs"><i class="fas fa-file-import"></i> Parse</button>
+        <button type="submit" formaction="/admin/upload-and-seed?_csrf=${res.locals.csrfToken}" class="btn btn-primary btn-xs"><i class="fas fa-seedling"></i> Parse &amp; Seed</button>
       </form>
       </div>
     </div>
@@ -500,6 +500,7 @@ router.get('/shop', requireRole(1), asyncHandler(async (req, res) => {
   const items = await sql('SELECT * FROM shop_items ORDER BY type, cost ASC');
 
   const q = req.query;
+  const csrf = res.locals.csrfToken || '';
 
   const banner = q.added === 'ok' ? 'success:Item added successfully.'
     : q.updated === 'ok' ? 'success:Item updated successfully.'
@@ -508,177 +509,22 @@ router.get('/shop', requireRole(1), asyncHandler(async (req, res) => {
     : q.error ? `error:${q.error}`
     : '';
 
-  const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LabCoop — Shop Manager</title>
-<style>
-:root {
-  --sidebar: #0d2818; --sidebar-hover: #1a3d2a; --sidebar-active: #2E7D32;
-  --sidebar-text: #94a3b8; --sidebar-text-active: #ffffff;
-  --bg: #f0f4f8; --card: #ffffff; --border: #e2e8f0;
-  --text: #1e293b; --text-muted: #64748b;
-  --accent: #2E7D32; --accent-hover: #1B5E20;
-  --green: #22c55e; --blue: #3b82f6; --amber: #f59e0b; --purple: #8b5cf6; --red: #ef4444;
-  --radius: 12px; --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-  --shadow-lg: 0 4px 24px rgba(0,0,0,0.08);
-  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
-}
-* { margin:0; padding:0; box-sizing:border-box; }
-html { font-size:14px; }
-body { font-family:var(--font); background:var(--bg); color:var(--text); display:flex; min-height:100vh; }
+  const shopStyles = `.preview-cell{display:flex;align-items:center;gap:8px}
+.preview-emoji{font-size:26px;line-height:1}
+.preview-img{width:34px;height:34px;border-radius:50%;object-fit:cover}
+.preview-img-border{width:48px;height:48px;border-radius:8px;object-fit:contain;background:#f1f5f9;display:inline-flex;align-items:center;justify-content:center}
+.preview-border{display:inline-block;width:34px;height:34px;border-radius:8px}
+.rarity-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
+.actions-cell{display:flex;gap:4px;flex-wrap:nowrap}
+.actions-cell form{display:inline}`;
 
-.sidebar { width:240px; background:var(--sidebar); display:flex; flex-direction:column; position:fixed; top:0; left:0; bottom:0; z-index:50; }
-.sidebar-brand { padding:20px 20px 16px; border-bottom:1px solid rgba(255,255,255,0.06); }
-.sidebar-brand h1 { font-size:18px; color:#fff; font-weight:700; }
-.sidebar-brand span { font-size:11px; color:var(--sidebar-text); display:block; margin-top:2px; }
-.sidebar-nav { flex:1; padding:12px 10px; display:flex; flex-direction:column; gap:2px; }
-.sidebar-nav a { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:8px; color:var(--sidebar-text); text-decoration:none; font-size:13px; font-weight:500; transition:all 0.15s; }
-.sidebar-nav a:hover { background:var(--sidebar-hover); color:#fff; }
-.sidebar-nav a.active { background:var(--sidebar-active); color:#fff; font-weight:600; }
-.sidebar-nav a .icon { font-size:16px; width:20px; text-align:center; }
-.sidebar-nav a .badge-count { margin-left:auto; background:rgba(255,255,255,0.1); padding:1px 8px; border-radius:10px; font-size:11px; }
-.sidebar-footer { padding:12px 10px; border-top:1px solid rgba(255,255,255,0.06); }
-.sidebar-footer a { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:8px; color:var(--sidebar-text); text-decoration:none; font-size:13px; transition:all 0.15s; }
-.sidebar-footer a:hover { background:var(--sidebar-hover); color:#fff; }
-
-.main { margin-left:240px; flex:1; padding:24px 28px; }
-.page-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:12px; }
-.page-header h2 { font-size:20px; font-weight:700; }
-.page-header .meta { font-size:12px; color:var(--text-muted); }
-.header-actions { display:flex; gap:8px; flex-wrap:wrap; }
-
-.toast { position:fixed; top:20px; right:20px; padding:12px 20px; border-radius:10px; font-size:13px; font-weight:500; z-index:999; box-shadow:var(--shadow-lg); animation:slideIn 0.3s ease; max-width:400px; }
-.toast.success { background:#e8f5e9; color:#1B5E20; border:1px solid #a5d6a7; }
-.toast.error { background:#fce4ec; color:#b71c1c; border:1px solid #ef9a9a; }
-@keyframes slideIn { from{transform:translateX(100%);opacity:0} to{transform:translateX(0);opacity:1} }
-
-.btn { display:inline-flex; align-items:center; gap:6px; padding:8px 18px; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; text-decoration:none; transition:all 0.15s; white-space:nowrap; }
-.btn-primary { background:var(--accent); color:#fff; }
-.btn-primary:hover { background:var(--accent-hover); }
-.btn-secondary { background:#e8f5e9; color:var(--accent); }
-.btn-secondary:hover { background:#c8e6c9; }
-.btn-outline { background:transparent; color:var(--text); border:1px solid var(--border); }
-.btn-outline:hover { background:var(--bg); }
-.btn-danger { background:var(--red); color:#fff; }
-.btn-danger:hover { background:#dc2626; }
-.btn-amber { background:var(--amber); color:#fff; }
-.btn-amber:hover { background:#d97706; }
-.btn-xs { padding:4px 10px; font-size:11px; }
-
-.card { background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); border:1px solid var(--border); margin-bottom:20px; overflow:hidden; }
-.card-header { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid var(--border); }
-.card-header h3 { font-size:15px; font-weight:600; display:flex; align-items:center; gap:8px; }
-.card-body { overflow-x:auto; overflow-y:visible; padding:0; }
-
-table { width:100%; border-collapse:collapse; }
-th { background:#f8fafc; color:var(--text-muted); padding:10px 14px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; font-weight:600; white-space:nowrap; border-bottom:1px solid var(--border); }
-td { padding:9px 14px; border-bottom:1px solid #f1f5f9; font-size:13px; vertical-align:middle; }
-tr:last-child td { border-bottom:none; }
-tr:hover td { background:#f8fafc; }
-td.mono { font-family:var(--mono); font-size:12px; }
-
-.preview-cell { display:flex; align-items:center; gap:8px; }
-.preview-emoji { font-size:26px; line-height:1; }
-.preview-img { width:34px; height:34px; border-radius:50%; object-fit:cover; }
-.preview-img-border { width:48px; height:48px; border-radius:8px; object-fit:contain; background:#f1f5f9; display:inline-flex; align-items:center; justify-content:center; }
-.preview-border { display:inline-block; width:34px; height:34px; border-radius:8px; }
-
-.badge { display:inline-flex; align-items:center; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:600; }
-.badge-green { background:#e8f5e9; color:var(--accent); }
-.badge-red { background:#fce4ec; color:var(--red); }
-.badge-purple { background:#f3e5f5; color:var(--purple); }
-.badge-blue { background:#e3f2fd; color:var(--blue); }
-.badge-gray { background:#f1f5f9; color:var(--text-muted); }
-
-.rarity-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:4px; }
-
-.actions-cell { display:flex; gap:4px; flex-wrap:nowrap; }
-.actions-cell form { display:inline; }
-
-.modal-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:100; align-items:center; justify-content:center; }
-.modal-overlay:target { display:flex; }
-.modal { background:var(--card); border-radius:16px; padding:28px; width:100%; max-width:480px; max-height:90vh; overflow-y:auto; box-shadow:0 8px 32px rgba(0,0,0,0.2); }
-.modal h2 { font-size:17px; font-weight:700; margin-bottom:16px; color:var(--text); }
-.modal label { display:block; font-size:12px; font-weight:600; color:var(--text-muted); margin-top:12px; margin-bottom:3px; }
-.modal input, .modal select { width:100%; padding:9px 12px; border:2px solid var(--border); border-radius:8px; font-size:14px; outline:none; }
-.modal input:focus, .modal select:focus { border-color:var(--accent); }
-.modal .btn { margin-top:14px; }
-.modal .close { float:right; color:#999; text-decoration:none; font-size:24px; line-height:1; }
-.modal .close:hover { color:#333; }
-.form-row { display:flex; gap:12px; }
-.form-row > div { flex:1; }
-
-@media(max-width:768px) {
-  .sidebar { width:60px; }
-  .sidebar-brand h1, .sidebar-brand span, .sidebar-nav a span, .sidebar-footer a span { display:none; }
-  .sidebar-nav a { justify-content:center; padding:10px; }
-  .sidebar-footer a { justify-content:center; padding:10px; }
-  .sidebar-nav a .badge-count { display:none; }
-  .main { margin-left:60px; padding:16px; }
-}
-</style>
-</head>
-<body>
-
-<div class="sidebar">
-  <div class="sidebar-brand">
-    <h1>&#x1F3E6; LabCoop</h1>
-    <span>Admin Dashboard</span>
-  </div>
-  <div class="sidebar-nav">
-    <a href="/admin"><span class="icon">&#x1F4CA;</span> <span>Dashboard</span></a>
-    <a href="/admin/teller"><span class="icon">&#x1F3E6;</span> <span>Teller</span></a>
-    <a href="/admin/accounts"><span class="icon">&#x1F465;</span> <span>Accounts</span></a>
-    <a href="/admin/loans"><span class="icon">&#x1F4B0;</span> <span>Loans</span></a>
-    <a href="/admin/withdrawal-requests"><span class="icon">&#x1F4B8;</span> <span>Withdrawals</span></a>
-    <a href="/admin/online-deposits"><span class="icon">&#x1F4B0;</span> <span>Online Deposits</span></a>
-    <a href="/admin/loan-products"><span class="icon">&#x1F3ED;</span> <span>Loan Products</span></a>
-    <a href="/admin/savings-products"><span class="icon">&#x1F4E6;</span> <span>Savings Products</span></a>
-    <a href="/admin/goals"><span class="icon">&#x1F3AF;</span> <span>Goals</span></a>
-    <a href="/admin/badges"><span class="icon">&#x1F3C6;</span> <span>Badges</span></a>
-    <a href="/admin/transactions"><span class="icon">&#x1F4B3;</span> <span>Transactions</span></a>
-    <a href="/admin/shop" class="active"><span class="icon">&#x1F6D2;</span> <span>Shop</span><span class="badge-count">${items.length}</span></a>
-    <a href="/admin/quiz"><span class="icon">&#x1F4DD;</span> <span>Quiz</span></a>
-    <a href="/admin/settings"><span class="icon">&#x2699;</span> <span>Settings</span></a>
-  </div>
-  <div class="sidebar-footer">
-    <a href="/admin/logout"><span class="icon">&#x1F6AA;</span> <span>Logout</span></a>
-  </div>
-</div>
-
-<div class="main">
-  <div class="page-header">
-    <div>
-      <h2>&#x1F6D2; Shop Manager</h2>
-      <div class="meta">${items.filter(i=>i.type==='avatar').length} avatars &middot; ${items.filter(i=>i.type==='border').length} borders &middot; ${items.length} total items</div>
-    </div>
-    <div class="header-actions">
-      <a href="#add-modal" class="btn btn-primary">&#x2795; Add Item</a>
-      <a href="/api/shop/items" target="_blank" class="btn btn-outline">&#x1F4EC; API</a>
-    </div>
-  </div>
-
-  ${banner ? `<div class="toast ${banner.startsWith('error:') ? 'error' : 'success'}">${banner.startsWith('error:') ? '&#x274C; ' + banner.slice(6) : '&#x2705; ' + banner.slice(8)}</div>` : ''}
-
-  <div class="card">
-    <div class="card-header"><h3>&#x1F4E6; All Items</h3><span class="badge badge-green">${items.length} total</span></div>
-    <div class="card-body">
-    <table><tr><th>Preview</th><th>Type</th><th>ID</th><th>Name</th><th>Cost</th><th>Rarity</th><th>Status</th><th>Actions</th></tr>
-    ${items.map(item => {
-      const isAvatar = item.type === 'avatar';
-      return `<tr>
+  const tableRows = items.map(item => {
+    const isAvatar = item.type === 'avatar';
+    return `<tr>
       <td><div class="preview-cell">${isAvatar
-        ? (item.image_url
-          ? `<img src="${item.image_url}" class="preview-img">`
-          : `<span class="preview-emoji">${item.emoji || '&#x2753;'}</span>`)
-          : (item.image_url
-          ? `<img src="${item.image_url}" class="preview-img-border">`
-          : `<span class="preview-border" style="background:linear-gradient(135deg,${item.color1||'#2E7D32'},${item.color2||'#2E7D32'})"></span>`)
-       }</div></td>
+        ? (item.image_url ? `<img src="${item.image_url}" class="preview-img">` : `<span class="preview-emoji">${item.emoji || '&#x2753;'}</span>`)
+        : (item.image_url ? `<img src="${item.image_url}" class="preview-img-border">` : `<span class="preview-border" style="background:linear-gradient(135deg,${item.color1||'#2E7D32'},${item.color2||'#2E7D32'})"></span>`)}
+      </div></td>
       <td><span class="badge ${item.type==='avatar'?'badge-blue':'badge-purple'}">${item.type}</span></td>
       <td class="mono">${item.id}</td>
       <td><b>${item.name}</b></td>
@@ -689,21 +535,63 @@ td.mono { font-family:var(--mono); font-size:12px; }
         <a href="#edit-${item.id}" class="btn btn-secondary btn-xs">&#x270F;</a>
         <a href="#upload-${item.id}" class="btn btn-amber btn-xs">&#x1F4F7;</a>
         <form method="post" action="/admin/shop/delete/${item.id}" data-confirm="Delete ${item.name}?">
+          <input type="hidden" name="_csrf" value="${csrf}">
           <button type="submit" class="btn btn-danger btn-xs">&#x1F5D1;</button>
         </form>
       </div></td>
     </tr>`;
-    }).join('')}
-    </table></div>
-  </div>
-</div>
+  }).join('');
 
-<!-- Add modal -->
+  const editModals = items.map(item => {
+    const isAvatar = item.type === 'avatar';
+    return `<div id="edit-${item.id}" class="modal-overlay">
+<div class="modal">
+<a href="#" class="close">&times;</a>
+<h2>&#x270F; ${item.name}</h2>
+<form method="post" action="/admin/shop/update/${item.id}">
+  <input type="hidden" name="_csrf" value="${csrf}">
+  <div class="form-row">
+    <div><label for="ename_${item.id}">Name</label><input type="text" id="ename_${item.id}" name="name" value="${item.name}" required></div>
+    <div><label for="ecost_${item.id}">Cost</label><input type="number" id="ecost_${item.id}" name="cost" min="0" value="${item.cost}"></div>
+  </div>
+  <div class="form-row">
+    <div><label for="erarity_${item.id}">Rarity</label><select id="erarity_${item.id}" name="rarity">${['Common','Uncommon','Rare','Epic','Legendary','Mythic','Special'].map(r=>`<option value="${r}"${r===item.rarity?' selected':''}>${r}</option>`).join('')}</select></div>
+    <div><label for="eactive_${item.id}">Status</label><select id="eactive_${item.id}" name="is_active"><option value="1"${item.is_active?' selected':''}>Active</option><option value="0"${!item.is_active?' selected':''}>Inactive</option></select></div>
+  </div>
+  ${item.image_url ? `<p style="margin-bottom:12px">Current image: <img src="${item.image_url}" style="width:48px;height:48px;border-radius:${isAvatar?'50%':'8px'};object-fit:${isAvatar?'cover':'contain'};background:#f1f5f9;vertical-align:middle"></p>` : ''}
+  ${isAvatar ? `<label for="eemoji_${item.id}">Emoji</label><input type="text" id="eemoji_${item.id}" name="emoji" value="${item.emoji||''}" maxlength="4">` : `<div class="form-row"><div><label for="ecolor1_${item.id}">Color 1</label><input type="color" id="ecolor1_${item.id}" name="color1" value="${item.color1}"></div><div><label for="ecolor2_${item.id}">Color 2</label><input type="color" id="ecolor2_${item.id}" name="color2" value="${item.color2}"></div></div>`}
+  <button type="submit" class="btn btn-primary">&#x1F4BE; Save</button>
+</form>
+</div>
+</div>`;
+  }).join('');
+
+  const uploadModals = items.map(item => `<div id="upload-${item.id}" class="modal-overlay">
+<div class="modal">
+<a href="#" class="close">&times;</a>
+<h2>&#x1F4F7; ${item.name}</h2>
+${item.image_url ? `<p style="margin-bottom:12px">Current: <img src="${item.image_url}" style="width:48px;height:48px;border-radius:${item.type==='avatar'?'50%':'8px'};object-fit:${item.type==='avatar'?'cover':'contain'};background:#f1f5f9;vertical-align:middle"></p>` : ''}
+<form method="post" action="/admin/shop/upload/${item.id}?_csrf=${csrf}" enctype="multipart/form-data">
+  <label for="uimage_${item.id}">Image (png, jpg, webp)</label>
+  <input type="file" id="uimage_${item.id}" name="image" accept=".png,.jpg,.jpeg,.gif,.webp" required>
+  <button type="submit" class="btn btn-amber">&#x1F4F7; Upload</button>
+</form>
+</div>
+</div>`).join('');
+
+  const content = `<style>${shopStyles}</style>
+<div class="card">
+  <div class="card-header"><h3>&#x1F4E6; All Items</h3><span class="badge badge-green">${items.length} total</span></div>
+  <div class="card-body">
+  <table><tr><th>Preview</th><th>Type</th><th>ID</th><th>Name</th><th>Cost</th><th>Rarity</th><th>Status</th><th>Actions</th></tr>
+  ${tableRows}
+  </table></div>
+</div>
 <div id="add-modal" class="modal-overlay">
 <div class="modal">
 <a href="#" class="close">&times;</a>
 <h2>&#x2795; Add New Item</h2>
-<form method="post" action="/admin/shop/create" enctype="multipart/form-data">
+<form method="post" action="/admin/shop/create?_csrf=${csrf}" enctype="multipart/form-data">
   <div class="form-row">
     <div><label for="type">Type</label><select id="type" name="type" required><option value="">Select...</option><option value="avatar">Avatar</option><option value="border">Border</option></select></div>
     <div><label for="name">Name</label><input type="text" id="name" name="name" placeholder="e.g. Dragon" required></div>
@@ -720,53 +608,16 @@ td.mono { font-family:var(--mono); font-size:12px; }
 </form>
 </div>
 </div>
+${editModals}
+${uploadModals}
+<script>document.querySelectorAll('form[data-confirm]').forEach(function(f){f.addEventListener('submit',function(e){if(!confirm(this.dataset.confirm))e.preventDefault()})})</script>`;
 
-<!-- Edit modals -->
-${items.map(item => {
-  const isAvatar = item.type === 'avatar';
-  return `<div id="edit-${item.id}" class="modal-overlay">
-<div class="modal">
-<a href="#" class="close">&times;</a>
-<h2>&#x270F; ${item.name}</h2>
-<form method="post" action="/admin/shop/update/${item.id}">
-  <div class="form-row">
-    <div><label for="ename_${item.id}">Name</label><input type="text" id="ename_${item.id}" name="name" value="${item.name}" required></div>
-    <div><label for="ecost_${item.id}">Cost</label><input type="number" id="ecost_${item.id}" name="cost" min="0" value="${item.cost}"></div>
-  </div>
-  <div class="form-row">
-    <div><label for="erarity_${item.id}">Rarity</label><select id="erarity_${item.id}" name="rarity">${['Common','Uncommon','Rare','Epic','Legendary','Mythic','Special'].map(r=>`<option value="${r}"${r===item.rarity?' selected':''}>${r}</option>`).join('')}</select></div>
-    <div><label for="eactive_${item.id}">Status</label><select id="eactive_${item.id}" name="is_active"><option value="1"${item.is_active?' selected':''}>Active</option><option value="0"${!item.is_active?' selected':''}>Inactive</option></select></div>
-  </div>
-  ${item.image_url ? `<p style="margin-bottom:12px">Current image: <img src="${item.image_url}" style="width:48px;height:48px;border-radius:${isAvatar?'50%':'8px'};object-fit:${isAvatar?'cover':'contain'};background:#f1f5f9;vertical-align:middle"></p>` : ''}
-  ${isAvatar ? `<label for="eemoji_${item.id}">Emoji</label><input type="text" id="eemoji_${item.id}" name="emoji" value="${item.emoji||''}" maxlength="4">` : `<div class="form-row"><div><label for="ecolor1_${item.id}">Color 1</label><input type="color" id="ecolor1_${item.id}" name="color1" value="${item.color1}"></div><div><label for="ecolor2_${item.id}">Color 2</label><input type="color" id="ecolor2_${item.id}" name="color2" value="${item.color2}"></div></div>`}
-  <button type="submit" class="btn btn-primary">&#x1F4BE; Save</button>
-</form>
-</div>
-</div>`;
-}).join('')}
-
-<!-- Upload modals -->
-${items.map(item => `<div id="upload-${item.id}" class="modal-overlay">
-<div class="modal">
-<a href="#" class="close">&times;</a>
-<h2>&#x1F4F7; ${item.name}</h2>
-${item.image_url ? `<p style="margin-bottom:12px">Current: <img src="${item.image_url}" style="width:48px;height:48px;border-radius:${item.type==='avatar'?'50%':'8px'};object-fit:${item.type==='avatar'?'cover':'contain'};background:#f1f5f9;vertical-align:middle"></p>` : ''}
-<form method="post" action="/admin/shop/upload/${item.id}" enctype="multipart/form-data">
-  <label for="uimage_${item.id}">Image (png, jpg, webp)</label>
-  <input type="file" id="uimage_${item.id}" name="image" accept=".png,.jpg,.jpeg,.gif,.webp" required>
-  <button type="submit" class="btn btn-amber">&#x1F4F7; Upload</button>
-</form>
-</div>
-</div>`).join('')}
-
-<script>
-const toast = document.querySelector('.toast');
-if (toast) setTimeout(()=>{toast.style.opacity='0';toast.style.transition='opacity 0.5s';setTimeout(()=>toast.remove(),500)},3500);
-document.querySelectorAll('.sidebar-nav a').forEach(a=>{if(a.href===location.href||a.href===location.href.split('?')[0])a.classList.add('active')});
-</script>
-</body>
-</html>`;
-
+  const html = layout('Shop Manager', 'shop', content, {
+    toast: banner,
+    subtitle: `${items.filter(i=>i.type==='avatar').length} avatars &middot; ${items.filter(i=>i.type==='border').length} borders &middot; ${items.length} total items`,
+    headerActions: `<a href="#add-modal" class="btn btn-primary">&#x2795; Add Item</a> <a href="/api/shop/items" target="_blank" class="btn btn-outline">&#x1F4EC; API</a>`,
+    counts: { shop: items.length }
+  });
   res.type('html').send(html);
 }));
 
@@ -1189,7 +1040,7 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
       <div class="upload-overlay"><i class="fas fa-camera"></i></div>
     </div>
     <span style="font-size:13px;color:var(--text-muted)">Click avatar to upload photo</span>
-    <form method="post" action="/admin/accounts/upload-photo/${a.account_id}" enctype="multipart/form-data" id="ef_${a.account_id}">
+    <form method="post" action="/admin/accounts/upload-photo/${a.account_id}?_csrf=${res.locals.csrfToken}" enctype="multipart/form-data" id="ef_${a.account_id}">
       <input type="file" name="photo" accept="image/*" onchange="this.form.submit()" id="efi_${a.account_id}">
     </form>
   </div>
@@ -5628,7 +5479,7 @@ router.get('/backup', requireRole(1), asyncHandler(async (req, res) => {
   <div class="backup-card">
     <h3><i class="fas fa-upload" style="color:#3b82f6"></i> Restore from Backup</h3>
     <p style="margin-bottom:12px;color:var(--text-muted);font-size:13px">Upload a previously downloaded backup file. You will preview contents before committing.</p>
-    <form id="restoreForm" enctype="multipart/form-data" method="post" action="/admin/backup/restore" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap">
+    <form id="restoreForm" enctype="multipart/form-data" method="post" action="/admin/backup/restore?_csrf=${res.locals.csrfToken}" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap">
       <div class="field" style="flex:1;min-width:250px">
         <input type="file" name="backup_file" accept=".json" required style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;background:var(--card)">
       </div>

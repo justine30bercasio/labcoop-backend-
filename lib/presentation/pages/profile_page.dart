@@ -37,6 +37,7 @@ class _ProfilePageState extends State<ProfilePage>
   String _borderId = 'b_default';
   Uint8List? _profileImageBytes;
   String _profilePicUrl = '';
+  String _authToken = '';
   bool _loading = true;
   late AnimationController _borderAnimController;
   List<BorderItem> _allBorders = fallbackBorderItems;
@@ -66,6 +67,7 @@ class _ProfilePageState extends State<ProfilePage>
     final imgBytes = await _source.getProfileImageBytes();
     final state = context.read<SavingsBloc>().state;
     final picUrl = state is SavingsLoaded ? state.account.profilePicUrl : '';
+    final token = await FlutterSecureStorage().read(key: 'auth_token');
     List<BorderItem> borders = fallbackBorderItems;
     try {
       final api = GetIt.instance<RemoteApiSource>();
@@ -92,6 +94,7 @@ class _ProfilePageState extends State<ProfilePage>
       _borderId = borderId;
       _profileImageBytes = imgBytes;
       _profilePicUrl = picUrl;
+      _authToken = token ?? '';
       _loading = false;
       _allBorders = borders;
     });
@@ -618,13 +621,16 @@ class _ProfilePageState extends State<ProfilePage>
     final hasUrl = _profilePicUrl.isNotEmpty;
     final hasLocal = _profileImageBytes != null;
     ImageProvider? image;
-    if (hasUrl) {
+    if (hasLocal) {
+      image = MemoryImage(_profileImageBytes!);
+    } else if (hasUrl) {
       final fullUrl = _profilePicUrl.startsWith('http')
           ? _profilePicUrl
           : '${AppConstants.baseUrl}$_profilePicUrl';
-      image = NetworkImage(fullUrl);
-    } else if (hasLocal) {
-      image = MemoryImage(_profileImageBytes!);
+      image = NetworkImage(fullUrl,
+          headers: _authToken.isNotEmpty
+              ? {'Authorization': 'Bearer $_authToken'}
+              : null);
     }
     return Container(
       decoration: BoxDecoration(

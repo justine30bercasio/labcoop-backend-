@@ -39,7 +39,8 @@ npm start
 - Backend (`backend/`): Node.js + Express + PostgreSQL
 
 ## Removed Features
-- Battle system (Flame game engine + 3D arena) was completely removed on 2026-06-15 per user request
+- Battle system (Flame game engine + 3D arena) — removed 2026-06-15 per user request
+- Chores module — removed 2026-06-27 per user request
 
 =====
 ## IMPORTANT — Session Summary
@@ -71,7 +72,7 @@ Build a gamified cooperative passbook for children with team savings, virtual pe
 - (none — awaiting user direction)
 
 ### Blocked
-- (none)
+- **iOS IPA build** — previously blocked by CocoaPods `GoogleDataTransport` conflict; `firebase_core`/`firebase_messaging` upgraded to use Firebase iOS SDK 11.x (`GoogleDataTransport ~> 10.0`) matching MLKit. Needs CI re-run on macOS to verify.
 
 ## Navigation (Post-Battle Removal)
 - HomePage has 4 tabs now: Dashboard (0), Rewards (1), Play (2), Profile (3)
@@ -216,3 +217,24 @@ Flutter app data disappeared on logout/refresh because:
 - **Shop sidebar fix**: Refactored `/admin/shop` to use shared `layout()` from `admin-lib.js` — was using its own hardcoded flat sidebar missing grouped nav sections.
 - **Public `/uploads/shop/` and `/uploads/board/`**: Shop border/avatar images and board of directors photos were behind JWT `authMiddleware`, but admin `<img>` tags and Flutter `Image.network` don't send auth headers → broken images. Added public `express.static` for both before the auth-gated `/uploads/` route. KYC, profile photos, and registration docs remain auth-protected.
 - Backend `main` pushed: `b9989b2`
+
+=====
+### Session 2026-07-06 (Session 3) — Profile photo cloud upload + missing-files 404 + upload dirs on startup
+- **Cloud profile photo upload**: New `POST /api/accounts/:accountId/profile-photo` endpoint with multer (saves to `uploads/profiles/`, updates `profile_pic_url`)
+- **`profilePicUrl` field** added to `SavingsAccount` entity + `SavingsAccountModel`
+- **`uploadProfilePhoto()` in BankingApiService** — multipart upload via Dio `FormData` with auth headers
+- **Save to Cloud button** in Settings — explicit tap after picking photo, shows spinner, success/failure snackbar
+- **Dashboard avatar** — replaced `GrowablePiggyWidget` with user's avatar (local bytes → network image → shop emoji)
+- **NetworkImage error handling** — `Image.network` with `errorBuilder` on both dashboard avatar and profile page; falls back to emoji
+- **Auth headers on NetworkImage** — reads token from `FlutterSecureStorage`, passes `Authorization: Bearer` header
+- **Missing-files return 404 not 401** — catch-all middleware after public static routes
+- **Upload directories created on startup** — 5 subdirs created via `fs.mkdirSync` every server start (Render's ephemeral fs wipes them on deploy)
+- **APK built** (44.1MB) — `flutter analyze` 0 errors
+- Backend `main` pushed: `e75c771`
+
+=====
+### Session 2026-07-06 (Session 4) — Firebase upgrade for iOS CocoaPods fix
+- **iOS CocoaPods fix**: Upgraded `firebase_core: ^4.0.0` (→ 4.11.0) and `firebase_messaging: ^16.0.0` (→ 16.4.1) to use Firebase iOS SDK 11.x which requires `GoogleDataTransport ~> 10.0`, matching MLKit's requirement. Resolves the dependency conflict.
+- **`google_mlkit_face_detection`** already at `^0.13.1` (previous session)
+- `flutter analyze` — 0 errors
+- Flutter `master` pushed: `6df2b21`

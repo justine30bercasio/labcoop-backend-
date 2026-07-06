@@ -1381,12 +1381,8 @@ class _SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<_SettingsPage> {
   final _source = LocalDbSource();
   final _nameController = TextEditingController();
-  final _gcashNumberCtrl = TextEditingController();
-  final _gcashNameCtrl = TextEditingController();
   final _deletionReasonCtrl = TextEditingController();
   bool _nameSaved = false;
-  bool _loadingGcash = true;
-  bool _gcashSaving = false;
   bool _deleting = false;
   Map<String, dynamic>? _deletionRequest;
 
@@ -1402,16 +1398,6 @@ class _SettingsPageState extends State<_SettingsPage> {
         ? state.account.childName
         : await _source.getChildName();
     _nameController.text = name;
-
-    final gcash = await BankingApiService.getGcashSettings();
-    if (!mounted) return;
-    setState(() {
-      _gcashNumberCtrl.text =
-          gcash['gcash_number']?.toString() ?? '09171234567';
-      _gcashNameCtrl.text =
-          gcash['gcash_name']?.toString() ?? 'LabCoop Savings';
-      _loadingGcash = false;
-    });
     _refreshDeletionStatus();
   }
 
@@ -1493,35 +1479,9 @@ class _SettingsPageState extends State<_SettingsPage> {
     }
   }
 
-  Future<void> _saveGcash() async {
-    final number = _gcashNumberCtrl.text.trim();
-    final name = _gcashNameCtrl.text.trim();
-    if (number.isEmpty || name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Please fill in both GCash fields'),
-            backgroundColor: Colors.red),
-      );
-      return;
-    }
-    setState(() => _gcashSaving = true);
-    final ok = await BankingApiService.updateGcashSettings(number, name);
-    if (!mounted) return;
-    setState(() => _gcashSaving = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-            ok ? 'GCash settings saved!' : 'Failed to save GCash settings'),
-        backgroundColor: ok ? AppTheme.primaryGreen : Colors.red,
-      ),
-    );
-  }
-
   @override
   void dispose() {
     _nameController.dispose();
-    _gcashNumberCtrl.dispose();
-    _gcashNameCtrl.dispose();
     _deletionReasonCtrl.dispose();
     super.dispose();
   }
@@ -1572,67 +1532,6 @@ class _SettingsPageState extends State<_SettingsPage> {
             const SizedBox(height: 32),
             const Divider(),
             const SizedBox(height: 16),
-            const Text('\u{1F4B1} GCash Settings',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            if (_loadingGcash)
-              const Center(child: CircularProgressIndicator())
-            else ...[
-              const SizedBox(height: 12),
-              TextField(
-                controller: _gcashNumberCtrl,
-                decoration: InputDecoration(
-                  labelText: 'GCash Number',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16)),
-                  prefixIcon: const Icon(Icons.phone_android,
-                      color: AppTheme.primaryGreen),
-                  filled: true,
-                  fillColor: Colors.white,
-                ),
-                keyboardType: TextInputType.phone,
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _gcashNameCtrl,
-                decoration: InputDecoration(
-                  labelText: 'GCash Account Name',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16)),
-                  prefixIcon: const Icon(Icons.person_outline,
-                      color: AppTheme.primaryGreen),
-                  filled: true,
-                  fillColor: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton.icon(
-                  onPressed: _gcashSaving ? null : _saveGcash,
-                  icon: _gcashSaving
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.save),
-                  label:
-                      Text(_gcashSaving ? 'Saving...' : 'Save GCash Settings'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryGreen,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
-                    textStyle: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 32),
-              const Divider(),
-              const SizedBox(height: 16),
               Row(
                 children: [
                   const Icon(Icons.warning, color: Colors.red, size: 24),
@@ -1713,9 +1612,8 @@ class _SettingsPageState extends State<_SettingsPage> {
                 ),
               ),
             ],
-          ],
+          ),
         ),
-      ),
     );
   }
 

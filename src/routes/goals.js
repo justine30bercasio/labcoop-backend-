@@ -46,6 +46,29 @@ router.put('/:goalId',
     const diff = current_allocated !== undefined ? Number(current_allocated) - Number(oldGoal.current_allocated) : 0;
 
     const doUpdate = async () => {
+      // If allocating, deduct from account's unallocated_balance server-side
+      // (client also sends PUT /api/accounts/:id but we don't allow unallocated_balance there anymore)
+      if (diff > 0) {
+        const account = await store.getAccount(oldGoal.account_id);
+        if (!account) throw new Error('Account not found');
+        const amount = Math.abs(diff);
+        if (Number(account.unallocated_balance) < amount) {
+          throw new Error('Insufficient unallocated balance');
+        }
+        // Use raw query to update unallocated_balance — bypasses allowed-fields check
+        await store.query(
+          'UPDATE accounts SET unallocated_balance = unallocated_balance - $1, updated_at = $2 WHERE account_id = $3',
+          [amount, new Date().toISOString(), oldGoal.account_id]
+        );
+      } else if (diff < 0) {
+        // Deallocation — add back to unallocated_balance
+        const amount = Math.abs(diff);
+        await store.query(
+          'UPDATE accounts SET unallocated_balance = unallocated_balance + $1, updated_at = $2 WHERE account_id = $3',
+          [amount, new Date().toISOString(), oldGoal.account_id]
+        );
+      }
+
       const updated = await store.updateGoal(req.params.goalId, {
         current_allocated: current_allocated !== undefined ? Number(current_allocated) : undefined,
         title,

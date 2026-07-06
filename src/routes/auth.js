@@ -96,6 +96,7 @@ router.post('/login', asyncHandler(async (req, res) => {
       id_photo_url: account.id_photo_url || '',
       kyc_status: account.kyc_status || '',
       selfie_url: account.selfie_url || '',
+      profile_pic_url: account.profile_pic_url || '',
       actual_balance: Number(account.actual_balance),
       unallocated_balance: Number(account.unallocated_balance),
       current_xp: Number(account.current_xp),

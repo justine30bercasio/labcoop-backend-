@@ -1,8 +1,31 @@
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
 const rateLimit = require('express-rate-limit');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const { store, isPostgres } = require('../db');
 const { asyncHandler } = require('../async-handler');
+
+const PROFILE_DIR = path.join(__dirname, '..', 'uploads', 'profiles');
+if (!fs.existsSync(PROFILE_DIR)) fs.mkdirSync(PROFILE_DIR, { recursive: true });
+
+const profileUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, PROFILE_DIR),
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname) || '.jpg';
+      cb(null, `profile-${req.params.accountId}-${Date.now()}${ext}`);
+    },
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.jpg', '.jpeg', '.png', '.gif'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (!allowed.includes(ext)) return cb(new Error('Only .jpg, .jpeg, .png, .gif allowed'));
+    cb(null, true);
+  },
+});
 
 const depositLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -88,6 +111,16 @@ router.put('/:accountId/deposit',
     } catch (e) {
       res.status(404).json({ message: e.message });
     }
+  })
+);
+
+router.post('/:accountId/profile-photo',
+  profileUpload.single('file'),
+  asyncHandler(async (req, res) => {
+    if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+    const url = `/uploads/profiles/${req.file.filename}`;
+    await store.updateAccount(req.params.accountId, { profile_pic_url: url });
+    res.json({ profile_pic_url: url });
   })
 );
 

@@ -4,7 +4,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:get_it/get_it.dart';
 import 'package:http/http.dart' as http;
-import 'package:image_picker/image_picker.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/design_system.dart';
@@ -15,6 +14,7 @@ import '../blocs/savings_bloc.dart';
 import '../blocs/savings_state.dart';
 import '../widgets/animated_counter.dart';
 import '../widgets/app_card.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../core/network/banking_api_service.dart';
 import 'kyc_page.dart';
 import 'board_page.dart';
@@ -31,12 +31,12 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage>
     with TickerProviderStateMixin {
   final _source = LocalDbSource();
-  final _picker = ImagePicker();
   String _avatar = '🐱';
   int _coins = 0;
   int _streak = 0;
   String _borderId = 'b_default';
   Uint8List? _profileImageBytes;
+  String _profilePicUrl = '';
   bool _loading = true;
   late AnimationController _borderAnimController;
   List<BorderItem> _allBorders = fallbackBorderItems;
@@ -64,6 +64,8 @@ class _ProfilePageState extends State<ProfilePage>
     final streak = await _source.getStreakData();
     final borderId = await _source.getAvatarBorder();
     final imgBytes = await _source.getProfileImageBytes();
+    final state = context.read<SavingsBloc>().state;
+    final picUrl = state is SavingsLoaded ? state.account.profilePicUrl : '';
     List<BorderItem> borders = fallbackBorderItems;
     try {
       final api = GetIt.instance<RemoteApiSource>();
@@ -89,19 +91,10 @@ class _ProfilePageState extends State<ProfilePage>
       _streak = streak.streak;
       _borderId = borderId;
       _profileImageBytes = imgBytes;
+      _profilePicUrl = picUrl;
       _loading = false;
       _allBorders = borders;
     });
-  }
-
-  Future<void> _pickImage() async {
-    final xFile = await _picker.pickImage(
-        source: ImageSource.gallery, maxWidth: 256, maxHeight: 256);
-    if (xFile != null) {
-      final bytes = await xFile.readAsBytes();
-      await _source.setProfileImageBytes(bytes);
-      setState(() => _profileImageBytes = bytes);
-    }
   }
 
   @override
@@ -142,78 +135,77 @@ class _ProfilePageState extends State<ProfilePage>
     final isAnimatable =
         border.rarity == 'Special' || border.rarity == 'Mythic';
 
-    return GestureDetector(
-      onTap: _pickImage,
-      child: Column(
-        children: [
-          AnimatedBuilder(
-            animation: _borderAnimController,
-            builder: (context, child) {
-              final hasImageBorder = border.imageUrl.isNotEmpty &&
-                  _profileBorderCache.containsKey(border.id);
-              return SizedBox(
-                width: 192,
-                height: 192,
-                child: hasImageBorder
-                    ? Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          SizedBox(
-                            width: 120,
-                            height: 120,
-                            child: _avatarCircle(),
-                          ),
-                          Container(
-                            width: 192,
-                            height: 192,
-                            decoration: BoxDecoration(
-                              image: DecorationImage(
-                                image: MemoryImage(
-                                    _profileBorderCache[border.id]!),
-                                fit: BoxFit.contain,
-                              ),
-                            ),
-                          ),
-                        ],
-                      )
-                    : Container(
-                        padding: EdgeInsets.all(isAnimatable
-                            ? 8 + (_borderAnimController.value * 4)
-                            : 8),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: isAnimatable
-                              ? SweepGradient(
-                                  colors: [
-                                    border.color1,
-                                    border.color2,
-                                    border.color1
-                                  ],
-                                  stops: const [0, 0.5, 1],
-                                )
-                              : null,
-                          color: !isAnimatable ? border.color1 : null,
-                          boxShadow: [
-                            BoxShadow(
-                              color: border.color1.withValues(alpha: 0.4),
-                              blurRadius: 12,
-                              spreadRadius: 2,
-                            ),
-                          ],
+    return Column(
+      children: [
+        _buildAvatarWithBorder(border, isAnimatable),
+        const SizedBox(height: 8),
+        Text(accountName,
+            style:
+                const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+      ],
+    );
+  }
+
+  Widget _buildAvatarWithBorder(BorderItem border, bool isAnimatable) {
+    return AnimatedBuilder(
+      animation: _borderAnimController,
+      builder: (context, child) {
+        final hasImageBorder = border.imageUrl.isNotEmpty &&
+            _profileBorderCache.containsKey(border.id);
+        return SizedBox(
+          width: 192,
+          height: 192,
+          child: hasImageBorder
+              ? Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: 120,
+                      height: 120,
+                      child: _avatarCircle(),
+                    ),
+                    Container(
+                      width: 192,
+                      height: 192,
+                      decoration: BoxDecoration(
+                        image: DecorationImage(
+                          image: MemoryImage(
+                              _profileBorderCache[border.id]!),
+                          fit: BoxFit.contain,
                         ),
-                        child: _avatarCircle(),
                       ),
-              );
-            },
-          ),
-          const SizedBox(height: 8),
-          Text(accountName,
-              style:
-                  const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          Text('Tap avatar to change photo',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
-        ],
-      ),
+                    ),
+                  ],
+                )
+              : Container(
+                  padding: EdgeInsets.all(isAnimatable
+                      ? 8 + (_borderAnimController.value * 4)
+                      : 8),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: isAnimatable
+                        ? SweepGradient(
+                            colors: [
+                              border.color1,
+                              border.color2,
+                              border.color1
+                            ],
+                            stops: const [0, 0.5, 1],
+                          )
+                        : null,
+                    color: !isAnimatable ? border.color1 : null,
+                    boxShadow: [
+                      BoxShadow(
+                        color: border.color1.withValues(alpha: 0.4),
+                        blurRadius: 12,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: _avatarCircle(),
+                ),
+        );
+      },
     );
   }
 
@@ -623,19 +615,27 @@ class _ProfilePageState extends State<ProfilePage>
   }
 
   Widget _avatarCircle() {
+    final hasUrl = _profilePicUrl.isNotEmpty;
+    final hasLocal = _profileImageBytes != null;
+    ImageProvider? image;
+    if (hasUrl) {
+      final fullUrl = _profilePicUrl.startsWith('http')
+          ? _profilePicUrl
+          : '${AppConstants.baseUrl}$_profilePicUrl';
+      image = NetworkImage(fullUrl);
+    } else if (hasLocal) {
+      image = MemoryImage(_profileImageBytes!);
+    }
     return Container(
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: Colors.white,
         border: Border.all(color: Colors.white, width: 3),
-        image: _profileImageBytes != null
-            ? DecorationImage(
-                image: MemoryImage(_profileImageBytes!),
-                fit: BoxFit.cover,
-              )
+        image: image != null
+            ? DecorationImage(image: image, fit: BoxFit.cover)
             : null,
       ),
-      child: _profileImageBytes == null
+      child: image == null
           ? Center(child: Text(_avatar, style: const TextStyle(fontSize: 48)))
           : null,
     );
@@ -1384,6 +1384,9 @@ class _SettingsPageState extends State<_SettingsPage> {
   final _deletionReasonCtrl = TextEditingController();
   bool _nameSaved = false;
   bool _deleting = false;
+  bool _uploading = false;
+  Uint8List? _profileImageBytes;
+  final _picker = ImagePicker();
   Map<String, dynamic>? _deletionRequest;
 
   @override
@@ -1398,6 +1401,8 @@ class _SettingsPageState extends State<_SettingsPage> {
         ? state.account.childName
         : await _source.getChildName();
     _nameController.text = name;
+    final img = await _source.getProfileImageBytes();
+    if (mounted) setState(() => _profileImageBytes = img);
     _refreshDeletionStatus();
   }
 
@@ -1421,6 +1426,45 @@ class _SettingsPageState extends State<_SettingsPage> {
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) setState(() => _nameSaved = false);
     });
+  }
+
+  Future<void> _pickProfileImage() async {
+    final xFile = await _picker.pickImage(
+        source: ImageSource.gallery, maxWidth: 256, maxHeight: 256);
+    if (xFile == null) return;
+    final bytes = await xFile.readAsBytes();
+    await _source.setProfileImageBytes(bytes);
+    if (mounted) setState(() => _profileImageBytes = bytes);
+  }
+
+  Future<void> _saveProfilePhoto() async {
+    final state = context.read<SavingsBloc>().state;
+    if (state is! SavingsLoaded) return;
+    if (_profileImageBytes == null) return;
+    setState(() => _uploading = true);
+    try {
+      final url = await BankingApiService.uploadProfilePhoto(
+        state.account.accountId, _profileImageBytes!);
+      if (!mounted) return;
+      setState(() => _uploading = false);
+      if (url != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile photo saved to cloud!'),
+            backgroundColor: AppTheme.primaryGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _uploading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Upload failed: $e'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    }
   }
 
   Future<void> _requestDeletion() async {
@@ -1528,10 +1572,91 @@ class _SettingsPageState extends State<_SettingsPage> {
                       fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ),
-            ),
-            const SizedBox(height: 32),
-            const Divider(),
-            const SizedBox(height: 16),
+              ),
+              const SizedBox(height: 32),
+              const Divider(),
+              const SizedBox(height: 16),
+              const Text('\u{1F5BC}\u{FE0F} Profile Photo',
+                  style: TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              Center(
+                child: GestureDetector(
+                  onTap: _pickProfileImage,
+                  child: Stack(
+                    children: [
+                      Container(
+                        width: 120,
+                        height: 120,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white,
+                          border: Border.all(color: AppTheme.primaryGreen, width: 3),
+                          image: _profileImageBytes != null
+                              ? DecorationImage(
+                                  image: MemoryImage(_profileImageBytes!),
+                                  fit: BoxFit.cover,
+                                )
+                              : null,
+                        ),
+                        child: _profileImageBytes == null
+                            ? const Center(
+                                child: Icon(Icons.person, size: 48, color: AppTheme.primaryGreen))
+                            : null,
+                      ),
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryGreen,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
+                          child: const Icon(Icons.camera_alt, size: 18, color: Colors.white),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Center(
+                child: Text(
+                  _profileImageBytes != null ? 'Tap to change photo' : 'Tap to set profile photo',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                ),
+              ),
+              if (_profileImageBytes != null) ...[
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton.icon(
+                    onPressed: _uploading ? null : _saveProfilePhoto,
+                    icon: _uploading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.cloud_upload),
+                    label: Text(_uploading
+                        ? 'Uploading...'
+                        : 'Save to Cloud'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryGreen,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 32),
+              const Divider(),
+              const SizedBox(height: 16),
               Row(
                 children: [
                   const Icon(Icons.warning, color: Colors.red, size: 24),

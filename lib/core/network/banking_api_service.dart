@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'dio_client.dart';
 
@@ -205,6 +206,25 @@ class BankingApiService {
       return true;
     } catch (_) {
       return false;
+    }
+  }
+
+  static Future<String?> uploadProfilePhoto(String accountId, Uint8List bytes) async {
+    try {
+      final formData = FormData.fromMap({
+        'file': MultipartFile.fromBytes(bytes, filename: 'profile.jpg'),
+      });
+      final resp = await _dio.post('/api/accounts/$accountId/profile-photo',
+          data: formData,
+          queryParameters: {'account_id': accountId},
+      );
+      return (resp.data as Map<String, dynamic>)['profile_pic_url'] as String?;
+    } on DioException catch (e) {
+      final code = e.response?.statusCode?.toString() ?? 'network';
+      final msg = e.response?.data is Map
+          ? (e.response!.data as Map)['message'] ?? e.message
+          : e.message;
+      throw Exception('Upload failed ($code): $msg');
     }
   }
 

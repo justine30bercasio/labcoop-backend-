@@ -15,6 +15,7 @@ class SavingsAccountModel {
   final String idPhotoUrl;
   final String kycStatus;
   final String selfieUrl;
+  final String profilePicUrl;
   final double actualBalance;
   final double unallocatedBalance;
   final int currentXp;
@@ -36,6 +37,7 @@ class SavingsAccountModel {
     this.idPhotoUrl = '',
     this.kycStatus = '',
     this.selfieUrl = '',
+    this.profilePicUrl = '',
     required this.actualBalance,
     required this.unallocatedBalance,
     required this.currentXp,
@@ -61,6 +63,7 @@ class SavingsAccountModel {
       idPhotoUrl: (json['id_photo_url'] as String?) ?? '',
       kycStatus: (json['kyc_status'] as String?) ?? '',
       selfieUrl: (json['selfie_url'] as String?) ?? '',
+      profilePicUrl: (json['profile_pic_url'] as String?) ?? '',
       actualBalance: n(json['actual_balance']),
       unallocatedBalance: n(json['unallocated_balance']),
       currentXp: i(json['current_xp']),
@@ -85,6 +88,7 @@ class SavingsAccountModel {
       'id_photo_url': idPhotoUrl,
       'kyc_status': kycStatus,
       'selfie_url': selfieUrl,
+      'profile_pic_url': profilePicUrl,
       'actual_balance': actualBalance,
       'unallocated_balance': unallocatedBalance,
       'current_xp': currentXp,
@@ -109,6 +113,7 @@ class SavingsAccountModel {
       idPhotoUrl: idPhotoUrl,
       kycStatus: kycStatus,
       selfieUrl: selfieUrl,
+      profilePicUrl: profilePicUrl,
       actualBalance: actualBalance,
       unallocatedBalance: unallocatedBalance,
       currentXp: currentXp,
@@ -133,6 +138,7 @@ class SavingsAccountModel {
       idPhotoUrl: entity.idPhotoUrl,
       kycStatus: entity.kycStatus,
       selfieUrl: entity.selfieUrl,
+      profilePicUrl: entity.profilePicUrl,
       actualBalance: entity.actualBalance,
       unallocatedBalance: entity.unallocatedBalance,
       currentXp: entity.currentXp,

@@ -13,6 +13,7 @@ class SavingsAccount {
   final String idPhotoUrl;
   final String kycStatus;
   final String selfieUrl;
+  final String profilePicUrl;
   final double actualBalance;
   final double unallocatedBalance;
   final int currentXp;
@@ -34,6 +35,7 @@ class SavingsAccount {
     this.idPhotoUrl = '',
     this.kycStatus = '',
     this.selfieUrl = '',
+    this.profilePicUrl = '',
     required this.actualBalance,
     required this.unallocatedBalance,
     required this.currentXp,
@@ -69,6 +71,7 @@ class SavingsAccount {
     String? idPhotoUrl,
     String? kycStatus,
     String? selfieUrl,
+    String? profilePicUrl,
     double? actualBalance,
     double? unallocatedBalance,
     int? currentXp,
@@ -90,6 +93,7 @@ class SavingsAccount {
       idPhotoUrl: idPhotoUrl ?? this.idPhotoUrl,
       kycStatus: kycStatus ?? this.kycStatus,
       selfieUrl: selfieUrl ?? this.selfieUrl,
+      profilePicUrl: profilePicUrl ?? this.profilePicUrl,
       actualBalance: actualBalance ?? this.actualBalance,
       unallocatedBalance: unallocatedBalance ?? this.unallocatedBalance,
       currentXp: currentXp ?? this.currentXp,

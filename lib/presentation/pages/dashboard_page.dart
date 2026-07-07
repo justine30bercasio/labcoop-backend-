@@ -15,6 +15,7 @@ import '../blocs/savings_event.dart';
 import '../blocs/savings_state.dart';
 import '../widgets/xp_bar_widget.dart';
 import '../widgets/celebration_overlay.dart';
+import '../widgets/notification_bell.dart';
 import '../widgets/wishlist_item_card.dart';
 import '../widgets/streak_widget.dart';
 import '../widgets/growth_projection_widget.dart';
@@ -93,6 +94,7 @@ class _DashboardPageState extends State<DashboardPage> {
       appBar: AppBar(
         title: const Text('LabCoop'),
         actions: [
+          const NotificationBell(),
           BlocSelector<SavingsBloc, SavingsState, SyncStatus>(
             selector: (state) =>
                 state is SavingsLoaded ? state.syncStatus : SyncStatus.synced,

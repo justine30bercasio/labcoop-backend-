@@ -7,6 +7,7 @@ import '../widgets/xp_bar_widget.dart';
 import '../widgets/badge_grid_widget.dart';
 import '../widgets/animated_counter.dart';
 import '../widgets/app_card.dart';
+import '../widgets/notification_bell.dart';
 
 class RewardsPage extends StatefulWidget {
   final int currentXp;
@@ -52,7 +53,10 @@ class _RewardsPageState extends State<RewardsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Rewards & Progress')),
+      appBar: AppBar(
+        title: const Text('Rewards & Progress'),
+        actions: const [NotificationBell()],
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(Spacing.md),
         child: Column(

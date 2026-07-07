@@ -7,6 +7,7 @@ import '../../domain/entities/transaction.dart';
 import '../blocs/banking_bloc.dart';
 import '../blocs/savings_bloc.dart';
 import '../blocs/savings_state.dart';
+import '../widgets/notification_bell.dart';
 import 'game_center_page.dart';
 
 class PlayPage extends StatefulWidget {
@@ -35,6 +36,7 @@ class _PlayPageState extends State<PlayPage> {
         title: const Text('Play & Learn'),
         backgroundColor: AppTheme.primaryGreen,
         foregroundColor: Colors.white,
+        actions: const [NotificationBell()],
       ),
       body: Container(
         decoration: const BoxDecoration(

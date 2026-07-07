@@ -19,6 +19,7 @@ import 'statement_page.dart';
 import 'transaction_history_page.dart';
 import 'withdrawal_request_page.dart';
 import '../../core/helpers/number_helpers.dart';
+import '../widgets/notification_bell.dart';
 
 class BankingPage extends StatefulWidget {
   final String accountId;
@@ -118,11 +119,8 @@ class _BankingPageState extends State<BankingPage> {
       appBar: AppBar(
         title: const Text('LabCoop Bank', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18)),
         centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined, size: 22),
-            onPressed: () {},
-          ),
+        actions: const [
+          NotificationBell(),
         ],
       ),
       body: BlocBuilder<SavingsBloc, SavingsState>(

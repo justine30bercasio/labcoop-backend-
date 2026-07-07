@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/services/security_service.dart';
 import 'login_page.dart';
+import 'biometric_login_page.dart';
 import 'home_page.dart';
 import 'terms_accept_page.dart';
 
@@ -65,6 +67,8 @@ class _SplashPageState extends State<SplashPage>
         Widget destination;
         if (token != null) {
           destination = const HomePage();
+        } else if (await SecurityService.isBioLoginEnabled()) {
+          destination = const BiometricLoginPage();
         } else {
           destination = const LoginPage();
         }

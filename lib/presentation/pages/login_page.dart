@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/services/security_service.dart';
 import '../../data/datasources/local_db_source.dart';
 import '../../data/datasources/remote_api_source.dart';
 import 'change_password_page.dart';
@@ -67,6 +68,58 @@ class _LoginPageState extends State<LoginPage>
       final api = GetIt.instance<RemoteApiSource>();
       final result = await api.login(password, memberId: cid);
       if (!mounted) return;
+
+      // Save username for biometric login display
+      await SecurityService.setSavedUsername(cid);
+
+      // Offer biometric enrollment if available
+      final bioAvailable = await SecurityService.canAuthenticate();
+      final alreadyEnabled = await SecurityService.isBioLoginEnabled();
+      if (bioAvailable && !alreadyEnabled && mounted) {
+        final enable = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Enable Fingerprint Login?'),
+            content: const Text(
+              'Log in faster next time using your fingerprint or face ID. '
+              'Your password will be stored securely on this device only.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Not now'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.accentAmber,
+                  foregroundColor: AppTheme.textDark,
+                ),
+                child: const Text('Enable'),
+              ),
+            ],
+          ),
+        );
+        if (enable == true && mounted) {
+          final bioOk = await SecurityService.authenticate(
+            reason: 'Save your password securely with biometric',
+          );
+          if (bioOk) {
+            await SecurityService.saveBioPassword(password);
+            await SecurityService.setBioLoginEnabled(true);
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Fingerprint login enabled'),
+                  behavior: SnackBarBehavior.floating,
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
+          }
+        }
+      }
+
       final passwordChanged = result['passwordChanged'] as bool? ?? false;
       Navigator.pushReplacement(
         context,

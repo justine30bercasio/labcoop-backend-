@@ -1,34 +1,24 @@
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:safe_device/safe_device.dart';
 import 'package:local_auth/local_auth.dart';
 
-/// Handles device-level security checks: root/jailbreak detection,
-/// biometric authentication, and app integrity verification.
 class SecurityService {
   static final LocalAuthentication _localAuth = LocalAuthentication();
+  static const FlutterSecureStorage _secure = FlutterSecureStorage();
 
-  /// Whether the app should show the biometric lock screen on launch.
-  /// In a children's co-op, this is optional — but if enabled, it prevents
-  /// unauthorized access to financial data if the device is lost.
   static bool _biometricEnabled = false;
-
   static bool get biometricEnabled => _biometricEnabled;
 
-  /// Check for root/jailbreak.
-  /// Returns `true` if the device is compromised (rooted/jailbroken).
   static Future<bool> isDeviceCompromised() async {
     try {
       final isJailbroken = await SafeDevice.isJailBroken;
       final isRealDevice = await SafeDevice.isRealDevice;
-      // Treat as compromised if jailbroken OR running on a simulator/emulator
-      // in release mode (emulators are often used for fraud)
       return isJailbroken || !isRealDevice;
     } catch (_) {
-      // If safe_device fails, assume safe to avoid false positives
       return false;
     }
   }
 
-  /// Check if biometric auth is available on this device.
   static Future<bool> canAuthenticate() async {
     try {
       return await _localAuth.canCheckBiometrics ||
@@ -38,8 +28,6 @@ class SecurityService {
     }
   }
 
-  /// Enroll biometric authentication (user-facing).
-  /// Returns `true` if the user successfully authenticated.
   static Future<bool> authenticate({
     String reason = 'Authenticate to access LabCoop',
   }) async {
@@ -56,15 +44,46 @@ class SecurityService {
     }
   }
 
-  /// Enable or disable biometric lock.
   static Future<void> setBiometricEnabled(bool enabled) async {
     _biometricEnabled = enabled;
+    await _secure.write(key: 'bio_lock_enabled', value: enabled ? 'true' : 'false');
   }
 
-  /// Initialize security settings from storage.
   static Future<void> init() async {
-    // In a full implementation, read _biometricEnabled from FlutterSecureStorage.
-    // For now, it's opt-in via the settings page.
-    _biometricEnabled = false;
+    _biometricEnabled = await _secure.read(key: 'bio_lock_enabled') == 'true';
+  }
+
+  // ---- Biometric Login (GCash-style) ----
+
+  /// Whether biometric login is enabled.
+  static Future<bool> isBioLoginEnabled() async {
+    return await _secure.read(key: 'bio_login_enabled') == 'true';
+  }
+
+  /// Saved member ID for biometric login display.
+  static Future<String?> getSavedUsername() async {
+    return await _secure.read(key: 'bio_username');
+  }
+
+  static Future<void> setSavedUsername(String username) async {
+    await _secure.write(key: 'bio_username', value: username);
+  }
+
+  /// Store password in secure storage (OS-level encrypted).
+  static Future<void> saveBioPassword(String password) async {
+    await _secure.write(key: 'bio_password', value: password);
+  }
+
+  static Future<String?> readBioPassword() async {
+    return await _secure.read(key: 'bio_password');
+  }
+
+  /// Enable or disable biometric login.
+  static Future<void> setBioLoginEnabled(bool enabled) async {
+    await _secure.write(key: 'bio_login_enabled', value: enabled ? 'true' : 'false');
+    if (!enabled) {
+      await _secure.delete(key: 'bio_password');
+      await _secure.delete(key: 'bio_username');
+    }
   }
 }

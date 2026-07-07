@@ -257,7 +257,16 @@ router.post('/login/forgot', async (req, res) => {
   res.type('html').send(forgotPage('If that username exists, an OTP has been sent to the registered email.'));
 });
 
-router.post('/login/verify-otp', async (req, res) => {
+// Rate limiter for OTP verification: 5 attempts per IP per 15 minutes
+const otpVerifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: 'Too many OTP verification attempts. Try again in 15 minutes.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+router.post('/login/verify-otp', otpVerifyLimiter, async (req, res) => {
   const { email, otp } = req.body;
   if (!email || !otp) return res.type('html').send(loginPage('Missing email or OTP.'));
   const stored = otpStore.get(email);

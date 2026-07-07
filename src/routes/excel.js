@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 
 const router = express.Router();
+const safeHeader = v => String(v || '').replace(/[\r\n]/g, '').trim();
 
 const uploadDir = path.join(__dirname, '..', 'uploads');
 if (!fs.existsSync(uploadDir)) {
@@ -225,7 +226,7 @@ router.get('/export/:accountId', async (req, res) => {
 
     const buffer = await workbook.xlsx.writeBuffer();
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=labcoop-${account.child_name}-${Date.now()}.xlsx`);
+    res.setHeader('Content-Disposition', `attachment; filename=labcoop-${safeHeader(account.child_name)}-${Date.now()}.xlsx`);
     res.send(buffer);
   } catch (err) {
     console.error('Excel export error:', err);

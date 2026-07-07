@@ -8,6 +8,7 @@ const _p = (...p) => p.length === 1 && Array.isArray(p[0]) ? p[0] : p;
 const sql = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows);
 const one = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows[0]);
 const fmt = v => '\u20B1' + Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const safeHeader = v => String(v || '').replace(/[\r\n]/g, '').trim();
 
 const router = express.Router();
 const ROLE_LEVELS = { super_admin: 4, manager: 3, teller: 2, auditor: 1 };
@@ -536,7 +537,7 @@ router.post('/member-demographics/update/:id', requireRole(1), asyncHandler(asyn
 router.get('/cash-flow', requireRole(1), asyncHandler(async (req, res) => {
   const now = new Date(); const firstDay = new Date(now.getFullYear(),now.getMonth(),1).toISOString().slice(0,10);
   const today = now.toISOString().slice(0,10);
-  const from = req.query.from || firstDay; const to = req.query.to || today;
+  const from = (req.query.from || firstDay).replace(/[^0-9\-]/g, '').slice(0, 10); const to = (req.query.to || today).replace(/[^0-9\-]/g, '').slice(0, 10);
   const deposits = await one("SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type IN ($1,$2,$3,$4,$5,$6,$7) AND created_at BETWEEN $8 AND $9", ['deposit','interest_credit','fee','loan_payment','penalty','interest_income','interest', from+'T00:00:00', to+'T23:59:59']);
   const withdrawals = await one("SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type=$1 AND created_at BETWEEN $2 AND $3", ['withdrawal', from+'T00:00:00', to+'T23:59:59']);
   const loanDisb = await one("SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type=$1 AND created_at BETWEEN $2 AND $3", ['loan_disbursement', from+'T00:00:00', to+'T23:59:59']);
@@ -684,7 +685,7 @@ router.get('/cash-flow', requireRole(1), asyncHandler(async (req, res) => {
     csv += `\nCategory,Amount\n`;
     categories.forEach(c => { csv += `${c.type},${Number(c.total).toFixed(2)}\n`; });
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="cash_flow_${from}_${to}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="cash_flow_${safeHeader(from)}_${safeHeader(to)}.csv"`);
     return res.send(csv);
   }
   if (req.query.print) {
@@ -823,7 +824,7 @@ router.get('/budget', requireRole(3), asyncHandler(async (req, res) => {
     csv += `TOTAL EXPENSES,${expBudget.toFixed(2)},${expTotal.toFixed(2)},${(expTotal-expBudget).toFixed(2)}\n`;
     csv += `NET,,,${(incTotal-expTotal).toFixed(2)}\n`;
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="budget_${year}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="budget_${safeHeader(year)}.csv"`);
     return res.send(csv);
   }
 
@@ -985,7 +986,7 @@ router.get('/withholding-tax', requireRole(3), asyncHandler(async (req, res) => 
     csv += `Dividend Income,${divGross.toFixed(2)},${dRate}%,${divWithheld.toFixed(2)},${(divGross - divWithheld).toFixed(2)}\n`;
     csv += `TOTAL,${(interestGross + divGross).toFixed(2)},,${totalWithheld.toFixed(2)},${(interestGross + divGross - totalWithheld).toFixed(2)}\n`;
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="withholding_tax_${year}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="withholding_tax_${safeHeader(year)}.csv"`);
     return res.send(csv);
   }
 

@@ -42,9 +42,13 @@ class PgStore {
         kyc_verified_at TEXT DEFAULT '',
         kyc_rejected_reason TEXT DEFAULT '',
         is_active INTEGER DEFAULT 1,
+        failed_login_attempts INTEGER DEFAULT 0,
+        locked_until TEXT,
         created_at TEXT,
         updated_at TEXT
       );
+      ALTER TABLE accounts ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER DEFAULT 0;
+      ALTER TABLE accounts ADD COLUMN IF NOT EXISTS locked_until TEXT;
       ALTER TABLE accounts ADD COLUMN IF NOT EXISTS is_active INTEGER DEFAULT 1;
       ALTER TABLE accounts ADD COLUMN IF NOT EXISTS last_name VARCHAR(100) DEFAULT '';
       ALTER TABLE accounts ADD COLUMN IF NOT EXISTS first_name VARCHAR(100) DEFAULT '';

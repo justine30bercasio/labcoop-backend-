@@ -20,14 +20,17 @@ async function ensureDb() {
       return;
     }
 
-    const defaultHash = bcrypt.hashSync('0000', 10);
+    const seedPass1 = crypto.randomBytes(4).toString('hex'); // 8-char random hex
+    const seedPass2 = crypto.randomBytes(4).toString('hex');
+    console.log(`[SEED] Account Juan (000001) created. Temporary password: ${seedPass1} — CHANGE ON FIRST LOGIN`);
+    console.log(`[SEED] Account Maria (000002) created. Temporary password: ${seedPass2} — CHANGE ON FIRST LOGIN`);
     await store.createAccount({
-      child_name: 'Juan', member_id: '000001', password: defaultHash,
+      child_name: 'Juan', member_id: '000001', password: bcrypt.hashSync(seedPass1, 10),
       password_changed: 0, actual_balance: 1500, unallocated_balance: 200, current_xp: 45,
       parent_phone: '09171234567',
     });
     await store.createAccount({
-      child_name: 'Maria', member_id: '000002', password: defaultHash,
+      child_name: 'Maria', member_id: '000002', password: bcrypt.hashSync(seedPass2, 10),
       password_changed: 0, actual_balance: 2500, unallocated_balance: 500, current_xp: 120,
       parent_phone: '09179876543',
     });
@@ -198,12 +201,13 @@ async function ensureAdmin() {
   try {
     const result = await store.query('SELECT COUNT(*) as c FROM admin_users');
     if (parseInt(result.rows[0]?.c || '0', 10) === 0) {
-      const hash = bcrypt.hashSync('admin123', 10);
+      const adminPass = crypto.randomBytes(6).toString('hex'); // 12-char random hex
+    console.log(`[SEED] Admin account created. Username: admin / Temporary password: ${adminPass} — CHANGE IMMEDIATELY AFTER LOGIN`);
+    const hash = bcrypt.hashSync(adminPass, 10);
       await store.query(
         'INSERT INTO admin_users (admin_id, username, password_hash, role, display_name, is_active, created_at) VALUES ($1,$2,$3,$4,$5,1,$6)',
         ['00000000-0000-0000-0000-000000000000', 'admin', hash, 'super_admin', 'Default Admin', new Date().toISOString()]
       );
-      console.log('Default admin created: admin / admin123');
     }
   } catch (err) {
     console.error('Admin seed failed (non-fatal):', err.message);
@@ -234,6 +238,8 @@ async function ensureSavingsProduct() {
   } catch (_) {}
 }
 
+const crypto = require('crypto');
+
 (async () => {
   if (isPostgres) {
     await store._ensureSchema();
@@ -246,7 +252,6 @@ async function ensureSavingsProduct() {
 const { startScheduler } = require('./services/scheduler');
 const { authMiddleware, requireOwnership } = require('./middleware/auth');
 
-const crypto = require('crypto');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const SESSION_SECRET = process.env.SESSION_SECRET;

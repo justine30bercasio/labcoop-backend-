@@ -81,9 +81,54 @@ router.post('/login', asyncHandler(async (req, res) => {
     return res.status(401).json({ message: 'Invalid credentials' });
   }
 
+  // Account lockout check — 5 failed attempts locks for 15 minutes
+  const LOCKOUT_THRESHOLD = 5;
+  const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
+  const failedAttempts = Number(account.failed_login_attempts) || 0;
+  if (failedAttempts >= LOCKOUT_THRESHOLD && account.locked_until) {
+    const lockedUntil = new Date(account.locked_until).getTime();
+    if (lockedUntil > Date.now()) {
+      const remainingMinutes = Math.ceil((lockedUntil - Date.now()) / 60000);
+      return res.status(429).json({
+        message: `Account temporarily locked. Try again in ${remainingMinutes} minute(s).`,
+        locked: true,
+        retryAfterMinutes: remainingMinutes,
+      });
+    }
+    // Lockout period has expired — reset counter
+    await store.query(
+      'UPDATE accounts SET failed_login_attempts = 0, locked_until = NULL WHERE account_id = $1',
+      [account.account_id]
+    );
+    account.failed_login_attempts = 0;
+    account.locked_until = null;
+  }
+
   const valid = bcrypt.compareSync(password, account.password);
   if (!valid) {
+    // Increment failed attempts and optionally lock
+    const newAttempts = failedAttempts + 1;
+    if (newAttempts >= LOCKOUT_THRESHOLD) {
+      const lockedUntil = new Date(Date.now() + LOCKOUT_DURATION_MS).toISOString();
+      await store.query(
+        'UPDATE accounts SET failed_login_attempts = $1, locked_until = $2 WHERE account_id = $3',
+        [newAttempts, lockedUntil, account.account_id]
+      );
+    } else {
+      await store.query(
+        'UPDATE accounts SET failed_login_attempts = $1 WHERE account_id = $2',
+        [newAttempts, account.account_id]
+      );
+    }
     return res.status(401).json({ message: 'Invalid credentials' });
+  }
+
+  // Successful login — reset failed attempts
+  if (failedAttempts > 0 || account.locked_until) {
+    await store.query(
+      'UPDATE accounts SET failed_login_attempts = 0, locked_until = NULL WHERE account_id = $1',
+      [account.account_id]
+    );
   }
 
   const token = jwt.sign(
@@ -171,7 +216,7 @@ router.post('/register', regUpload.fields([
   const existing = await store.getAccountByName(displayName);
   if (existing) {
     // Generic message prevents username/account enumeration
-    return res.status(409).json({ message: 'An account with this information already exists. Please login or use different details.' });
+    return res.status(409).json({ message: 'Unable to create account. Please try different information or contact support.' });
   }
 
   const files = req.files || {};

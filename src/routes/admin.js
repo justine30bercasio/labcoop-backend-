@@ -15,6 +15,13 @@ const _p = (...p) => p.length === 1 && Array.isArray(p[0]) ? p[0] : p;
 const sql = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows);
 const one = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows[0]);
 const fmt = v => '₱' + Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Sanitize values for use in HTTP Content-Disposition headers — strip CRLF to prevent HTTP response splitting
+const safeHeader = v => String(v || '').replace(/[\r\n]/g, '').trim();
+// Sanitize values for CSV export — prevent formula injection
+const safeCsv = v => {
+  const s = String(v || '');
+  return /^[=+\-@]/.test(s) ? "'" + s : s;
+};
 const fmtTrn = (tx, fallback) => {
   if (tx && tx.trn_number) {
     const y = new Date(tx.created_at || Date.now()).getFullYear();
@@ -696,7 +703,8 @@ router.post('/shop/upload/:id', requireRole(2), shopUpload.single('image'), asyn
     if (!existing) return res.redirect('/admin/shop?error=Item+not+found');
     if (!req.file) return res.redirect('/admin/shop?error=No+file');
     const ext = require('path').extname(req.file.originalname).toLowerCase();
-    if (!'.png.jpg.jpeg.gif.webp'.includes(ext)) {
+    const allowedExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+    if (!allowedExts.includes(ext)) {
       require('fs').unlinkSync(req.file.path);
       return res.redirect('/admin/shop?error=Invalid+file+type');
     }
@@ -1663,7 +1671,8 @@ router.post('/accounts/upload-photo/:id', requireRole(2), profileUpload.single('
     if (!account) return res.redirect('/admin/accounts?error=Account+not+found');
     if (!req.file) return res.redirect(`/admin/accounts?error=No+file`);
     const ext = require('path').extname(req.file.originalname).toLowerCase();
-    if (!'.png.jpg.jpeg.gif.webp'.includes(ext)) {
+    const allowedExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+    if (!allowedExts.includes(ext)) {
       require('fs').unlinkSync(req.file.path);
       return res.redirect(`/admin/accounts?error=Invalid+file+type`);
     }
@@ -3575,21 +3584,21 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   }
 
   function searchResultItem(a) {
-    var avatarHtml = a.profile_pic_url ? '<img src="' + a.profile_pic_url + '" class="sra-img">' : '<div class="sra">' + (a.child_name || '?')[0].toUpperCase() + '</div>';
-    return '<a href="/admin/teller?account=' + a.account_id + (searchQ ? '&q=' + encodeURIComponent(searchQ) : '') + '" class="search-result-item">' + avatarHtml + '<div><div class="srn">' + a.child_name + '</div><div class="srm">' + (a.member_id || '---') + '</div></div></a>';
+    var avatarHtml = a.profile_pic_url ? '<img src="' + h(a.profile_pic_url) + '" class="sra-img">' : '<div class="sra">' + h((a.child_name || '?')[0].toUpperCase()) + '</div>';
+    return '<a href="/admin/teller?account=' + encodeURIComponent(a.account_id) + (searchQ ? '&q=' + encodeURIComponent(searchQ) : '') + '" class="search-result-item">' + avatarHtml + '<div><div class="srn">' + h(a.child_name) + '</div><div class="srm">' + h(a.member_id || '---') + '</div></div></a>';
   }
 
   const bankContent = bankStyle + `
   <!-- Teller Top Bar -->
   <div class="teller-bar">
     <form method="get" action="/admin/teller" class="teller-search">
-      <input type="text" name="q" placeholder="&#x1F50D; Search member by name or ID..." value="${searchQ}" autocomplete="off">
+      <input type="text" name="q" placeholder="&#x1F50D; Search member by name or ID..." value="${h(searchQ)}" autocomplete="off">
       <button type="submit" style="padding:12px 24px;border:none;border-radius:10px;background:var(--accent);color:#fff;font-weight:600;cursor:pointer">Search</button>
     </form>
-    ${selectedAccount ? '<div style="margin-top:8px"><span class="badge-pill" style="background:#dcfce7;color:#166534">&#x2705; ' + selectedAccount.child_name + ' (' + selectedAccount.member_id + ')</span></div>' : ''}
+    ${selectedAccount ? '<div style="margin-top:8px"><span class="badge-pill" style="background:#dcfce7;color:#166534">&#x2705; ' + h(selectedAccount.child_name) + ' (' + h(selectedAccount.member_id) + ')</span></div>' : ''}
   </div>
   ${searchQ && !selectedId && accounts.length > 0 ? '<div class="search-results">' + accounts.map(searchResultItem).join('') + '</div>' : ''}
-  ${searchQ && !selectedId && accounts.length === 0 ? '<div class="search-results" style="padding:16px;text-align:center;color:var(--text-muted)">No members found for "' + searchQ + '"</div>' : ''}
+  ${searchQ && !selectedId && accounts.length === 0 ? '<div class="search-results" style="padding:16px;text-align:center;color:var(--text-muted)">No members found for "' + h(searchQ) + '"</div>' : ''}
 
   ${!selectedAccount ? `
   <div class="teller-card">
@@ -3606,10 +3615,10 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
     <div class="teller-card">
       <div class="teller-card-body">
           <div class="customer-header">
-          <div class="customer-avatar">${selectedAccount.profile_pic_url ? '<img src="' + selectedAccount.profile_pic_url + '" style="width:100%;height:100%;border-radius:50%;object-fit:cover" alt="">' : (selectedAccount.child_name || '?')[0].toUpperCase()}</div>
+          <div class="customer-avatar">${selectedAccount.profile_pic_url ? '<img src="' + h(selectedAccount.profile_pic_url) + '" style="width:100%;height:100%;border-radius:50%;object-fit:cover" alt="">' : h((selectedAccount.child_name || '?')[0].toUpperCase())}</div>
           <div class="customer-info">
-            <h2>${selectedAccount.child_name}</h2>
-            <span class="member">ID: ${selectedAccount.member_id || '---'}</span>
+            <h2>${h(selectedAccount.child_name)}</h2>
+            <span class="member">ID: ${h(selectedAccount.member_id || '---')}</span>
           </div>
         </div>
 
@@ -3631,8 +3640,8 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
         </div>
 
         <div class="tx-panel active" id="panel-deposit">
-          <form method="post" action="/admin/teller/deposit/${selectedAccount.account_id}">
-            <input type="hidden" name="q" value="${searchQ}">
+          <form method="post" action="/admin/teller/deposit/${selectedAccount.account_id}?_csrf=${res.locals.csrfToken}">
+            <input type="hidden" name="q" value="${h(searchQ)}">
             <div class="field">
               <label>Amount (&#x20B1;)</label>
               <input type="number" name="amount" min="1" step="0.01" placeholder="0.00" required>
@@ -3646,8 +3655,8 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
         </div>
 
         <div class="tx-panel" id="panel-withdraw">
-          <form method="post" action="/admin/teller/withdraw/${selectedAccount.account_id}">
-            <input type="hidden" name="q" value="${searchQ}">
+          <form method="post" action="/admin/teller/withdraw/${selectedAccount.account_id}?_csrf=${res.locals.csrfToken}">
+            <input type="hidden" name="q" value="${h(searchQ)}">
             <div class="field">
               <label>Amount (&#x20B1;)</label>
               <input type="number" name="amount" min="1" step="0.01" placeholder="0.00" required>
@@ -3661,8 +3670,8 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
         </div>
 
         <div class="tx-panel" id="panel-loan">
-          <form method="post" action="/admin/teller/loan-pay/${selectedAccount.account_id}">
-            <input type="hidden" name="q" value="${searchQ}">
+          <form method="post" action="/admin/teller/loan-pay/${selectedAccount.account_id}?_csrf=${res.locals.csrfToken}">
+            <input type="hidden" name="q" value="${h(searchQ)}">
             <div class="field">
               <label>Select Loan</label>
               <select name="loan_id" required>
@@ -3692,7 +3701,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
             var tc = ({deposit:'deposit',withdrawal:'withdrawal',loan_payment:'loan_payment',loan_disbursement:'loan_disbursement',interest:'interest',interest_credit:'interest',allocation:'allocation'})[tx.type] || 'deposit';
             var sign = tx.type === 'deposit' || tx.type === 'loan_disbursement' || tx.type === 'interest' || tx.type === 'interest_credit' ? '+' : '-';
             var col = tx.type === 'deposit' || tx.type === 'loan_disbursement' || tx.type === 'interest' || tx.type === 'interest_credit' ? '#16a34a' : tx.type === 'withdrawal' ? '#dc2626' : 'var(--text)';
-            return '<tr><td><span class="tx-type-badge ' + tc + '">' + tx.type.replace(/_/g,' ') + (tx.voided_at ? ' VOIDED' : '') + '</span></td><td class="tx-amt" style="color:' + col + '">' + sign + '&#x20B1;' + Number(tx.amount).toFixed(2) + '</td><td class="tx-desc">' + (tx.description||'-') + (tx.voided_at ? '<br><span style="font-size:10px;color:#dc2626">Voided by ' + (tx.voided_by||'') + '</span>' : '') + '</td><td class="tx-date">' + (tx.created_at||'').slice(0,16).replace('T',' ') + '</td><td style="white-space:nowrap">' + (tx.voided_at ? '<span style="color:#dc2626;font-size:10px;font-weight:600"><i class="fas fa-ban"></i> VOIDED</span>' : '<a class="rcpt-link" href="?account=' + selectedId + '&receipt=' + tx.transaction_id + (searchQ ? '&q=' + encodeURIComponent(searchQ) : '') + '" title="View receipt"><i class="fas fa-receipt"></i></a>' + (adminRole >= 3 && ['deposit','withdrawal','loan_payment','interest','interest_credit','auto_save','fee','penalty'].includes(tx.type) ? ' <button class="btn btn-outline btn-xs" style="color:#dc2626;padding:2px 6px;font-size:10px" onclick="openVoidModal(\'' + tx.transaction_id + '\',\'' + tx.type.replace(/_/g,' ') + '\',\'' + Number(tx.amount).toFixed(2) + '\')"><i class="fas fa-ban"></i> Void</button>' : '')) + '</td></tr>';
+            return '<tr><td><span class="tx-type-badge ' + h(tc) + '">' + h(tx.type.replace(/_/g,' ')) + (tx.voided_at ? ' VOIDED' : '') + '</span></td><td class="tx-amt" style="color:' + h(col) + '">' + sign + '&#x20B1;' + Number(tx.amount).toFixed(2) + '</td><td class="tx-desc">' + h(tx.description||'-') + (tx.voided_at ? '<br><span style="font-size:10px;color:#dc2626">Voided by ' + h(tx.voided_by||'') + '</span>' : '') + '</td><td class="tx-date">' + h((tx.created_at||'').slice(0,16).replace('T',' ')) + '</td><td style="white-space:nowrap">' + (tx.voided_at ? '<span style="color:#dc2626;font-size:10px;font-weight:600"><i class="fas fa-ban"></i> VOIDED</span>' : '<a class="rcpt-link" href="?account=' + encodeURIComponent(selectedId) + '&receipt=' + encodeURIComponent(tx.transaction_id) + (searchQ ? '&q=' + encodeURIComponent(searchQ) : '') + '" title="View receipt"><i class="fas fa-receipt"></i></a>' + (adminRole >= 3 && ['deposit','withdrawal','loan_payment','interest','interest_credit','auto_save','fee','penalty'].includes(tx.type) ? ' <button class="btn btn-outline btn-xs" style="color:#dc2626;padding:2px 6px;font-size:10px" onclick="openVoidModal(\'' + h(tx.transaction_id) + '\',\'' + h(tx.type.replace(/_/g,' ')) + '\',\'' + Number(tx.amount).toFixed(2) + '\')"><i class="fas fa-ban"></i> Void</button>' : '')) + '</td></tr>';
           }).join('') + '</table>'}
       </div>
     </div>
@@ -4192,7 +4201,7 @@ router.get('/audit/csv', requireRole(1), asyncHandler(async (req, res) => {
   }).join('\n');
 
   res.setHeader('Content-Type', 'text/csv');
-  res.setHeader('Content-Disposition', 'attachment; filename="labcoop_audit_' + new Date().toISOString().slice(0,10) + '.csv"');
+  res.setHeader('Content-Disposition', 'attachment; filename="labcoop_audit_' + safeHeader(new Date().toISOString().slice(0,10)) + '.csv"');
   res.send(csv);
 }));
 
@@ -4200,7 +4209,7 @@ router.get('/audit/csv', requireRole(1), asyncHandler(async (req, res) => {
 
 // ── 1. Loan Aging Report ──
 router.get('/reports/loan-aging', requireRole(2), asyncHandler(async (req, res) => {
-  const asOf = req.query.as_of || new Date().toISOString().slice(0, 10);
+  const asOf = (req.query.as_of || new Date().toISOString().slice(0, 10)).replace(/[^0-9\-]/g, '').slice(0, 10);
   const loans = await store.query(`
     SELECT l.*, a.child_name, a.member_id
     FROM loans l JOIN accounts a ON l.account_id = a.account_id
@@ -4319,7 +4328,7 @@ router.get('/reports/loan-aging', requireRole(2), asyncHandler(async (req, res) 
     });
     csv += `"TOTAL",${loans.rows.length},${totalPortfolio.toFixed(2)},100%,"",${totalProvision.toFixed(2)}\n`;
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="loan_aging_' + asOf + '.csv"');
+    res.setHeader('Content-Disposition', 'attachment; filename="loan_aging_' + safeHeader(asOf) + '.csv"');
     return res.send(csv);
   }
   if (req.query.print) return res.type('html').send(printLayout('Loan Aging Report', content, { subtitle: 'As of ' + asOf }));
@@ -4328,7 +4337,7 @@ router.get('/reports/loan-aging', requireRole(2), asyncHandler(async (req, res) 
 
 // ── 2. Daily Collection Report ──
 router.get('/reports/daily-collection', requireRole(2), asyncHandler(async (req, res) => {
-  const date = req.query.date || new Date().toISOString().slice(0, 10);
+  const date = (req.query.date || new Date().toISOString().slice(0, 10)).replace(/[^0-9\-]/g, '').slice(0, 10);
   const { rows } = await store.query(`
     SELECT t.*, a.child_name as child_name, a.member_id
     FROM transactions t
@@ -4414,7 +4423,7 @@ router.get('/reports/daily-collection', requireRole(2), asyncHandler(async (req,
     });
     csv += `"TOTAL","","",,${summary.total},"",""\n`;
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="daily_collection_' + date + '.csv"');
+    res.setHeader('Content-Disposition', 'attachment; filename="daily_collection_' + safeHeader(date) + '.csv"');
     return res.send(csv);
   }
   if (req.query.print) return res.type('html').send(printLayout('Daily Collection Report', content, { subtitle: date }));
@@ -4423,8 +4432,8 @@ router.get('/reports/daily-collection', requireRole(2), asyncHandler(async (req,
 
 // ── 3. Deposit Summary Report ──
 router.get('/reports/deposit-summary', requireRole(2), asyncHandler(async (req, res) => {
-  const from = req.query.from || new Date(Date.now() - 30*86400000).toISOString().slice(0, 10);
-  const to = req.query.to || new Date().toISOString().slice(0, 10);
+  const from = (req.query.from || new Date(Date.now() - 30*86400000).toISOString().slice(0, 10)).replace(/[^0-9\-]/g, '').slice(0, 10);
+  const to = (req.query.to || new Date().toISOString().slice(0, 10)).replace(/[^0-9\-]/g, '').slice(0, 10);
   const { rows } = await store.query(`
     SELECT DATE(created_at) as d, COUNT(*) as cnt, SUM(CAST(amount AS DECIMAL(20,2))) as total
     FROM transactions WHERE type = 'deposit' AND DATE(created_at) >= $1 AND DATE(created_at) <= $2
@@ -4520,7 +4529,7 @@ router.get('/reports/deposit-summary', requireRole(2), asyncHandler(async (req, 
     rows.forEach(r => { csv += `${fmtDate(r.d)},${r.cnt},${r.total}\n`; });
     csv += `TOTAL,${totalCount},${totalDeposits.toFixed(2)}\n`;
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="deposit_summary_' + from + '_to_' + to + '.csv"');
+    res.setHeader('Content-Disposition', 'attachment; filename="deposit_summary_' + safeHeader(from) + '_to_' + safeHeader(to) + '.csv"');
     return res.send(csv);
   }
   if (req.query.print) return res.type('html').send(printLayout('Deposit Summary Report', content, { subtitle: from + ' to ' + to }));
@@ -4529,10 +4538,10 @@ router.get('/reports/deposit-summary', requireRole(2), asyncHandler(async (req, 
 
 // ── 4. Member Ledger Report ──
 router.get('/reports/member-ledger', requireRole(2), asyncHandler(async (req, res) => {
-  const q = req.query.q || '';
-  const memberId = req.query.member_id || '';
-  const from = req.query.from || '';
-  const to = req.query.to || '';
+  const q = (req.query.q || '').replace(/[<>"'&]/g, '');
+  const memberId = (req.query.member_id || '').replace(/[^0-9a-f\-]/gi, '');
+  const from = (req.query.from || '').replace(/[^0-9\-]/g, '').slice(0, 10);
+  const to = (req.query.to || '').replace(/[^0-9\-]/g, '').slice(0, 10);
   let where = ['1=1'];
   let params = [];
   if (q) { where.push('(LOWER(a.child_name) LIKE LOWER($' + (params.length+1) + ') OR LOWER(a.member_id) LIKE LOWER($' + (params.length+1) + '))'); params.push('%' + q + '%'); }
@@ -4621,7 +4630,7 @@ router.get('/reports/member-ledger', requireRole(2), asyncHandler(async (req, re
       csv += `"${fmtTrn(r)}","${r.created_at}",${r.type},"${(r.description||'').replace(/"/g,'""')}",${isCredit ? '' : '-'}${r.amount},"${r.reference_id||''}"\n`;
     });
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="member_ledger_' + (q||'export') + '.csv"');
+    res.setHeader('Content-Disposition', 'attachment; filename="member_ledger_' + safeHeader(q||'export') + '.csv"');
     return res.send(csv);
   }
   if (req.query.print && searchResults.rows.length) return res.type('html').send(printLayout('Member Ledger: ' + (memberSummary?.name || ''), content, { subtitle: '' }));
@@ -4740,7 +4749,7 @@ router.get('/reports/loan-portfolio', requireRole(2), asyncHandler(async (req, r
 
 // ── End of Day (EOD) — MBwin Standard ──
 router.get('/eod', requireRole(1), asyncHandler(async (req, res) => {
-  const date = req.query.date || new Date().toISOString().slice(0, 10);
+  const date = (req.query.date || new Date().toISOString().slice(0, 10)).replace(/[^0-9\-]/g, '').slice(0, 10);
   const sql = (q, p) => store.query(q, p || []).then(r => r.rows);
   const one = (q, p) => store.query(q, p || []).then(r => r.rows[0]);
   const { v4: uuidv4 } = require('uuid');
@@ -5565,7 +5574,7 @@ router.get('/backup/download', requireRole(3), asyncHandler(async (req, res) => 
     [uuidv4(), filename, fileSize, checksum, tables.length, backup.manifest.total_rows, 'completed', req.session.adminName || 'admin', new Date().toISOString()]
   );
   res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Content-Disposition', 'attachment; filename="' + filename + '"');
+  res.setHeader('Content-Disposition', 'attachment; filename="' + safeHeader(filename) + '"');
   res.setHeader('X-Checksum-SHA256', checksum);
   res.send(finalJson);
 }));
@@ -5678,6 +5687,12 @@ router.post('/backup/restore/confirm', requireRole(3), asyncHandler(async (req, 
   const filePath = req.body.filepath;
   const tablesStr = req.body.tables || '';
   if (!filePath || !fs.existsSync(filePath)) return res.redirect('/admin/backup?failed=Backup+file+not+found');
+  // Path traversal prevention: ensure file is within uploads directory
+  const uploadsBase = path.resolve(__dirname, '..', 'uploads');
+  const resolvedPath = path.resolve(filePath);
+  if (!resolvedPath.startsWith(uploadsBase)) {
+    return res.redirect('/admin/backup?failed=Invalid+file+path');
+  }
   const allTables = await getAllTables();
   const tables = tablesStr.split(',').filter(t => allTables.includes(t));
   if (tables.length === 0) return res.redirect('/admin/backup?failed=No+tables+to+restore');
@@ -5851,7 +5866,7 @@ function bsSection(title, items, total, color) {
 
 router.get('/gl/trial-balance', requireRole(1), asyncHandler(async (req, res) => {
   const { getTrialBalance } = require('../services/gl');
-  const date = req.query.date || '';
+  const date = (req.query.date || '').replace(/[^0-9\-]/g, '').slice(0, 10);
   const result = await getTrialBalance(date || null);
   const totalD = result.rows.reduce((s, r) => s + r.debit, 0);
   const totalC = result.rows.reduce((s, r) => s + r.credit, 0);
@@ -5862,7 +5877,7 @@ router.get('/gl/trial-balance', requireRole(1), asyncHandler(async (req, res) =>
     result.rows.forEach(r => { csv += `${r.code},${r.name},${r.type},${r.debit.toFixed(2)},${r.credit.toFixed(2)},${r.balance.toFixed(2)}\n`; });
     csv += `TOTAL,,,${totalD.toFixed(2)},${totalC.toFixed(2)},${(totalD - totalC).toFixed(2)}\n`;
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="trial_balance_${date||'all'}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="trial_balance_${safeHeader(date||'all')}.csv"`);
     return res.send(csv);
   }
 
@@ -5928,7 +5943,7 @@ router.get('/gl/trial-balance', requireRole(1), asyncHandler(async (req, res) =>
 
 router.get('/gl/balance-sheet', requireRole(1), asyncHandler(async (req, res) => {
   const { getBalanceSheet } = require('../services/gl');
-  const date = req.query.date || '';
+  const date = (req.query.date || '').replace(/[^0-9\-]/g, '').slice(0, 10);
   const result = await getBalanceSheet(date || null);
 
   // Prior year comparison
@@ -5988,7 +6003,7 @@ router.get('/gl/balance-sheet', requireRole(1), asyncHandler(async (req, res) =>
     writeSection('Equity', result.equity);
     csv += `TOTAL ASSETS,,${result.totalAssets.toFixed(2)}\nTOTAL LIABILITIES,,${result.totalLiabilities.toFixed(2)}\nTOTAL EQUITY,,${result.totalEquity.toFixed(2)}\n`;
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="balance_sheet_${date||'all'}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="balance_sheet_${safeHeader(date||'all')}.csv"`);
     return res.send(csv);
   }
   if (req.query.print) {
@@ -6021,8 +6036,8 @@ router.get('/gl/profit-and-loss', requireRole(1), asyncHandler(async (req, res) 
   const now = new Date();
   const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
   const todayStr = now.toISOString().slice(0,10);
-  const from = req.query.from || firstDay;
-  const to = req.query.to || todayStr;
+  const from = (req.query.from || firstDay).replace(/[^0-9\-]/g, '').slice(0, 10);
+  const to = (req.query.to || todayStr).replace(/[^0-9\-]/g, '').slice(0, 10);
   const result = await getProfitAndLoss(from, to);
 
   // Prior year comparison
@@ -6102,7 +6117,7 @@ router.get('/gl/profit-and-loss', requireRole(1), asyncHandler(async (req, res) 
     w('Other Expenses', result.otherExpense);
     csv += `NET PROFIT,,${result.netProfit.toFixed(2)}\n`;
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="pnl_${from}_${to}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="pnl_${safeHeader(from)}_${safeHeader(to)}.csv"`);
     return res.send(csv);
   }
   if (req.query.print) {
@@ -6196,7 +6211,7 @@ router.get('/gl/ledger', requireRole(1), asyncHandler(async (req, res) => {
       csv += `${(e.created_at||'').slice(0,10)},${(e.transaction_id||'').slice(0,8)},${e.reference_number||''},${e.description||''},${d.toFixed(2)},${c.toFixed(2)},${bal.toFixed(2)}\n`;
     });
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="ledger_${selected}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="ledger_${safeHeader(selected)}.csv"`);
     return res.send(csv);
   }
 
@@ -6227,8 +6242,8 @@ router.get('/gl/journal', requireRole(1), asyncHandler(async (req, res) => {
   const now = new Date();
   const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
   const todayStr = now.toISOString().slice(0,10);
-  const from = req.query.from || firstDay;
-  const to = req.query.to || todayStr;
+  const from = (req.query.from || firstDay).replace(/[^0-9\-]/g, '').slice(0, 10);
+  const to = (req.query.to || todayStr).replace(/[^0-9\-]/g, '').slice(0, 10);
   const entries = await getGeneralJournal(from + 'T00:00:00', to + 'T23:59:59');
 
   // Group by transaction_id for folio
@@ -6246,7 +6261,7 @@ router.get('/gl/journal', requireRole(1), asyncHandler(async (req, res) => {
       csv += `${(e.created_at||'').slice(0,10)},${(e.transaction_id||'').slice(0,8)},${e.account_code},${e.account_name},${Number(e.debit).toFixed(2)},${Number(e.credit).toFixed(2)},${e.reference_number||''},${(e.description||'').replace(/"/g,'""')}\n`;
     });
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="general_journal_${from}_${to}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="general_journal_${safeHeader(from)}_${safeHeader(to)}.csv"`);
     return res.send(csv);
   }
 
@@ -6376,15 +6391,15 @@ router.get('/users', requireRole(4), asyncHandler(async (req, res) => {
       <tr><th>Username</th><th>Display Name</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th></th></tr>
       ${users.map(u => `
       <tr>
-        <td class="mono"><b>${u.username}</b></td>
-        <td>${u.display_name || '-'}</td>
-        <td class="mono" style="font-size:12px">${u.email || '-'}</td>
-        <td><span class="badge ${roleColors[u.role] || 'badge-gray'}">${u.role.replace(/_/g,' ')}</span></td>
+        <td class="mono"><b>${h(u.username)}</b></td>
+        <td>${h(u.display_name || '-')}</td>
+        <td class="mono" style="font-size:12px">${h(u.email || '-')}</td>
+        <td><span class="badge ${roleColors[u.role] || 'badge-gray'}">${h(u.role.replace(/_/g,' '))}</span></td>
         <td>${u.is_active ? '<span style="color:#16a34a;font-weight:600">&#x2705; Active</span>' : '<span style="color:#dc2626;font-weight:600">&#x274C; Inactive</span>'}</td>
         <td class="mono" style="font-size:11px;color:var(--text-muted)">${(u.created_at||'').slice(0,10)}</td>
         <td style="display:flex;gap:6px">
           <a href="/admin/users/edit/${u.admin_id}" class="btn btn-secondary btn-xs">&#x270F; Edit</a>
-          <a href="/admin/users/deactivate/${u.admin_id}" class="btn ${u.is_active ? 'btn-danger' : 'btn-secondary'} btn-xs" data-confirm="${u.is_active ? 'Deactivate' : 'Activate'} ${u.username}?">${u.is_active ? 'Deactivate' : 'Activate'}</a>
+          <a href="/admin/users/deactivate/${u.admin_id}" class="btn ${u.is_active ? 'btn-danger' : 'btn-secondary'} btn-xs" data-confirm="${h(u.is_active ? 'Deactivate' : 'Activate')} ${h(u.username)}?">${h(u.is_active ? 'Deactivate' : 'Activate')}</a>
         </td>
     </tr>`).join('')}
     </tbody>
@@ -6438,17 +6453,17 @@ router.get('/users/edit/:id', requireRole(4), asyncHandler(async (req, res) => {
   const roleOptions = ['super_admin','manager','teller','auditor'];
   const content = `
   <div class="card" style="max-width:500px;margin:0 auto">
-    <div class="card-header"><h3>&#x270F; Edit Admin: ${u.username}</h3></div>
+    <div class="card-header"><h3>&#x270F; Edit Admin: ${h(u.username)}</h3></div>
     <div class="card-body-padded">
       ${err ? `<p style="color:var(--danger);font-weight:600;margin-bottom:12px">&#x274C; ${err}</p>` : ''}
       <form method="post" action="/admin/users/update/${u.admin_id}" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:500px">
-        <div class="field"><label>Username</label><input type="text" name="username" value="${u.username}" required></div>
-        <div class="field"><label>Display Name</label><input type="text" name="display_name" value="${u.display_name || ''}"></div>
-        <div class="field"><label>Email</label><input type="email" name="email" value="${u.email || ''}"></div>
+        <div class="field"><label>Username</label><input type="text" name="username" value="${h(u.username)}" required></div>
+        <div class="field"><label>Display Name</label><input type="text" name="display_name" value="${h(u.display_name || '')}"></div>
+        <div class="field"><label>Email</label><input type="email" name="email" value="${h(u.email || '')}"></div>
         <div class="field"><label>New Password (leave blank to keep)</label><input type="password" name="password" placeholder="Min 4 characters" minlength="4"></div>
         <div class="field"><label>Role</label>
           <select name="role">
-            ${roleOptions.map(r => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${r.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}</option>`).join('')}
+            ${roleOptions.map(r => `<option value="${h(r)}" ${u.role === r ? 'selected' : ''}>${h(r.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()))}</option>`).join('')}
           </select>
         </div>
         <div style="grid-column:span 2;display:flex;gap:8px">
@@ -6836,12 +6851,13 @@ router.get('/setup', asyncHandler(async (req, res) => {
   if (parseInt(result.rows[0]?.c || '0', 10) > 0) {
     return res.type('html').send('<h2>Admin already exists. <a href="/admin/login">Login</a></h2>');
   }
-  const hash = require('bcryptjs').hashSync('admin123', 10);
+  const adminPass = require('crypto').randomBytes(6).toString('hex');
+  const hash = require('bcryptjs').hashSync(adminPass, 10);
   await store.query(
     'INSERT INTO admin_users (admin_id, username, password_hash, role, display_name, is_active, created_at) VALUES ($1,$2,$3,$4,$5,1,$6)',
     [require('uuid').v4(), 'admin', hash, 'super_admin', 'Default Admin', new Date().toISOString()]
   );
-  res.type('html').send('<h2 style="color:#16a34a">&#x2705; Admin created! <a href="/admin/login">Login</a> with <b>admin</b> / <b>admin123</b></h2>');
+  res.type('html').send('<h2 style="color:#16a34a">&#x2705; Admin created!</h2><p style="font-size:14px;color:#333">Temporary password: <code style="background:#f0fdf4;padding:2px 8px;border-radius:4px;font-size:16px;font-weight:700">' + h(adminPass) + '</code></p><p style="color:#dc2626;font-size:13px;font-weight:600">&#x26A0; CHANGE THIS PASSWORD IMMEDIATELY AFTER LOGIN</p><p><a href="/admin/login" style="color:#2E7D32;font-weight:600">Proceed to Login</a></p>');
 }));
 
 module.exports = router;

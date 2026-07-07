@@ -7,6 +7,7 @@ const { store } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const { layout, printLayout } = require('./admin-lib');
 const notifs = require('../services/notifications');
+const FCM_ENABLED = !!process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
 
 const _p = (...p) => p.length === 1 && Array.isArray(p[0]) ? p[0] : p;
 const sql = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows);
@@ -267,7 +268,14 @@ router.get('/kyc', requireRole(1), asyncHandler(async (req, res) => {
     <div class="stat-card"><div class="stat-icon">&#x1F4ED;</div><div class="stat-value">${noKycCount}</div><div class="stat-label">Not Submitted</div></div>
   </div>`;
 
-  const content = tabs(tab) + statsRow + `
+  const firebaseWarning = !process.env.FIREBASE_SERVICE_ACCOUNT_PATH ? `
+  <div class="alert alert-warning" style="margin-bottom:16px;padding:12px;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;color:#856404">
+    <strong>&#x26A0;&#xFE0F; Push notifications disabled.</strong> 
+    Set <code>FIREBASE_SERVICE_ACCOUNT_PATH</code> environment variable to enable KYC approval/rejection push notifications.
+    <a href="https://render.com/docs/secret-files" target="_blank" style="color:#856404;text-decoration:underline">Learn how</a>
+  </div>` : '';
+
+  const content = tabs(tab) + statsRow + firebaseWarning + `
   <div class="card">
     <div class="card-header"><h3>&#x1F9D1;&#x200D;&#x1F4BC; ${tab.charAt(0).toUpperCase() + tab.slice(1)} KYC Verification</h3></div>
     <div class="card-body" style="padding:0">
@@ -312,7 +320,10 @@ router.get('/kyc', requireRole(1), asyncHandler(async (req, res) => {
               </div>`;
           } else if (a.kyc_status === 'verified') {
             const verifiedDate = a.kyc_verified_at ? new Date(a.kyc_verified_at).toLocaleDateString() : '';
-            actions = `<span style="font-size:12px;color:var(--success)">Verified ${verifiedDate}</span>`;
+            actions =               `<span style="font-size:12px;color:var(--success)">Verified ${verifiedDate}</span>
+              <form method="post" action="/admin/kyc/test-notify/${a.account_id}" style="display:inline">
+                <button class="btn btn-sm btn-outline" title="Send test push notification" style="margin-left:4px">&#x1F514; Test</button>
+              </form>`;
           } else if (a.kyc_status === 'rejected') {
             actions = `<button class="btn btn-sm btn-outline" onclick="document.getElementById('reject-${a.account_id}').style.display='block'">&#x1F4C4; View Reason</button>
               <div id="reject-${a.account_id}" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:999;display:none;align-items:center;justify-content:center" onclick="if(event.target===this)this.style.display='none'">
@@ -352,6 +363,15 @@ router.post('/kyc/reject/:id', requireRole(2), asyncHandler(async (req, res) => 
   const account = await one('SELECT child_name FROM accounts WHERE account_id = $1', [req.params.id]);
   notifs.notifyKycRejected(req.params.id, reason).catch(() => {});
   res.redirect('/admin/kyc?tab=pending&rejected=KYC+rejected+for+' + encodeURIComponent(account?.child_name || ''));
+}));
+
+router.post('/kyc/test-notify/:id', requireRole(2), asyncHandler(async (req, res) => {
+  const account = await one('SELECT child_name FROM accounts WHERE account_id = $1', [req.params.id]);
+  if (!account) return res.redirect('/admin/kyc?error=Account+not+found');
+  // Send both a KYC-approved and a test notification
+  notifs.notifyKycApproved(req.params.id).catch(() => {});
+  const accountName = account.child_name || 'User';
+  res.redirect('/admin/kyc?tab=verified&approved=Test+notification+sent+to+' + encodeURIComponent(accountName));
 }));
 
 // ═══════════════════════════════════════════════════════════════

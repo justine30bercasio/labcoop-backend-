@@ -39,7 +39,7 @@ router.get('/notifications/unread-count',
       'SELECT COUNT(*) as cnt FROM notifications WHERE account_id = $1 AND is_read = 0',
       [req.accountId]
     );
-    res.json({ unreadCount: rows.rows[0]?.cnt ?? 0 });
+    res.json({ unreadCount: Number(rows.rows[0]?.cnt) || 0 });
   })
 );
 

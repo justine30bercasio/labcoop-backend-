@@ -33,13 +33,27 @@ class _NotificationBellState extends State<NotificationBell> {
 
   Future<void> _fetchUnread() async {
     try {
+      // Try lightweight unread-count endpoint first
       final data = await BankingApiService.getUnreadCount();
       if (mounted) {
-        setState(() {
-          _unreadCount = (data['unreadCount'] as int?) ?? 0;
-        });
+        final count = (data['unreadCount'] as int?) ?? 0;
+        stderr.writeln('[NotifBell] unread-count: $count');
+        setState(() => _unreadCount = count);
       }
-    } catch (_) {}
+    } catch (e1) {
+      stderr.writeln('[NotifBell] unread-count failed: $e1');
+      // Fallback: use the regular notifications endpoint
+      try {
+        final data = await BankingApiService.getNotifications(limit: 50);
+        if (mounted) {
+          final count = (data['unreadCount'] as int?) ?? 0;
+          stderr.writeln('[NotifBell] fallback unread-count: $count');
+          setState(() => _unreadCount = count);
+        }
+      } catch (e2) {
+        stderr.writeln('[NotifBell] fallback also failed: $e2');
+      }
+    }
   }
 
   @override

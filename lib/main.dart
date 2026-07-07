@@ -77,12 +77,13 @@ class LabCoopApp extends StatefulWidget {
   State<LabCoopApp> createState() => _LabCoopAppState();
 }
 
-class _LabCoopAppState extends State<LabCoopApp> {
+class _LabCoopAppState extends State<LabCoopApp> with WidgetsBindingObserver {
   final _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     DioClient.onSessionExpired = () {
       _navigatorKey.currentState?.pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LoginPage()),
@@ -96,6 +97,20 @@ class _LabCoopAppState extends State<LabCoopApp> {
         ),
       );
     };
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.detached) {
+      // App fully closed — clear auth token so user must re-login
+      FlutterSecureStorage().delete(key: 'auth_token');
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   @override

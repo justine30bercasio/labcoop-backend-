@@ -685,10 +685,11 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`LabCoop API server running on port ${PORT}`);
-  if (!process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
-    console.warn('WARN: FIREBASE_SERVICE_ACCOUNT_PATH not set — push notifications disabled.');
-    console.warn('WARN: Set it to /etc/secrets/firebase-key.json and upload the Firebase Admin SDK JSON as a secret file.');
-    console.warn('WARN: See: https://render.com/docs/secret-files');
+  if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON && !process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
+    console.warn('WARN: FIREBASE_SERVICE_ACCOUNT_JSON (or FIREBASE_SERVICE_ACCOUNT_PATH) not set — push notifications disabled.');
+    console.warn('WARN: Easiest fix: paste your Firebase Admin SDK JSON as FIREBASE_SERVICE_ACCOUNT_JSON in Render env vars.');
+  } else if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    console.log('Firebase Admin configured via FIREBASE_SERVICE_ACCOUNT_JSON env var');
   } else {
     try {
       const fp = path.resolve(process.env.FIREBASE_SERVICE_ACCOUNT_PATH);

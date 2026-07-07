@@ -1,12 +1,22 @@
 const { store } = require('../db');
 
-const FCM_ENABLED = !!process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+// Support two methods:
+// 1. FIREBASE_SERVICE_ACCOUNT_JSON — entire JSON content as env var (simplest, just paste)
+// 2. FIREBASE_SERVICE_ACCOUNT_PATH — path to JSON file (for Render secret files)
+const FCM_ENABLED = !!(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
 let _app;
 
 if (FCM_ENABLED) {
   try {
     const admin = require('firebase-admin');
-    const serviceAccount = require(process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
+    let serviceAccount;
+    if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+      serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+      console.log('Firebase Admin: loaded from FIREBASE_SERVICE_ACCOUNT_JSON env var');
+    } else {
+      serviceAccount = require(process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
+      console.log('Firebase Admin: loaded from file ' + process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
+    }
     if (!admin.apps || admin.apps.length === 0) {
       _app = admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
     } else {
@@ -27,7 +37,7 @@ function _getMessaging() {
 async function sendPush(accountId, title, body, data) {
   const messaging = _getMessaging();
   if (!FCM_ENABLED || !messaging) {
-    const msg = `Push skipped — FIREBASE_SERVICE_ACCOUNT_PATH not set or invalid`;
+    const msg = `Push skipped — Firebase not configured (set FIREBASE_SERVICE_ACCOUNT_JSON env var with your service account JSON)`;
     console.error(`[NOTIFICATION] ${msg} (target: ${accountId})`);
     throw new Error(msg);
   }

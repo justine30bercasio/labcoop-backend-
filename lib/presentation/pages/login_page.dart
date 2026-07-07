@@ -7,6 +7,7 @@ import '../../data/datasources/local_db_source.dart';
 import '../../data/datasources/remote_api_source.dart';
 import 'change_password_page.dart';
 import 'home_page.dart';
+import 'biometric_login_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -25,6 +26,7 @@ class _LoginPageState extends State<LoginPage>
   final _passwordFocus = FocusNode();
   bool _loading = false;
   bool _obscurePassword = true;
+  bool _bioLoginEnabled = false;
   String? _error;
 
   @override
@@ -38,6 +40,9 @@ class _LoginPageState extends State<LoginPage>
     _animController.forward();
     _cidFocus.addListener(() => setState(() {}));
     _passwordFocus.addListener(() => setState(() {}));
+    SecurityService.isBioLoginEnabled().then((v) {
+      if (mounted) setState(() => _bioLoginEnabled = v);
+    });
   }
 
   @override
@@ -375,6 +380,7 @@ class _LoginPageState extends State<LoginPage>
                                     ),
                             ),
                           ),
+                          _buildBiometricButton(),
                           const SizedBox(height: 16),
                           Container(
                             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -408,6 +414,46 @@ class _LoginPageState extends State<LoginPage>
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildBiometricButton() {
+    if (!_bioLoginEnabled) return const SizedBox.shrink();
+    return Column(
+      children: [
+        Row(
+          children: [
+            const Expanded(child: Divider(color: Colors.white12)),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Text('or', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),
+            ),
+            const Expanded(child: Divider(color: Colors.white12)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          height: 44,
+          child: OutlinedButton.icon(
+            onPressed: () {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const BiometricLoginPage()),
+              );
+            },
+            icon: const Icon(Icons.fingerprint, color: Colors.white70, size: 20),
+            label: const Text(
+              'Use fingerprint to log in',
+              style: TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(color: Colors.white.withValues(alpha: 0.25)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

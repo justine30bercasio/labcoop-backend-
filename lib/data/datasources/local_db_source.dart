@@ -452,6 +452,9 @@ class LocalDbSource {
       final box = await _openBox(name);
       await box.clear();
     }
-    await _secureStorage.deleteAll();
+    // Don't deleteAll — preserve encryption_key (needed for Hive boxes),
+    // bio_login credentials, and bio_lock setting
+    await _secureStorage.delete(key: 'auth_token');
+    await _secureStorage.delete(key: 'account_data');
   }
 }

@@ -9,6 +9,7 @@ let _app;
 if (FCM_ENABLED) {
   try {
     const admin = require('firebase-admin');
+    const { cert } = require('firebase-admin/app');
     let serviceAccount;
     if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
       serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
@@ -18,13 +19,14 @@ if (FCM_ENABLED) {
       console.log('Firebase Admin: loaded from file ' + process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
     }
     if (!admin.apps || admin.apps.length === 0) {
-      _app = admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+      _app = admin.initializeApp({ credential: cert(serviceAccount) });
     } else {
       _app = admin.apps[0];
     }
     console.log('Firebase Admin initialized for push notifications');
   } catch (err) {
     console.warn('Firebase Admin init failed (notifications disabled):', err.message);
+    console.warn('Firebase Admin init error details:', err.stack);
   }
 }
 
@@ -153,6 +155,20 @@ async function notifyKycRejected(accountId, reason) {
   await sendPush(accountId, ev.title, ev.body, ev.data);
 }
 
+function isFirebaseReady() {
+  return !!_app;
+}
+
+function getDiagnostics() {
+  return {
+    configured: FCM_ENABLED,
+    initialized: !!_app,
+    hasJsonEnvVar: !!process.env.FIREBASE_SERVICE_ACCOUNT_JSON,
+    hasPathEnvVar: !!process.env.FIREBASE_SERVICE_ACCOUNT_PATH,
+    jsonEnvLength: process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.length || 0,
+  };
+}
+
 module.exports = {
   sendPush,
   notifyWithdrawalApproved,
@@ -163,4 +179,6 @@ module.exports = {
   notifyPaymongoPaymentSuccess,
   notifyKycApproved,
   notifyKycRejected,
+  isFirebaseReady,
+  getDiagnostics,
 };

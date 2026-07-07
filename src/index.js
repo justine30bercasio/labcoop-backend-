@@ -422,10 +422,16 @@ publicRouter.get('/health', async (req, res) => {
     await store.query('SELECT 1');
     dbOk = true;
   } catch (_) {}
+  let firebaseStatus;
+  try {
+    const notifs = require('./services/notifications');
+    firebaseStatus = notifs.getDiagnostics();
+  } catch (_) {}
   res.json({
     status: 'ok',
     dbConnected: dbOk,
     paymongoConfigured: !!process.env.PAYMONGO_SECRET,
+    firebase: firebaseStatus || { error: 'notifications module not loaded' },
     timestamp: new Date().toISOString(),
   });
 });

@@ -163,6 +163,45 @@ class _NotificationListPageState extends State<_NotificationListPage> {
     });
   }
 
+  void _showDetail(dynamic n) {
+    final isRead = n['is_read'] == 1;
+    final title = n['title'] as String? ?? '';
+    final body = n['body'] as String? ?? '';
+    final createdAt = n['created_at'] as String? ?? '';
+
+    // Mark as read if unread
+    if (!isRead) _markRead(n);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (body.isNotEmpty) ...[
+                Text(body, style: const TextStyle(fontSize: 15, height: 1.4)),
+                const SizedBox(height: 12),
+              ],
+              Text(
+                _formatDate(createdAt),
+                style: const TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -231,7 +270,7 @@ class _NotificationListPageState extends State<_NotificationListPage> {
                             _formatDate(createdAt),
                             style: const TextStyle(color: Colors.grey, fontSize: 12),
                           ),
-                          onTap: isRead ? null : () => _markRead(n),
+                          onTap: () => _showDetail(n),
                         );
                       },
                     ),

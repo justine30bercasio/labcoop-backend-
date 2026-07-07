@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "977618316551",
+    "project_id": "mycooppiggy",
+    "storage_bucket": "mycooppiggy.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:977618316551:android:5aee77f19f7b88808629a2",
+        "android_client_info": {
+          "package_name": "com.labcoop"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDLU6UDv8eZy-j2ZZvXOg1AdC-6Dwzl0uE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

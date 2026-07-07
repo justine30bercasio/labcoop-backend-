@@ -1,4 +1,4 @@
-package com.example.labcoop
+package com.labcoop
 
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity

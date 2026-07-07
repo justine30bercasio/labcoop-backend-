@@ -19,26 +19,19 @@ import 'presentation/pages/login_page.dart';
 import 'presentation/pages/biometric_lock_page.dart';
 import 'presentation/pages/biometric_login_page.dart';
 import 'core/services/notification_service.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'dart:convert';
-import 'dart:typed_data';
-
-Future<Uint8List> _getEncryptionKey() async {
-  const storage = FlutterSecureStorage();
-  final stored = await storage.read(key: 'encryption_key');
-  if (stored != null && stored.isNotEmpty) {
-    return base64Decode(stored);
-  }
-  final newKey = Hive.generateSecureKey();
-  await storage.write(key: 'encryption_key', value: base64Encode(newKey));
-  return Uint8List.fromList(newKey);
-}
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
-  final key = await _getEncryptionKey();
-  await Hive.openBox('app_settings', encryptionCipher: HiveAesCipher(key));
+  // app_settings only stores non-sensitive flags (terms_accepted).
+  // No encryption to avoid key-loss issues on clearAll.
+  if (Hive.isBoxOpen('app_settings')) await Hive.box('app_settings').close();
+  try {
+    await Hive.openBox('app_settings');
+  } catch (_) {
+    // Previously encrypted box with a now-lost key — delete and recreate
+    await Hive.deleteBoxFromDisk('app_settings');
+    await Hive.openBox('app_settings');
+  }
   await di.initDependencies();
   await SecurityService.init();
   try {

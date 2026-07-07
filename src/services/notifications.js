@@ -18,30 +18,36 @@ if (FCM_ENABLED) {
 
 async function sendPush(accountId, title, body, data) {
   if (!FCM_ENABLED || !admin) {
-    console.log(`[NOTIFICATION SKIPPED - no Firebase] To ${accountId}: ${title} - ${body}`);
-    return;
+    const msg = `Push skipped — FIREBASE_SERVICE_ACCOUNT_PATH not set or invalid`;
+    console.error(`[NOTIFICATION] ${msg} (target: ${accountId})`);
+    throw new Error(msg);
   }
-  try {
-    const tokens = await store.getFcmTokens(accountId);
-    if (!tokens || tokens.length === 0) return;
-    const message = {
-      notification: { title, body },
-      data: data ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])) : {},
-      tokens: tokens.map(t => t.fcm_token),
-    };
-    const response = await admin.messaging().sendEachForMulticast(message);
-    console.log(`Push sent to ${accountId}: ${response.successCount} success, ${response.failureCount} failures`);
-    for (let i = 0; i < response.responses.length; i++) {
-      const resp = response.responses[i];
-      if (!resp.success && resp.error) {
-        console.error(`FCM error for token ${tokens[i]?.fcm_token?.slice(0, 20)}...:`, resp.error.message);
-        if (resp.error.code === 'messaging/registration-token-not-registered') {
-          await store.unregisterFcmToken(accountId, tokens[i].fcm_token);
-        }
+  const tokens = await store.getFcmTokens(accountId);
+  if (!tokens || tokens.length === 0) {
+    const msg = `No FCM tokens registered for account ${accountId}`;
+    console.error(`[NOTIFICATION] ${msg}`);
+    throw new Error(msg);
+  }
+  const message = {
+    notification: { title, body },
+    data: data ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])) : {},
+    tokens: tokens.map(t => t.fcm_token),
+  };
+  const response = await admin.messaging().sendEachForMulticast(message);
+  console.log(`Push sent to ${accountId}: ${response.successCount} success, ${response.failureCount} failures`);
+  let firstError = null;
+  for (let i = 0; i < response.responses.length; i++) {
+    const resp = response.responses[i];
+    if (!resp.success && resp.error) {
+      console.error(`FCM error for token ${tokens[i]?.fcm_token?.slice(0, 20)}...:`, resp.error.message);
+      if (resp.error.code === 'messaging/registration-token-not-registered') {
+        await store.unregisterFcmToken(accountId, tokens[i].fcm_token);
       }
+      if (!firstError) firstError = resp.error.message;
     }
-  } catch (err) {
-    console.error('Failed to send push notification:', err.message);
+  }
+  if (response.successCount === 0 && firstError) {
+    throw new Error(`Push failed: ${firstError}`);
   }
 }
 

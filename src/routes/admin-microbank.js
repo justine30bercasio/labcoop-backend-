@@ -366,12 +366,15 @@ router.post('/kyc/reject/:id', requireRole(2), asyncHandler(async (req, res) => 
 }));
 
 router.post('/kyc/test-notify/:id', requireRole(2), asyncHandler(async (req, res) => {
-  const account = await one('SELECT child_name FROM accounts WHERE account_id = $1', [req.params.id]);
+  const account = await one('SELECT child_name, account_id FROM accounts WHERE account_id = $1', [req.params.id]);
   if (!account) return res.redirect('/admin/kyc?error=Account+not+found');
-  // Send both a KYC-approved and a test notification
-  notifs.notifyKycApproved(req.params.id).catch(() => {});
-  const accountName = account.child_name || 'User';
-  res.redirect('/admin/kyc?tab=verified&approved=Test+notification+sent+to+' + encodeURIComponent(accountName));
+  try {
+    await notifs.notifyKycApproved(req.params.id);
+    const accountName = account.child_name || 'User';
+    res.redirect('/admin/kyc?tab=verified&approved=Test+notification+sent+to+' + encodeURIComponent(accountName));
+  } catch (err) {
+    res.redirect('/admin/kyc?error=Notification+failed:+' + encodeURIComponent(err.message));
+  }
 }));
 
 // ═══════════════════════════════════════════════════════════════

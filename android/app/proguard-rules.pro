@@ -10,12 +10,19 @@
 # Keep Firebase classes
 -keep class com.google.firebase.** { *; }
 
+# Keep Google Play Core (needed for deferred components / split install)
+-keep class com.google.android.play.core.** { *; }
+-dontwarn com.google.android.play.core.**
+
 # Keep model classes used for JSON serialization
 -keep class com.example.labcoop.model.** { *; }
 
 # Keep dependencies used via reflection
 -keep class com.google.gson.** { *; }
 -keep class com.google.common.** { *; }
+
+# Keep safe_device classes (root/jailbreak detection)
+-keep class com.google.android.gms.safetynet.** { *; }
 
 # General rules
 -dontwarn com.google.errorprone.**

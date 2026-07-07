@@ -1,14 +1,16 @@
 const { store } = require('../db');
 
 const FCM_ENABLED = !!process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
-let admin;
+let _app;
 
 if (FCM_ENABLED) {
   try {
-    admin = require('firebase-admin');
+    const admin = require('firebase-admin');
     const serviceAccount = require(process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
-    if (!admin.apps.length) {
-      admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+    if (!admin.apps || admin.apps.length === 0) {
+      _app = admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+    } else {
+      _app = admin.apps[0];
     }
     console.log('Firebase Admin initialized for push notifications');
   } catch (err) {
@@ -16,8 +18,15 @@ if (FCM_ENABLED) {
   }
 }
 
+function _getMessaging() {
+  if (!_app) return null;
+  const { getMessaging } = require('firebase-admin/messaging');
+  return getMessaging(_app);
+}
+
 async function sendPush(accountId, title, body, data) {
-  if (!FCM_ENABLED || !admin) {
+  const messaging = _getMessaging();
+  if (!FCM_ENABLED || !messaging) {
     const msg = `Push skipped — FIREBASE_SERVICE_ACCOUNT_PATH not set or invalid`;
     console.error(`[NOTIFICATION] ${msg} (target: ${accountId})`);
     throw new Error(msg);
@@ -33,7 +42,7 @@ async function sendPush(accountId, title, body, data) {
     data: data ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])) : {},
     tokens: tokens.map(t => t.fcm_token),
   };
-  const response = await admin.messaging().sendEachForMulticast(message);
+  const response = await messaging.sendEachForMulticast(message);
   console.log(`Push sent to ${accountId}: ${response.successCount} success, ${response.failureCount} failures`);
   let firstError = null;
   for (let i = 0; i < response.responses.length; i++) {

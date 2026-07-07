@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:get_it/get_it.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/services/security_service.dart';
@@ -54,7 +55,19 @@ class _BiometricLoginPageState extends State<BiometricLoginPage> {
       return;
     }
 
-    // Read stored password (triggers biometric again on some platforms)
+    // If we already have a valid token, skip login API call
+    const storage = FlutterSecureStorage();
+    final existingToken = await storage.read(key: 'auth_token');
+    if (existingToken != null) {
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const HomePage()),
+      );
+      return;
+    }
+
+    // No token — use saved password to re-login
     final password = await SecurityService.readBioPassword();
     if (password == null || password.isEmpty) {
       setState(() {

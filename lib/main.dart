@@ -17,6 +17,7 @@ import 'presentation/blocs/loan_bloc.dart';
 import 'presentation/pages/splash_page.dart';
 import 'presentation/pages/login_page.dart';
 import 'presentation/pages/biometric_lock_page.dart';
+import 'presentation/pages/biometric_login_page.dart';
 import 'core/services/notification_service.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:convert';
@@ -64,10 +65,16 @@ void main() async {
     return;
   }
 
+  // Biometric login (GCash-style) — always show biometric gate if enabled
+  if (await SecurityService.isBioLoginEnabled() && bioAvailable) {
+    runApp(const LabCoopApp(initialPage: _AppStartupPage.biometricLogin));
+    return;
+  }
+
   runApp(const LabCoopApp());
 }
 
-enum _AppStartupPage { normal, compromised, biometricLock }
+enum _AppStartupPage { normal, compromised, biometricLock, biometricLogin }
 
 class LabCoopApp extends StatefulWidget {
   final _AppStartupPage initialPage;
@@ -77,13 +84,12 @@ class LabCoopApp extends StatefulWidget {
   State<LabCoopApp> createState() => _LabCoopAppState();
 }
 
-class _LabCoopAppState extends State<LabCoopApp> with WidgetsBindingObserver {
+class _LabCoopAppState extends State<LabCoopApp> {
   final _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     DioClient.onSessionExpired = () {
       _navigatorKey.currentState?.pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LoginPage()),
@@ -100,20 +106,6 @@ class _LabCoopAppState extends State<LabCoopApp> with WidgetsBindingObserver {
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.detached) {
-      // App fully closed — clear auth token so user must re-login
-      FlutterSecureStorage().delete(key: 'auth_token');
-    }
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     Widget home;
     switch (widget.initialPage) {
@@ -123,6 +115,15 @@ class _LabCoopAppState extends State<LabCoopApp> with WidgetsBindingObserver {
       case _AppStartupPage.biometricLock:
         home = const BiometricLockPage();
         break;
+      case _AppStartupPage.biometricLogin:
+        home = const BiometricLoginPage();
+        return MaterialApp(
+          navigatorKey: _navigatorKey,
+          title: 'LabCoop',
+          theme: AppTheme.lightTheme,
+          debugShowCheckedModeBanner: false,
+          home: home,
+        );
       case _AppStartupPage.normal:
       default:
         home = const SplashPage();

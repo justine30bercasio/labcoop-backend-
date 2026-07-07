@@ -62,10 +62,10 @@ function startScheduler() {
             const taxAmount = Math.round(grossInterest * taxRate * 100) / 100;
             const netInterest = Math.round((grossInterest - taxAmount) * 100) / 100;
 
-            const tx = store.creditInterest(account.account_id, netInterest);
+            const txRecord = await store.creditInterest(account.account_id, netInterest);
             try {
               const gl = require('./gl');
-              const txId = tx?.transaction_id || '';
+              const txId = txRecord?.transaction_id || '';
               if (txId) {
                 await gl.postDoubleEntry(txId, [
                   { account_code: '5000', debit: grossInterest, description: 'Interest expense (gross): ' + account.child_name },
@@ -114,7 +114,7 @@ function startScheduler() {
           const newUnallocated = Math.round((Number(order.unallocated_balance) - amount) * 100) / 100;
           await store.query("UPDATE accounts SET actual_balance = $1, unallocated_balance = $2, updated_at = CURRENT_TIMESTAMP WHERE account_id = $3", [newBalance, Math.max(0, newUnallocated), order.account_id]);
 
-          store.addTransaction({
+          const soTxRecord = await store.addTransaction({
             account_id: order.account_id,
             type: 'auto_save',
             amount: amount,
@@ -122,6 +122,17 @@ function startScheduler() {
             balance_before: Number(order.actual_balance),
             balance_after: newBalance,
           });
+
+          // Post double-entry GL for standing order (auto-save)
+          try {
+            const gl = require('./gl');
+            await gl.postDoubleEntry(soTxRecord.transaction_id, [
+              { account_code: '5100', debit: amount, description: `Auto-save transfer: ${order.child_name} — ${order.description || 'Auto-save'}` },
+              { account_code: '1000', credit: amount, description: `Auto-save transfer: ${order.child_name} — ${order.description || 'Auto-save'}` },
+            ], { postedBy: 'system', referenceType: 'auto_save', referenceNumber: order.order_id });
+          } catch (glErr) {
+            console.error('[Scheduler] GL post for auto-save failed:', glErr.message);
+          }
 
           // Update next_run
           const nextRun = new Date();

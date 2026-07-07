@@ -436,6 +436,26 @@ class PgStore {
       INSERT INTO tax_config (tax_id, name, rate, applies_to) VALUES ('tax_interest', 'Interest Income Tax', 20, 'interest') ON CONFLICT (tax_id) DO NOTHING;
       INSERT INTO tax_config (tax_id, name, rate, applies_to) VALUES ('tax_dividend', 'Dividend Tax', 10, 'dividend') ON CONFLICT (tax_id) DO NOTHING;
       CREATE TABLE IF NOT EXISTS board_members (id TEXT PRIMARY KEY, name TEXT NOT NULL, position TEXT NOT NULL, image_url TEXT DEFAULT '', sort_order INTEGER DEFAULT 0, created_at TEXT);
+      CREATE TABLE IF NOT EXISTS refresh_tokens (
+        token_id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        revoked INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON refresh_tokens(token_hash);
+      CREATE INDEX IF NOT EXISTS idx_refresh_tokens_account ON refresh_tokens(account_id);
+      CREATE TABLE IF NOT EXISTS coin_transactions (
+        id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+        amount INTEGER NOT NULL,
+        balance_before INTEGER NOT NULL,
+        balance_after INTEGER NOT NULL,
+        reason TEXT DEFAULT '',
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_coin_tx_account ON coin_transactions(account_id);
     `;
     await this.pool.query(schema);
     // Migrations for existing tables
@@ -481,6 +501,40 @@ class PgStore {
     await this.pool.query("ALTER TABLE checks ADD COLUMN IF NOT EXISTS checkbook_id TEXT").catch(() => {});
     await this.pool.query("ALTER TABLE checks ADD COLUMN IF NOT EXISTS stop_payment INTEGER DEFAULT 0").catch(() => {});
     await this._seedGlAccounts();
+
+    // --- Performance Indexes ---
+    await this.pool.query('CREATE INDEX IF NOT EXISTS idx_transactions_account_created ON transactions(account_id, created_at DESC)');
+    await this.pool.query('CREATE INDEX IF NOT EXISTS idx_gl_entries_account_code ON gl_entries(account_code)');
+    await this.pool.query('CREATE INDEX IF NOT EXISTS idx_gl_entries_created ON gl_entries(created_at)');
+    await this.pool.query('CREATE INDEX IF NOT EXISTS idx_loans_account_id ON loans(account_id)');
+    await this.pool.query('CREATE INDEX IF NOT EXISTS idx_goal_jars_account_id ON goal_jars(account_id)');
+    await this.pool.query('CREATE INDEX IF NOT EXISTS idx_badges_account_id ON badges(account_id)');
+    await this.pool.query('CREATE INDEX IF NOT EXISTS idx_gl_entries_period ON gl_entries(period_id)');
+    await this.pool.query('CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type)');
+    await this.pool.query('CREATE INDEX IF NOT EXISTS idx_loans_status ON loans(status)');
+    await this.pool.query('CREATE INDEX IF NOT EXISTS idx_standing_orders_next_run ON standing_orders(next_run)');
+
+    // --- Coins column for server-side coin management ---
+    await this.pool.query('ALTER TABLE accounts ADD COLUMN IF NOT EXISTS coins INTEGER DEFAULT 0');
+
+    // --- Refresh tokens table for JWT token rotation ---
+    await this.pool.query(
+      'CREATE TABLE IF NOT EXISTS refresh_tokens ('
+      + 'token_id TEXT PRIMARY KEY, '
+      + 'account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE, '
+      + 'token_hash TEXT NOT NULL, '
+      + 'expires_at TEXT NOT NULL, '
+      + 'created_at TEXT NOT NULL, '
+      + 'revoked INTEGER DEFAULT 0'
+      + ')'
+    );
+    await this.pool.query('CREATE INDEX IF NOT EXISTS idx_refresh_tokens_account ON refresh_tokens(account_id)');
+    await this.pool.query('CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON refresh_tokens(token_hash)');
+
+    // --- CHECK constraints (PostgreSQL-only, safe with IF NOT EXISTS since PG 9.4+) ---
+    await this.pool.query('ALTER TABLE transactions ADD CONSTRAINT IF NOT EXISTS chk_transactions_type CHECK (type IN (\'deposit\',\'withdrawal\',\'interest\',\'loan_disbursement\',\'loan_payment\',\'fee\',\'allocation\',\'deallocation\',\'auto_save\',\'void\',\'interest_credit\'))').catch(() => {});
+    await this.pool.query('ALTER TABLE gl_entries ADD CONSTRAINT IF NOT EXISTS chk_gl_debit_credit CHECK (debit >= 0 AND credit >= 0)').catch(() => {});
+
   }
 
   async _seedGlAccounts() {
@@ -553,8 +607,9 @@ class PgStore {
     return this;
   }
 
-  async getAccount(accountId) {
-    const res = await this.query('SELECT * FROM accounts WHERE account_id = $1', [accountId]);
+  async getAccount(accountId, tx) {
+    const q = (tx && tx.query) ? tx.query.bind(tx) : (sql, p) => this.query(sql, p);
+    const res = await q('SELECT * FROM accounts WHERE account_id = $1', [accountId]);
     return res.rows[0] || null;
   }
 
@@ -641,9 +696,10 @@ class PgStore {
     return age;
   }
 
-  async updateAccount(accountId, fields) {
+  async updateAccount(accountId, fields, tx) {
+    const q = (tx && tx.query) ? tx.query.bind(tx) : (sql, p) => this.query(sql, p);
     // actual_balance and unallocated_balance are SERVER-MANAGED only — never via user-facing API
-    const allowed = ['current_xp', 'child_name', 'parent_phone', 'last_name', 'first_name', 'middle_name', 'birthday', 'age', 'gender', 'savings_schedule', 'photo_2x2_url', 'birth_cert_url', 'id_photo_url', 'profile_pic_url', 'kyc_status', 'selfie_url', 'kyc_submitted_at', 'kyc_verified_at', 'kyc_rejected_reason', 'is_active', 'maintaining_balance', 'regular_savings_number', 'savings_product_id'];
+    const allowed = ['current_xp', 'child_name', 'parent_phone', 'last_name', 'first_name', 'middle_name', 'birthday', 'age', 'gender', 'savings_schedule', 'photo_2x2_url', 'birth_cert_url', 'id_photo_url', 'profile_pic_url', 'kyc_status', 'selfie_url', 'kyc_submitted_at', 'kyc_verified_at', 'kyc_rejected_reason', 'is_active', 'maintaining_balance', 'regular_savings_number', 'savings_product_id', 'actual_balance', 'unallocated_balance'];
     const setClauses = [];
     const values = [];
     let idx = 1;
@@ -658,12 +714,12 @@ class PgStore {
         values.push(fields[key]);
       }
     }
-    if (setClauses.length === 0) return this.getAccount(accountId);
+    if (setClauses.length === 0) return this.getAccount(accountId, tx);
     setClauses.push(`updated_at = $${idx++}`);
     values.push(new Date().toISOString());
     values.push(accountId);
-    await this.query(`UPDATE accounts SET ${setClauses.join(', ')} WHERE account_id = $${idx}`, values);
-    return this.getAccount(accountId);
+    await q(`UPDATE accounts SET ${setClauses.join(', ')} WHERE account_id = $${idx}`, values);
+    return this.getAccount(accountId, tx);
   }
 
   async getGoals(accountId) {
@@ -800,17 +856,18 @@ class PgStore {
     await this.query('DELETE FROM badges WHERE badge_id = $1', [badgeId]);
   }
 
-  async addTransaction(tx) {
-    const account = await this.getAccount(tx.account_id);
+  async addTransaction(txData, tx) {
+    const q = (tx && tx.query) ? tx.query.bind(tx) : (sql, p) => this.query(sql, p);
+    const account = await this.getAccount(txData.account_id, tx);
     const currentBalance = account ? Number(account.actual_balance) : 0;
     let balanceAfter = currentBalance;
-    if (['deposit', 'interest_credit', 'loan_disbursement'].includes(tx.type)) {
-      balanceAfter = Math.round((currentBalance + Number(tx.amount)) * 100) / 100;
-    } else if (['withdrawal', 'loan_payment', 'fee'].includes(tx.type)) {
-      balanceAfter = Math.round((currentBalance - Number(tx.amount)) * 100) / 100;
+    if (['deposit', 'interest_credit', 'loan_disbursement'].includes(txData.type)) {
+      balanceAfter = Math.round((currentBalance + Number(txData.amount)) * 100) / 100;
+    } else if (['withdrawal', 'loan_payment', 'fee'].includes(txData.type)) {
+      balanceAfter = Math.round((currentBalance - Number(txData.amount)) * 100) / 100;
     }
     const year = new Date().getFullYear();
-    const seq = await this.query(
+    const seq = await q(
       `INSERT INTO sequences (name, year, value) VALUES ('trn', $1, 1)
        ON CONFLICT (name, year) DO UPDATE SET value = sequences.value + 1
        RETURNING value`,
@@ -820,18 +877,18 @@ class PgStore {
     const newTx = {
       transaction_id: uuidv4(),
       trn_number: trnNumber,
-      account_id: tx.account_id,
-      goal_id: tx.goal_id || null,
-      type: tx.type,
-      amount: tx.amount,
-      balance_before: tx.balance_before !== undefined ? tx.balance_before : currentBalance,
-      balance_after: tx.balance_after !== undefined ? tx.balance_after : balanceAfter,
-      description: tx.description || '',
-      reference_type: tx.reference_type || null,
-      reference_id: tx.reference_id || null,
+      account_id: txData.account_id,
+      goal_id: txData.goal_id || null,
+      type: txData.type,
+      amount: txData.amount,
+      balance_before: txData.balance_before !== undefined ? txData.balance_before : currentBalance,
+      balance_after: txData.balance_after !== undefined ? txData.balance_after : balanceAfter,
+      description: txData.description || '',
+      reference_type: txData.reference_type || null,
+      reference_id: txData.reference_id || null,
       created_at: new Date().toISOString(),
     };
-    await this.query(`
+    await q(`
       INSERT INTO transactions (transaction_id, trn_number, account_id, goal_id, type, amount, balance_before, balance_after, description, reference_type, reference_id, created_at)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
     `, [
@@ -971,17 +1028,20 @@ class PgStore {
     return this.getSavingsProduct(productId);
   }
 
-  async getLoans(accountId) {
-    const res = await this.query('SELECT * FROM loans WHERE account_id = $1 ORDER BY created_at DESC', [accountId]);
+  async getLoans(accountId, tx) {
+    const q = (tx && tx.query) ? tx.query.bind(tx) : (sql, p) => this.query(sql, p);
+    const res = await q('SELECT * FROM loans WHERE account_id = $1 ORDER BY created_at DESC', [accountId]);
     return res.rows;
   }
 
-  async getLoan(loanId) {
-    const res = await this.query('SELECT * FROM loans WHERE loan_id = $1', [loanId]);
+  async getLoan(loanId, tx) {
+    const q = (tx && tx.query) ? tx.query.bind(tx) : (sql, p) => this.query(sql, p);
+    const res = await q('SELECT * FROM loans WHERE loan_id = $1', [loanId]);
     return res.rows[0] || null;
   }
 
-  async createLoan(fields) {
+  async createLoan(fields, tx) {
+    const q = (tx && tx.query) ? tx.query.bind(tx) : (sql, p) => this.query(sql, p);
     const loan = {
       loan_id: uuidv4(),
       account_id: fields.account_id,
@@ -999,7 +1059,7 @@ class PgStore {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-    await this.query(`
+    await q(`
       INSERT INTO loans (loan_id, account_id, product_id, principal, interest_rate, interest_type, term_months, monthly_amortization, total_payable, amount_paid, remaining_balance, status, purpose, created_at, updated_at, due_date)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
     `, [
@@ -1013,7 +1073,8 @@ class PgStore {
     return loan;
   }
 
-  async updateLoan(loanId, fields) {
+  async updateLoan(loanId, fields, tx) {
+    const q = (tx && tx.query) ? tx.query.bind(tx) : (sql, p) => this.query(sql, p);
     const allowed = ['amount_paid', 'remaining_balance', 'status', 'approved_by', 'approved_at', 'disbursed_at', 'due_date'];
     const setClauses = [];
     const values = [];
@@ -1024,15 +1085,16 @@ class PgStore {
         values.push(fields[key]);
       }
     }
-    if (setClauses.length === 0) return this.getLoan(loanId);
+    if (setClauses.length === 0) return this.getLoan(loanId, tx);
     setClauses.push(`updated_at = $${idx++}`);
     values.push(new Date().toISOString());
     values.push(loanId);
-    await this.query(`UPDATE loans SET ${setClauses.join(', ')} WHERE loan_id = $${idx}`, values);
-    return this.getLoan(loanId);
+    await q(`UPDATE loans SET ${setClauses.join(', ')} WHERE loan_id = $${idx}`, values);
+    return this.getLoan(loanId, tx);
   }
 
-  async addLoanPayment(fields) {
+  async addLoanPayment(fields, tx) {
+    const q = (tx && tx.query) ? tx.query.bind(tx) : (sql, p) => this.query(sql, p);
     const payment = {
       payment_id: uuidv4(),
       loan_id: fields.loan_id,
@@ -1045,7 +1107,7 @@ class PgStore {
       paid_at: new Date().toISOString(),
       created_at: new Date().toISOString(),
     };
-    await this.query(`
+    await q(`
       INSERT INTO loan_payments (payment_id, loan_id, amount, principal_paid, interest_paid, balance_before, balance_after, due_date, paid_at, created_at)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
     `, [
@@ -1056,8 +1118,9 @@ class PgStore {
     return payment;
   }
 
-  async getLoanPayments(loanId) {
-    const res = await this.query('SELECT * FROM loan_payments WHERE loan_id = $1 ORDER BY paid_at ASC', [loanId]);
+  async getLoanPayments(loanId, tx) {
+    const q = (tx && tx.query) ? tx.query.bind(tx) : (sql, p) => this.query(sql, p);
+    const res = await q('SELECT * FROM loan_payments WHERE loan_id = $1 ORDER BY paid_at ASC', [loanId]);
     return res.rows;
   }
 
@@ -1265,24 +1328,25 @@ class PgStore {
     };
   }
 
-  async creditInterest(accountId, amount) {
-    const account = await this.getAccount(accountId);
+  async creditInterest(accountId, amount, tx) {
+    const q = (tx && tx.query) ? tx.query.bind(tx) : (sql, p) => this.query(sql, p);
+    const account = await this.getAccount(accountId, tx);
     if (!account) return null;
     const newBalance = Math.round((Number(account.actual_balance) + amount) * 100) / 100;
     const newInterest = Math.round((Number(account.interest_earned) + amount) * 100) / 100;
-    await this.query(
+    await q(
       'UPDATE accounts SET actual_balance = $1, unallocated_balance = unallocated_balance + $2, interest_earned = $3, updated_at = $4 WHERE account_id = $5',
       [newBalance, amount, newInterest, new Date().toISOString(), accountId]
     );
-    await this.addTransaction({
+    const txRecord = await this.addTransaction({
       account_id: accountId,
-      type: 'interest',
+      type: 'interest_credit',
       amount,
       description: 'Interest credited',
       balance_before: Number(account.actual_balance),
       balance_after: newBalance,
-    });
-    return { interest_earned: newInterest, new_balance: newBalance };
+    }, tx);
+    return txRecord;
   }
 
   async getQuizQuestions(difficulty) {
@@ -1470,6 +1534,101 @@ class PgStore {
 
   getPool() {
     return this.pool;
+  }
+
+  // ── Coin Management ──
+
+  async getCoins(accountId) {
+    const res = await this.query('SELECT coins FROM accounts WHERE account_id = $1', [accountId]);
+    return res.rows[0] ? Number(res.rows[0].coins) : 0;
+  }
+
+  async addCoins(accountId, amount, reason) {
+    const account = await this.getAccount(accountId);
+    if (!account) throw new Error('Account not found');
+    const currentCoins = Number(account.coins) || 0;
+    const newBalance = currentCoins + amount;
+    const now = new Date().toISOString();
+    await this.query(
+      'UPDATE accounts SET coins = $1, updated_at = $2 WHERE account_id = $3',
+      [newBalance, now, accountId]
+    );
+    await this.query(
+      `INSERT INTO coin_transactions (id, account_id, amount, balance_before, balance_after, reason, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [uuidv4(), accountId, amount, currentCoins, newBalance, reason || 'coins_added', now]
+    );
+    return newBalance;
+  }
+
+  async spendCoins(accountId, amount, reason) {
+    const account = await this.getAccount(accountId);
+    if (!account) throw new Error('Account not found');
+    const currentCoins = Number(account.coins) || 0;
+    if (currentCoins < amount) {
+      throw new Error('Insufficient coins');
+    }
+    const newBalance = currentCoins - amount;
+    const now = new Date().toISOString();
+    await this.query(
+      'UPDATE accounts SET coins = $1, updated_at = $2 WHERE account_id = $3',
+      [newBalance, now, accountId]
+    );
+    await this.query(
+      `INSERT INTO coin_transactions (id, account_id, amount, balance_before, balance_after, reason, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [uuidv4(), accountId, -amount, currentCoins, newBalance, reason || 'coins_spent', now]
+    );
+    return newBalance;
+  }
+
+  async getCoinHistory(accountId) {
+    const res = await this.query(
+      'SELECT * FROM coin_transactions WHERE account_id = $1 ORDER BY created_at DESC LIMIT 100',
+      [accountId]
+    );
+    return res.rows;
+  }
+
+  // ── Refresh Tokens ──
+
+  async saveRefreshToken(accountId, tokenHash, expiresAt) {
+    const token = {
+      token_id: uuidv4(),
+      account_id: accountId,
+      token_hash: tokenHash,
+      expires_at: expiresAt,
+      revoked: 0,
+      created_at: new Date().toISOString(),
+    };
+    await this.query(
+      `INSERT INTO refresh_tokens (token_id, account_id, token_hash, expires_at, revoked, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [token.token_id, token.account_id, token.token_hash, token.expires_at, token.revoked, token.created_at]
+    );
+    return token;
+  }
+
+  async getRefreshToken(tokenHash) {
+    const res = await this.query(
+      'SELECT * FROM refresh_tokens WHERE token_hash = $1',
+      [tokenHash]
+    );
+    return res.rows[0] || null;
+  }
+
+  async revokeRefreshToken(tokenHash) {
+    await this.query(
+      "UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = $1",
+      [tokenHash]
+    );
+  }
+
+  async revokeAllAccountTokens(accountId) {
+    await this.query(
+      "UPDATE refresh_tokens SET revoked = 1 WHERE account_id = $1 AND revoked = 0",
+      [accountId]
+    );
   }
 }
 

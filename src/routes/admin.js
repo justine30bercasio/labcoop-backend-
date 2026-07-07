@@ -6,7 +6,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
-const { getDb, store, isPostgres } = require('../db');
+const { store, isPostgres } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const { layout, printLayout, h, reportTable, reportSection, reportStats } = require('./admin-lib');
 const notifs = require('../services/notifications');
@@ -5200,6 +5200,38 @@ router.get('/statements', requireRole(1), asyncHandler(async (req, res) => {
   res.type('html').send(layout('Member Statements', 'statements', content, { subtitle: 'Monthly statement of account' }));
 }));
 
+// ── Shared year-end close function ──
+async function closeYear(year, closedBy) {
+  const { v4: uuidv4 } = require('uuid');
+  const one = (q, p) => store.query(q, p || []).then(r => r.rows[0]);
+  const existing = await one("SELECT * FROM eoy_logs WHERE year = $1", [year]);
+  if (existing) throw new Error('Year ' + year + ' already closed');
+  const gl = require('../services/gl');
+  const fromDate = year + '-01-01', toDate = year + '-12-31';
+  const pnl = await gl.getProfitAndLoss(fromDate, toDate);
+  const closeTxId = 'eoy-' + uuidv4().slice(0, 8);
+  const entries = [];
+  for (const inc of [...(pnl.operatingIncome || []), ...(pnl.otherIncome || [])]) { if (inc.amount > 0) entries.push({ account_code: inc.code, debit: inc.amount, credit: 0, description: 'P&L close ' + year }); }
+  for (const exp of [...(pnl.operatingExpense || []), ...(pnl.otherExpense || [])]) { if (exp.amount > 0) entries.push({ account_code: exp.code, debit: 0, credit: exp.amount, description: 'P&L close ' + year }); }
+  if (pnl.netProfit >= 0) entries.push({ account_code: '3100', debit: 0, credit: pnl.netProfit, description: 'Net profit ' + year });
+  else entries.push({ account_code: '3100', debit: Math.abs(pnl.netProfit), credit: 0, description: 'Net loss ' + year });
+  await gl.postDoubleEntry(closeTxId, entries, { postedBy: closedBy || 'admin', referenceType: 'eoy' });
+  const txs = await store.query("SELECT * FROM transactions WHERE created_at LIKE $1", [year + '%']).then(r => r.rows);
+  for (const tx of txs) {
+    await store.query(
+      `INSERT INTO archived_transactions (archive_id, transaction_id, trn_number, account_id, type, amount, description, reference_type, reference_id, original_created_at, archived_at, year)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      [uuidv4(), tx.transaction_id, tx.trn_number || null, tx.account_id, tx.type, tx.amount, tx.description, tx.reference_type, tx.reference_id, tx.created_at, new Date().toISOString(), year]
+    );
+  }
+  await store.query(
+    `INSERT INTO eoy_logs (eoy_id, year, total_income, total_expense, net_profit, tx_count, archived, closed_by, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,1,$7,$8)`,
+    [uuidv4(), year, pnl.totalIncome, pnl.totalExpense, pnl.netProfit, txs.length, closedBy || 'admin', new Date().toISOString()]
+  );
+  return { year, netProfit: pnl.netProfit, txCount: txs.length };
+}
+
 // ── End of Year (EOY) — P&L Close + Archive ──
 router.get('/eoy', requireRole(1), asyncHandler(async (req, res) => {
   const sql = (q, p) => store.query(q, p || []).then(r => r.rows);
@@ -5307,40 +5339,26 @@ router.get('/eoy', requireRole(1), asyncHandler(async (req, res) => {
 }));
 
 router.post('/eoy/close', requireRole(3), asyncHandler(async (req, res) => {
-  const { v4: uuidv4 } = require('uuid');
   const year = parseInt(req.body.year);
   if (!year) return res.redirect('/admin/eoy?error=Year+required');
-  const sql = (q, p) => store.query(q, p || []).then(r => r.rows);
-  const one = (q, p) => store.query(q, p || []).then(r => r.rows[0]);
-  const gl = require('../services/gl');
-  const existing = await one("SELECT * FROM eoy_logs WHERE year = $1", [year]);
-  if (existing) return res.redirect('/admin/eoy?year=' + year + '&error=Year+already+closed');
-
-  const fromDate = year + '-01-01', toDate = year + '-12-31';
-  const pnl = await gl.getProfitAndLoss(fromDate, toDate);
-  const closeTxId = 'eoy-' + uuidv4().slice(0,8);
-  const entries = [];
-  for (const inc of [...(pnl.operatingIncome||[]), ...(pnl.otherIncome||[])]) { if (inc.amount > 0) entries.push({ account_code: inc.code, debit: inc.amount, credit: 0, description: 'P&L close ' + year }); }
-  for (const exp of [...(pnl.operatingExpense||[]), ...(pnl.otherExpense||[])]) { if (exp.amount > 0) entries.push({ account_code: exp.code, debit: 0, credit: exp.amount, description: 'P&L close ' + year }); }
-  if (pnl.netProfit >= 0) entries.push({ account_code: '3100', debit: 0, credit: pnl.netProfit, description: 'Net profit ' + year });
-  else entries.push({ account_code: '3100', debit: Math.abs(pnl.netProfit), credit: 0, description: 'Net loss ' + year });
-  await gl.postDoubleEntry(closeTxId, entries, { postedBy: req.session.adminName || 'admin', referenceType: 'eoy' });
-
-  const txs = await sql("SELECT * FROM transactions WHERE created_at LIKE $1", [year + '%']);
-  for (const tx of txs) {
-    await store.query(
-      `INSERT INTO archived_transactions (archive_id, transaction_id, trn_number, account_id, type, amount, description, reference_type, reference_id, original_created_at, archived_at, year)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-      [uuidv4(), tx.transaction_id, tx.trn_number || null, tx.account_id, tx.type, tx.amount, tx.description, tx.reference_type, tx.reference_id, tx.created_at, new Date().toISOString(), year]
-    );
+  try {
+    await closeYear(year, req.session.adminName || 'admin');
+    res.redirect('/admin/eoy?year=' + year + '&closed=1');
+  } catch (e) {
+    res.redirect('/admin/eoy?year=' + year + '&error=' + encodeURIComponent(e.message));
   }
+}));
 
-  await store.query(
-    `INSERT INTO eoy_logs (eoy_id, year, total_income, total_expense, net_profit, tx_count, archived, closed_by, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,1,$7,$8)`,
-    [uuidv4(), year, pnl.totalIncome, pnl.totalExpense, pnl.netProfit, txs.length, req.session.adminName || 'admin', new Date().toISOString()]
-  );
-  res.redirect('/admin/eoy?year=' + year + '&closed=1');
+// ── Year-End Close (JSON) — for programmatic use ──
+router.post('/year-end-close', requireRole(4), asyncHandler(async (req, res) => {
+  const year = parseInt(req.body.year || req.query.year || new Date().getFullYear());
+  if (!year) return res.status(400).json({ success: false, message: 'Year is required' });
+  try {
+    const result = await closeYear(year, req.session.adminName || 'admin');
+    res.json({ success: true, ...result, message: 'Year ' + year + ' closed successfully' });
+  } catch (e) {
+    res.status(400).json({ success: false, message: e.message });
+  }
 }));
 
 // ── Accounting Periods Management ──

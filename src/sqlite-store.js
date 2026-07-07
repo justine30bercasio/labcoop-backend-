@@ -12,6 +12,7 @@ function getDb() {
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
     db.exec(`
+      CREATE TABLE IF NOT EXISTS accounts (account_id TEXT PRIMARY KEY, child_name VARCHAR(255) NOT NULL, member_id VARCHAR(20), password VARCHAR(255) DEFAULT '', password_changed INTEGER DEFAULT 0, actual_balance DECIMAL(12,2) DEFAULT 0, unallocated_balance DECIMAL(12,2) DEFAULT 0, current_xp INTEGER DEFAULT 0, parent_phone VARCHAR(20) DEFAULT '', interest_earned DECIMAL(12,2) DEFAULT 0, savings_product_id TEXT, last_name VARCHAR(100) DEFAULT '', first_name VARCHAR(100) DEFAULT '', middle_name VARCHAR(100) DEFAULT '', age INTEGER DEFAULT 0, birthday VARCHAR(10) DEFAULT '', gender VARCHAR(10) DEFAULT '', savings_schedule VARCHAR(50) DEFAULT '', photo_2x2_url TEXT DEFAULT '', birth_cert_url TEXT DEFAULT '', id_photo_url TEXT DEFAULT '', kyc_status TEXT DEFAULT '', selfie_url TEXT DEFAULT '', kyc_submitted_at TEXT DEFAULT '', kyc_verified_at TEXT DEFAULT '', kyc_rejected_reason TEXT DEFAULT '', is_active INTEGER DEFAULT 1, created_at TEXT, updated_at TEXT);
       CREATE TABLE IF NOT EXISTS gl_accounts (code TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL CHECK(type IN ('asset','liability','equity','income','expense')), is_active INTEGER DEFAULT 1);
       CREATE TABLE IF NOT EXISTS gl_entries (entry_id TEXT PRIMARY KEY, transaction_id TEXT, account_code TEXT NOT NULL REFERENCES gl_accounts(code), debit DECIMAL(12,2) DEFAULT 0, credit DECIMAL(12,2) DEFAULT 0, description TEXT DEFAULT '', created_at TEXT);
       CREATE TABLE IF NOT EXISTS audit_log (log_id TEXT PRIMARY KEY, admin_id TEXT, admin_name TEXT, action TEXT NOT NULL, entity_type TEXT, entity_id TEXT, details TEXT DEFAULT '{}', ip_address TEXT DEFAULT '', created_at TEXT);
@@ -109,6 +110,12 @@ function getDb() {
     try { db.exec("INSERT OR IGNORE INTO tax_config (tax_id, name, rate, applies_to) VALUES ('tax_interest', 'Interest Income Tax', 20, 'interest')"); } catch (_) {}
     try { db.exec("INSERT OR IGNORE INTO tax_config (tax_id, name, rate, applies_to) VALUES ('tax_dividend', 'Dividend Tax', 10, 'dividend')"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS board_members (id TEXT PRIMARY KEY, name TEXT NOT NULL, position TEXT NOT NULL, image_url TEXT DEFAULT '', sort_order INTEGER DEFAULT 0, created_at TEXT)"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN coins INTEGER DEFAULT 0"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS coin_transactions (id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE, amount INTEGER NOT NULL, balance_before INTEGER NOT NULL, balance_after INTEGER NOT NULL, reason TEXT DEFAULT '', created_at TEXT NOT NULL)"); } catch (_) {}
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_coin_tx_account ON coin_transactions(account_id)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS refresh_tokens (token_id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE, token_hash TEXT NOT NULL, expires_at TEXT NOT NULL, revoked INTEGER DEFAULT 0, created_at TEXT NOT NULL)"); } catch (_) {}
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON refresh_tokens(token_hash)"); } catch (_) {}
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_account ON refresh_tokens(account_id)"); } catch (_) {}
     const accounts = [
       ['1000','Cash on Hand','asset','current_asset',0], ['1010','Cash in Bank','asset','current_asset',0],
       ['1020','Petty Cash','asset','current_asset',0], ['1100','Loans Receivable','asset','current_asset',0],
@@ -132,7 +139,8 @@ function getDb() {
   return db;
 }
 
-function getAccount(accountId) {
+function getAccount(accountId, tx) {
+  // tx ignored — SQLite is synchronous
   const row = getDb().prepare('SELECT * FROM accounts WHERE account_id = ?').get(accountId);
   return row || null;
 }
@@ -209,9 +217,10 @@ function _computeAge(birthday) {
   return age;
 }
 
-function updateAccount(accountId, fields) {
+function updateAccount(accountId, fields, tx) {
+  // tx ignored — SQLite is synchronous
   // actual_balance and unallocated_balance are SERVER-MANAGED only — never via user-facing API
-  const allowed = ['current_xp', 'child_name', 'parent_phone', 'last_name', 'first_name', 'middle_name', 'birthday', 'age', 'gender', 'savings_schedule', 'photo_2x2_url', 'birth_cert_url', 'id_photo_url', 'profile_pic_url', 'kyc_status', 'selfie_url', 'kyc_submitted_at', 'kyc_verified_at', 'kyc_rejected_reason', 'is_active', 'maintaining_balance', 'regular_savings_number', 'savings_product_id'];
+  const allowed = ['current_xp', 'child_name', 'parent_phone', 'last_name', 'first_name', 'middle_name', 'birthday', 'age', 'gender', 'savings_schedule', 'photo_2x2_url', 'birth_cert_url', 'id_photo_url', 'profile_pic_url', 'kyc_status', 'selfie_url', 'kyc_submitted_at', 'kyc_verified_at', 'kyc_rejected_reason', 'is_active', 'maintaining_balance', 'regular_savings_number', 'savings_product_id', 'actual_balance', 'unallocated_balance'];
   const setClauses = [];
   const values = [];
 
@@ -339,16 +348,17 @@ function closePeriod(periodId, closedBy) {
   getDb().prepare('UPDATE accounting_periods SET is_closed = 1, closed_by = ?, closed_at = ? WHERE period_id = ?').run(closedBy, new Date().toISOString(), periodId);
 }
 
-function addTransaction(tx) {
-  const account = getAccount(tx.account_id);
+function addTransaction(txData, tx) {
+  // tx ignored — SQLite is synchronous
+  const account = getAccount(txData.account_id);
   const currentBalance = account ? account.actual_balance : 0;
 
   let balanceAfter = currentBalance;
   // Compute running balance based on transaction type
-  if (['deposit', 'interest_credit', 'loan_disbursement'].includes(tx.type)) {
-    balanceAfter = Math.round((currentBalance + Number(tx.amount)) * 100) / 100;
-  } else if (['withdrawal', 'loan_payment', 'fee'].includes(tx.type)) {
-    balanceAfter = Math.round((currentBalance - Number(tx.amount)) * 100) / 100;
+  if (['deposit', 'interest_credit', 'loan_disbursement'].includes(txData.type)) {
+    balanceAfter = Math.round((currentBalance + Number(txData.amount)) * 100) / 100;
+  } else if (['withdrawal', 'loan_payment', 'fee'].includes(txData.type)) {
+    balanceAfter = Math.round((currentBalance - Number(txData.amount)) * 100) / 100;
   }
 
   const year = new Date().getFullYear();
@@ -366,15 +376,15 @@ function addTransaction(tx) {
   const newTx = {
     transaction_id: uuidv4(),
     trn_number: trnNumber,
-    account_id: tx.account_id,
-    goal_id: tx.goal_id || null,
-    type: tx.type,
-    amount: tx.amount,
-    balance_before: tx.balance_before !== undefined ? tx.balance_before : currentBalance,
-    balance_after: tx.balance_after !== undefined ? tx.balance_after : balanceAfter,
-    description: tx.description || '',
-    reference_type: tx.reference_type || null,
-    reference_id: tx.reference_id || null,
+    account_id: txData.account_id,
+    goal_id: txData.goal_id || null,
+    type: txData.type,
+    amount: txData.amount,
+    balance_before: txData.balance_before !== undefined ? txData.balance_before : currentBalance,
+    balance_after: txData.balance_after !== undefined ? txData.balance_after : balanceAfter,
+    description: txData.description || '',
+    reference_type: txData.reference_type || null,
+    reference_id: txData.reference_id || null,
     created_at: new Date().toISOString(),
   };
   getDb().prepare(`
@@ -654,35 +664,39 @@ function getInterestSummary(accountId) {
   };
 }
 
-function creditInterest(accountId, amount) {
+function creditInterest(accountId, amount, tx) {
+  // tx ignored — SQLite is synchronous
   const db = getDb();
   const account = getAccount(accountId);
   if (!account) return null;
   const newBalance = Math.round((Number(account.actual_balance) + amount) * 100) / 100;
   const newInterest = Math.round((Number(account.interest_earned) + amount) * 100) / 100;
   db.prepare('UPDATE accounts SET actual_balance = ?, unallocated_balance = unallocated_balance + ?, interest_earned = ?, updated_at = datetime(\'now\') WHERE account_id = ?').run(newBalance, amount, newInterest, accountId);
-  addTransaction({
+  const txRecord = addTransaction({
     account_id: accountId,
-    type: 'interest',
+    type: 'interest_credit',
     amount,
     description: 'Interest credited',
     balance_before: Number(account.actual_balance),
     balance_after: newBalance,
   });
-  return { interest_earned: newInterest, new_balance: newBalance };
+  return txRecord;
 }
 
 // ── Loans ──
 
-function getLoans(accountId) {
+function getLoans(accountId, tx) {
+  // tx ignored — SQLite is synchronous
   return getDb().prepare('SELECT * FROM loans WHERE account_id = ? ORDER BY created_at DESC').all(accountId);
 }
 
-function getLoan(loanId) {
+function getLoan(loanId, tx) {
+  // tx ignored — SQLite is synchronous
   return getDb().prepare('SELECT * FROM loans WHERE loan_id = ?').get(loanId) || null;
 }
 
-function createLoan(fields) {
+function createLoan(fields, tx) {
+  // tx ignored — SQLite is synchronous
   const loan = {
     loan_id: uuidv4(),
     account_id: fields.account_id,
@@ -708,7 +722,8 @@ function createLoan(fields) {
   return loan;
 }
 
-function updateLoan(loanId, fields) {
+function updateLoan(loanId, fields, tx) {
+  // tx ignored — SQLite is synchronous
   const allowed = ['amount_paid', 'remaining_balance', 'status', 'approved_by', 'approved_at', 'disbursed_at', 'due_date'];
   const setClauses = [];
   const values = [];
@@ -727,7 +742,8 @@ function updateLoan(loanId, fields) {
 
 // ── Loan Payments ──
 
-function addLoanPayment(fields) {
+function addLoanPayment(fields, tx) {
+  // tx ignored — SQLite is synchronous
   const payment = {
     payment_id: uuidv4(),
     loan_id: fields.loan_id,
@@ -747,7 +763,8 @@ function addLoanPayment(fields) {
   return payment;
 }
 
-function getLoanPayments(loanId) {
+function getLoanPayments(loanId, tx) {
+  // tx ignored — SQLite is synchronous
   return getDb().prepare('SELECT * FROM loan_payments WHERE loan_id = ? ORDER BY paid_at ASC').all(loanId);
 }
 
@@ -931,6 +948,76 @@ function deleteQuizQuestion(id) {
   getDb().prepare('DELETE FROM quiz_questions WHERE id = ?').run(id);
 }
 
+// ── Coin Management ──
+
+function getCoins(accountId) {
+  const row = getDb().prepare('SELECT coins FROM accounts WHERE account_id = ?').get(accountId);
+  return row ? Number(row.coins) : 0;
+}
+
+function addCoins(accountId, amount, reason) {
+  const account = getAccount(accountId);
+  if (!account) throw new Error('Account not found');
+  const currentCoins = Number(account.coins) || 0;
+  const newBalance = currentCoins + amount;
+  const now = new Date().toISOString();
+  getDb().prepare("UPDATE accounts SET coins = ?, updated_at = datetime('now') WHERE account_id = ?").run(newBalance, accountId);
+  getDb().prepare(`
+    INSERT INTO coin_transactions (id, account_id, amount, balance_before, balance_after, reason, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(uuidv4(), accountId, amount, currentCoins, newBalance, reason || 'coins_added', now);
+  return newBalance;
+}
+
+function spendCoins(accountId, amount, reason) {
+  const account = getAccount(accountId);
+  if (!account) throw new Error('Account not found');
+  const currentCoins = Number(account.coins) || 0;
+  if (currentCoins < amount) throw new Error('Insufficient coins');
+  const newBalance = currentCoins - amount;
+  const now = new Date().toISOString();
+  getDb().prepare("UPDATE accounts SET coins = ?, updated_at = datetime('now') WHERE account_id = ?").run(newBalance, accountId);
+  getDb().prepare(`
+    INSERT INTO coin_transactions (id, account_id, amount, balance_before, balance_after, reason, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(uuidv4(), accountId, -amount, currentCoins, newBalance, reason || 'coins_spent', now);
+  return newBalance;
+}
+
+function getCoinHistory(accountId) {
+  return getDb().prepare('SELECT * FROM coin_transactions WHERE account_id = ? ORDER BY created_at DESC LIMIT 100').all(accountId);
+}
+
+// ── Refresh Tokens ──
+
+function saveRefreshToken(accountId, tokenHash, expiresAt) {
+  const token = {
+    token_id: uuidv4(),
+    account_id: accountId,
+    token_hash: tokenHash,
+    expires_at: expiresAt,
+    revoked: 0,
+    created_at: new Date().toISOString(),
+  };
+  getDb().prepare(`
+    INSERT INTO refresh_tokens (token_id, account_id, token_hash, expires_at, revoked, created_at)
+    VALUES (@token_id, @account_id, @token_hash, @expires_at, @revoked, @created_at)
+  `).run(token);
+  return token;
+}
+
+function getRefreshToken(tokenHash) {
+  return getDb().prepare('SELECT * FROM refresh_tokens WHERE token_hash = ?').get(tokenHash) || null;
+}
+
+function revokeRefreshToken(tokenHash) {
+  getDb().prepare('UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?').run(tokenHash);
+}
+
+function revokeAllAccountTokens(accountId) {
+  getDb().prepare('UPDATE refresh_tokens SET revoked = 1 WHERE account_id = ? AND revoked = 0').run(accountId);
+}
+
 module.exports = {
   getDb,
   getAccount,
@@ -998,4 +1085,14 @@ module.exports = {
   updateQuizQuestion,
   deleteQuizQuestion,
   close,
+  // ── Coins ──
+  getCoins,
+  addCoins,
+  spendCoins,
+  getCoinHistory,
+  // ── Refresh Tokens ──
+  saveRefreshToken,
+  getRefreshToken,
+  revokeRefreshToken,
+  revokeAllAccountTokens,
 };

@@ -56,16 +56,14 @@ router.get('/:accountId',
 
 router.put('/:accountId',
   param('accountId').isString().notEmpty().trim(),
-  body('current_xp').optional().isInt({ min: 0 }).withMessage('current_xp must be >= 0'),
   body('child_name').optional().isString().trim().isLength({ min: 1, max: 100 }),
   body('parent_phone').optional().isString().isLength({ max: 20 }),
   asyncHandler(async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { current_xp, child_name, parent_phone } = req.body;
+    const { child_name, parent_phone } = req.body;
     const updated = await store.updateAccount(req.params.accountId, {
-      current_xp,
       child_name,
       parent_phone,
     });
@@ -84,27 +82,27 @@ router.put('/:accountId/deposit',
 
     const { amount } = req.body;
     const runDeposit = async (tx) => {
-      const account = await store.getAccount(req.params.accountId);
+      const account = await store.getAccount(req.params.accountId, tx);
       if (!account) throw new Error('Account not found');
 
       const updated = await store.updateAccount(req.params.accountId, {
         actual_balance: Math.round((Number(account.actual_balance) + Number(amount)) * 100) / 100,
         unallocated_balance: Math.round((Number(account.unallocated_balance) + Number(amount)) * 100) / 100,
-      });
+      }, tx);
 
       await store.addTransaction({
         account_id: req.params.accountId,
         type: 'deposit',
         amount: Number(amount),
         description: 'Teller cash deposit',
-      });
+      }, tx);
 
       return updated;
     };
 
     try {
-      const updated = isPostgres ? await store.transaction(async () => {
-        const result = await runDeposit();
+      const updated = isPostgres ? await store.transaction(async (tx) => {
+        const result = await runDeposit(tx);
         return result;
       }) : await runDeposit();
       res.json(updated);

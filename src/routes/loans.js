@@ -3,6 +3,7 @@ const { body, param, query, validationResult } = require('express-validator');
 const { store, isPostgres } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const { calculateLoanSummary } = require('../services/interest');
+const gl = require('../services/gl');
 
 const router = express.Router();
 
@@ -159,19 +160,19 @@ router.put('/loans/:loanId/disburse',
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const doDisburse = async () => {
-      const loan = await store.getLoan(req.params.loanId);
+    const doDisburse = async (tx) => {
+      const loan = await store.getLoan(req.params.loanId, tx);
       if (!loan) throw new Error('Loan not found');
       if (loan.status !== 'approved') throw new Error('Loan must be approved before disbursement');
 
-      const account = await store.getAccount(loan.account_id);
+      const account = await store.getAccount(loan.account_id, tx);
       const newBalance = Math.round((Number(account.actual_balance) + Number(loan.principal)) * 100) / 100;
       await store.updateAccount(loan.account_id, {
         actual_balance: newBalance,
         unallocated_balance: Math.round((Number(account.unallocated_balance) + Number(loan.principal)) * 100) / 100,
-      });
+      }, tx);
 
-      await store.addTransaction({
+      const txRecord = await store.addTransaction({
         account_id: loan.account_id,
         type: 'loan_disbursement',
         amount: loan.principal,
@@ -180,7 +181,17 @@ router.put('/loans/:loanId/disburse',
         reference_id: loan.loan_id,
         balance_before: account.actual_balance,
         balance_after: newBalance,
-      });
+      }, tx);
+
+      // Post double-entry GL: Debit Loans Receivable, Credit Cash
+      try {
+        await gl.postDoubleEntry(txRecord.transaction_id, [
+          { account_code: '1100', debit: Number(loan.principal), description: `Loan disbursement: ${loan.purpose || 'Loan'} — ${account.child_name}` },
+          { account_code: '1000', credit: Number(loan.principal), description: `Loan disbursement: ${loan.purpose || 'Loan'} — ${account.child_name}` },
+        ], { postedBy: req.body.approved_by || 'system', referenceType: 'loan_disbursement', referenceNumber: txRecord.transaction_id, tx });
+      } catch (glErr) {
+        console.error('[Loans] GL post for disbursement failed:', glErr.message);
+      }
 
       const dueDate = new Date();
       dueDate.setMonth(dueDate.getMonth() + Number(loan.term_months));
@@ -188,11 +199,11 @@ router.put('/loans/:loanId/disburse',
         status: 'active',
         disbursed_at: new Date().toISOString(),
         due_date: dueDate.toISOString().slice(0, 10),
-      });
+      }, tx);
     };
 
     try {
-      const result = isPostgres ? await store.transaction(async () => doDisburse()) : await doDisburse();
+      const result = isPostgres ? await store.transaction(async (tx) => doDisburse(tx)) : await doDisburse();
       res.json(result);
     } catch (e) {
       res.status(400).json({ message: e.message });
@@ -208,13 +219,13 @@ router.post('/loans/:loanId/pay',
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const doPay = async () => {
-      const loan = await store.getLoan(req.params.loanId);
+    const doPay = async (tx) => {
+      const loan = await store.getLoan(req.params.loanId, tx);
       if (!loan) throw new Error('Loan not found');
       if (loan.status !== 'active') throw new Error('Loan is not active');
 
       const { amount, account_id } = req.body;
-      const account = await store.getAccount(account_id);
+      const account = await store.getAccount(account_id, tx);
       if (!account) throw new Error('Account not found');
       if (Number(account.actual_balance) < amount) throw new Error('Insufficient balance');
 
@@ -222,7 +233,7 @@ router.post('/loans/:loanId/pay',
       const schedule = interestService.generateAmortizationSchedule(
         loan.principal, loan.interest_rate, loan.term_months, loan.interest_type
       );
-      const existingPayments = await store.getLoanPayments(req.params.loanId);
+      const existingPayments = await store.getLoanPayments(req.params.loanId, tx);
       const paymentNum = existingPayments.length + 1;
       const scheduleEntry = schedule[paymentNum - 1] || schedule[schedule.length - 1];
 
@@ -235,7 +246,7 @@ router.post('/loans/:loanId/pay',
       await store.updateAccount(account_id, {
         actual_balance: newBalance,
         unallocated_balance: Math.round((Number(account.unallocated_balance) - Number(amount)) * 100) / 100,
-      });
+      }, tx);
 
       await store.addLoanPayment({
         loan_id: loan.loan_id,
@@ -245,9 +256,9 @@ router.post('/loans/:loanId/pay',
         balance_before: loan.remaining_balance,
         balance_after: newRemainingBalance,
         due_date: null,
-      });
+      }, tx);
 
-      await store.addTransaction({
+      const txRecord = await store.addTransaction({
         account_id,
         type: 'loan_payment',
         amount,
@@ -256,18 +267,29 @@ router.post('/loans/:loanId/pay',
         reference_id: loan.loan_id,
         balance_before: account.actual_balance,
         balance_after: newBalance,
-      });
+      }, tx);
+
+      // Post double-entry GL: Debit Cash, Credit Loans Receivable (principal) + Interest Income (interest)
+      try {
+        await gl.postDoubleEntry(txRecord.transaction_id, [
+          { account_code: '1000', debit: Number(amount), description: `Loan payment: ${loan.purpose || 'Loan'} — ${account.child_name}` },
+          { account_code: '1100', credit: Number(principalPortion), description: `Loan principal payment: ${loan.purpose || 'Loan'} — ${account.child_name}` },
+          { account_code: '4000', credit: Number(interestPortion), description: `Loan interest payment: ${loan.purpose || 'Loan'} — ${account.child_name}` },
+        ], { postedBy: 'system', referenceType: 'loan_payment', referenceNumber: txRecord.transaction_id, tx });
+      } catch (glErr) {
+        console.error('[Loans] GL post for payment failed:', glErr.message);
+      }
 
       const newStatus = newRemainingBalance <= 0 ? 'paid' : 'active';
       return store.updateLoan(req.params.loanId, {
         amount_paid: newAmountPaid,
         remaining_balance: newRemainingBalance,
         status: newStatus,
-      });
+      }, tx);
     };
 
     try {
-      const updatedLoan = isPostgres ? await store.transaction(async () => doPay()) : await doPay();
+      const updatedLoan = isPostgres ? await store.transaction(async (tx) => doPay(tx)) : await doPay();
       const payments = await store.getLoanPayments(req.params.loanId);
       res.json({ loan: updatedLoan, payments });
     } catch (e) {

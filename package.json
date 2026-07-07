@@ -9,7 +9,12 @@
     "migrate": "node db/migrate-sqlite.js",
     "seed": "node db/seed-sqlite.js",
     "migrate:pg": "node db/migrate.js",
-    "seed:pg": "node db/seed.js"
+    "seed:pg": "node db/seed.js",
+    "docker:build": "docker build -t labcoop-backend ..",
+    "docker:run": "docker-compose up -d",
+    "pm2:start": "pm2 start ../ecosystem.config.js",
+    "pm2:stop": "pm2 stop labcoop-backend",
+    "backup": "bash ../scripts/backup.sh"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

@@ -243,32 +243,6 @@ async function ensureSavingsProduct() {
   await ensureSavingsProduct();
   startServer();
 })();
-const accountsRouter = require('./routes/accounts');
-const goalsRouter = require('./routes/goals');
-const badgesRouter = require('./routes/badges');
-const transactionsRouter = require('./routes/transactions');
-const excelRouter = require('./routes/excel');
-const authRouter = require('./routes/auth');
-const adminRouter = require('./routes/admin');
-const microbankRouter = require('./routes/admin-microbank');
-const advancedRouter = require('./routes/admin-advanced');
-const coopRouter = require('./routes/coop');
-const gamesRouter = require('./routes/games');
-const shopRouter = require('./routes/shop');
-const quizRouter = require('./routes/quiz');
-const adminAuthRouter = require('./routes/admin-auth');
-const loansRouter = require('./routes/loans');
-const bankingFeaturesRouter = require('./routes/banking-features');
-const fcmRouter = require('./routes/fcm');
-const boardRouter = require('./routes/board');
-const leaderboardRouter = require('./routes/leaderboard');
-const paymongoRouter = require('./routes/paymongo');
-const settingsRouter = require('./routes/settings');
-const kycRouter = require('./routes/kyc');
-const { webhookRouter } = require('./routes/paymongo');
-const parentalConsentRouter = require('./routes/parental-consent');
-const accountDeletionRouter = require('./routes/account-deletion');
-const { router: legalRouter } = require('./routes/legal');
 const { startScheduler } = require('./services/scheduler');
 const { authMiddleware, requireOwnership } = require('./middleware/auth');
 
@@ -430,68 +404,35 @@ app.get('/', (req, res) => {
   });
 });
 
-app.use('/api/auth', loginLimiter, authRouter);
+// ── Public API endpoints (no auth) — mounted at both /api and /api/v1 ──
+const publicRouter = express.Router();
 
-app.use('/api/accounts', authMiddleware, requireOwnership, accountsRouter);
-app.get('/api/accounts/:accountId/goals', authMiddleware, requireOwnership, (req, res, next) => {
-  req.url = `/account/${req.params.accountId}`;
-  next();
-}, goalsRouter);
-app.use('/api/goals', authMiddleware, requireOwnership, goalsRouter);
-app.get('/api/accounts/:accountId/badges', authMiddleware, requireOwnership, (req, res, next) => {
-  req.url = `/account/${req.params.accountId}`;
-  next();
-}, badgesRouter);
-app.use('/api/badges', authMiddleware, requireOwnership, badgesRouter);
-app.get('/api/accounts/:accountId/transactions', authMiddleware, requireOwnership, (req, res, next) => {
-  req.url = `/account/${req.params.accountId}`;
-  next();
-}, transactionsRouter);
-app.get('/api/accounts/:accountId/statement', authMiddleware, requireOwnership, (req, res, next) => {
-  req.url = `/statement/${req.params.accountId}`;
-  next();
-}, transactionsRouter);
-app.use('/api/transactions', authMiddleware, requireOwnership, transactionsRouter);
-app.use('/api/excel', authMiddleware, excelRouter);
-app.use('/api/coop', authMiddleware, requireOwnership, coopRouter);
-// Uploaded files (KYC, registration) are served via authenticated route only — see /api/files/*
-// NEVER use express.static for user-uploaded content — it bypasses auth
-app.use(express.static(path.join(__dirname, 'public')));
-app.use('/api/shop', authMiddleware, shopRouter);
-app.use('/api/quiz', authMiddleware, quizRouter);
-app.use('/api/games', authMiddleware, gamesRouter);
+const authRouter = require('./routes/auth');
+const { webhookRouter } = require('./routes/paymongo');
 
-app.get('/api/health', async (req, res) => {
+publicRouter.use('/auth', loginLimiter, authRouter);
+publicRouter.get('/health', async (req, res) => {
   let dbOk = false;
   try {
-    if (isPostgres) {
-      await store.query('SELECT 1');
-    } else {
-      const db = require('./db').getDb();
-      db.prepare('SELECT 1').get();
-    }
+    await store.query('SELECT 1');
     dbOk = true;
   } catch (_) {}
-  const paymongoConfigured = !!(process.env.PAYMONGO_SECRET);
   res.json({
     status: 'ok',
     dbConnected: dbOk,
-    paymongoConfigured,
+    paymongoConfigured: !!process.env.PAYMONGO_SECRET,
     timestamp: new Date().toISOString(),
   });
 });
-
-app.get('/api/test-paymongo-key', async (req, res) => {
+publicRouter.get('/test-paymongo-key', async (req, res) => {
   const paymongo = require('./services/paymongo');
   if (!paymongo.isPaymongoConfigured()) {
     return res.json({ configured: false, message: 'PAYMONGO_SECRET not set' });
   }
   try {
-    // Try to retrieve a non-existent payment intent to test the key
     const result = await paymongo.retrievePaymentIntent('test_0000000000');
     res.json({ configured: true, apiReachable: true, result: 'Unexpected success' });
   } catch (e) {
-    // PayMongo returns 404 for non-existent PI, which means key works
     if (e.message.includes('404') || e.message.includes('not found')) {
       res.json({ configured: true, apiReachable: true, message: 'Key is valid (got 404 as expected)' });
     } else {
@@ -499,6 +440,77 @@ app.get('/api/test-paymongo-key', async (req, res) => {
     }
   }
 });
+
+// ── Authenticated API endpoints ──
+const apiRouter = express.Router();
+
+const accountsRouter = require('./routes/accounts');
+const goalsRouter = require('./routes/goals');
+const badgesRouter = require('./routes/badges');
+const transactionsRouter = require('./routes/transactions');
+const excelRouter = require('./routes/excel');
+const coopRouter = require('./routes/coop');
+const gamesRouter = require('./routes/games');
+const shopRouter = require('./routes/shop');
+const quizRouter = require('./routes/quiz');
+const loansRouter = require('./routes/loans');
+const bankingFeaturesRouter = require('./routes/banking-features');
+const fcmRouter = require('./routes/fcm');
+const boardRouter = require('./routes/board');
+const leaderboardRouter = require('./routes/leaderboard');
+const paymongoRouter = require('./routes/paymongo');
+const settingsRouter = require('./routes/settings');
+const kycRouter = require('./routes/kyc');
+const parentalConsentRouter = require('./routes/parental-consent');
+const accountDeletionRouter = require('./routes/account-deletion');
+const coinsRouter = require('./routes/coins');
+
+apiRouter.use('/accounts', authMiddleware, requireOwnership, accountsRouter);
+apiRouter.get('/accounts/:accountId/goals', authMiddleware, requireOwnership, (req, res, next) => {
+  req.url = `/account/${req.params.accountId}`;
+  next();
+}, goalsRouter);
+apiRouter.use('/goals', authMiddleware, requireOwnership, goalsRouter);
+apiRouter.get('/accounts/:accountId/badges', authMiddleware, requireOwnership, (req, res, next) => {
+  req.url = `/account/${req.params.accountId}`;
+  next();
+}, badgesRouter);
+apiRouter.use('/badges', authMiddleware, requireOwnership, badgesRouter);
+apiRouter.get('/accounts/:accountId/transactions', authMiddleware, requireOwnership, (req, res, next) => {
+  req.url = `/account/${req.params.accountId}`;
+  next();
+}, transactionsRouter);
+apiRouter.get('/accounts/:accountId/statement', authMiddleware, requireOwnership, (req, res, next) => {
+  req.url = `/statement/${req.params.accountId}`;
+  next();
+}, transactionsRouter);
+apiRouter.use('/transactions', authMiddleware, requireOwnership, transactionsRouter);
+apiRouter.use('/excel', authMiddleware, excelRouter);
+apiRouter.use('/coop', authMiddleware, requireOwnership, coopRouter);
+apiRouter.use('/shop', authMiddleware, shopRouter);
+apiRouter.use('/quiz', authMiddleware, quizRouter);
+apiRouter.use('/games', authMiddleware, gamesRouter);
+apiRouter.use(authMiddleware, requireOwnership, loansRouter);
+apiRouter.use(authMiddleware, requireOwnership, bankingFeaturesRouter);
+apiRouter.use('/fcm', fcmRouter);
+apiRouter.use('/kyc', kycRouter);
+apiRouter.use('/board', boardRouter);
+apiRouter.use('/leaderboard', authMiddleware, leaderboardRouter);
+apiRouter.use('/paymongo', paymongoRouter);
+apiRouter.use('/settings', authMiddleware, requireOwnership, settingsRouter);
+apiRouter.use('/parental-consent', parentalConsentRouter);
+apiRouter.use('/account-deletion', accountDeletionRouter);
+apiRouter.use('/coins', authMiddleware, requireOwnership, coinsRouter);
+
+// Mount: public first (health/auth handled here), then authenticated routes
+app.use('/api', publicRouter);
+app.use('/api/v1', publicRouter);
+app.use('/api', apiRouter);
+app.use('/api/v1', apiRouter);
+
+// Uploaded files (KYC, registration) are served via authenticated route only — see /api/files/*
+// NEVER use express.static for user-uploaded content — it bypasses auth
+app.use(express.static(path.join(__dirname, 'public')));
 
 // ── Clear all user data (keep reference tables) — requires super_admin role ──
 app.post('/reset-database', async (req, res) => {
@@ -529,7 +541,6 @@ app.post('/reset-database', async (req, res) => {
         try { store.query(`DELETE FROM ${t}`); } catch (_) {}
       }
     }
-    // Clean up uploaded KYC files
     const kycDir = path.join(__dirname, 'uploads', 'kyc');
     if (fs.existsSync(kycDir)) {
       const files = fs.readdirSync(kycDir);
@@ -546,16 +557,7 @@ app.post('/reset-database', async (req, res) => {
 });
 
 app.use('/api/webhooks', webhookRouter);
-app.use('/api', authMiddleware, requireOwnership, loansRouter);
-app.use('/api', authMiddleware, requireOwnership, bankingFeaturesRouter);
-app.use('/api/fcm', fcmRouter);
-app.use('/api/kyc', kycRouter);
-app.use('/api/board', boardRouter);
-app.use('/api/leaderboard', authMiddleware, leaderboardRouter);
-app.use('/api/paymongo', paymongoRouter);
-app.use('/api/settings', authMiddleware, requireOwnership, settingsRouter);
-app.use('/api/parental-consent', parentalConsentRouter);
-app.use('/api/account-deletion', accountDeletionRouter);
+const { router: legalRouter } = require('./routes/legal');
 app.use('/legal', legalRouter);
 
 // ── Ensure upload directories exist (Render's ephemeral fs wipes them on deploy) ──
@@ -624,6 +626,10 @@ app.use('/admin', (req, res, next) => {
   };
   next();
 });
+const adminAuthRouter = require('./routes/admin-auth');
+const adminRouter = require('./routes/admin');
+const microbankRouter = require('./routes/admin-microbank');
+const advancedRouter = require('./routes/admin-advanced');
 app.use('/admin', adminAuthRouter);
 app.use('/admin', csrfProtection, adminRouter);
 app.use('/admin', csrfProtection, microbankRouter);
@@ -674,6 +680,17 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`LabCoop API server running on port ${PORT}`);
+  if (!process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
+    console.warn('WARN: FIREBASE_SERVICE_ACCOUNT_PATH not set — push notifications disabled.');
+  } else {
+    try {
+      const fp = path.resolve(process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
+      if (!fs.existsSync(fp)) console.warn('WARN: Firebase service account file not found at ' + fp + ' — push notifications will fail.');
+      else console.log('Firebase configured: ' + fp);
+    } catch (_) {
+      console.warn('WARN: Firebase service account path invalid — push notifications disabled.');
+    }
+  }
   startScheduler();
 });
 

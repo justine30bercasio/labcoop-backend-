@@ -2,7 +2,7 @@ const { store } = require('../db');
 const { v4: uuidv4 } = require('uuid');
 
 async function postDoubleEntry(transactionId, entries, opts = {}) {
-  const { postedBy, referenceType, referenceNumber } = opts;
+  const { postedBy, referenceType, referenceNumber, tx: outerTx } = opts;
   let totalDebit = 0, totalCredit = 0;
   const now = new Date().toISOString();
 
@@ -31,7 +31,10 @@ async function postDoubleEntry(transactionId, entries, opts = {}) {
       );
     }
   };
-  if (typeof store.transaction === 'function') {
+  if (outerTx) {
+    // Use the outer transaction's connection
+    await doInserts(outerTx);
+  } else if (typeof store.transaction === 'function') {
     await store.transaction(doInserts);
   } else {
     await doInserts();

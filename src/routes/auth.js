@@ -1,15 +1,29 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+const rateLimit = require('express-rate-limit');
 const { store } = require('../db');
 const { asyncHandler } = require('../async-handler');
 
 const router = express.Router();
 
 const JWT_SECRET = process.env.JWT_SECRET;
+const ACCESS_TOKEN_EXPIRY = '15m';
+const REFRESH_TOKEN_EXPIRY_DAYS = 7;
+
+// Rate limiter for change-password: 3 attempts per 15 minutes per account
+const changePasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 3,
+  keyGenerator: (req) => req.body?.accountId || req.accountId || 'global',
+  message: { message: 'Too many password change attempts. Try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 const UPLOAD_DIR = path.join(__dirname, '..', 'uploads', 'registration');
 if (!fs.existsSync(UPLOAD_DIR)) {
@@ -75,11 +89,18 @@ router.post('/login', asyncHandler(async (req, res) => {
   const token = jwt.sign(
     { accountId: account.account_id },
     JWT_SECRET,
-    { expiresIn: '24h' }
+    { expiresIn: ACCESS_TOKEN_EXPIRY }
   );
+
+  // Generate refresh token (7 days)
+  const refreshTokenValue = crypto.randomBytes(48).toString('hex');
+  const refreshTokenHash = crypto.createHash('sha256').update(refreshTokenValue).digest('hex');
+  const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  await store.saveRefreshToken(account.account_id, refreshTokenHash, refreshExpiresAt);
 
   res.json({
     token,
+    refreshToken: refreshTokenValue,
     passwordChanged: account.password_changed === 1,
     account: {
       account_id: account.account_id,
@@ -199,11 +220,18 @@ router.post('/register', regUpload.fields([
   const token = jwt.sign(
     { accountId: account.account_id, childName: account.child_name },
     JWT_SECRET,
-    { expiresIn: '24h' }
+    { expiresIn: ACCESS_TOKEN_EXPIRY }
   );
+
+  // Generate refresh token
+  const refreshTokenValue = crypto.randomBytes(48).toString('hex');
+  const refreshTokenHash = crypto.createHash('sha256').update(refreshTokenValue).digest('hex');
+  const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  await store.saveRefreshToken(account.account_id, refreshTokenHash, refreshExpiresAt);
 
   res.status(201).json({
     token,
+    refreshToken: refreshTokenValue,
     passwordChanged: true,
     account: {
       account_id: account.account_id,
@@ -227,11 +255,72 @@ router.post('/register', regUpload.fields([
       savings_product_id: account.savings_product_id,
       maintaining_balance: account.maintaining_balance,
       regular_savings_number: account.regular_savings_number,
+      coins: Number(account.coins) || 0,
     },
   });
 }));
 
-router.post('/change-password', asyncHandler(async (req, res) => {
+router.post('/refresh', asyncHandler(async (req, res) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken || typeof refreshToken !== 'string') {
+    return res.status(400).json({ message: 'refreshToken is required' });
+  }
+
+  const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+  const stored = await store.getRefreshToken(tokenHash);
+
+  if (!stored) {
+    return res.status(401).json({ message: 'Invalid refresh token' });
+  }
+  if (stored.revoked === 1) {
+    return res.status(401).json({ message: 'Refresh token has been revoked' });
+  }
+  if (new Date(stored.expires_at) < new Date()) {
+    return res.status(401).json({ message: 'Refresh token has expired' });
+  }
+
+  // Rotate: revoke old, issue new
+  await store.revokeRefreshToken(tokenHash);
+
+  // Look up account to include in new access token
+  const account = await store.getAccount(stored.account_id);
+
+  const newAccessToken = jwt.sign(
+    { accountId: stored.account_id },
+    JWT_SECRET,
+    { expiresIn: ACCESS_TOKEN_EXPIRY }
+  );
+
+  const newRefreshTokenValue = crypto.randomBytes(48).toString('hex');
+  const newRefreshTokenHash = crypto.createHash('sha256').update(newRefreshTokenValue).digest('hex');
+  const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  await store.saveRefreshToken(stored.account_id, newRefreshTokenHash, refreshExpiresAt);
+
+  res.json({
+    token: newAccessToken,
+    refreshToken: newRefreshTokenValue,
+    account: account ? {
+      account_id: account.account_id,
+      child_name: account.child_name,
+      kyc_status: account.kyc_status || '',
+      actual_balance: Number(account.actual_balance),
+      unallocated_balance: Number(account.unallocated_balance),
+      current_xp: Number(account.current_xp),
+      coins: Number(account.coins) || 0,
+    } : undefined,
+  });
+}));
+
+router.post('/logout', asyncHandler(async (req, res) => {
+  const { refreshToken } = req.body;
+  if (refreshToken && typeof refreshToken === 'string') {
+    const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+    await store.revokeRefreshToken(tokenHash);
+  }
+  res.json({ message: 'Logged out successfully' });
+}));
+
+router.post('/change-password', changePasswordLimiter, asyncHandler(async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ message: 'Missing or invalid authorization header' });

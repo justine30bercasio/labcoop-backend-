@@ -45,25 +45,26 @@ router.put('/:goalId',
 
     const diff = current_allocated !== undefined ? Number(current_allocated) - Number(oldGoal.current_allocated) : 0;
 
-    const doUpdate = async () => {
+    const doUpdate = async (tx) => {
+      const q = (tx && tx.query) ? tx.query.bind(tx) : (sql, p) => store.query(sql, p);
       // If allocating, deduct from account's unallocated_balance server-side
       // (client also sends PUT /api/accounts/:id but we don't allow unallocated_balance there anymore)
       if (diff > 0) {
-        const account = await store.getAccount(oldGoal.account_id);
+        const account = await store.getAccount(oldGoal.account_id, tx);
         if (!account) throw new Error('Account not found');
         const amount = Math.abs(diff);
         if (Number(account.unallocated_balance) < amount) {
           throw new Error('Insufficient unallocated balance');
         }
         // Use raw query to update unallocated_balance — bypasses allowed-fields check
-        await store.query(
+        await q(
           'UPDATE accounts SET unallocated_balance = unallocated_balance - $1, updated_at = $2 WHERE account_id = $3',
           [amount, new Date().toISOString(), oldGoal.account_id]
         );
       } else if (diff < 0) {
         // Deallocation — add back to unallocated_balance
         const amount = Math.abs(diff);
-        await store.query(
+        await q(
           'UPDATE accounts SET unallocated_balance = unallocated_balance + $1, updated_at = $2 WHERE account_id = $3',
           [amount, new Date().toISOString(), oldGoal.account_id]
         );
@@ -84,12 +85,12 @@ router.put('/:goalId',
           type: diff > 0 ? 'allocation' : 'deallocation',
           amount: Math.abs(diff),
           description: diff > 0 ? 'Allocated to goal' : 'Withdrawn from goal',
-        });
+        }, tx);
       }
       return store.getGoal(req.params.goalId);
     };
 
-    const updated = isPostgres ? await store.transaction(async () => doUpdate()) : await doUpdate();
+    const updated = isPostgres ? await store.transaction(async (tx) => doUpdate(tx)) : await doUpdate();
     res.json(updated);
   })
 );

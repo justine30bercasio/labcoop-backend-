@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
 const { store } = require('../db');
 const { log } = require('../services/audit');
 

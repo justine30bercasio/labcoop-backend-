@@ -50,8 +50,11 @@ async function sendPush(accountId, title, body, data) {
     throw new Error(msg);
   }
   const message = {
-    notification: { title, body },
-    data: data ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])) : {},
+    data: {
+      title,
+      body,
+      ...(data ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])) : {}),
+    },
     tokens: tokens.map(t => t.fcm_token),
   };
   const response = await messaging.sendEachForMulticast(message);

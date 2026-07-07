@@ -31,6 +31,18 @@ router.post('/unregister',
   })
 );
 
+// Lightweight unread count for badge
+router.get('/notifications/unread-count',
+  authMiddleware,
+  asyncHandler(async (req, res) => {
+    const rows = await store.query(
+      'SELECT COUNT(*) as cnt FROM notifications WHERE account_id = $1 AND is_read = 0',
+      [req.accountId]
+    );
+    res.json({ unreadCount: rows.rows[0]?.cnt ?? 0 });
+  })
+);
+
 // Notifications list for Flutter
 router.get('/notifications',
   authMiddleware,

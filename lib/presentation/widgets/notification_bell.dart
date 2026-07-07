@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/services/notification_service.dart';
@@ -32,7 +33,7 @@ class _NotificationBellState extends State<NotificationBell> {
 
   Future<void> _fetchUnread() async {
     try {
-      final data = await BankingApiService.getNotifications(limit: 1);
+      final data = await BankingApiService.getUnreadCount();
       if (mounted) {
         setState(() {
           _unreadCount = (data['unreadCount'] as int?) ?? 0;
@@ -143,12 +144,23 @@ class _NotificationListPageState extends State<_NotificationListPage> {
     }
   }
 
-  Future<void> _markRead(String notifId) async {
-    try {
-      await BankingApiService.markNotificationRead(notifId);
-      _changed = true;
-      _fetch();
-    } catch (_) {}
+  String _notifId(dynamic n) {
+    final id = n['notif_id'];
+    return id is String ? id : id.toString();
+  }
+
+  void _markRead(dynamic n) {
+    final notifId = _notifId(n);
+    // Optimistic local update
+    setState(() {
+      final idx = _notifications.indexWhere((x) => _notifId(x) == notifId);
+      if (idx >= 0) _notifications[idx] = {...(_notifications[idx] as Map), 'is_read': 1};
+    });
+    _changed = true;
+    // Fire-and-forget API call
+    BankingApiService.markNotificationRead(notifId).catchError((e) {
+      stderr.writeln('Failed to mark $notifId as read: $e');
+    });
   }
 
   @override
@@ -219,7 +231,7 @@ class _NotificationListPageState extends State<_NotificationListPage> {
                             _formatDate(createdAt),
                             style: const TextStyle(color: Colors.grey, fontSize: 12),
                           ),
-                          onTap: isRead ? null : () => _markRead(n['notif_id'] as String),
+                          onTap: isRead ? null : () => _markRead(n),
                         );
                       },
                     ),

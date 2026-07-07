@@ -251,6 +251,11 @@ class BankingApiService {
 
   // ---- Notifications ----
 
+  static Future<Map<String, dynamic>> getUnreadCount() async {
+    final resp = await _dio.get('/api/fcm/notifications/unread-count');
+    return resp.data as Map<String, dynamic>;
+  }
+
   static Future<Map<String, dynamic>> getNotifications({int limit = 50}) async {
     final resp = await _dio.get('/api/fcm/notifications', queryParameters: {'limit': limit});
     return resp.data as Map<String, dynamic>;

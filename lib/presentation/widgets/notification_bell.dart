@@ -1,46 +1,235 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/services/notification_service.dart';
+import '../../core/network/banking_api_service.dart';
 
-/// A bell icon that shows in the AppBar.
-/// When tapped, triggers FCM token re-registration and shows status.
-class NotificationBell extends StatelessWidget {
+class NotificationBell extends StatefulWidget {
   const NotificationBell({super.key});
 
   @override
+  State<NotificationBell> createState() => _NotificationBellState();
+}
+
+class _NotificationBellState extends State<NotificationBell> {
+  int _unreadCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUnread();
+  }
+
+  Future<void> _fetchUnread() async {
+    try {
+      final data = await BankingApiService.getNotifications(limit: 1);
+      if (mounted) {
+        setState(() {
+          _unreadCount = (data['unreadCount'] as int?) ?? 0;
+        });
+      }
+    } catch (_) {}
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return IconButton(
-      icon: const Icon(Icons.notifications_outlined, size: 22),
-      tooltip: 'Notifications',
-      onPressed: () async {
-        // Re-register FCM token to ensure push notifications work
+    return GestureDetector(
+      onLongPress: () async {
         try {
-          final storage = FlutterSecureStorage();
-          final token = await storage.read(key: 'auth_token');
-          if (token != null) {
-            await NotificationService.registerAfterLogin();
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Notifications active'),
-                  duration: Duration(seconds: 2),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-            }
-          }
-        } catch (_) {
+          await BankingApiService.markAllNotificationsRead();
+          setState(() => _unreadCount = 0);
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Notifications unavailable'),
+                content: Text('All notifications marked as read'),
                 duration: Duration(seconds: 2),
                 behavior: SnackBarBehavior.floating,
               ),
             );
           }
-        }
+        } catch (_) {}
       },
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.notifications_outlined, size: 22),
+            tooltip: 'Notifications',
+            onPressed: () async {
+              try {
+                final storage = FlutterSecureStorage();
+                final token = await storage.read(key: 'auth_token');
+                if (token != null) {
+                  await NotificationService.registerAfterLogin();
+                }
+              } catch (_) {}
+
+              if (!context.mounted) return;
+              final changed = await Navigator.of(context).push<bool>(
+                MaterialPageRoute(
+                  builder: (_) => const _NotificationListPage(),
+                ),
+              );
+              if (changed == true) _fetchUnread();
+            },
+          ),
+          if (_unreadCount > 0)
+            Positioned(
+              right: 6,
+              top: 6,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: const BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
+                ),
+                constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                child: Text(
+                  _unreadCount > 99 ? '99+' : '$_unreadCount',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
+  }
+}
+
+class _NotificationListPage extends StatefulWidget {
+  const _NotificationListPage();
+
+  @override
+  State<_NotificationListPage> createState() => _NotificationListPageState();
+}
+
+class _NotificationListPageState extends State<_NotificationListPage> {
+  List<dynamic> _notifications = [];
+  bool _loading = true;
+  bool _changed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetch();
+  }
+
+  Future<void> _fetch() async {
+    try {
+      final data = await BankingApiService.getNotifications(limit: 50);
+      if (mounted) {
+        setState(() {
+          _notifications = (data['notifications'] as List<dynamic>?) ?? [];
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _markRead(String notifId) async {
+    try {
+      await BankingApiService.markNotificationRead(notifId);
+      _changed = true;
+      _fetch();
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) Navigator.of(context).pop(_changed);
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.of(context).pop(_changed),
+          ),
+          title: const Text('Notifications'),
+          actions: [
+            if (_notifications.any((n) => n['is_read'] == 0))
+              TextButton(
+                onPressed: () async {
+                  try {
+                    await BankingApiService.markAllNotificationsRead();
+                    _changed = true;
+                    _fetch();
+                  } catch (_) {}
+                },
+                child: const Text('Mark all read'),
+              ),
+          ],
+        ),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _notifications.isEmpty
+                ? const Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.notifications_none, size: 64, color: Colors.grey),
+                        SizedBox(height: 8),
+                        Text('No notifications yet', style: TextStyle(color: Colors.grey, fontSize: 16)),
+                      ],
+                    ),
+                  )
+                : RefreshIndicator(
+                    onRefresh: _fetch,
+                    child: ListView.separated(
+                      itemCount: _notifications.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, i) {
+                        final n = _notifications[i];
+                        final isRead = n['is_read'] == 1;
+                        final title = n['title'] as String? ?? '';
+                        final body = n['body'] as String? ?? '';
+                        final createdAt = n['created_at'] as String? ?? '';
+                        return ListTile(
+                          leading: Icon(
+                            isRead ? Icons.notifications_none : Icons.notifications_active,
+                            color: isRead ? Colors.grey : Colors.orange,
+                          ),
+                          title: Text(
+                            title,
+                            style: TextStyle(
+                              fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
+                            ),
+                          ),
+                          subtitle: body.isNotEmpty ? Text(body, maxLines: 2, overflow: TextOverflow.ellipsis) : null,
+                          trailing: Text(
+                            _formatDate(createdAt),
+                            style: const TextStyle(color: Colors.grey, fontSize: 12),
+                          ),
+                          onTap: isRead ? null : () => _markRead(n['notif_id'] as String),
+                        );
+                      },
+                    ),
+                  ),
+      ),
+    );
+  }
+
+  String _formatDate(String iso) {
+    if (iso.isEmpty) return '';
+    try {
+      final dt = DateTime.parse(iso);
+      final now = DateTime.now();
+      final diff = now.difference(dt);
+      if (diff.inMinutes < 1) return 'Just now';
+      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+      if (diff.inHours < 24) return '${diff.inHours}h ago';
+      if (diff.inDays < 7) return '${diff.inDays}d ago';
+      return '${dt.month}/${dt.day}';
+    } catch (_) {
+      return '';
+    }
   }
 }

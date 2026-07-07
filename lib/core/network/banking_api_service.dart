@@ -248,4 +248,19 @@ class BankingApiService {
       return null;
     }
   }
+
+  // ---- Notifications ----
+
+  static Future<Map<String, dynamic>> getNotifications({int limit = 50}) async {
+    final resp = await _dio.get('/api/fcm/notifications', queryParameters: {'limit': limit});
+    return resp.data as Map<String, dynamic>;
+  }
+
+  static Future<void> markNotificationRead(String notifId) async {
+    await _dio.post('/api/fcm/notifications/$notifId/read');
+  }
+
+  static Future<void> markAllNotificationsRead() async {
+    await _dio.post('/api/fcm/notifications/read-all');
+  }
 }

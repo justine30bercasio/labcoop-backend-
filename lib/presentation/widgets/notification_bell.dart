@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/services/notification_service.dart';
@@ -12,11 +13,21 @@ class NotificationBell extends StatefulWidget {
 
 class _NotificationBellState extends State<NotificationBell> {
   int _unreadCount = 0;
+  Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
     _fetchUnread();
+    NotificationService.addListener(_fetchUnread);
+    _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchUnread());
+  }
+
+  @override
+  void dispose() {
+    NotificationService.removeListener(_fetchUnread);
+    _pollTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _fetchUnread() async {

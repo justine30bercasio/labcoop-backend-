@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -49,6 +50,11 @@ class NotificationService {
   static final _firebaseMessaging = FirebaseMessaging.instance;
   static final _dio = DioClient.create();
   static String? _currentToken;
+  static final List<VoidCallback> _onNotificationReceived = [];
+
+  /// Register a callback that fires when a push notification arrives in the foreground.
+  static void addListener(VoidCallback cb) => _onNotificationReceived.add(cb);
+  static void removeListener(VoidCallback cb) => _onNotificationReceived.remove(cb);
 
   static Future<void> init() async {
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -115,6 +121,9 @@ class NotificationService {
     final body = message.notification?.body ?? message.data['body'] ?? '';
     if (title.isNotEmpty || body.isNotEmpty) {
       await showLocalNotification(title, body, message.data.cast<String, String>());
+    }
+    for (final cb in List.of(_onNotificationReceived)) {
+      try { cb(); } catch (_) {}
     }
   }
 

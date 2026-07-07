@@ -70,6 +70,31 @@ async function sendPush(accountId, title, body, data) {
   if (response.successCount === 0 && firstError) {
     throw new Error(`Push failed: ${firstError}`);
   }
+
+  // Persist to notifications table for in-app display
+  try {
+    const { v4: uuidv4 } = require('uuid');
+    await store.query(
+      `INSERT INTO notifications (notif_id, account_id, title, body, type, is_read, created_at)
+       VALUES ($1, $2, $3, $4, $5, 0, $6)`,
+      [uuidv4(), accountId, title, body || '', 'push', new Date().toISOString()]
+    );
+  } catch (_) {
+    // notifications table might not exist yet — create it
+    try {
+      await store.query(
+        'CREATE TABLE IF NOT EXISTS notifications (notif_id TEXT PRIMARY KEY, account_id TEXT, title TEXT NOT NULL, body TEXT DEFAULT \'\', type TEXT DEFAULT \'info\', is_read INTEGER DEFAULT 0, created_at TEXT)'
+      );
+      const { v4: uuidv4 } = require('uuid');
+      await store.query(
+        `INSERT INTO notifications (notif_id, account_id, title, body, type, is_read, created_at)
+         VALUES ($1, $2, $3, $4, $5, 0, $6)`,
+        [uuidv4(), accountId, title, body || '', 'push', new Date().toISOString()]
+      );
+    } catch (e2) {
+      console.error('Failed to persist notification:', e2.message);
+    }
+  }
 }
 
 const NotifEvents = {

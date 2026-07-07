@@ -31,4 +31,43 @@ router.post('/unregister',
   })
 );
 
+// Notifications list for Flutter
+router.get('/notifications',
+  authMiddleware,
+  asyncHandler(async (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+    const rows = await store.query(
+      `SELECT notif_id, title, body, type, is_read, created_at
+       FROM notifications WHERE account_id = $1
+       ORDER BY created_at DESC LIMIT $2`,
+      [req.accountId, limit]
+    );
+    res.json({ notifications: rows.rows, unreadCount: rows.rows.filter(r => !r.is_read).length });
+  })
+);
+
+// Mark notification as read
+router.post('/notifications/:notifId/read',
+  authMiddleware,
+  asyncHandler(async (req, res) => {
+    await store.query(
+      `UPDATE notifications SET is_read = 1 WHERE notif_id = $1 AND account_id = $2`,
+      [req.params.notifId, req.accountId]
+    );
+    res.json({ success: true });
+  })
+);
+
+// Mark all notifications as read for this account
+router.post('/notifications/read-all',
+  authMiddleware,
+  asyncHandler(async (req, res) => {
+    await store.query(
+      `UPDATE notifications SET is_read = 1 WHERE account_id = $1 AND is_read = 0`,
+      [req.accountId]
+    );
+    res.json({ success: true });
+  })
+);
+
 module.exports = router;

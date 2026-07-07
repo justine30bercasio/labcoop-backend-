@@ -19,3 +19,8 @@ backend/.env
 
 # IDE
 *.code-workspace
+
+# Android keystore (contains plaintext passwords)
+android/key.properties
+android/upload-keystore.jks
+*.jks

@@ -1,8 +1,25 @@
+import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../constants/app_constants.dart';
 import '../errors/exceptions.dart';
+
+/// SHA-256 certificate fingerprints for public key pinning.
+///
+/// Add your production server certificate's SHA-256 fingerprint here.
+/// To obtain it, run:
+///   openssl s_client -connect yourdomain.com:443 </dev/null 2>/dev/null \
+///     | openssl x509 -outform DER \
+///     | openssl dgst -sha256 \
+///     | cut -d' ' -f2
+///
+/// When empty, the app uses OS trust store validation (reject untrusted CAs).
+/// At least one pin should be configured for production to prevent MITM
+/// attacks even against a compromised CA.
+const _pinnedCertHashes = <String>[
+  // Example: 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789',
+];
 
 class DioClient {
   static final FlutterSecureStorage _secureStorage = FlutterSecureStorage();
@@ -123,10 +140,26 @@ class DioClient {
       ),
     );
 
-    // Certificate pinning — reject untrusted certificates
+    // Certificate pinning — SHA-256 fingerprint validation
+    // 1. If pins are configured, only accept certificates whose DER SHA-256
+    //    matches one of the pinned fingerprints (protects against CA compromise).
+    // 2. If no pins are configured, reject ALL untrusted certificates
+    //    (OS trust store only — this is the default secure behavior).
     try {
       (dio.httpClientAdapter as IOHttpClientAdapter).onHttpClientCreate = (client) {
-        client.badCertificateCallback = (cert, host, port) => false;
+        client.badCertificateCallback = (cert, host, port) {
+          if (_pinnedCertHashes.isEmpty) {
+            // No pins configured — reject untrusted certs (OS trust store only)
+            return false;
+          }
+          try {
+            final fingerprint = sha256.convert(cert.der).toString();
+            return _pinnedCertHashes.contains(fingerprint);
+          } catch (_) {
+            // If we can't compute the fingerprint, reject for safety
+            return false;
+          }
+        };
         return client;
       };
     } catch (_) {}

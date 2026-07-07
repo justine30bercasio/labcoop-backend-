@@ -573,6 +573,25 @@ class _CheckoutWebViewState extends State<_CheckoutWebView> {
         onProgressChanged: (controller, progress) {
           setState(() => _progress = progress / 100.0);
         },
+        shouldOverrideUrlLoading: (controller, navigationAction) async {
+          final uri = navigationAction.request.url;
+          if (uri != null) {
+            final host = uri.host.toLowerCase();
+            // Only allow PayMongo checkout domains and known payment gateways
+            if (host == 'checkout.paymongo.com' ||
+                host == 'api.paymongo.com' ||
+                host.endsWith('.paymongo.com')) {
+              return NavigationActionPolicy.ALLOW;
+            }
+            // Allow the initial URL as well
+            final initialUri = Uri.tryParse(widget.checkoutUrl);
+            if (initialUri != null && uri.host == initialUri.host) {
+              return NavigationActionPolicy.ALLOW;
+            }
+          }
+          // Block all other navigation (prevents phishing redirects)
+          return NavigationActionPolicy.CANCEL;
+        },
       ),
     );
   }

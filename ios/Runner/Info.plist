@@ -45,5 +45,11 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>LabCoop uses the camera for face verification (KYC) and profile photos to secure your account.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>LabCoop uses Face ID to unlock the app and protect your financial information.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>LabCoop accesses your photo library to upload profile pictures and KYC documents.</string>
 </dict>
 </plist>

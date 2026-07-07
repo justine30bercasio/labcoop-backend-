@@ -6,6 +6,7 @@ const { v4: uuidv4 } = require('uuid');
 const { store } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const { layout, printLayout } = require('./admin-lib');
+const notifs = require('../services/notifications');
 
 const _p = (...p) => p.length === 1 && Array.isArray(p[0]) ? p[0] : p;
 const sql = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows);
@@ -341,6 +342,7 @@ router.get('/kyc', requireRole(1), asyncHandler(async (req, res) => {
 router.post('/kyc/approve/:id', requireRole(2), asyncHandler(async (req, res) => {
   await store.updateAccount(req.params.id, { kyc_status: 'verified', kyc_verified_at: new Date().toISOString() });
   const account = await one('SELECT child_name FROM accounts WHERE account_id = $1', [req.params.id]);
+  notifs.notifyKycApproved(req.params.id).catch(() => {});
   res.redirect('/admin/kyc?tab=pending&approved=KYC+approved+for+' + encodeURIComponent(account?.child_name || ''));
 }));
 
@@ -348,6 +350,7 @@ router.post('/kyc/reject/:id', requireRole(2), asyncHandler(async (req, res) => 
   const reason = req.body.reason || 'No reason provided';
   await store.updateAccount(req.params.id, { kyc_status: 'rejected', kyc_rejected_reason: reason });
   const account = await one('SELECT child_name FROM accounts WHERE account_id = $1', [req.params.id]);
+  notifs.notifyKycRejected(req.params.id, reason).catch(() => {});
   res.redirect('/admin/kyc?tab=pending&rejected=KYC+rejected+for+' + encodeURIComponent(account?.child_name || ''));
 }));
 

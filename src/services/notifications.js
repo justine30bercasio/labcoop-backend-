@@ -71,6 +71,16 @@ const NotifEvents = {
     body: `PHP ${Number(amount).toFixed(2)} deposit${ref ? ` (Ref: ${ref})` : ''} was rejected.`,
     data: { type: 'deposit_rejected', amount: String(amount) },
   }),
+  KYC_APPROVED: () => ({
+    title: 'KYC Verified!',
+    body: 'Your identity verification has been approved. You now have full access.',
+    data: { type: 'kyc_approved' },
+  }),
+  KYC_REJECTED: (reason) => ({
+    title: 'KYC Rejected',
+    body: `Your identity verification was rejected: ${reason || 'No reason provided'}`,
+    data: { type: 'kyc_rejected', reason: reason || '' },
+  }),
   PAYMONGO_PAYMENT_SUCCESS: (amount) => ({
     title: 'Payment Successful!',
     body: `PHP ${Number(amount).toFixed(2)} GCash payment confirmed. Your account has been credited.`,
@@ -108,6 +118,16 @@ async function notifyPaymongoPaymentSuccess(accountId, amount) {
   await sendPush(accountId, ev.title, ev.body, ev.data);
 }
 
+async function notifyKycApproved(accountId) {
+  const ev = NotifEvents.KYC_APPROVED();
+  await sendPush(accountId, ev.title, ev.body, ev.data);
+}
+
+async function notifyKycRejected(accountId, reason) {
+  const ev = NotifEvents.KYC_REJECTED(reason);
+  await sendPush(accountId, ev.title, ev.body, ev.data);
+}
+
 module.exports = {
   sendPush,
   notifyWithdrawalApproved,
@@ -116,4 +136,6 @@ module.exports = {
   notifyDepositApproved,
   notifyDepositRejected,
   notifyPaymongoPaymentSuccess,
+  notifyKycApproved,
+  notifyKycRejected,
 };

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../../core/network/dio_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/datasources/local_db_source.dart';
+import '../../data/datasources/remote_api_source.dart';
 
 class ChallengesWidget extends StatefulWidget {
   final double totalSaved;
@@ -13,6 +16,8 @@ class ChallengesWidget extends StatefulWidget {
 
 class _ChallengesWidgetState extends State<ChallengesWidget> {
   final _source = LocalDbSource();
+  final _api = RemoteApiSource(DioClient.create());
+  final _secureStorage = const FlutterSecureStorage();
   List<Map<String, dynamic>> _challenges = [];
   bool _loading = true;
 
@@ -46,6 +51,8 @@ class _ChallengesWidgetState extends State<ChallengesWidget> {
     final challenge = _challenges[index];
     final reward = challenge['rewardCoins'] as int;
     await _source.addCoins(reward);
+    // Sync to server (fire-and-forget)
+    _syncCoinsToServer(reward);
     setState(() {
       _challenges[index]['claimed'] = true;
     });
@@ -65,6 +72,14 @@ class _ChallengesWidgetState extends State<ChallengesWidget> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
+  }
+
+  Future<void> _syncCoinsToServer(int amount) async {
+    try {
+      final accountId = await _secureStorage.read(key: 'account_id');
+      if (accountId == null) return;
+      await _api.addCoins(accountId, amount, 'challenge_reward');
+    } catch (_) {}
   }
 
   @override

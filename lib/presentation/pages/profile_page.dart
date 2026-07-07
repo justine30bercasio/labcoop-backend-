@@ -16,6 +16,7 @@ import '../widgets/animated_counter.dart';
 import '../widgets/app_card.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/network/banking_api_service.dart';
+import '../../core/network/dio_client.dart';
 import 'kyc_page.dart';
 import 'board_page.dart';
 import 'login_page.dart';
@@ -710,6 +711,8 @@ class _ShopPage extends StatefulWidget {
 
 class _ShopPageState extends State<_ShopPage> with TickerProviderStateMixin {
   final _source = LocalDbSource();
+  final _api = RemoteApiSource(DioClient.create());
+  final _secureStorage = const FlutterSecureStorage();
   int _coins = 0;
   String _currentAvatar = '🐱';
   String _currentBorder = 'b_default';
@@ -790,6 +793,7 @@ class _ShopPageState extends State<_ShopPage> with TickerProviderStateMixin {
       _coins -= item.cost;
       _purchased.add(item.id);
     });
+    _syncSpendToServer(item.cost, 'avatar_purchase');
     _showMsg('${item.emoji} purchased!');
   }
 
@@ -812,7 +816,16 @@ class _ShopPageState extends State<_ShopPage> with TickerProviderStateMixin {
       _coins -= item.cost;
       _purchased.add(item.id);
     });
+    _syncSpendToServer(item.cost, 'border_purchase');
     _showMsg('${item.name} border purchased!');
+  }
+
+  Future<void> _syncSpendToServer(int amount, String reason) async {
+    try {
+      final accountId = await _secureStorage.read(key: 'account_id');
+      if (accountId == null) return;
+      await _api.spendCoins(accountId, amount, reason);
+    } catch (_) {}
   }
 
   void _showMsg(String msg) {

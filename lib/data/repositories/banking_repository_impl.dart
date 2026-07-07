@@ -219,6 +219,14 @@ class BankingRepositoryImpl implements BankingRepository {
             final m = LoanModel.fromJson(op['payload'] as Map<String, dynamic>);
             await _remoteSource.applyLoan(m);
             break;
+          case 'ADD_COINS':
+            final p = op['payload'] as Map<String, dynamic>;
+            await _remoteSource.addCoins(p['accountId'] as String, (p['amount'] as num).toInt(), (p['reason'] as String? ?? 'coins_added'));
+            break;
+          case 'SPEND_COINS':
+            final p = op['payload'] as Map<String, dynamic>;
+            await _remoteSource.spendCoins(p['accountId'] as String, (p['amount'] as num).toInt(), (p['reason'] as String? ?? 'coins_spent'));
+            break;
         }
         await _localSource.removePendingOp(i);
       } on NetworkException {
@@ -227,5 +235,72 @@ class BankingRepositoryImpl implements BankingRepository {
         op['retryCount'] = ((op['retryCount'] as int?) ?? 0) + 1;
       }
     }
+  }
+
+  // ── Coin Management ──
+
+  @override
+  Future<int> getCoins(String accountId) async {
+    if (await _isOnline) {
+      try {
+        final balance = await _remoteSource.getCoins(accountId);
+        await _localSource.setCoins(balance);
+        return balance;
+      } catch (_) {}
+    }
+    return await _localSource.getCoins();
+  }
+
+  @override
+  Future<int> addCoins(String accountId, int amount, String reason) async {
+    if (await _isOnline) {
+      try {
+        final newBalance = await _remoteSource.addCoins(accountId, amount, reason);
+        await _localSource.setCoins(newBalance);
+        return newBalance;
+      } catch (_) {}
+    }
+    // Offline fallback: add locally
+    await _localSource.addCoins(amount);
+    await _localSource.addPendingOp({
+      'type': 'ADD_COINS',
+      'payload': {'accountId': accountId, 'amount': amount, 'reason': reason},
+      'createdAt': DateTime.now().toIso8601String(),
+      'retryCount': 0,
+    });
+    return await _localSource.getCoins();
+  }
+
+  @override
+  Future<int> spendCoins(String accountId, int amount, String reason) async {
+    if (await _isOnline) {
+      try {
+        final newBalance = await _remoteSource.spendCoins(accountId, amount, reason);
+        await _localSource.setCoins(newBalance);
+        return newBalance;
+      } catch (_) {}
+    }
+    // Offline fallback: spend locally
+    final success = await _localSource.spendCoins(amount);
+    if (!success) throw Exception('Insufficient coins');
+    await _localSource.addPendingOp({
+      'type': 'SPEND_COINS',
+      'payload': {'accountId': accountId, 'amount': amount, 'reason': reason},
+      'createdAt': DateTime.now().toIso8601String(),
+      'retryCount': 0,
+    });
+    return await _localSource.getCoins();
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getCoinHistory(String accountId) async {
+    if (await _isOnline) {
+      try {
+        final history = await _remoteSource.getCoinHistory(accountId);
+        await _localSource.saveCoinHistory(history);
+        return history;
+      } catch (_) {}
+    }
+    return await _localSource.getCoinHistory();
   }
 }

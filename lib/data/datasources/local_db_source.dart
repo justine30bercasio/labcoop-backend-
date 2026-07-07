@@ -141,6 +141,11 @@ class LocalDbSource {
     return box.get('coins', defaultValue: 0) as int;
   }
 
+  Future<void> setCoins(int amount) async {
+    final box = await _openBox('_meta');
+    await box.put('coins', amount);
+  }
+
   Future<void> addCoins(int amount) async {
     final box = await _openBox('_meta');
     final current = box.get('coins', defaultValue: 0) as int;
@@ -153,6 +158,18 @@ class LocalDbSource {
     if (current < amount) return false;
     await box.put('coins', current - amount);
     return true;
+  }
+
+  Future<void> saveCoinHistory(List<Map<String, dynamic>> history) async {
+    final box = await _openBox('_coins');
+    await box.put('history', history);
+  }
+
+  Future<List<Map<String, dynamic>>> getCoinHistory() async {
+    final box = await _openBox('_coins');
+    final raw = box.get('history');
+    if (raw == null) return [];
+    return (raw as List).cast<Map<String, dynamic>>();
   }
 
   Future<String> getAvatar() async {
@@ -429,6 +446,7 @@ class LocalDbSource {
       '_loan_products',
       '_savings_products',
       '_loan_payments',
+      '_coins',
     ];
     for (final name in allBoxNames) {
       final box = await _openBox(name);

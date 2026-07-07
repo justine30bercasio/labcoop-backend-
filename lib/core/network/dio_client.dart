@@ -16,6 +16,15 @@ class DioClient {
     return await _secureStorage.read(key: 'auth_token');
   }
 
+  static Future<String?> get _refreshToken async {
+    return await _secureStorage.read(key: 'refresh_token');
+  }
+
+  static Future<void> _saveTokens(String accessToken, String refreshToken) async {
+    await _secureStorage.write(key: 'auth_token', value: accessToken);
+    await _secureStorage.write(key: 'refresh_token', value: refreshToken);
+  }
+
   static Dio create() {
     final dio = Dio(
       BaseOptions(
@@ -38,14 +47,50 @@ class DioClient {
           }
           handler.next(options);
         },
-        onError: (error, handler) {
+        onError: (error, handler) async {
           final statusCode = error.response?.statusCode;
           final path = error.requestOptions.path;
 
+          // Try token refresh on 401 (not for login/register/refresh endpoints)
           if (statusCode == 401 &&
               !path.contains('/auth/login') &&
-              !path.contains('/auth/register')) {
-            _secureStorage.deleteAll();
+              !path.contains('/auth/register') &&
+              !path.contains('/auth/refresh')) {
+            final refreshTokenValue = await _refreshToken;
+            if (refreshTokenValue != null) {
+              try {
+                // Attempt to refresh the access token
+                final refreshDio = Dio(
+                  BaseOptions(
+                    baseUrl: AppConstants.baseUrl,
+                    connectTimeout: const Duration(seconds: 30),
+                    receiveTimeout: const Duration(seconds: 30),
+                    contentType: 'application/json',
+                    headers: {'Accept': 'application/json'},
+                  ),
+                );
+                final refreshResponse = await refreshDio.post('/api/auth/refresh', data: {
+                  'refreshToken': refreshTokenValue,
+                });
+                final data = refreshResponse.data as Map<String, dynamic>;
+                final newToken = data['token'] as String;
+                final newRefreshToken = data['refreshToken'] as String;
+
+                // Save new tokens
+                await _saveTokens(newToken, newRefreshToken);
+
+                // Retry original request with new token
+                error.requestOptions.headers['Authorization'] = 'Bearer $newToken';
+                final retryResponse = await dio.fetch(error.requestOptions);
+                handler.resolve(retryResponse);
+                return;
+              } catch (_) {
+                // Refresh failed — session expired
+              }
+            }
+
+            // Clear everything and notify session expired
+            await _secureStorage.deleteAll();
             onSessionExpired?.call();
             handler.resolve(Response(
               requestOptions: error.requestOptions,

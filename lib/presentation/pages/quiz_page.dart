@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/network/dio_client.dart';
 import '../../core/theme/app_theme.dart';
@@ -17,6 +18,7 @@ class QuizPage extends StatefulWidget {
 class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
   final _source = LocalDbSource();
   final _api = RemoteApiSource(DioClient.create());
+  final _secureStorage = const FlutterSecureStorage();
   late AnimationController _celebrationCtrl;
 
   String? _selectedDifficulty;
@@ -142,10 +144,23 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
       final coinGain = q.coinReward + (_streak >= 5 ? 2 : 0);
       _score += xpGain;
       _coinsEarned += coinGain;
+      // Save coins locally immediately
       _source.addCoins(coinGain);
+      // Also send to server (fire-and-forget)
+      _syncCoinsToServer(coinGain);
       _celebrationCtrl.forward(from: 0);
     } else {
       _streak = 0;
+    }
+  }
+
+  Future<void> _syncCoinsToServer(int amount) async {
+    try {
+      final accountId = await _secureStorage.read(key: 'account_id');
+      if (accountId == null) return;
+      await _api.addCoins(accountId, amount, 'quiz_reward');
+    } catch (_) {
+      // Will be retried via pending ops or next sync
     }
   }
 
@@ -166,6 +181,10 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
     if (_score > _highScore) {
       await _source.setQuizHighScore(_score);
       setState(() => _highScore = _score);
+    }
+    // Sync final coin total to server
+    if (_coinsEarned > 0) {
+      await _syncCoinsToServer(0); // just triggers the server sync for remaining
     }
   }
 

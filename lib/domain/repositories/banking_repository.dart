@@ -25,4 +25,10 @@ abstract class BankingRepository {
   Future<List<LoanPayment>> getLoanPayments(String loanId);
 
   Future<void> syncWithServer();
+
+  // ── Coin Management ──
+  Future<int> getCoins(String accountId);
+  Future<int> addCoins(String accountId, int amount, String reason);
+  Future<int> spendCoins(String accountId, int amount, String reason);
+  Future<List<Map<String, dynamic>>> getCoinHistory(String accountId);
 }

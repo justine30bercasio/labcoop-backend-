@@ -1,0 +1,55 @@
+version: "3.8"
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: labcoop-backend
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - backend/.env
+    volumes:
+      - uploads:/app/uploads
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: labcoop-postgres
+    environment:
+      POSTGRES_DB: labcoop
+      POSTGRES_USER: labcoop
+      POSTGRES_PASSWORD: labcoop_secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U labcoop"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: labcoop-nginx
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #     - uploads:/app/uploads:ro
+  #     # - ./ssl:/etc/nginx/ssl:ro
+  #   depends_on:
+  #     - backend
+  #   restart: unless-stopped
+
+volumes:
+  pgdata:
+  uploads:

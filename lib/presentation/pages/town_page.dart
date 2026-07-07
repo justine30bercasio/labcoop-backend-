@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/network/dio_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/datasources/local_db_source.dart';
+import '../../data/datasources/remote_api_source.dart';
 
 class TownPage extends StatefulWidget {
   const TownPage({super.key});
@@ -12,6 +15,8 @@ class TownPage extends StatefulWidget {
 
 class _TownPageState extends State<TownPage> {
   final _source = LocalDbSource();
+  final _api = RemoteApiSource(DioClient.create());
+  final _secureStorage = const FlutterSecureStorage();
   List<Map<String, dynamic>> _buildings = [];
   int _coins = 0;
   bool _loading = true;
@@ -188,6 +193,8 @@ class _TownPageState extends State<TownPage> {
 
     final success = await _source.spendCoins(cost);
     if (!success) return;
+    // Sync spend to server (fire-and-forget)
+    _syncSpendToServer(cost, 'building_purchase');
 
     final building = {
       'id': id,
@@ -223,6 +230,14 @@ class _TownPageState extends State<TownPage> {
         ),
       );
     }
+  }
+
+  Future<void> _syncSpendToServer(int amount, String reason) async {
+    try {
+      final accountId = await _secureStorage.read(key: 'account_id');
+      if (accountId == null) return;
+      await _api.spendCoins(accountId, amount, reason);
+    } catch (_) {}
   }
 
   @override

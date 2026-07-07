@@ -33,13 +33,23 @@ class RemoteApiSource {
     required String token,
     required String accountId,
     required String childName,
+    String? refreshToken,
   }) async {
     await _secureStorage.write(key: 'auth_token', value: token);
     await _secureStorage.write(key: 'account_id', value: accountId);
     await _secureStorage.write(key: 'child_name', value: childName);
+    if (refreshToken != null) {
+      await _secureStorage.write(key: 'refresh_token', value: refreshToken);
+    }
   }
 
   Future<void> clearSession() async {
+    final refreshTokenValue = await _secureStorage.read(key: 'refresh_token');
+    if (refreshTokenValue != null) {
+      try {
+        await _dio.post('/api/auth/logout', data: {'refreshToken': refreshTokenValue});
+      } catch (_) {}
+    }
     await _secureStorage.deleteAll();
   }
 
@@ -55,6 +65,7 @@ class RemoteApiSource {
       token: data['token'] as String,
       accountId: data['account']['account_id'] as String,
       childName: data['account']['child_name'] as String,
+      refreshToken: data['refreshToken'] as String?,
     );
     try {
       await NotificationService.registerAfterLogin();
@@ -116,6 +127,7 @@ class RemoteApiSource {
       token: data['token'] as String,
       accountId: data['account']['account_id'] as String,
       childName: data['account']['child_name'] as String,
+      refreshToken: data['refreshToken'] as String?,
     );
     return data;
   }
@@ -321,6 +333,37 @@ class RemoteApiSource {
 
   Future<List<Map<String, dynamic>>> getLeaderboard() async {
     final response = await _dio.get('/api/leaderboard');
+    return (response.data as List).cast<Map<String, dynamic>>();
+  }
+
+  // ── Coin Management ──
+
+  Future<int> getCoins(String accountId) async {
+    final response = await _dio.get('/api/coins/$accountId');
+    final data = response.data as Map<String, dynamic>;
+    return (data['coins'] as num).toInt();
+  }
+
+  Future<int> addCoins(String accountId, int amount, String reason) async {
+    final response = await _dio.post('/api/coins/$accountId/add', data: {
+      'amount': amount,
+      'reason': reason,
+    });
+    final data = response.data as Map<String, dynamic>;
+    return (data['coins'] as num).toInt();
+  }
+
+  Future<int> spendCoins(String accountId, int amount, String reason) async {
+    final response = await _dio.post('/api/coins/$accountId/spend', data: {
+      'amount': amount,
+      'reason': reason,
+    });
+    final data = response.data as Map<String, dynamic>;
+    return (data['coins'] as num).toInt();
+  }
+
+  Future<List<Map<String, dynamic>>> getCoinHistory(String accountId) async {
+    final response = await _dio.get('/api/coins/$accountId/history');
     return (response.data as List).cast<Map<String, dynamic>>();
   }
 }

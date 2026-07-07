@@ -1,7 +1,10 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../../core/network/dio_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/datasources/local_db_source.dart';
+import '../../data/datasources/remote_api_source.dart';
 
 class CoinCatcherPage extends StatefulWidget {
   const CoinCatcherPage({super.key});
@@ -13,6 +16,8 @@ class CoinCatcherPage extends StatefulWidget {
 class _CoinCatcherPageState extends State<CoinCatcherPage>
     with TickerProviderStateMixin {
   final _source = LocalDbSource();
+  final _api = RemoteApiSource(DioClient.create());
+  final _secureStorage = const FlutterSecureStorage();
 
   late AnimationController _gameLoop;
   late AnimationController _piggyIdle;
@@ -217,9 +222,21 @@ class _CoinCatcherPageState extends State<CoinCatcherPage>
     setState(() => _gameOver = true);
     if (_coinsEarned > 0) {
       await _source.addCoins(_coinsEarned);
+      // Sync to server (fire-and-forget)
+      _syncCoinsToServer();
     }
     if (_score > _highScore) {
       _highScore = _score;
+    }
+  }
+
+  Future<void> _syncCoinsToServer() async {
+    try {
+      final accountId = await _secureStorage.read(key: 'account_id');
+      if (accountId == null) return;
+      await _api.addCoins(accountId, _coinsEarned, 'game_reward');
+    } catch (_) {
+      // Will be retried via pending ops or next sync
     }
   }
 

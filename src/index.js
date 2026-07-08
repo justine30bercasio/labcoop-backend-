@@ -502,18 +502,19 @@ apiRouter.use('/coop', authMiddleware, requireOwnership, coopRouter);
 apiRouter.use('/shop', authMiddleware, shopRouter);
 apiRouter.use('/quiz', authMiddleware, quizRouter);
 apiRouter.use('/games', authMiddleware, gamesRouter);
-apiRouter.use(authMiddleware, requireOwnership, loansRouter);
-apiRouter.use(authMiddleware, requireOwnership, bankingFeaturesRouter);
+// Mount non-auth public routes BEFORE catch-all authMiddleware
 apiRouter.use('/fcm', fcmRouter);
 apiRouter.use('/kyc', kycRouter);
 apiRouter.use('/board', boardRouter);
-apiRouter.use('/leaderboard', authMiddleware, leaderboardRouter);
 apiRouter.use('/paymongo', paymongoRouter);
-apiRouter.use('/settings', authMiddleware, requireOwnership, settingsRouter);
 apiRouter.use('/parental-consent', parentalConsentRouter);
 apiRouter.use('/account-deletion', accountDeletionRouter);
-apiRouter.use('/coins', authMiddleware, requireOwnership, coinsRouter);
 apiRouter.use('/parent', parentRouter);
+apiRouter.use(authMiddleware, requireOwnership, loansRouter);
+apiRouter.use(authMiddleware, requireOwnership, bankingFeaturesRouter);
+apiRouter.use('/leaderboard', authMiddleware, leaderboardRouter);
+apiRouter.use('/settings', authMiddleware, requireOwnership, settingsRouter);
+apiRouter.use('/coins', authMiddleware, requireOwnership, coinsRouter);
 
 // Mount: public first (health/auth handled here), then authenticated routes
 app.use('/api', publicRouter);

@@ -73,6 +73,7 @@ router.get('/debug-smtp', asyncHandler(async (req, res) => {
         tls: { rejectUnauthorized: false },
         connectionTimeout: 10000,
         greetingTimeout: 10000,
+        family: 4,
       });
       await t.verify();
       info.verifyResult = '✓ SMTP connection OK';
@@ -117,6 +118,7 @@ router.post('/send-otp', asyncHandler(async (req, res) => {
         connectionTimeout: 15000,
         greetingTimeout: 15000,
         socketTimeout: 20000,
+        family: 4,
       });
       const fromName = process.env.MAIL_FROM_NAME || 'MySYS';
       const fromAddr = (process.env.MAIL_FROM_ADDRESS || process.env.MAIL_USERNAME).replace(/^"|"$/g, '');

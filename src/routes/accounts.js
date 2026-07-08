@@ -116,6 +116,22 @@ router.put('/:accountId/deposit',
   })
 );
 
+// ── Generate temporary link code for parent linking ──
+router.post('/:accountId/generate-link-code',
+  param('accountId').isString().notEmpty().trim(),
+  asyncHandler(async (req, res) => {
+    const account = await store.getAccount(req.params.accountId);
+    if (!account) return res.status(404).json({ message: 'Account not found' });
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    await store.query(
+      'UPDATE accounts SET link_code = $1, link_code_expires_at = $2 WHERE account_id = $3',
+      [code, expiresAt, req.params.accountId]
+    );
+    res.json({ linkCode: code, expiresAt, message: 'Share this code with your parent. It expires in 5 minutes.' });
+  })
+);
+
 router.post('/:accountId/profile-photo',
   profileUpload.single('file'),
   asyncHandler(async (req, res) => {

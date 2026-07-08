@@ -48,7 +48,9 @@ class PgStore {
         updated_at TEXT,
         pin_hash VARCHAR(255) DEFAULT '',
         parent_email VARCHAR(255) DEFAULT '',
-        consent_status VARCHAR(20) DEFAULT 'none'
+        consent_status VARCHAR(20) DEFAULT 'none',
+        link_code VARCHAR(10) DEFAULT '',
+        link_code_expires_at TEXT DEFAULT ''
       );
       ALTER TABLE accounts ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER DEFAULT 0;
       ALTER TABLE accounts ADD COLUMN IF NOT EXISTS locked_until TEXT;
@@ -72,6 +74,8 @@ class PgStore {
       ALTER TABLE accounts ADD COLUMN IF NOT EXISTS pin_hash VARCHAR(255) DEFAULT '';
       ALTER TABLE accounts ADD COLUMN IF NOT EXISTS parent_email VARCHAR(255) DEFAULT '';
       ALTER TABLE accounts ADD COLUMN IF NOT EXISTS consent_status VARCHAR(20) DEFAULT 'none';
+      ALTER TABLE accounts ADD COLUMN IF NOT EXISTS link_code VARCHAR(10) DEFAULT '';
+      ALTER TABLE accounts ADD COLUMN IF NOT EXISTS link_code_expires_at TEXT DEFAULT '';
       CREATE TABLE IF NOT EXISTS goal_jars (
         goal_id TEXT PRIMARY KEY,
         account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,

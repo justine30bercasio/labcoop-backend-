@@ -111,17 +111,21 @@ router.post('/change-pin', parentAuth, asyncHandler(async (req, res) => {
   res.json({ message: 'PIN changed successfully' });
 }));
 
-// ── Link Child Account ──
+// ── Link Child Account (via temporary code from child's app) ──
 router.post('/link-child', parentAuth, asyncHandler(async (req, res) => {
   const { linkingCode } = req.body;
-  if (!linkingCode || typeof linkingCode !== 'string') {
-    return res.status(400).json({ message: 'Linking code is required' });
+  if (!linkingCode || typeof linkingCode !== 'string' || !/^\d{6}$/.test(linkingCode.trim())) {
+    return res.status(400).json({ message: 'A valid 6-digit linking code is required. Ask your child to generate one in their app settings.' });
   }
-  // Look up the child by linking code (child's member_id with a prefix)
-  const padded = linkingCode.trim().padStart(6, '0');
-  const result = await store.query('SELECT * FROM accounts WHERE member_id = $1', [padded]);
+  const code = linkingCode.trim();
+  const now = new Date().toISOString();
+  // Find child with matching non-expired code
+  const result = await store.query(
+    "SELECT * FROM accounts WHERE link_code = $1 AND link_code_expires_at > $2 AND link_code_expires_at != ''",
+    [code, now]
+  );
   if (result.rows.length === 0) {
-    return res.status(404).json({ message: 'Invalid linking code. No child found with this code.' });
+    return res.status(404).json({ message: 'Invalid or expired code. Ask your child to generate a new code in their app Settings → Link Parent.' });
   }
   const child = result.rows[0];
   // Check if already linked
@@ -130,15 +134,23 @@ router.post('/link-child', parentAuth, asyncHandler(async (req, res) => {
     [req.parentId, child.account_id]
   );
   if (existingLink.rows.length > 0) {
-    return res.status(409).json({ message: 'Child already linked to your account' });
+    return res.status(409).json({ message: `Child "${child.child_name}" is already linked to your account` });
   }
   const linkId = uuidv4();
   await store.query(
     `INSERT INTO parent_child_links (link_id, parent_id, child_account_id, linking_code, status, created_at)
      VALUES ($1, $2, $3, $4, 'active', $5)`,
-    [linkId, req.parentId, child.account_id, padded, new Date().toISOString()]
+    [linkId, req.parentId, child.account_id, code, new Date().toISOString()]
   );
-  res.status(201).json({ message: 'Child linked successfully', child: { account_id: child.account_id, child_name: child.child_name, member_id: child.member_id } });
+  // Clear the temporary code
+  await store.query(
+    "UPDATE accounts SET link_code = '', link_code_expires_at = '' WHERE account_id = $1",
+    [child.account_id]
+  );
+  res.status(201).json({
+    message: `Child "${child.child_name}" linked successfully!`,
+    child: { account_id: child.account_id, child_name: child.child_name, member_id: child.member_id },
+  });
 }));
 
 // ── Get Linked Children ──

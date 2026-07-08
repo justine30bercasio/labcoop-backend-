@@ -19,6 +19,7 @@ import 'presentation/pages/login_page.dart';
 import 'presentation/pages/biometric_lock_page.dart';
 import 'presentation/pages/biometric_login_page.dart';
 import 'core/services/notification_service.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
@@ -51,17 +52,15 @@ void main() async {
     return;
   }
 
-  // Biometric lock — if enabled, show lock page before main app
+  // If user has a saved token + biometric available → gate with biometric
   final bioAvailable = await SecurityService.canAuthenticate();
-  if (SecurityService.biometricEnabled && bioAvailable) {
-    runApp(const LabCoopApp(initialPage: _AppStartupPage.biometricLock));
-    return;
-  }
-
-  // Biometric login (GCash-style) — always show biometric gate if enabled
-  if (await SecurityService.isBioLoginEnabled() && bioAvailable) {
-    runApp(const LabCoopApp(initialPage: _AppStartupPage.biometricLogin));
-    return;
+  if (bioAvailable) {
+    const storage = FlutterSecureStorage();
+    final token = await storage.read(key: 'auth_token');
+    if (token != null) {
+      runApp(const LabCoopApp(initialPage: _AppStartupPage.biometricLogin));
+      return;
+    }
   }
 
   runApp(const LabCoopApp());

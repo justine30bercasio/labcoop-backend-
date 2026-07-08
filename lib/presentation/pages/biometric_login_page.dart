@@ -25,22 +25,26 @@ class _BiometricLoginPageState extends State<BiometricLoginPage> {
   @override
   void initState() {
     super.initState();
-    _init();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
 
   Future<void> _init() async {
     _username = await SecurityService.getSavedUsername();
-    if (mounted) setState(() => _loading = false);
-    // Auto-trigger biometric after a short delay for UI to render
-    Future.delayed(const Duration(milliseconds: 400), _bioLogin);
+    if (mounted) {
+      setState(() => _loading = false);
+      _triggerBiometric();
+    }
   }
 
-  Future<void> _bioLogin() async {
-    if (_loading) return;
+  void _triggerBiometric() {
     setState(() {
       _loading = true;
       _error = null;
     });
+    _bioLogin();
+  }
+
+  Future<void> _bioLogin() async {
 
     final authed = await SecurityService.authenticate(
       reason: 'Log in to LabCoop as ${_username ?? "Member"}',
@@ -273,7 +277,7 @@ class _BiometricLoginPageState extends State<BiometricLoginPage> {
                       width: double.infinity,
                       height: 52,
                       child: ElevatedButton.icon(
-                        onPressed: _bioLogin,
+                        onPressed: _triggerBiometric,
                         icon: const Icon(Icons.fingerprint, color: AppTheme.textDark),
                         label: const Text(
                           'Tap to authenticate',

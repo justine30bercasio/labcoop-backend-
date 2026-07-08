@@ -6,7 +6,7 @@ const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
-const sgMail = require('@sendgrid/mail');
+const nodemailer = require('nodemailer');
 const rateLimit = require('express-rate-limit');
 const { store } = require('../db');
 const { asyncHandler } = require('../async-handler');
@@ -48,29 +48,37 @@ const ID_TYPES = ['Passport', "Driver's License", "National ID", "UMID", "SSS ID
 // ── OTP Store (in-memory) ──
 const otpStore = new Map();
 
-// ── Debug SendGrid config ──
+// ── Debug SMTP config ──
 router.get('/debug-smtp', asyncHandler(async (req, res) => {
+  const port = Number(process.env.MAIL_PORT) || 587;
+  const scheme = process.env.MAIL_SCHEME || 'smtp';
+  const secure = scheme === 'smtps';
   const info = {
-    hasSendGridKey: process.env.SENDGRID_API_KEY ? '✓ set' : '(not set)',
-    fromEmail: process.env.SENDGRID_FROM_EMAIL || '(not set, will use MAIL_FROM_ADDRESS)',
-    fallbackFrom: process.env.MAIL_FROM_ADDRESS || '(not set)',
+    host: process.env.MAIL_HOST || '(not set)',
+    port,
+    scheme,
+    secure,
+    user: process.env.MAIL_USERNAME ? '✓ set' : '(not set)',
+    pass: process.env.MAIL_PASSWORD ? '✓ set' : '(not set)',
+    fromAddr: process.env.MAIL_FROM_ADDRESS || '(not set)',
     fromName: process.env.MAIL_FROM_NAME || '(not set)',
   };
-  if (process.env.SENDGRID_API_KEY) {
+  if (process.env.MAIL_HOST) {
     try {
-      sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-      const fromEmail = process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || process.env.MAIL_USERNAME;
-      const fromName = process.env.MAIL_FROM_NAME || 'LabCoop Parent Portal';
-      await sgMail.send({
-        to: 'test@example.com',
-        from: { email: fromEmail.replace(/^"|"$/g, ''), name: fromName },
-        subject: 'SendGrid Test',
-        text: 'SendGrid is configured correctly.',
+      const t = nodemailer.createTransport({
+        host: process.env.MAIL_HOST,
+        port,
+        secure,
+        auth: { user: process.env.MAIL_USERNAME, pass: process.env.MAIL_PASSWORD },
+        tls: { rejectUnauthorized: false },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
       });
-      info.sendTestResult = '✓ SendGrid OK (test email suppressed server-side)';
+      await t.verify();
+      info.verifyResult = '✓ SMTP connection OK';
     } catch (e) {
-      info.sendTestResult = '✗ SendGrid error: ' + e.message;
-      if (e.response) info.sendTestResult += ' | body: ' + JSON.stringify(e.response.body);
+      info.verifyResult = '✗ FAILED: ' + e.message;
+      info.verifyCode = e.code;
     }
     res.json(info);
   } else {
@@ -78,14 +86,13 @@ router.get('/debug-smtp', asyncHandler(async (req, res) => {
   }
 }));
 
-// ── Send OTP to parent email (via SendGrid HTTPS API) ──
+// ── Send OTP to parent email (nodemailer, STARTTLS on 587 / SSL on 465) ──
 router.post('/send-otp', asyncHandler(async (req, res) => {
   const { email } = req.body;
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(400).json({ message: 'Valid email is required' });
   }
   const normalEmail = email.toLowerCase().trim();
-  // Rate limit: max 3 OTPs per email per 15 minutes
   const now = Date.now();
   const existing = otpStore.get(normalEmail);
   const attempts = existing ? (existing.attempts || 0) : 0;
@@ -94,18 +101,28 @@ router.post('/send-otp', asyncHandler(async (req, res) => {
   }
   const otp = crypto.randomInt(100000, 999999).toString();
   otpStore.set(normalEmail, { otp, expires: now + 600000, attempts: attempts + 1 });
-  // Send via SendGrid HTTPS API (port 443 — always works on Render)
-  const apiKey = process.env.SENDGRID_API_KEY;
-  if (!apiKey) {
-    console.warn('SENDGRID_API_KEY not set — OTP would be:', otp);
+  const host = process.env.MAIL_HOST;
+  if (!host) {
+    console.warn('MAIL_HOST not set — OTP would be:', otp);
   } else {
+    const port = Number(process.env.MAIL_PORT) || 587;
+    const secure = (process.env.MAIL_SCHEME || 'smtp') === 'smtps';
     try {
-      sgMail.setApiKey(apiKey);
-      const fromEmail = (process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || process.env.MAIL_USERNAME).replace(/^"|"$/g, '');
+      const transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure,
+        auth: { user: process.env.MAIL_USERNAME, pass: process.env.MAIL_PASSWORD },
+        tls: { rejectUnauthorized: false },
+        connectionTimeout: 15000,
+        greetingTimeout: 15000,
+        socketTimeout: 20000,
+      });
       const fromName = process.env.MAIL_FROM_NAME || 'MySYS';
-      await sgMail.send({
+      const fromAddr = (process.env.MAIL_FROM_ADDRESS || process.env.MAIL_USERNAME).replace(/^"|"$/g, '');
+      await transporter.sendMail({
+        from: `"${fromName}" <${fromAddr}>`,
         to: normalEmail,
-        from: { email: fromEmail, name: fromName },
         subject: 'LabCoop Parent Portal — Email Verification Code',
         html: `<div style="font-family:Arial;max-width:480px;margin:0 auto">
           <h2 style="color:#1a237e">Email Verification</h2>
@@ -119,7 +136,6 @@ router.post('/send-otp', asyncHandler(async (req, res) => {
       console.log('OTP email sent to', normalEmail);
     } catch (e) {
       console.error('Failed to send OTP email to', normalEmail, ':', e.message);
-      if (e.response) console.error('SendGrid response:', JSON.stringify(e.response.body));
     }
   }
   res.json({ message: 'If this email is registered, an OTP has been sent.', sent: true });

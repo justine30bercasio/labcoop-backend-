@@ -6,6 +6,7 @@ const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+const nodemailer = require('nodemailer');
 const rateLimit = require('express-rate-limit');
 const { store } = require('../db');
 const { asyncHandler } = require('../async-handler');
@@ -63,31 +64,38 @@ router.post('/send-otp', asyncHandler(async (req, res) => {
   }
   const otp = crypto.randomInt(100000, 999999).toString();
   otpStore.set(normalEmail, { otp, expires: now + 600000, attempts: attempts + 1 });
-  // Send via SendGrid
-  try {
-    const sgMail = require('@sendgrid/mail');
-    const apiKey = process.env.SENDGRID_API_KEY;
-    if (apiKey) {
-      sgMail.setApiKey(apiKey);
-      const fromEmail = process.env.SENDGRID_FROM_EMAIL || 'labcoopcooperative@gmail.com';
-      await sgMail.send({
-        to: normalEmail,
-        from: fromEmail,
-        subject: 'LabCoop Parent Portal — Email Verification Code',
-        html: `<div style="font-family:Arial;max-width:480px;margin:0 auto">
-          <h2 style="color:#1a237e">Email Verification</h2>
-          <p style="color:#333">Your 6-digit verification code:</p>
-          <div style="font-size:36px;letter-spacing:8px;font-weight:700;color:#1a237e;text-align:center;padding:20px;background:#f0f0ff;border-radius:8px;margin:16px 0">${otp}</div>
-          <p style="color:#666;font-size:13px">This code expires in 10 minutes.</p>
-          <hr style="border:none;border-top:1px solid #eee">
-          <p style="color:#999;font-size:11px">LabCoop Cooperative — Parent Portal</p>
-        </div>`,
+  // Send via nodemailer (Gmail SMTP)
+  if (!process.env.MAIL_HOST) {
+    console.warn('MAIL_HOST not set — OTP would be:', otp);
+  } else {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: process.env.MAIL_HOST,
+        port: Number(process.env.MAIL_PORT) || 465,
+        secure: (process.env.MAIL_SCHEME || 'smtps') === 'smtps',
+        auth: {
+          user: process.env.MAIL_USERNAME,
+          pass: process.env.MAIL_PASSWORD,
+        },
       });
-    } else {
-      console.warn('SENDGRID_API_KEY not set — OTP would be:', otp);
+      const fromName = process.env.MAIL_FROM_NAME || 'LabCoop Parent Portal';
+      const fromAddr = process.env.MAIL_FROM_ADDRESS || process.env.MAIL_USERNAME;
+      await transporter.sendMail({
+      from: `"${fromName}" <${fromAddr}>`,
+      to: normalEmail,
+      subject: 'LabCoop Parent Portal — Email Verification Code',
+      html: `<div style="font-family:Arial;max-width:480px;margin:0 auto">
+        <h2 style="color:#1a237e">Email Verification</h2>
+        <p style="color:#333">Your 6-digit verification code:</p>
+        <div style="font-size:36px;letter-spacing:8px;font-weight:700;color:#1a237e;text-align:center;padding:20px;background:#f0f0ff;border-radius:8px;margin:16px 0">${otp}</div>
+        <p style="color:#666;font-size:13px">This code expires in 10 minutes.</p>
+        <hr style="border:none;border-top:1px solid #eee">
+        <p style="color:#999;font-size:11px">LabCoop Cooperative — Parent Portal</p>
+      </div>`,
+    });
+    } catch (e) {
+      console.warn('Failed to send OTP email:', e.message);
     }
-  } catch (e) {
-    console.warn('Failed to send OTP email:', e.message);
   }
   res.json({ message: 'If this email is registered, an OTP has been sent.', sent: true });
 }));

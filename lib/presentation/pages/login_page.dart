@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../data/datasources/local_db_source.dart';
 import '../../data/datasources/remote_api_source.dart';
 import 'home_page.dart';
+import 'parent_login_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -356,7 +357,31 @@ class _LoginPageState extends State<LoginPage>
                             ),
                           ),
 
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 8),
+
+                          // ── I'm a Parent button ──
+                          SizedBox(
+                            width: double.infinity,
+                            height: 40,
+                            child: OutlinedButton.icon(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => const ParentLoginPage()),
+                                );
+                              },
+                              icon: Icon(Icons.family_restroom, size: 16, color: Colors.white.withValues(alpha: 0.8)),
+                              label: Text(
+                                "I'm a Parent",
+                                style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 13, fontWeight: FontWeight.w500),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                             decoration: BoxDecoration(

@@ -268,4 +268,105 @@ class BankingApiService {
   static Future<void> markAllNotificationsRead() async {
     await _dio.post('/api/fcm/notifications/read-all');
   }
+
+  // ── Parent Portal ──
+
+  static Future<Map<String, dynamic>?> parentRegister(String email, String pin, {String? displayName, String? phone}) async {
+    try {
+      final resp = await _dio.post('/api/parent/register', data: {
+        'email': email, 'pin': pin,
+        'displayName': displayName ?? '', 'phone': phone ?? '',
+      });
+      return resp.data as Map<String, dynamic>;
+    } on DioException { return null; }
+  }
+
+  static Future<Map<String, dynamic>?> parentLogin(String email, String pin) async {
+    try {
+      final resp = await _dio.post('/api/parent/login', data: {'email': email, 'pin': pin});
+      return resp.data as Map<String, dynamic>;
+    } on DioException { return null; }
+  }
+
+  static Future<bool> parentChangePin(String oldPin, String newPin) async {
+    try {
+      await _dio.post('/api/parent/change-pin', data: {'oldPin': oldPin, 'newPin': newPin});
+      return true;
+    } on DioException { return false; }
+  }
+
+  static Future<bool> parentLinkChild(String linkingCode) async {
+    try {
+      await _dio.post('/api/parent/link-child', data: {'linkingCode': linkingCode});
+      return true;
+    } on DioException { return false; }
+  }
+
+  static Future<List<dynamic>> parentGetChildren() async {
+    try {
+      final resp = await _dio.get('/api/parent/children');
+      return resp.data as List<dynamic>;
+    } on DioException { return []; }
+  }
+
+  static Future<Map<String, dynamic>?> parentGetPending() async {
+    try {
+      final resp = await _dio.get('/api/parent/pending');
+      return resp.data as Map<String, dynamic>;
+    } on DioException { return null; }
+  }
+
+  static Future<bool> parentApproveWithdrawal(String requestId) async {
+    try {
+      await _dio.post('/api/parent/approve-withdrawal/$requestId');
+      return true;
+    } on DioException { return false; }
+  }
+
+  static Future<bool> parentRejectWithdrawal(String requestId) async {
+    try {
+      await _dio.post('/api/parent/reject-withdrawal/$requestId');
+      return true;
+    } on DioException { return false; }
+  }
+
+  static Future<bool> parentApproveLoan(String loanId) async {
+    try {
+      await _dio.post('/api/parent/approve-loan/$loanId');
+      return true;
+    } on DioException { return false; }
+  }
+
+  static Future<bool> parentRejectLoan(String loanId) async {
+    try {
+      await _dio.post('/api/parent/reject-loan/$loanId');
+      return true;
+    } on DioException { return false; }
+  }
+
+  static Future<List<dynamic>> parentGetLimits() async {
+    try {
+      final resp = await _dio.get('/api/parent/limits');
+      return resp.data as List<dynamic>;
+    } on DioException { return []; }
+  }
+
+  static Future<bool> parentSaveLimits(String childAccountId, {double maxDailyWithdrawal = 0, double maxLoanAmount = 0, String requireApprovalFor = 'all'}) async {
+    try {
+      await _dio.post('/api/parent/limits', data: {
+        'childAccountId': childAccountId,
+        'maxDailyWithdrawal': maxDailyWithdrawal,
+        'maxLoanAmount': maxLoanAmount,
+        'requireApprovalFor': requireApprovalFor,
+      });
+      return true;
+    } on DioException { return false; }
+  }
+
+  static Future<Map<String, dynamic>?> parentGetMe() async {
+    try {
+      final resp = await _dio.get('/api/parent/me');
+      return resp.data as Map<String, dynamic>;
+    } on DioException { return null; }
+  }
 }

@@ -1,9 +1,21 @@
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dio_client.dart';
+import '../constants/app_constants.dart';
 
 class BankingApiService {
   static final Dio _dio = DioClient.create();
+
+  /// Separate Dio for parent API calls — no auth headers, no session expiry interceptor.
+  /// Parent requests manage their own token stored as 'parent_token'.
+  static final Dio _parentDio = Dio(BaseOptions(
+    baseUrl: AppConstants.baseUrl,
+    connectTimeout: const Duration(seconds: 30),
+    receiveTimeout: const Duration(seconds: 30),
+    contentType: 'application/json',
+    headers: {'Accept': 'application/json'},
+  ));
 
   static Future<Map<String, dynamic>?> getLoanSchedule(String loanId) async {
     try {
@@ -273,14 +285,14 @@ class BankingApiService {
 
   static Future<Map<String, dynamic>?> parentSendOtp(String email) async {
     try {
-      final resp = await _dio.post('/api/parent/send-otp', data: {'email': email});
+      final resp = await _parentDio.post('/api/parent/send-otp', data: {'email': email});
       return resp.data as Map<String, dynamic>;
     } on DioException { return null; }
   }
 
   static Future<Map<String, dynamic>?> parentVerifyOtp(String email, String otp) async {
     try {
-      final resp = await _dio.post('/api/parent/verify-otp', data: {'email': email, 'otp': otp});
+      final resp = await _parentDio.post('/api/parent/verify-otp', data: {'email': email, 'otp': otp});
       return resp.data as Map<String, dynamic>;
     } on DioException { return null; }
   }
@@ -298,7 +310,7 @@ class BankingApiService {
         'idType': idType ?? '', 'idNumber': idNumber ?? '',
         'emailVerifyToken': emailVerifyToken ?? '',
       };
-      final resp = await _dio.post('/api/parent/register', data: data);
+      final resp = await _parentDio.post('/api/parent/register', data: data);
       return resp.data as Map<String, dynamic>;
     } on DioException { return null; }
   }
@@ -327,44 +339,56 @@ class BankingApiService {
       if (idPhotoBytes != null) {
         formData.files.add(MapEntry('idPhoto', MultipartFile.fromBytes(idPhotoBytes, filename: idPhotoFilename ?? 'id_photo.jpg')));
       }
-      final resp = await _dio.post('/api/parent/register', data: formData);
+      final resp = await _parentDio.post('/api/parent/register', data: formData);
       return resp.data as Map<String, dynamic>;
     } on DioException { return null; }
   }
 
   static Future<Map<String, dynamic>?> parentLogin(String email, String pin) async {
     try {
-      final resp = await _dio.post('/api/parent/login', data: {'email': email, 'pin': pin});
+      final resp = await _parentDio.post('/api/parent/login', data: {'email': email, 'pin': pin});
       return resp.data as Map<String, dynamic>;
     } on DioException { return null; }
   }
 
   static Future<bool> parentChangePin(String oldPin, String newPin) async {
     try {
-      await _dio.post('/api/parent/change-pin', data: {'oldPin': oldPin, 'newPin': newPin});
+      await _addParentAuthHeader();
+      await _parentDio.post('/api/parent/change-pin', data: {'oldPin': oldPin, 'newPin': newPin});
       return true;
     } on DioException { return false; }
   }
 
   static Future<bool> parentLinkChild(String linkingCode) async {
     try {
-      await _dio.post('/api/parent/link-child', data: {'linkingCode': linkingCode});
+      await _addParentAuthHeader();
+      await _parentDio.post('/api/parent/link-child', data: {'linkingCode': linkingCode});
       return true;
     } on DioException { return false; }
   }
 
   static Future<List<dynamic>> parentGetChildren() async {
     try {
-      final resp = await _dio.get('/api/parent/children');
+      await _addParentAuthHeader();
+      final resp = await _parentDio.get('/api/parent/children');
       return resp.data as List<dynamic>;
     } on DioException { return []; }
   }
 
   static Future<Map<String, dynamic>?> parentGetPending() async {
     try {
-      final resp = await _dio.get('/api/parent/pending');
+      await _addParentAuthHeader();
+      final resp = await _parentDio.get('/api/parent/pending');
       return resp.data as Map<String, dynamic>;
     } on DioException { return null; }
+  }
+
+  static Future<void> _addParentAuthHeader() async {
+    final storage = FlutterSecureStorage();
+    final token = await storage.read(key: 'parent_token');
+    if (token != null) {
+      _parentDio.options.headers['Authorization'] = 'Bearer $token';
+    }
   }
 
   static Future<bool> parentApproveWithdrawal(String requestId) async {

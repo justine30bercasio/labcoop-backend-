@@ -2,12 +2,10 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/services/security_service.dart';
 import '../../data/datasources/local_db_source.dart';
 import '../../data/datasources/remote_api_source.dart';
 import 'change_password_page.dart';
 import 'home_page.dart';
-import 'biometric_login_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -26,7 +24,6 @@ class _LoginPageState extends State<LoginPage>
   final _passwordFocus = FocusNode();
   bool _loading = false;
   bool _obscurePassword = true;
-  bool _bioAvailable = false;
   String? _error;
 
   @override
@@ -40,9 +37,6 @@ class _LoginPageState extends State<LoginPage>
     _animController.forward();
     _cidFocus.addListener(() => setState(() {}));
     _passwordFocus.addListener(() => setState(() {}));
-    SecurityService.canAuthenticate().then((v) {
-      if (mounted) setState(() => _bioAvailable = v);
-    });
   }
 
   @override
@@ -73,57 +67,6 @@ class _LoginPageState extends State<LoginPage>
       final api = GetIt.instance<RemoteApiSource>();
       final result = await api.login(password, memberId: cid);
       if (!mounted) return;
-
-      // Save username for biometric login display
-      await SecurityService.setSavedUsername(cid);
-
-      // Offer biometric enrollment if available
-      final bioAvailable = await SecurityService.canAuthenticate();
-      final alreadyEnabled = await SecurityService.isBioLoginEnabled();
-      if (bioAvailable && !alreadyEnabled && mounted) {
-        final enable = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Enable Fingerprint Login?'),
-            content: const Text(
-              'Log in faster next time using your fingerprint or face ID. '
-              'Your password will be stored securely on this device only.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(false),
-                child: const Text('Not now'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.of(ctx).pop(true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.accentAmber,
-                  foregroundColor: AppTheme.textDark,
-                ),
-                child: const Text('Enable'),
-              ),
-            ],
-          ),
-        );
-        if (enable == true && mounted) {
-          final bioOk = await SecurityService.authenticate(
-            reason: 'Save your password securely with biometric',
-          );
-          if (bioOk) {
-            await SecurityService.saveBioPassword(password);
-            await SecurityService.setBioLoginEnabled(true);
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Fingerprint login enabled'),
-                  behavior: SnackBarBehavior.floating,
-                  duration: Duration(seconds: 2),
-                ),
-              );
-            }
-          }
-        }
-      }
 
       final passwordChanged = result['passwordChanged'] as bool? ?? false;
       Navigator.pushReplacement(
@@ -380,7 +323,6 @@ class _LoginPageState extends State<LoginPage>
                                     ),
                             ),
                           ),
-                          _buildBiometricButton(),
                           const SizedBox(height: 16),
                           Container(
                             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -414,46 +356,6 @@ class _LoginPageState extends State<LoginPage>
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildBiometricButton() {
-    if (!_bioAvailable) return const SizedBox.shrink();
-    return Column(
-      children: [
-        Row(
-          children: [
-            const Expanded(child: Divider(color: Colors.white12)),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Text('or', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),
-            ),
-            const Expanded(child: Divider(color: Colors.white12)),
-          ],
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          height: 44,
-          child: OutlinedButton.icon(
-            onPressed: () {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => const BiometricLoginPage()),
-              );
-            },
-            icon: const Icon(Icons.fingerprint, color: Colors.white70, size: 20),
-            label: const Text(
-              'Use fingerprint to log in',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
-            ),
-            style: OutlinedButton.styleFrom(
-              side: BorderSide(color: Colors.white.withValues(alpha: 0.25)),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            ),
-          ),
-        ),
-      ],
     );
   }
 

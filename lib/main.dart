@@ -16,10 +16,7 @@ import 'presentation/blocs/banking_bloc.dart';
 import 'presentation/blocs/loan_bloc.dart';
 import 'presentation/pages/splash_page.dart';
 import 'presentation/pages/login_page.dart';
-import 'presentation/pages/biometric_lock_page.dart';
-import 'presentation/pages/biometric_login_page.dart';
 import 'core/services/notification_service.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
@@ -34,7 +31,6 @@ void main() async {
     await Hive.openBox('app_settings');
   }
   await di.initDependencies();
-  await SecurityService.init();
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
@@ -52,21 +48,10 @@ void main() async {
     return;
   }
 
-  // If user has a saved token + biometric available → gate with biometric
-  final bioAvailable = await SecurityService.canAuthenticate();
-  if (bioAvailable) {
-    const storage = FlutterSecureStorage();
-    final token = await storage.read(key: 'auth_token');
-    if (token != null) {
-      runApp(const LabCoopApp(initialPage: _AppStartupPage.biometricLogin));
-      return;
-    }
-  }
-
   runApp(const LabCoopApp());
 }
 
-enum _AppStartupPage { normal, compromised, biometricLock, biometricLogin }
+enum _AppStartupPage { normal, compromised }
 
 class LabCoopApp extends StatefulWidget {
   final _AppStartupPage initialPage;
@@ -99,22 +84,9 @@ class _LabCoopAppState extends State<LabCoopApp> {
 
   @override
   Widget build(BuildContext context) {
-    Widget home;
-    switch (widget.initialPage) {
-      case _AppStartupPage.compromised:
-        home = const _CompromisedDevicePage();
-        break;
-      case _AppStartupPage.biometricLock:
-        home = const BiometricLockPage();
-        break;
-      case _AppStartupPage.biometricLogin:
-        home = const BiometricLoginPage();
-        break;
-      case _AppStartupPage.normal:
-      default:
-        home = const SplashPage();
-        break;
-    }
+    final home = widget.initialPage == _AppStartupPage.compromised
+        ? const _CompromisedDevicePage() as Widget
+        : const SplashPage() as Widget;
 
     return MultiBlocProvider(
       providers: [

@@ -48,6 +48,42 @@ const ID_TYPES = ['Passport', "Driver's License", "National ID", "UMID", "SSS ID
 // ── OTP Store (in-memory) ──
 const otpStore = new Map();
 
+// ── Debug SMTP connection (dev only) ──
+router.get('/debug-smtp', asyncHandler(async (req, res) => {
+  const nodemailer = require('nodemailer');
+  const info = {
+    host: process.env.MAIL_HOST || '(not set)',
+    port: process.env.MAIL_PORT || '(not set)',
+    scheme: process.env.MAIL_SCHEME || '(not set)',
+    user: process.env.MAIL_USERNAME ? '✓ set' : '(not set)',
+    pass: process.env.MAIL_PASSWORD ? '✓ set' : '(not set)',
+    fromAddr: process.env.MAIL_FROM_ADDRESS || '(not set)',
+    fromName: process.env.MAIL_FROM_NAME || '(not set)',
+    hasAuthModule: typeof require('nodemailer').createTransport === 'function',
+  };
+  if (process.env.MAIL_HOST) {
+    try {
+      const t = nodemailer.createTransport({
+        host: process.env.MAIL_HOST,
+        port: Number(process.env.MAIL_PORT) || 587,
+        secure: (process.env.MAIL_SCHEME || 'smtps') === 'smtps',
+        auth: { user: process.env.MAIL_USERNAME, pass: process.env.MAIL_PASSWORD },
+        tls: { rejectUnauthorized: false },
+        connectionTimeout: 8000,
+        greetingTimeout: 8000,
+      });
+      await t.verify();
+      info.verifyResult = '✓ SMTP connection OK';
+    } catch (e) {
+      info.verifyResult = '✗ FAILED: ' + e.message;
+      info.verifyCode = e.code;
+    }
+    res.json(info);
+  } else {
+    res.json(info);
+  }
+}));
+
 // ── Send OTP to parent email ──
 router.post('/send-otp', asyncHandler(async (req, res) => {
   const { email } = req.body;
@@ -78,6 +114,9 @@ router.post('/send-otp', asyncHandler(async (req, res) => {
           pass: process.env.MAIL_PASSWORD,
         },
         tls: { rejectUnauthorized: false },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000,
       });
       const fromName = process.env.MAIL_FROM_NAME || 'LabCoop Parent Portal';
       const fromAddr = (process.env.MAIL_FROM_ADDRESS || process.env.MAIL_USERNAME).replace(/^"|"$/g, '');

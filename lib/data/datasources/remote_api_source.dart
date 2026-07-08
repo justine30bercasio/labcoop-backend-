@@ -53,12 +53,12 @@ class RemoteApiSource {
     await _secureStorage.deleteAll();
   }
 
-  Future<Map<String, dynamic>> login(String password, {String? childName, String? accountId, String? memberId}) async {
+  Future<Map<String, dynamic>> login(String pin, {String? childName, String? accountId, String? memberId}) async {
     final response = await _dio.post('/api/auth/login', data: {
       if (childName != null) 'childName': childName,
       if (accountId != null) 'accountId': accountId,
       if (memberId != null) 'memberId': memberId,
-      'password': password,
+      'pin': pin,
     });
     final data = response.data as Map<String, dynamic>;
     await saveSession(
@@ -77,7 +77,8 @@ class RemoteApiSource {
     required String lastName,
     required String firstName,
     String middleName = '',
-    required String password,
+    required String pin,
+    String parentEmail = '',
     String parentPhone = '',
     String birthday = '',
     int age = 0,
@@ -94,7 +95,8 @@ class RemoteApiSource {
       'lastName': lastName,
       'firstName': firstName,
       'middleName': middleName,
-      'password': password,
+      'pin': pin,
+      'parentEmail': parentEmail,
       'parentPhone': parentPhone,
       'birthday': birthday,
       'age': age,
@@ -132,10 +134,10 @@ class RemoteApiSource {
     return data;
   }
 
-  Future<Map<String, dynamic>> changePassword(String oldPassword, String newPassword) async {
-    final response = await _dio.post('/api/auth/change-password', data: {
-      'oldPassword': oldPassword,
-      'newPassword': newPassword,
+  Future<Map<String, dynamic>> changePin(String oldPin, String newPin) async {
+    final response = await _dio.post('/api/auth/change-pin', data: {
+      'oldPin': oldPin,
+      'newPin': newPin,
     });
     return response.data as Map<String, dynamic>;
   }

@@ -55,7 +55,7 @@ class _BiometricLoginPageState extends State<BiometricLoginPage> {
     if (!authed) {
       setState(() {
         _loading = false;
-        _error = 'Biometric not available. Make sure fingerprints are enrolled in your phone settings, then tap the button or use password.';
+        _error = 'Please tap the button below to try again, or use "Use password instead".';
       });
       return;
     }

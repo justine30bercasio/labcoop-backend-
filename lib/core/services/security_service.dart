@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:safe_device/safe_device.dart';
 import 'package:local_auth/local_auth.dart';
@@ -36,10 +37,12 @@ class SecurityService {
         localizedReason: reason,
         options: const AuthenticationOptions(
           stickyAuth: true,
-          biometricOnly: true,
+          biometricOnly: false,
+          useErrorDialogs: true,
         ),
       );
-    } catch (_) {
+    } catch (e) {
+      stderr.writeln('[SecurityService] authenticate error: $e');
       return false;
     }
   }

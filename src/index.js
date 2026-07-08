@@ -474,6 +474,7 @@ const settingsRouter = require('./routes/settings');
 const kycRouter = require('./routes/kyc');
 const parentalConsentRouter = require('./routes/parental-consent');
 const accountDeletionRouter = require('./routes/account-deletion');
+const { router: parentRouter } = require('./routes/parent');
 const coinsRouter = require('./routes/coins');
 
 apiRouter.use('/accounts', authMiddleware, requireOwnership, accountsRouter);
@@ -512,6 +513,7 @@ apiRouter.use('/settings', authMiddleware, requireOwnership, settingsRouter);
 apiRouter.use('/parental-consent', parentalConsentRouter);
 apiRouter.use('/account-deletion', accountDeletionRouter);
 apiRouter.use('/coins', authMiddleware, requireOwnership, coinsRouter);
+apiRouter.use('/parent', parentRouter);
 
 // Mount: public first (health/auth handled here), then authenticated routes
 app.use('/api', publicRouter);

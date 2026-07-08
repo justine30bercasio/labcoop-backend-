@@ -70,6 +70,9 @@ function getDb() {
     try { db.exec("ALTER TABLE accounts ADD COLUMN parent_email VARCHAR(255) DEFAULT ''"); } catch (_) {}
     try { db.exec("ALTER TABLE parental_consent ADD COLUMN parent_email TEXT DEFAULT ''"); } catch (_) {}
     try { db.exec("ALTER TABLE admin_users ADD COLUMN branch_id TEXT REFERENCES branches(branch_id)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS parents (parent_id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT DEFAULT '', pin_hash TEXT DEFAULT '', display_name TEXT DEFAULT '', phone TEXT DEFAULT '', created_at TEXT)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS parent_child_links (link_id TEXT PRIMARY KEY, parent_id TEXT NOT NULL, child_account_id TEXT NOT NULL, linking_code TEXT, status TEXT DEFAULT 'active', created_at TEXT)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS parent_limits (limit_id TEXT PRIMARY KEY, parent_id TEXT NOT NULL, child_account_id TEXT NOT NULL, max_daily_withdrawal DECIMAL(12,2) DEFAULT 0, max_loan_amount DECIMAL(12,2) DEFAULT 0, require_approval_for TEXT DEFAULT 'all')"); } catch (_) {}
     try { db.exec("ALTER TABLE teller_cash ADD COLUMN branch_id TEXT REFERENCES branches(branch_id)"); } catch (_) {}
     try { db.exec("INSERT OR IGNORE INTO branches (branch_id, name, code, address) VALUES ('main', 'Main Branch', 'MAIN', 'Head Office')"); } catch (_) {}
     try { db.exec("INSERT OR IGNORE INTO fees (fee_id, name, amount, fee_type, gl_account_code, description) VALUES ('fee_acct_maintenance', 'Account Maintenance Fee', 10, 'fixed', '4100', 'Monthly account maintenance fee')"); } catch (_) {}

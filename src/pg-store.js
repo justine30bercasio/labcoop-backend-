@@ -338,6 +338,31 @@ class PgStore {
         resolved_at TEXT
       );
       ALTER TABLE parental_consent ADD COLUMN IF NOT EXISTS parent_email VARCHAR(255) DEFAULT '';
+      CREATE TABLE IF NOT EXISTS parents (
+        parent_id TEXT PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL,
+        password_hash TEXT DEFAULT '',
+        pin_hash TEXT DEFAULT '',
+        display_name TEXT DEFAULT '',
+        phone TEXT DEFAULT '',
+        created_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS parent_child_links (
+        link_id TEXT PRIMARY KEY,
+        parent_id TEXT NOT NULL REFERENCES parents(parent_id) ON DELETE CASCADE,
+        child_account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+        linking_code TEXT,
+        status TEXT DEFAULT 'active',
+        created_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS parent_limits (
+        limit_id TEXT PRIMARY KEY,
+        parent_id TEXT NOT NULL REFERENCES parents(parent_id) ON DELETE CASCADE,
+        child_account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+        max_daily_withdrawal DECIMAL(12,2) DEFAULT 0,
+        max_loan_amount DECIMAL(12,2) DEFAULT 0,
+        require_approval_for TEXT DEFAULT 'all'
+      );
       CREATE TABLE IF NOT EXISTS parental_consent (
         consent_id TEXT PRIMARY KEY,
         account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,

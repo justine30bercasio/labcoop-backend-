@@ -72,7 +72,12 @@ function getDb() {
     try { db.exec("ALTER TABLE accounts ADD COLUMN link_code_expires_at TEXT DEFAULT ''"); } catch (_) {}
     try { db.exec("ALTER TABLE parental_consent ADD COLUMN parent_email TEXT DEFAULT ''"); } catch (_) {}
     try { db.exec("ALTER TABLE admin_users ADD COLUMN branch_id TEXT REFERENCES branches(branch_id)"); } catch (_) {}
-    try { db.exec("CREATE TABLE IF NOT EXISTS parents (parent_id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT DEFAULT '', pin_hash TEXT DEFAULT '', display_name TEXT DEFAULT '', phone TEXT DEFAULT '', created_at TEXT)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS parents (parent_id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT DEFAULT '', pin_hash TEXT DEFAULT '', display_name TEXT DEFAULT '', phone TEXT DEFAULT '', photo_url TEXT DEFAULT '', id_type TEXT DEFAULT '', id_number TEXT DEFAULT '', id_photo_url TEXT DEFAULT '', status TEXT DEFAULT 'pending', created_at TEXT)"); } catch (_) {}
+    try { db.exec("ALTER TABLE parents ADD COLUMN photo_url TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE parents ADD COLUMN id_type TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE parents ADD COLUMN id_number TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE parents ADD COLUMN id_photo_url TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE parents ADD COLUMN status TEXT DEFAULT 'pending'"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS parent_child_links (link_id TEXT PRIMARY KEY, parent_id TEXT NOT NULL, child_account_id TEXT NOT NULL, linking_code TEXT, status TEXT DEFAULT 'active', created_at TEXT)"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS parent_limits (limit_id TEXT PRIMARY KEY, parent_id TEXT NOT NULL, child_account_id TEXT NOT NULL, max_daily_withdrawal DECIMAL(12,2) DEFAULT 0, max_loan_amount DECIMAL(12,2) DEFAULT 0, require_approval_for TEXT DEFAULT 'all')"); } catch (_) {}
     try { db.exec("ALTER TABLE teller_cash ADD COLUMN branch_id TEXT REFERENCES branches(branch_id)"); } catch (_) {}

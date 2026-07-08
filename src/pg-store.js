@@ -349,8 +349,18 @@ class PgStore {
         pin_hash TEXT DEFAULT '',
         display_name TEXT DEFAULT '',
         phone TEXT DEFAULT '',
+        photo_url TEXT DEFAULT '',
+        id_type TEXT DEFAULT '',
+        id_number TEXT DEFAULT '',
+        id_photo_url TEXT DEFAULT '',
+        status TEXT DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
         created_at TEXT
       );
+      ALTER TABLE parents ADD COLUMN IF NOT EXISTS photo_url TEXT DEFAULT '';
+      ALTER TABLE parents ADD COLUMN IF NOT EXISTS id_type TEXT DEFAULT '';
+      ALTER TABLE parents ADD COLUMN IF NOT EXISTS id_number TEXT DEFAULT '';
+      ALTER TABLE parents ADD COLUMN IF NOT EXISTS id_photo_url TEXT DEFAULT '';
+      ALTER TABLE parents ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending';
       CREATE TABLE IF NOT EXISTS parent_child_links (
         link_id TEXT PRIMARY KEY,
         parent_id TEXT NOT NULL REFERENCES parents(parent_id) ON DELETE CASCADE,

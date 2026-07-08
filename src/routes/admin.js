@@ -6851,17 +6851,23 @@ router.post('/board/delete/:id', requireRole(3), asyncHandler(async (req, res) =
 // ── Parent Management ──
 router.get('/parents', requireRole(3,4), asyncHandler(async (req, res) => {
   const q = req.query.q ? req.query.q.trim() : '';
-  const filter = req.query.filter || 'all'; // all, linked, unlinked
+  const filter = req.query.filter || 'registered'; // registered, linked, unlinked, pending
 
   let parents;
-  if (q) {
+  if (filter === 'pending') {
+    parents = await store.query("SELECT * FROM parents WHERE status = 'pending' ORDER BY created_at DESC");
+  } else if (q) {
     parents = await store.query(
-      'SELECT DISTINCT p.parent_id, p.email, p.display_name, p.phone, p.created_at FROM parents p WHERE p.email LIKE $1 OR p.display_name LIKE $1 ORDER BY p.created_at DESC',
+      "SELECT * FROM parents p WHERE (p.email LIKE $1 OR p.display_name LIKE $1 OR p.id_number LIKE $1) ORDER BY p.created_at DESC",
       [`%${q}%`]
     );
   } else {
-    parents = await store.query('SELECT parent_id, email, display_name, phone, created_at FROM parents ORDER BY created_at DESC');
+    parents = await store.query("SELECT * FROM parents WHERE status = 'approved' ORDER BY created_at DESC");
   }
+
+  // Count pending for badge
+  const pendingCount = await store.query("SELECT COUNT(*) as c FROM parents WHERE status = 'pending'");
+  const pendingNum = parseInt(pendingCount.rows[0]?.c || '0', 10);
 
   // For each parent, get linked children
   async function getChildren(parentId) {
@@ -6884,12 +6890,14 @@ router.get('/parents', requireRole(3,4), asyncHandler(async (req, res) => {
     parentsWithChildren.push({ ...p, children: children.rows });
   }
 
+  const csrf = res.locals.csrfToken;
   const content = `
   <style>
     .parent-card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; margin-bottom:16px; overflow:hidden; }
     .parent-header { padding:16px 20px; display:flex; align-items:center; gap:16px; cursor:pointer; background:#f9fafb; border-bottom:1px solid #e5e7eb; }
     .parent-header:hover { background:#f3f4f6; }
-    .parent-header .avatar { width:40px; height:40px; border-radius:50%; background:linear-gradient(135deg,#2E7D32,#1B5E20); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; font-size:16px; flex-shrink:0; }
+    .parent-header .avatar { width:40px; height:40px; border-radius:50%; background:linear-gradient(135deg,#2E7D32,#1B5E20); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; font-size:16px; flex-shrink:0; overflow:hidden; }
+    .parent-header .avatar img { width:100%; height:100%; object-fit:cover; }
     .parent-info { flex:1; }
     .parent-info .name { font-weight:600; font-size:15px; color:#111827; }
     .parent-info .email { font-size:13px; color:#6b7280; }
@@ -6908,88 +6916,199 @@ router.get('/parents', requireRole(3,4), asyncHandler(async (req, res) => {
     .search-bar { display:flex; gap:12px; margin-bottom:24px; flex-wrap:wrap; }
     .search-bar input { flex:1; min-width:200px; padding:10px 16px; border:1px solid #d1d5db; border-radius:8px; font-size:14px; }
     .search-bar input:focus { outline:none; border-color:#2E7D32; box-shadow:0 0 0 3px rgba(46,125,50,0.1); }
-    .filter-tabs { display:flex; gap:8px; margin-bottom:20px; }
+    .filter-tabs { display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap; }
     .filter-tabs a { padding:6px 14px; border-radius:20px; font-size:13px; text-decoration:none; color:#6b7280; background:#f3f4f6; transition:all 0.15s; }
     .filter-tabs a.active { background:#2E7D32; color:#fff; }
     .filter-tabs a:hover:not(.active) { background:#e5e7eb; }
     .count-badge { display:inline-block; background:#2E7D32; color:#fff; padding:1px 8px; border-radius:10px; font-size:11px; margin-left:6px; }
+    .count-badge-warn { background:#f59e0b; }
     .collapse-icon { transition:transform 0.2s; font-size:12px; color:#9ca3af; }
     .collapse-icon.open { transform:rotate(90deg); }
     .child-body { display:none; }
     .child-body.open { display:block; }
+    .pending-card { background:#fff; border:2px solid #f59e0b; border-radius:12px; margin-bottom:16px; overflow:hidden; }
+    .pending-card .pending-header { padding:16px 20px; background:#fffbeb; border-bottom:1px solid #fde68a; }
+    .pending-card .pending-header h4 { margin:0 0 4px; font-size:16px; color:#92400e; }
+    .pending-card .pending-body { padding:16px 20px; }
+    .photo-grid { display:flex; gap:16px; margin:12px 0; flex-wrap:wrap; }
+    .photo-grid .photo-box { width:160px; }
+    .photo-grid .photo-box .photo-label { font-size:11px; color:#6b7280; margin-bottom:4px; }
+    .photo-grid .photo-box img { width:100%; height:120px; object-fit:cover; border-radius:8px; border:1px solid #e5e7eb; }
+    .id-details { display:flex; gap:12px; flex-wrap:wrap; margin:8px 0; }
+    .id-details .detail-item { background:#f9fafb; padding:8px 12px; border-radius:8px; font-size:13px; }
+    .id-details .detail-item .label { color:#6b7280; font-size:11px; }
+    .action-btns { display:flex; gap:8px; margin-top:12px; }
+    .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; justify-content:center; align-items:center; }
+    .modal-overlay.open { display:flex; }
+    .modal-box { background:#fff; border-radius:12px; max-width:500px; width:90%; max-height:80vh; overflow-y:auto; padding:24px; }
   </style>
   <div class="card">
     <div class="card-header">
       <h3><i class="fas fa-family"></i> Parent Management</h3>
       <span style="color:#6b7280;font-size:13px">${parentsWithChildren.length} parent${parentsWithChildren.length !== 1 ? 's' : ''}</span>
+      ${pendingNum > 0 ? `<span class="count-badge count-badge-warn">${pendingNum} pending</span>` : ''}
     </div>
     <div class="card-body-padded">
       <form method="get" action="/admin/parents" class="search-bar">
-        <input type="text" name="q" placeholder="Search by email or display name..." value="${h(q)}">
+        <input type="text" name="q" placeholder="Search by email, name, or ID number..." value="${h(q)}">
         <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Search</button>
         ${q ? '<a href="/admin/parents" class="btn btn-cancel">Clear</a>' : ''}
       </form>
       <div class="filter-tabs">
-        <a href="/admin/parents${q ? '?q='+encodeURIComponent(q) : ''}" class="${filter === 'all' ? 'active' : ''}">All</a>
-        <a href="/admin/parents?filter=linked${q ? '&q='+encodeURIComponent(q) : ''}" class="${filter === 'linked' ? 'active' : ''}">With Children</a>
-        <a href="/admin/parents?filter=unlinked${q ? '&q='+encodeURIComponent(q) : ''}" class="${filter === 'unlinked' ? 'active' : ''}">No Children Yet</a>
+        <a href="/admin/parents?filter=registered" class="${filter === 'registered' ? 'active' : ''}">Approved</a>
+        <a href="/admin/parents?filter=pending" class="${filter === 'pending' ? 'active' : ''}">Pending ${pendingNum > 0 ? '('+pendingNum+')' : ''}</a>
+        <a href="/admin/parents?filter=linked" class="${filter === 'linked' ? 'active' : ''}">With Children</a>
+        <a href="/admin/parents?filter=unlinked" class="${filter === 'unlinked' ? 'active' : ''}">No Children</a>
       </div>
-      ${parentsWithChildren.length === 0 ? `
-        <div class="empty-state">
-          <i class="fas fa-users"></i>
-          <p style="font-size:16px;font-weight:600;color:#6b7280">${q ? 'No parents match your search' : 'No parents registered yet'}</p>
-          <p style="font-size:13px">Parents register through the Parent Portal in the mobile app</p>
-        </div>
-      ` : parentsWithChildren.map(p => {
-        const childCount = p.children.length;
-        const initial = (p.display_name || p.email || '?')[0].toUpperCase();
-        return `
-        <div class="parent-card">
-          <div class="parent-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.collapse-icon').classList.toggle('open')">
-            <div class="avatar">${initial}</div>
-            <div class="parent-info">
-              <div class="name">${h(p.display_name || 'Unnamed')}</div>
-              <div class="email">${h(p.email)}</div>
-              <div class="meta">Parent ID: ${h(p.parent_id.slice(0,8))}… &middot; Registered ${new Date(p.created_at).toLocaleDateString()}${p.phone ? ' &middot; Phone: '+h(p.phone) : ''}</div>
+
+      ${filter === 'pending' ? `
+        <!-- Pending Registrations -->
+        ${parentsWithChildren.length === 0 ? `
+          <div class="empty-state">
+            <i class="fas fa-check-circle" style="color:#16a34a"></i>
+            <p style="font-size:16px;font-weight:600;color:#6b7280">All caught up!</p>
+            <p style="font-size:13px">No pending parent registrations</p>
+          </div>
+        ` : parentsWithChildren.map(p => `
+          <div class="pending-card">
+            <div class="pending-header">
+              <h4>${h(p.display_name || 'Unnamed Parent')}</h4>
+              <span style="font-size:13px;color:#92400e">${h(p.email)}</span>
+              <span style="font-size:12px;color:#b45309;display:block;margin-top:4px">Registered ${new Date(p.created_at).toLocaleDateString()}</span>
             </div>
-            <span class="count-badge">${childCount} child${childCount !== 1 ? 'ren' : ''}</span>
-            <i class="fas fa-chevron-right collapse-icon"></i>
-          </div>
-          <div class="child-body">
-            ${childCount === 0 ? `
-              <div style="padding:20px;text-align:center;color:#9ca3af;font-size:13px">
-                <i class="fas fa-link-slash"></i> No children linked yet. Parents link via the mobile app.
+            <div class="pending-body">
+              <div class="photo-grid">
+                <div class="photo-box">
+                  <div class="photo-label">Photo</div>
+                  ${p.photo_url ? `<img src="${p.photo_url}" alt="Parent photo" onerror="this.parentElement.innerHTML='<div style=\\'padding:12px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#9ca3af\\'>No photo</div>'">` : '<div style="padding:40px 12px;background:#f3f4f6;border-radius:8px;text-align:center;font-size:12px;color:#9ca3af">No photo</div>'}
+                </div>
+                <div class="photo-box">
+                  <div class="photo-label">ID Photo</div>
+                  ${p.id_photo_url ? `<img src="${p.id_photo_url}" alt="ID photo" onerror="this.parentElement.innerHTML='<div style=\\'padding:12px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#9ca3af\\'>No photo</div>'">` : '<div style="padding:40px 12px;background:#f3f4f6;border-radius:8px;text-align:center;font-size:12px;color:#9ca3af">No ID photo</div>'}
+                </div>
               </div>
-            ` : `
-            <table class="child-table">
-              <thead><tr>
-                <th>Child Name</th>
-                <th>Account ID</th>
-                <th>KYC</th>
-                <th>Consent</th>
-                <th>Link Status</th>
-                <th>Linked Since</th>
-              </tr></thead>
-              <tbody>
-                ${p.children.map(c => `
-                <tr>
-                  <td><a href="/admin/accounts?id=${c.account_id}" style="color:#2E7D32;font-weight:600;text-decoration:none">${h(c.child_name)}</a></td>
-                  <td style="font-family:monospace;font-size:12px">${h(c.account_id.slice(0,8))}…</td>
-                  <td><span class="badge ${c.kyc_status === 'approved' ? 'badge-active' : c.kyc_status === 'pending' ? 'badge-pending' : 'badge-rejected'}">${h(c.kyc_status || 'none')}</span></td>
-                  <td><span class="badge ${c.consent_status === 'approved' ? 'badge-active' : c.consent_status === 'pending' ? 'badge-pending' : 'badge-rejected'}">${h(c.consent_status || 'none')}</span></td>
-                  <td><span class="badge badge-active">${h(c.link_status)}</span></td>
-                  <td style="color:#6b7280;font-size:12px">${new Date(c.linked_at).toLocaleDateString()}</td>
-                </tr>
-                `).join('')}
-              </tbody>
-            </table>
-            `}
+              <div class="id-details">
+                <div class="detail-item">
+                  <div class="label">ID Type</div>
+                  <div style="font-weight:600">${h(p.id_type || 'N/A')}</div>
+                </div>
+                <div class="detail-item">
+                  <div class="label">ID Number</div>
+                  <div style="font-weight:600;font-family:monospace">${h(p.id_number || 'N/A')}</div>
+                </div>
+                <div class="detail-item">
+                  <div class="label">Phone</div>
+                  <div>${h(p.phone || 'N/A')}</div>
+                </div>
+              </div>
+              <div class="action-btns">
+                <form method="post" action="/admin/parents/approve/${h(p.parent_id)}" style="display:inline">
+                  <input type="hidden" name="_csrf" value="${csrf}">
+                  <button type="submit" class="btn btn-success btn-sm" onclick="return confirm('Approve ${h(p.display_name || p.email)}?')"><i class="fas fa-check"></i> Approve</button>
+                </form>
+                <button class="btn btn-danger btn-sm" onclick="document.getElementById('rejectModal_${h(p.parent_id).replace(/-/g,'_')}').classList.add('open')"><i class="fas fa-times"></i> Reject</button>
+              </div>
+            </div>
           </div>
-        </div>`;
-      }).join('')}
+          <!-- Reject Modal -->
+          <div id="rejectModal_${h(p.parent_id).replace(/-/g,'_')}" class="modal-overlay" onclick="if(event.target===this)this.classList.remove('open')">
+            <div class="modal-box">
+              <h3 style="margin-bottom:12px">Reject Parent Registration</h3>
+              <p style="font-size:13px;color:#6b7280;margin-bottom:16px">Reason for rejecting <strong>${h(p.display_name || p.email)}</strong>:</p>
+              <form method="post" action="/admin/parents/reject/${h(p.parent_id)}">
+                <input type="hidden" name="_csrf" value="${csrf}">
+                <textarea name="reason" rows="3" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;margin-bottom:12px;font-size:13px" placeholder="Optional rejection reason..."></textarea>
+                <div style="display:flex;gap:8px">
+                  <button type="submit" class="btn btn-danger"><i class="fas fa-times"></i> Confirm Reject</button>
+                  <button type="button" class="btn btn-cancel" onclick="this.closest('.modal-overlay').classList.remove('open')">Cancel</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        `).join('')}
+      ` : `
+        <!-- Registered Parents (tree view) -->
+        ${parentsWithChildren.length === 0 ? `
+          <div class="empty-state">
+            <i class="fas fa-users"></i>
+            <p style="font-size:16px;font-weight:600;color:#6b7280">${q ? 'No parents match your search' : 'No approved parents yet'}</p>
+            <p style="font-size:13px">Parents register through the Parent Portal in the mobile app</p>
+          </div>
+        ` : parentsWithChildren.map(p => {
+          const childCount = p.children.length;
+          const initial = (p.display_name || p.email || '?')[0].toUpperCase();
+          return `
+          <div class="parent-card">
+            <div class="parent-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.collapse-icon').classList.toggle('open')">
+              <div class="avatar">
+                ${p.photo_url ? `<img src="${p.photo_url}" onerror="this.outerHTML='${initial}'">` : initial}
+              </div>
+              <div class="parent-info">
+                <div class="name">${h(p.display_name || 'Unnamed')}</div>
+                <div class="email">${h(p.email)}</div>
+                <div class="meta">${h(p.id_type || 'ID')}: ${h(p.id_number || 'N/A')} &middot; Registered ${new Date(p.created_at).toLocaleDateString()}${p.phone ? ' &middot; Phone: '+h(p.phone) : ''}</div>
+              </div>
+              <span class="count-badge">${childCount} child${childCount !== 1 ? 'ren' : ''}</span>
+              <i class="fas fa-chevron-right collapse-icon"></i>
+            </div>
+            <div class="child-body">
+              ${childCount === 0 ? `
+                <div style="padding:20px;text-align:center;color:#9ca3af;font-size:13px">
+                  <i class="fas fa-link-slash"></i> No children linked yet. Parents link via the mobile app.
+                </div>
+              ` : `
+              <table class="child-table">
+                <thead><tr>
+                  <th>Child Name</th>
+                  <th>Account ID</th>
+                  <th>KYC</th>
+                  <th>Consent</th>
+                  <th>Link Status</th>
+                  <th>Linked Since</th>
+                </tr></thead>
+                <tbody>
+                  ${p.children.map(c => `
+                  <tr>
+                    <td><a href="/admin/accounts?id=${c.account_id}" style="color:#2E7D32;font-weight:600;text-decoration:none">${h(c.child_name)}</a></td>
+                    <td style="font-family:monospace;font-size:12px">${h(c.account_id.slice(0,8))}…</td>
+                    <td><span class="badge ${c.kyc_status === 'approved' ? 'badge-active' : c.kyc_status === 'pending' ? 'badge-pending' : 'badge-rejected'}">${h(c.kyc_status || 'none')}</span></td>
+                    <td><span class="badge ${c.consent_status === 'approved' ? 'badge-active' : c.consent_status === 'pending' ? 'badge-pending' : 'badge-rejected'}">${h(c.consent_status || 'none')}</span></td>
+                    <td><span class="badge badge-active">${h(c.link_status)}</span></td>
+                    <td style="color:#6b7280;font-size:12px">${new Date(c.linked_at).toLocaleDateString()}</td>
+                  </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+              `}
+            </div>
+          </div>`;
+        }).join('')}
+      `}
     </div>
   </div>`;
   res.type('html').send(layout('Parent Management', 'parents', content, { subtitle: parentsWithChildren.length + ' parent' + (parentsWithChildren.length !== 1 ? 's' : '') }));
+}));
+
+// ── Admin: Approve Parent Registration ──
+router.post('/parents/approve/:parentId', requireRole(3,4), asyncHandler(async (req, res) => {
+  const result = await store.query('SELECT * FROM parents WHERE parent_id = $1', [req.params.parentId]);
+  if (result.rows.length === 0) { req.flash = req.flash || (() => {}); return res.redirect('/admin/parents?filter=pending'); }
+  const parent = result.rows[0];
+  if (parent.status !== 'pending') return res.redirect('/admin/parents?filter=pending&error=Already+processed');
+  await store.query("UPDATE parents SET status = 'approved' WHERE parent_id = $1", [req.params.parentId]);
+  res.redirect('/admin/parents?filter=pending&success=Parent+approved');
+}));
+
+// ── Admin: Reject Parent Registration ──
+router.post('/parents/reject/:parentId', requireRole(3,4), asyncHandler(async (req, res) => {
+  const reason = req.body.reason || 'Registration rejected by admin';
+  const result = await store.query('SELECT * FROM parents WHERE parent_id = $1', [req.params.parentId]);
+  if (result.rows.length === 0) return res.redirect('/admin/parents?filter=pending');
+  const parent = result.rows[0];
+  if (parent.status !== 'pending') return res.redirect('/admin/parents?filter=pending&error=Already+processed');
+  await store.query("UPDATE parents SET status = 'rejected', admin_notes = $1 WHERE parent_id = $2",
+    [reason, req.params.parentId]);
+  res.redirect('/admin/parents?filter=pending&success=Parent+rejected');
 }));
 
 module.exports = router;

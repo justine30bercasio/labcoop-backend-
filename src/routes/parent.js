@@ -7,6 +7,7 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const nodemailer = require('nodemailer');
+const dns = require('dns').promises;
 const rateLimit = require('express-rate-limit');
 const { store } = require('../db');
 const { asyncHandler } = require('../async-handler');
@@ -48,33 +49,52 @@ const ID_TYPES = ['Passport', "Driver's License", "National ID", "UMID", "SSS ID
 // ── OTP Store (in-memory) ──
 const otpStore = new Map();
 
+// ── Resolve smtp.gmail.com to IPv4 & test connection ──
+async function createSmtpTransport() {
+  const host = process.env.MAIL_HOST || 'smtp.gmail.com';
+  const port = Number(process.env.MAIL_PORT) || 587;
+  const secure = (process.env.MAIL_SCHEME || 'smtp') === 'smtps';
+  let resolvedHost = host;
+  try {
+    const addrs = await dns.resolve4(host);
+    if (addrs.length > 0) resolvedHost = addrs[0];
+  } catch (_) {}
+  return nodemailer.createTransport({
+    host: resolvedHost,
+    port,
+    secure,
+    auth: { user: process.env.MAIL_USERNAME, pass: process.env.MAIL_PASSWORD },
+    tls: { rejectUnauthorized: false, servername: host },
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
+  });
+}
+
 // ── Debug SMTP config ──
 router.get('/debug-smtp', asyncHandler(async (req, res) => {
   const port = Number(process.env.MAIL_PORT) || 587;
   const scheme = process.env.MAIL_SCHEME || 'smtp';
-  const secure = scheme === 'smtps';
   const info = {
     host: process.env.MAIL_HOST || '(not set)',
     port,
     scheme,
-    secure,
+    secure: scheme === 'smtps',
     user: process.env.MAIL_USERNAME ? '✓ set' : '(not set)',
     pass: process.env.MAIL_PASSWORD ? '✓ set' : '(not set)',
     fromAddr: process.env.MAIL_FROM_ADDRESS || '(not set)',
     fromName: process.env.MAIL_FROM_NAME || '(not set)',
   };
   if (process.env.MAIL_HOST) {
+    // Check IPv4 resolution
     try {
-      const t = nodemailer.createTransport({
-        host: process.env.MAIL_HOST,
-        port,
-        secure,
-        auth: { user: process.env.MAIL_USERNAME, pass: process.env.MAIL_PASSWORD },
-        tls: { rejectUnauthorized: false },
-        connectionTimeout: 10000,
-        greetingTimeout: 10000,
-        family: 4,
-      });
+      const addrs = await dns.resolve4(process.env.MAIL_HOST);
+      info.resolvedIpv4 = addrs[0];
+    } catch (e) {
+      info.dnsError = e.message;
+    }
+    try {
+      const t = await createSmtpTransport();
       await t.verify();
       info.verifyResult = '✓ SMTP connection OK';
     } catch (e) {
@@ -87,7 +107,7 @@ router.get('/debug-smtp', asyncHandler(async (req, res) => {
   }
 }));
 
-// ── Send OTP to parent email (nodemailer, STARTTLS on 587 / SSL on 465) ──
+// ── Send OTP to parent email (nodemailer, IPv4 forced via dns.resolve4) ──
 router.post('/send-otp', asyncHandler(async (req, res) => {
   const { email } = req.body;
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -102,24 +122,11 @@ router.post('/send-otp', asyncHandler(async (req, res) => {
   }
   const otp = crypto.randomInt(100000, 999999).toString();
   otpStore.set(normalEmail, { otp, expires: now + 600000, attempts: attempts + 1 });
-  const host = process.env.MAIL_HOST;
-  if (!host) {
+  if (!process.env.MAIL_HOST) {
     console.warn('MAIL_HOST not set — OTP would be:', otp);
   } else {
-    const port = Number(process.env.MAIL_PORT) || 587;
-    const secure = (process.env.MAIL_SCHEME || 'smtp') === 'smtps';
     try {
-      const transporter = nodemailer.createTransport({
-        host,
-        port,
-        secure,
-        auth: { user: process.env.MAIL_USERNAME, pass: process.env.MAIL_PASSWORD },
-        tls: { rejectUnauthorized: false },
-        connectionTimeout: 15000,
-        greetingTimeout: 15000,
-        socketTimeout: 20000,
-        family: 4,
-      });
+      const transporter = await createSmtpTransport();
       const fromName = process.env.MAIL_FROM_NAME || 'MySYS';
       const fromAddr = (process.env.MAIL_FROM_ADDRESS || process.env.MAIL_USERNAME).replace(/^"|"$/g, '');
       await transporter.sendMail({

@@ -1,6 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/network/banking_api_service.dart';
 import 'parent_dashboard_page.dart';
@@ -19,19 +20,29 @@ class _ParentLoginPageState extends State<ParentLoginPage>
   int _mode = 0; // 0=login, 1=register
   final _emailController = TextEditingController();
   final _nameController = TextEditingController();
+  final _pinController = TextEditingController();
+  final _pin1Controller = TextEditingController();
+  final _pin2Controller = TextEditingController();
+  final _idNumberController = TextEditingController();
+  final _pinFocus = FocusNode();
+  final _pin1Focus = FocusNode();
+  final _pin2Focus = FocusNode();
 
-  // PIN state (for login)
-  final List<String> _pinDigits = ['', '', '', '', '', ''];
-  int _pinIndex = 0;
+  // Photo state
+  String? _photoPath;
+  String? _idPhotoPath;
+  final _picker = ImagePicker();
 
-  // Register PIN (2 sets for confirmation)
-  final List<String> _regPin1 = ['', '', '', '', '', ''];
-  int _regPin1Index = 0;
-  final List<String> _regPin2 = ['', '', '', '', '', ''];
-  int _regPin2Index = 0;
-  bool _confirmingPin = false;
+  // ID type
+  final List<String> _idTypes = [
+    'Passport', "Driver's License", 'National ID', 'UMID', 'SSS ID',
+    'GSIS ID', 'PRC ID', 'Postal ID', "Voter's ID", 'Barangay ID',
+    'School ID', 'Company ID', 'Other',
+  ];
+  String _selectedIdType = '';
 
   bool _loading = false;
+  bool _registered = false; // show pending message after registration
   String? _error;
 
   @override
@@ -49,81 +60,59 @@ class _ParentLoginPageState extends State<ParentLoginPage>
     _animController.dispose();
     _emailController.dispose();
     _nameController.dispose();
+    _pinController.dispose();
+    _pin1Controller.dispose();
+    _pin2Controller.dispose();
+    _idNumberController.dispose();
+    _pinFocus.dispose();
+    _pin1Focus.dispose();
+    _pin2Focus.dispose();
     super.dispose();
   }
 
-  void _clearPin() {
+  void _switchMode(int mode) {
     setState(() {
-      if (_mode == 0) {
-        for (int i = 0; i < 6; i++) _pinDigits[i] = '';
-        _pinIndex = 0;
-      } else if (!_confirmingPin) {
-        for (int i = 0; i < 6; i++) _regPin1[i] = '';
-        _regPin1Index = 0;
-      } else {
-        for (int i = 0; i < 6; i++) _regPin2[i] = '';
-        _regPin2Index = 0;
-      }
+      _mode = mode;
+      _error = null;
+      _pinController.clear();
+      _pin1Controller.clear();
+      _pin2Controller.clear();
+      _idNumberController.clear();
+      _selectedIdType = '';
+      _photoPath = null;
+      _idPhotoPath = null;
+      _registered = false;
     });
   }
 
-  void _onPinDigit(String digit) {
-    if (_loading) return;
-    HapticFeedback.lightImpact();
-    setState(() { _error = null; });
-    if (_mode == 0) {
-      if (_pinIndex >= 6) return;
-      _pinDigits[_pinIndex] = digit;
-      _pinIndex++;
-      if (_pinIndex == 6) Future.delayed(const Duration(milliseconds: 200), _doLogin);
-    } else if (!_confirmingPin) {
-      if (_regPin1Index >= 6) return;
-      _regPin1[_regPin1Index] = digit;
-      _regPin1Index++;
-      if (_regPin1Index == 6) {
-        Future.delayed(const Duration(milliseconds: 300), () {
-          setState(() => _confirmingPin = true);
-        });
-      }
-    } else {
-      if (_regPin2Index >= 6) return;
-      _regPin2[_regPin2Index] = digit;
-      _regPin2Index++;
-      if (_regPin2Index == 6) Future.delayed(const Duration(milliseconds: 200), _doRegister);
+  Future<void> _pickPhoto(String type) async {
+    final x = await _picker.pickImage(source: ImageSource.gallery, maxWidth: 1024, imageQuality: 80);
+    if (x != null) {
+      setState(() {
+        if (type == 'photo') _photoPath = x.path;
+        if (type == 'idPhoto') _idPhotoPath = x.path;
+      });
     }
-  }
-
-  void _onPinDelete() {
-    if (_loading) return;
-    HapticFeedback.lightImpact();
-    setState(() {
-      if (_mode == 0) {
-        if (_pinIndex <= 0) return;
-        _pinIndex--;
-        _pinDigits[_pinIndex] = '';
-      } else if (!_confirmingPin) {
-        if (_regPin1Index <= 0) return;
-        _regPin1Index--;
-        _regPin1[_regPin1Index] = '';
-      } else {
-        if (_regPin2Index <= 0) return;
-        _regPin2Index--;
-        _regPin2[_regPin2Index] = '';
-      }
-    });
   }
 
   Future<void> _doLogin() async {
     final email = _emailController.text.trim();
     if (email.isEmpty) { setState(() => _error = 'Enter your email'); return; }
-    final pin = _pinDigits.join('');
+    final pin = _pinController.text.trim();
     if (pin.length < 6) { setState(() => _error = 'Enter your 6-digit PIN'); return; }
     setState(() { _loading = true; _error = null; });
     try {
       final result = await BankingApiService.parentLogin(email, pin);
       if (!mounted) return;
-      if (result == null || result['token'] == null) {
-        setState(() { _error = 'Invalid email or PIN'; _loading = false; });
+      if (result == null) { setState(() { _error = 'Connection error'; _loading = false; }); return; }
+      if (result['token'] == null) {
+        final msg = result['message'] as String? ?? 'Invalid email or PIN';
+        final status = result['status'] as String?;
+        if (status == 'pending') {
+          setState(() { _error = 'Registration pending admin approval.'; _loading = false; _registered = true; });
+        } else {
+          setState(() { _error = msg; _loading = false; });
+        }
         return;
       }
       const storage = FlutterSecureStorage();
@@ -142,24 +131,47 @@ class _ParentLoginPageState extends State<ParentLoginPage>
     if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
       setState(() => _error = 'Enter a valid email'); return;
     }
-    final pin1 = _regPin1.join('');
-    final pin2 = _regPin2.join('');
+    final pin1 = _pin1Controller.text.trim();
+    final pin2 = _pin2Controller.text.trim();
     if (pin1.length < 6) { setState(() => _error = 'Enter your 6-digit PIN'); return; }
     if (pin1 != pin2) { setState(() => _error = 'PINs do not match'); return; }
+    if (_selectedIdType.isEmpty) { setState(() => _error = 'Select your ID type'); return; }
+    final idNumber = _idNumberController.text.trim();
+    if (idNumber.length < 4) { setState(() => _error = 'Enter a valid ID number'); return; }
+
     setState(() { _loading = true; _error = null; });
     try {
       final displayName = _nameController.text.trim();
-      final result = await BankingApiService.parentRegister(email, pin1, displayName: displayName);
+      Map<String, dynamic>? result;
+
+      if (_photoPath != null || _idPhotoPath != null) {
+        result = await BankingApiService.parentRegisterWithPhotos(
+          email, pin1, _selectedIdType, idNumber,
+          displayName: displayName, photoPath: _photoPath, idPhotoPath: _idPhotoPath,
+        );
+      } else {
+        result = await BankingApiService.parentRegister(
+          email, pin1, displayName: displayName, idType: _selectedIdType, idNumber: idNumber,
+        );
+      }
+
       if (!mounted) return;
-      if (result == null || result['token'] == null) {
-        setState(() { _error = 'Registration failed. Email may already be registered.'; _loading = false; });
+      if (result == null) {
+        setState(() { _error = 'Connection error'; _loading = false; });
         return;
       }
-      const storage = FlutterSecureStorage();
-      await storage.write(key: 'parent_token', value: result['token'] as String);
-      await storage.write(key: 'parent_email', value: email);
-      if (!mounted) return;
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const ParentDashboardPage()));
+      if (result['status'] == 'pending') {
+        setState(() { _registered = true; _loading = false; });
+      } else if (result['token'] != null) {
+        // Old behavior fallback (if no status check)
+        const storage = FlutterSecureStorage();
+        await storage.write(key: 'parent_token', value: result['token'] as String);
+        await storage.write(key: 'parent_email', value: email);
+        if (!mounted) return;
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const ParentDashboardPage()));
+      } else {
+        setState(() { _error = 'Registration failed. Email may already be registered.'; _loading = false; });
+      }
     } catch (e) {
       setState(() { _error = 'Connection error'; _loading = false; });
     }
@@ -198,9 +210,51 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                     const Text('Parent Portal',
                       style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 1)),
                     const SizedBox(height: 4),
-                    Text(_mode == 0 ? 'Monitor & approve your child\'s transactions' : 'Create your parent account',
+                    Text(
+                      _registered
+                          ? 'Registration submitted!'
+                          : _mode == 0
+                              ? 'Monitor & approve your child\'s transactions'
+                              : 'Register to link your child\'s account',
                       style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.6))),
                     const SizedBox(height: 24),
+
+                    // ── Registration Success State ──
+                    if (_registered)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+                        ),
+                        child: Column(
+                          children: [
+                            const Icon(Icons.check_circle_outline, color: Colors.green, size: 56),
+                            const SizedBox(height: 12),
+                            const Text('Registration Submitted!',
+                              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                            const SizedBox(height: 8),
+                            Text(
+                              'An admin will review your photo ID and information. You will receive access once approved.\n\nPlease check back later.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.7))),
+                            const SizedBox(height: 20),
+                            ElevatedButton(
+                              onPressed: () => _switchMode(0),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.accentAmber,
+                                foregroundColor: AppTheme.textDark,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              child: const Text('Back to Login', style: TextStyle(fontWeight: FontWeight.bold)),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                    // ── Login / Register Form ──
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(20),
@@ -214,13 +268,9 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                           // Mode toggle
                           Row(
                             children: [
-                              Expanded(
-                                child: _modeButton('Login', 0),
-                              ),
+                              Expanded(child: _modeButton('Login', 0)),
                               const SizedBox(width: 8),
-                              Expanded(
-                                child: _modeButton('Register', 1),
-                              ),
+                              Expanded(child: _modeButton('Register', 1)),
                             ],
                           ),
                           const SizedBox(height: 20),
@@ -255,7 +305,7 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                               style: const TextStyle(color: Colors.white, fontSize: 14),
                               cursorColor: Colors.white70,
                               decoration: InputDecoration(
-                                hintText: 'Your name (optional)',
+                                hintText: 'Your full name',
                                 hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 14),
                                 prefixIcon: Icon(Icons.person_outline, color: Colors.white.withValues(alpha: 0.5), size: 20),
                                 filled: true, fillColor: Colors.white.withValues(alpha: 0.1),
@@ -271,55 +321,123 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                               ),
                             ),
+                            // Photo picker
+                            const SizedBox(height: 12),
+                            _buildPhotoPicker('Your Photo', _photoPath, () => _pickPhoto('photo')),
                             const SizedBox(height: 8),
-                            Text(
-                              _confirmingPin ? 'Confirm your PIN' : 'Create your 6-digit PIN',
-                              style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12),
+                            // ID Type dropdown
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+                              ),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  value: _selectedIdType.isEmpty ? null : _selectedIdType,
+                                  hint: Row(
+                                    children: [
+                                      Icon(Icons.badge_outlined, color: Colors.white.withValues(alpha: 0.5), size: 20),
+                                      const SizedBox(width: 10),
+                                      Text('Select ID type',
+                                        style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 14)),
+                                    ],
+                                  ),
+                                  dropdownColor: const Color(0xFF1a237e),
+                                  isExpanded: true,
+                                  items: _idTypes.map((t) => DropdownMenuItem(
+                                    value: t,
+                                    child: Text(t, style: const TextStyle(color: Colors.white, fontSize: 14)),
+                                  )).toList(),
+                                  onChanged: (v) => setState(() => _selectedIdType = v ?? ''),
+                                ),
+                              ),
                             ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: _idNumberController,
+                              style: const TextStyle(color: Colors.white, fontSize: 14),
+                              cursorColor: Colors.white70,
+                              decoration: InputDecoration(
+                                hintText: 'ID number',
+                                hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 14),
+                                prefixIcon: Icon(Icons.numbers, color: Colors.white.withValues(alpha: 0.5), size: 20),
+                                filled: true, fillColor: Colors.white.withValues(alpha: 0.1),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: BorderSide(color: AppTheme.accentAmber.withValues(alpha: 0.8), width: 1.8),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                              ),
+                            ),
+                            // ID photo picker
+                            const SizedBox(height: 8),
+                            _buildPhotoPicker('ID Photo', _idPhotoPath, () => _pickPhoto('idPhoto')),
                           ],
 
                           const SizedBox(height: 16),
-                          // PIN Dots
-                          GestureDetector(
-                            onTap: () => FocusScope.of(context).unfocus(),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: List.generate(6, (i) {
-                                final filled = _mode == 0
-                                    ? i < _pinIndex
-                                    : !_confirmingPin
-                                        ? i < _regPin1Index
-                                        : i < _regPin2Index;
-                                return Container(
-                                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                                  width: 34, height: 40,
-                                  decoration: BoxDecoration(
-                                    color: filled
-                                        ? AppTheme.accentAmber.withValues(alpha: 0.3)
-                                        : Colors.white.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                      color: filled ? AppTheme.accentAmber.withValues(alpha: 0.6) : Colors.white.withValues(alpha: 0.15),
-                                      width: 1.5,
-                                    ),
-                                  ),
-                                  child: Center(
-                                    child: filled
-                                        ? Container(width: 10, height: 10, decoration: const BoxDecoration(shape: BoxShape.circle, color: AppTheme.accentAmber))
-                                        : const SizedBox.shrink(),
-                                  ),
-                                );
-                              }),
+                          // PIN field (login)
+                          if (_mode == 0)
+                            TextField(
+                              focusNode: _pinFocus,
+                              controller: _pinController,
+                              obscureText: true,
+                              obscuringCharacter: '\u25CF',
+                              style: const TextStyle(color: Colors.white, fontSize: 18, letterSpacing: 6),
+                              cursorColor: AppTheme.accentAmber,
+                              keyboardType: TextInputType.number,
+                              textInputAction: TextInputAction.done,
+                              maxLength: 6,
+                              buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+                              onChanged: (v) {
+                                setState(() { _error = null; });
+                                if (v.length == 6 && !_loading) {
+                                  FocusScope.of(context).unfocus();
+                                  _doLogin();
+                                }
+                              },
+                              onSubmitted: (_) {
+                                if (_pinController.text.length == 6 && !_loading) _doLogin();
+                              },
+                              decoration: _pinDecoration('6-digit PIN'),
                             ),
-                          ),
 
-                          // PIN keys for registration flow
-                          if (_confirmingPin && _mode == 1)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Text('Re-enter PIN to confirm',
-                                style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11)),
+                          // PIN fields (register — two for confirmation)
+                          if (_mode == 1) ...[
+                            TextField(
+                              focusNode: _pin1Focus,
+                              controller: _pin1Controller,
+                              obscureText: true,
+                              obscuringCharacter: '\u25CF',
+                              style: const TextStyle(color: Colors.white, fontSize: 18, letterSpacing: 6),
+                              cursorColor: AppTheme.accentAmber,
+                              keyboardType: TextInputType.number,
+                              textInputAction: TextInputAction.next,
+                              maxLength: 6,
+                              buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+                              decoration: _pinDecoration('Create 6-digit PIN'),
                             ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              focusNode: _pin2Focus,
+                              controller: _pin2Controller,
+                              obscureText: true,
+                              obscuringCharacter: '\u25CF',
+                              style: const TextStyle(color: Colors.white, fontSize: 18, letterSpacing: 6),
+                              cursorColor: AppTheme.accentAmber,
+                              keyboardType: TextInputType.number,
+                              textInputAction: TextInputAction.done,
+                              maxLength: 6,
+                              buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+                              decoration: _pinDecoration('Confirm 6-digit PIN'),
+                            ),
+                          ],
 
                           if (_error != null)
                             Padding(
@@ -336,8 +454,7 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                               ),
                             ),
 
-                          const SizedBox(height: 12),
-                          _buildPinKeypad(),
+                          const SizedBox(height: 16),
 
                           const SizedBox(height: 8),
                           SizedBox(
@@ -352,7 +469,8 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                               ),
                               child: _loading
                                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.textDark))
-                                  : Text(_mode == 0 ? 'Login as Parent' : 'Create Account', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                                  : Text(_mode == 0 ? 'Login as Parent' : 'Submit for Approval',
+                                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                             ),
                           ),
                         ],
@@ -361,7 +479,7 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                     const SizedBox(height: 16),
                     TextButton(
                       onPressed: () => Navigator.pop(context),
-                      child: Text('← Back to Child Login', style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 13)),
+                      child: Text('\u2190 Back to Child Login', style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 13)),
                     ),
                     const SizedBox(height: 24),
                   ],
@@ -374,17 +492,67 @@ class _ParentLoginPageState extends State<ParentLoginPage>
     );
   }
 
+  Widget _buildPhotoPicker(String label, String? path, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: path != null ? AppTheme.accentAmber.withValues(alpha: 0.6) : Colors.white.withValues(alpha: 0.15),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48, height: 48,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                color: Colors.white.withValues(alpha: 0.1),
+                image: path != null
+                    ? DecorationImage(image: FileImage(File(path)), fit: BoxFit.cover)
+                    : null,
+              ),
+              child: path == null
+                  ? Icon(Icons.camera_alt, color: Colors.white.withValues(alpha: 0.5), size: 22)
+                  : null,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                path != null ? label : 'Tap to add $label',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: path != null ? 0.9 : 0.5),
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            if (path != null)
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    if (label.contains('Photo') && !label.contains('ID')) {
+                      _photoPath = null;
+                    } else {
+                      _idPhotoPath = null;
+                    }
+                  });
+                },
+                child: Icon(Icons.close, color: Colors.white.withValues(alpha: 0.5), size: 18),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _modeButton(String label, int mode) {
     final active = _mode == mode;
     return GestureDetector(
-      onTap: () {
-        setState(() {
-          _mode = mode;
-          _error = null;
-          _clearPin();
-          _confirmingPin = false;
-        });
-      },
+      onTap: () => _switchMode(mode),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
@@ -400,54 +568,23 @@ class _ParentLoginPageState extends State<ParentLoginPage>
     );
   }
 
-  Widget _buildPinKeypad() {
-    return Column(
-      children: [
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [_pinKey('1'), _pinKey('2'), _pinKey('3')]),
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [_pinKey('4'), _pinKey('5'), _pinKey('6')]),
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [_pinKey('7'), _pinKey('8'), _pinKey('9')]),
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          _pinActionKey(Icons.backspace_outlined, _onPinDelete),
-          _pinKey('0'),
-          _pinActionKey(Icons.clear_all_rounded, _clearPin),
-        ]),
-      ],
-    );
-  }
-
-  Widget _pinKey(String digit) {
-    return Padding(
-      padding: const EdgeInsets.all(3),
-      child: SizedBox(
-        width: 56, height: 48,
-        child: Material(
-          color: Colors.white.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(12),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: () => _onPinDigit(digit),
-            child: Center(child: Text(digit, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w600))),
-          ),
-        ),
+  InputDecoration _pinDecoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 14),
+      prefixIcon: Icon(Icons.lock_outline, color: Colors.white.withValues(alpha: 0.5), size: 20),
+      filled: true,
+      fillColor: Colors.white.withValues(alpha: 0.1),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
       ),
-    );
-  }
-
-  Widget _pinActionKey(IconData icon, VoidCallback onTap) {
-    return Padding(
-      padding: const EdgeInsets.all(3),
-      child: SizedBox(
-        width: 56, height: 48,
-        child: Material(
-          color: Colors.white.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(12),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: onTap,
-            child: Center(child: Icon(icon, color: Colors.white.withValues(alpha: 0.7), size: 20)),
-          ),
-        ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: AppTheme.accentAmber.withValues(alpha: 0.8), width: 1.8),
       ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
     );
   }
 }

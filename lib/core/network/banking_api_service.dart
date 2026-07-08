@@ -271,12 +271,44 @@ class BankingApiService {
 
   // ── Parent Portal ──
 
-  static Future<Map<String, dynamic>?> parentRegister(String email, String pin, {String? displayName, String? phone}) async {
+  static Future<Map<String, dynamic>?> parentRegister(
+    String email, String pin, {
+    String? displayName, String? phone,
+    String? idType, String? idNumber,
+  }) async {
     try {
-      final resp = await _dio.post('/api/parent/register', data: {
+      final data = {
         'email': email, 'pin': pin,
         'displayName': displayName ?? '', 'phone': phone ?? '',
+        'idType': idType ?? '', 'idNumber': idNumber ?? '',
+      };
+      final resp = await _dio.post('/api/parent/register', data: data);
+      return resp.data as Map<String, dynamic>;
+    } on DioException { return null; }
+  }
+
+  static Future<Map<String, dynamic>?> parentRegisterWithPhotos(
+    String email, String pin,
+    String idType, String idNumber, {
+    String? displayName, String? phone,
+    String? photoPath, String? idPhotoPath,
+  }) async {
+    try {
+      final formData = FormData.fromMap({
+        'email': email,
+        'pin': pin,
+        'idType': idType,
+        'idNumber': idNumber,
+        'displayName': displayName ?? '',
+        'phone': phone ?? '',
       });
+      if (photoPath != null) {
+        formData.files.add(MapEntry('photo', await MultipartFile.fromFile(photoPath)));
+      }
+      if (idPhotoPath != null) {
+        formData.files.add(MapEntry('idPhoto', await MultipartFile.fromFile(idPhotoPath)));
+      }
+      final resp = await _dio.post('/api/parent/register', data: formData);
       return resp.data as Map<String, dynamic>;
     } on DioException { return null; }
   }

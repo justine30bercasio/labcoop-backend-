@@ -21,12 +21,10 @@ class _LoginPageState extends State<LoginPage>
   late Animation<double> _fadeScale;
   final _cidController = TextEditingController();
   final _cidFocus = FocusNode();
+  final _pinController = TextEditingController();
+  final _pinFocus = FocusNode();
   bool _loading = false;
   String? _error;
-
-  // PIN pad state
-  final List<String> _pinDigits = ['', '', '', '', '', ''];
-  int _pinIndex = 0;
 
   @override
   void initState() {
@@ -38,6 +36,7 @@ class _LoginPageState extends State<LoginPage>
     _fadeScale = CurvedAnimation(parent: _animController, curve: Curves.easeOutBack);
     _animController.forward();
     _cidFocus.addListener(() => setState(() {}));
+    _pinFocus.addListener(() => setState(() {}));
   }
 
   @override
@@ -45,12 +44,14 @@ class _LoginPageState extends State<LoginPage>
     _animController.dispose();
     _cidController.dispose();
     _cidFocus.dispose();
+    _pinController.dispose();
+    _pinFocus.dispose();
     super.dispose();
   }
 
   Future<void> _login() async {
     final cid = _cidController.text.trim();
-    final pin = _pinDigits.join('');
+    final pin = _pinController.text.trim();
     if (cid.isEmpty) {
       setState(() => _error = 'Please enter your Member ID');
       return;
@@ -68,10 +69,8 @@ class _LoginPageState extends State<LoginPage>
     try {
       await GetIt.instance<LocalDbSource>().clearAll();
       final api = GetIt.instance<RemoteApiSource>();
-      final result = await api.login(pin, memberId: cid);
+      await api.login(pin, memberId: cid);
       if (!mounted) return;
-
-      final pinChanged = result['pinChanged'] as bool? ?? false;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -109,37 +108,6 @@ class _LoginPageState extends State<LoginPage>
         _loading = false;
       });
     }
-  }
-
-  void _onPinDigit(String digit) {
-    if (_pinIndex >= 6 || _loading) return;
-    HapticFeedback.lightImpact();
-    setState(() {
-      _pinDigits[_pinIndex] = digit;
-      _pinIndex++;
-      _error = null;
-    });
-    if (_pinIndex == 6) {
-      // Auto-login when 6 digits entered
-      Future.delayed(const Duration(milliseconds: 200), _login);
-    }
-  }
-
-  void _onPinDelete() {
-    if (_pinIndex <= 0 || _loading) return;
-    HapticFeedback.lightImpact();
-    setState(() {
-      _pinIndex--;
-      _pinDigits[_pinIndex] = '';
-    });
-  }
-
-  void _clearPin() {
-    setState(() {
-      for (int i = 0; i < 6; i++) _pinDigits[i] = '';
-      _pinIndex = 0;
-      _error = null;
-    });
   }
 
   InputDecoration _inputDecoration({
@@ -281,10 +249,33 @@ class _LoginPageState extends State<LoginPage>
                           ),
                           const SizedBox(height: 16),
 
-                          // PIN dots display (tap to dismiss keyboard)
-                          GestureDetector(
-                            onTap: () => FocusScope.of(context).unfocus(),
-                            child: _buildPinDots(),
+                          // PIN field (native keyboard)
+                          TextField(
+                            focusNode: _pinFocus,
+                            controller: _pinController,
+                            obscureText: true,
+                            obscuringCharacter: '●',
+                            style: const TextStyle(color: Colors.white, fontSize: 20, letterSpacing: 8),
+                            cursorColor: AppTheme.accentAmber,
+                            keyboardType: TextInputType.number,
+                            textInputAction: TextInputAction.done,
+                            maxLength: 6,
+                            buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+                            onChanged: (v) {
+                              setState(() { _error = null; });
+                              if (v.length == 6 && !_loading) {
+                                FocusScope.of(context).unfocus();
+                                _login();
+                              }
+                            },
+                            onSubmitted: (_) {
+                              if (_pinController.text.length == 6 && !_loading) _login();
+                            },
+                            decoration: _inputDecoration(
+                              hint: '6-digit PIN',
+                              icon: Icons.lock_outline,
+                              focus: _pinFocus,
+                            ),
                           ),
 
                           if (_error != null)
@@ -313,10 +304,7 @@ class _LoginPageState extends State<LoginPage>
                               ),
                             ),
 
-                          const SizedBox(height: 8),
-
-                          // PIN Keypad
-                          _buildPinKeypad(),
+                          const SizedBox(height: 16),
 
                           const SizedBox(height: 8),
 
@@ -410,138 +398,6 @@ class _LoginPageState extends State<LoginPage>
                   ],
                 ),
               ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPinDots() {
-    return Column(
-      children: [
-        Text(
-          'Enter your PIN',
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.6),
-            fontSize: 12,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(6, (i) {
-            final filled = i < _pinIndex;
-            return Container(
-              margin: const EdgeInsets.symmetric(horizontal: 5),
-              width: 36,
-              height: 42,
-              decoration: BoxDecoration(
-                color: filled
-                    ? AppTheme.accentAmber.withValues(alpha: 0.3)
-                    : Colors.white.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: filled
-                      ? AppTheme.accentAmber.withValues(alpha: 0.6)
-                      : Colors.white.withValues(alpha: 0.15),
-                  width: 1.5,
-                ),
-              ),
-              child: Center(
-                child: filled
-                    ? Container(
-                        width: 12,
-                        height: 12,
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppTheme.accentAmber,
-                        ),
-                      )
-                    : const SizedBox.shrink(),
-              ),
-            );
-          }),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPinKeypad() {
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _pinKey('1'), _pinKey('2'), _pinKey('3'),
-          ],
-        ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _pinKey('4'), _pinKey('5'), _pinKey('6'),
-          ],
-        ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _pinKey('7'), _pinKey('8'), _pinKey('9'),
-          ],
-        ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _pinActionKey(Icons.backspace_outlined, _onPinDelete),
-            _pinKey('0'),
-            _pinActionKey(Icons.clear_all_rounded, _clearPin),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _pinKey(String digit) {
-    return Padding(
-      padding: const EdgeInsets.all(3),
-      child: SizedBox(
-        width: 56,
-        height: 48,
-        child: Material(
-          color: Colors.white.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(12),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: () => _onPinDigit(digit),
-            child: Center(
-              child: Text(
-                digit,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _pinActionKey(IconData icon, VoidCallback onTap) {
-    return Padding(
-      padding: const EdgeInsets.all(3),
-      child: SizedBox(
-        width: 56,
-        height: 48,
-        child: Material(
-          color: Colors.white.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(12),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: onTap,
-            child: Center(
-              child: Icon(icon, color: Colors.white.withValues(alpha: 0.7), size: 20),
             ),
           ),
         ),

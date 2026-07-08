@@ -1447,6 +1447,13 @@ class _SettingsPageState extends State<_SettingsPage> {
   String? _pinError;
   String? _pinSuccess;
 
+  // Link parent state
+  String? _linkCode;
+  String? _linkCodeExpiresAt;
+  bool _generatingLink = false;
+  String? _linkParentError;
+  String? _linkParentSuccess;
+
   @override
   void initState() {
     super.initState();
@@ -1643,6 +1650,114 @@ class _SettingsPageState extends State<_SettingsPage> {
     super.dispose();
   }
 
+  Future<void> _generateLinkCode() async {
+    setState(() { _generatingLink = true; _linkParentError = null; _linkParentSuccess = null; });
+    try {
+      final state = context.read<SavingsBloc>().state;
+      if (state is! SavingsLoaded) {
+        setState(() { _linkParentError = 'Please wait for data to load'; _generatingLink = false; });
+        return;
+      }
+      final resp = await DioClient.create().post(
+        '/api/accounts/${state.account.accountId}/generate-link-code',
+      );
+      if (!mounted) return;
+      final data = resp.data as Map<String, dynamic>;
+      setState(() {
+        _linkCode = data['linkCode'] as String;
+        _linkCodeExpiresAt = data['expiresAt'] as String;
+        _linkParentSuccess = 'Share this code with your parent!';
+        _generatingLink = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { _linkParentError = 'Failed to generate code. Try again.'; _generatingLink = false; });
+    }
+  }
+
+  Widget _buildLinkParentSection() {
+    return Column(
+      children: [
+        if (_linkCode != null) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryGreen.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppTheme.primaryGreen.withValues(alpha: 0.3)),
+            ),
+            child: Column(
+              children: [
+                Text(
+                  'Your Linking Code',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _linkCode!,
+                  style: const TextStyle(
+                    fontSize: 40,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 8,
+                    color: AppTheme.primaryGreen,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Expires in 5 minutes',
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: TextButton.icon(
+              onPressed: _generatingLink ? null : _generateLinkCode,
+              icon: const Icon(Icons.refresh, size: 16),
+              label: const Text('Generate New Code'),
+            ),
+          ),
+        ] else ...[
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton.icon(
+              onPressed: _generatingLink ? null : _generateLinkCode,
+              icon: _generatingLink
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.qr_code_2, size: 20),
+              label: Text(_generatingLink ? 'Generating...' : 'Generate Linking Code'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryGreen,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+        ],
+        if (_linkParentError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(_linkParentError!, style: TextStyle(color: Colors.red.shade700, fontSize: 13)),
+          ),
+        if (_linkParentSuccess != null && _linkCode == null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(_linkParentSuccess!, style: TextStyle(color: Colors.green.shade700, fontSize: 13)),
+          ),
+        const SizedBox(height: 4),
+        Text(
+          'Your parent enters this code in their Parent Portal → Link Child tab',
+          style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+        ),
+      ],
+    );
+  }
+
   Widget _buildPinField(TextEditingController controller, String hint, bool obscure, VoidCallback toggle) {
     return TextField(
       controller: controller,
@@ -1708,6 +1823,26 @@ class _SettingsPageState extends State<_SettingsPage> {
                 ),
               ),
               ),
+              const SizedBox(height: 32),
+              const Divider(),
+              const SizedBox(height: 16),
+
+              // ── Link Parent Section ──
+              const Row(
+                children: [
+                  Icon(Icons.family_restroom, color: AppTheme.primaryGreen, size: 24),
+                  SizedBox(width: 8),
+                  Text('Link Parent',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Generate a temporary code for your parent to link their account. The code expires in 5 minutes.',
+                style: TextStyle(color: AppTheme.textDark, fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              _buildLinkParentSection(),
               const SizedBox(height: 32),
               const Divider(),
               const SizedBox(height: 16),

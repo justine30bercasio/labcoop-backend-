@@ -6872,7 +6872,7 @@ router.get('/parents', requireRole(3,4), asyncHandler(async (req, res) => {
   // For each parent, get linked children
   async function getChildren(parentId) {
     return store.query(
-      `SELECT a.account_id, a.child_name, a.birthdate, a.kyc_status, a.consent_status, a.created_at,
+      `SELECT a.account_id, a.child_name, a.birthday as birthdate, a.kyc_status, a.consent_status, a.created_at,
               pcl.status as link_status, pcl.created_at as linked_at
        FROM parent_child_links pcl
        JOIN accounts a ON a.account_id = pcl.child_account_id

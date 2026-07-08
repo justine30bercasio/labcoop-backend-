@@ -6848,18 +6848,148 @@ router.post('/board/delete/:id', requireRole(3), asyncHandler(async (req, res) =
   res.redirect('/admin/board?deleted=ok');
 }));
 
-router.get('/setup', asyncHandler(async (req, res) => {
-  const result = await store.query('SELECT COUNT(*) as c FROM admin_users');
-  if (parseInt(result.rows[0]?.c || '0', 10) > 0) {
-    return res.type('html').send('<h2>Admin already exists. <a href="/admin/login">Login</a></h2>');
+// ── Parent Management ──
+router.get('/parents', requireRole(3,4), asyncHandler(async (req, res) => {
+  const q = req.query.q ? req.query.q.trim() : '';
+  const filter = req.query.filter || 'all'; // all, linked, unlinked
+
+  let parents;
+  if (q) {
+    parents = await store.query(
+      'SELECT DISTINCT p.parent_id, p.email, p.display_name, p.phone, p.created_at FROM parents p WHERE p.email LIKE $1 OR p.display_name LIKE $1 ORDER BY p.created_at DESC',
+      [`%${q}%`]
+    );
+  } else {
+    parents = await store.query('SELECT parent_id, email, display_name, phone, created_at FROM parents ORDER BY created_at DESC');
   }
-  const adminPass = require('crypto').randomBytes(6).toString('hex');
-  const hash = require('bcryptjs').hashSync(adminPass, 10);
-  await store.query(
-    'INSERT INTO admin_users (admin_id, username, password_hash, role, display_name, is_active, created_at) VALUES ($1,$2,$3,$4,$5,1,$6)',
-    [require('uuid').v4(), 'admin', hash, 'super_admin', 'Default Admin', new Date().toISOString()]
-  );
-  res.type('html').send('<h2 style="color:#16a34a">&#x2705; Admin created!</h2><p style="font-size:14px;color:#333">Temporary password: <code style="background:#f0fdf4;padding:2px 8px;border-radius:4px;font-size:16px;font-weight:700">' + h(adminPass) + '</code></p><p style="color:#dc2626;font-size:13px;font-weight:600">&#x26A0; CHANGE THIS PASSWORD IMMEDIATELY AFTER LOGIN</p><p><a href="/admin/login" style="color:#2E7D32;font-weight:600">Proceed to Login</a></p>');
+
+  // For each parent, get linked children
+  async function getChildren(parentId) {
+    return store.query(
+      `SELECT a.account_id, a.child_name, a.birthdate, a.kyc_status, a.consent_status, a.created_at,
+              pcl.status as link_status, pcl.created_at as linked_at
+       FROM parent_child_links pcl
+       JOIN accounts a ON a.account_id = pcl.child_account_id
+       WHERE pcl.parent_id = $1
+       ORDER BY a.child_name`,
+      [parentId]
+    );
+  }
+
+  const parentsWithChildren = [];
+  for (const p of parents.rows) {
+    const children = await getChildren(p.parent_id);
+    if (filter === 'linked' && children.rows.length === 0) continue;
+    if (filter === 'unlinked' && children.rows.length > 0) continue;
+    parentsWithChildren.push({ ...p, children: children.rows });
+  }
+
+  const content = `
+  <style>
+    .parent-card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; margin-bottom:16px; overflow:hidden; }
+    .parent-header { padding:16px 20px; display:flex; align-items:center; gap:16px; cursor:pointer; background:#f9fafb; border-bottom:1px solid #e5e7eb; }
+    .parent-header:hover { background:#f3f4f6; }
+    .parent-header .avatar { width:40px; height:40px; border-radius:50%; background:linear-gradient(135deg,#2E7D32,#1B5E20); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; font-size:16px; flex-shrink:0; }
+    .parent-info { flex:1; }
+    .parent-info .name { font-weight:600; font-size:15px; color:#111827; }
+    .parent-info .email { font-size:13px; color:#6b7280; }
+    .parent-info .meta { font-size:12px; color:#9ca3af; margin-top:2px; }
+    .child-table { width:100%; border-collapse:collapse; }
+    .child-table th { text-align:left; padding:10px 16px; background:#f9fafb; font-size:12px; color:#6b7280; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid #e5e7eb; }
+    .child-table td { padding:10px 16px; font-size:13px; border-bottom:1px solid #f3f4f6; }
+    .child-table tr:last-child td { border-bottom:none; }
+    .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; }
+    .badge-active { background:#dcfce7; color:#166534; }
+    .badge-approved { background:#dbeafe; color:#1e40af; }
+    .badge-pending { background:#fef3c7; color:#92400e; }
+    .badge-rejected { background:#fee2e2; color:#991b1b; }
+    .empty-state { text-align:center; padding:60px 20px; color:#9ca3af; }
+    .empty-state i { font-size:48px; margin-bottom:16px; color:#d1d5db; }
+    .search-bar { display:flex; gap:12px; margin-bottom:24px; flex-wrap:wrap; }
+    .search-bar input { flex:1; min-width:200px; padding:10px 16px; border:1px solid #d1d5db; border-radius:8px; font-size:14px; }
+    .search-bar input:focus { outline:none; border-color:#2E7D32; box-shadow:0 0 0 3px rgba(46,125,50,0.1); }
+    .filter-tabs { display:flex; gap:8px; margin-bottom:20px; }
+    .filter-tabs a { padding:6px 14px; border-radius:20px; font-size:13px; text-decoration:none; color:#6b7280; background:#f3f4f6; transition:all 0.15s; }
+    .filter-tabs a.active { background:#2E7D32; color:#fff; }
+    .filter-tabs a:hover:not(.active) { background:#e5e7eb; }
+    .count-badge { display:inline-block; background:#2E7D32; color:#fff; padding:1px 8px; border-radius:10px; font-size:11px; margin-left:6px; }
+    .collapse-icon { transition:transform 0.2s; font-size:12px; color:#9ca3af; }
+    .collapse-icon.open { transform:rotate(90deg); }
+    .child-body { display:none; }
+    .child-body.open { display:block; }
+  </style>
+  <div class="card">
+    <div class="card-header">
+      <h3><i class="fas fa-family"></i> Parent Management</h3>
+      <span style="color:#6b7280;font-size:13px">${parentsWithChildren.length} parent${parentsWithChildren.length !== 1 ? 's' : ''}</span>
+    </div>
+    <div class="card-body-padded">
+      <form method="get" action="/admin/parents" class="search-bar">
+        <input type="text" name="q" placeholder="Search by email or display name..." value="${h(q)}">
+        <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Search</button>
+        ${q ? '<a href="/admin/parents" class="btn btn-cancel">Clear</a>' : ''}
+      </form>
+      <div class="filter-tabs">
+        <a href="/admin/parents${q ? '?q='+encodeURIComponent(q) : ''}" class="${filter === 'all' ? 'active' : ''}">All</a>
+        <a href="/admin/parents?filter=linked${q ? '&q='+encodeURIComponent(q) : ''}" class="${filter === 'linked' ? 'active' : ''}">With Children</a>
+        <a href="/admin/parents?filter=unlinked${q ? '&q='+encodeURIComponent(q) : ''}" class="${filter === 'unlinked' ? 'active' : ''}">No Children Yet</a>
+      </div>
+      ${parentsWithChildren.length === 0 ? `
+        <div class="empty-state">
+          <i class="fas fa-users"></i>
+          <p style="font-size:16px;font-weight:600;color:#6b7280">${q ? 'No parents match your search' : 'No parents registered yet'}</p>
+          <p style="font-size:13px">Parents register through the Parent Portal in the mobile app</p>
+        </div>
+      ` : parentsWithChildren.map(p => {
+        const childCount = p.children.length;
+        const initial = (p.display_name || p.email || '?')[0].toUpperCase();
+        return `
+        <div class="parent-card">
+          <div class="parent-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.collapse-icon').classList.toggle('open')">
+            <div class="avatar">${initial}</div>
+            <div class="parent-info">
+              <div class="name">${h(p.display_name || 'Unnamed')}</div>
+              <div class="email">${h(p.email)}</div>
+              <div class="meta">Parent ID: ${h(p.parent_id.slice(0,8))}… &middot; Registered ${new Date(p.created_at).toLocaleDateString()}${p.phone ? ' &middot; Phone: '+h(p.phone) : ''}</div>
+            </div>
+            <span class="count-badge">${childCount} child${childCount !== 1 ? 'ren' : ''}</span>
+            <i class="fas fa-chevron-right collapse-icon"></i>
+          </div>
+          <div class="child-body">
+            ${childCount === 0 ? `
+              <div style="padding:20px;text-align:center;color:#9ca3af;font-size:13px">
+                <i class="fas fa-link-slash"></i> No children linked yet. Parents link via the mobile app.
+              </div>
+            ` : `
+            <table class="child-table">
+              <thead><tr>
+                <th>Child Name</th>
+                <th>Account ID</th>
+                <th>KYC</th>
+                <th>Consent</th>
+                <th>Link Status</th>
+                <th>Linked Since</th>
+              </tr></thead>
+              <tbody>
+                ${p.children.map(c => `
+                <tr>
+                  <td><a href="/admin/accounts?id=${c.account_id}" style="color:#2E7D32;font-weight:600;text-decoration:none">${h(c.child_name)}</a></td>
+                  <td style="font-family:monospace;font-size:12px">${h(c.account_id.slice(0,8))}…</td>
+                  <td><span class="badge ${c.kyc_status === 'approved' ? 'badge-active' : c.kyc_status === 'pending' ? 'badge-pending' : 'badge-rejected'}">${h(c.kyc_status || 'none')}</span></td>
+                  <td><span class="badge ${c.consent_status === 'approved' ? 'badge-active' : c.consent_status === 'pending' ? 'badge-pending' : 'badge-rejected'}">${h(c.consent_status || 'none')}</span></td>
+                  <td><span class="badge badge-active">${h(c.link_status)}</span></td>
+                  <td style="color:#6b7280;font-size:12px">${new Date(c.linked_at).toLocaleDateString()}</td>
+                </tr>
+                `).join('')}
+              </tbody>
+            </table>
+            `}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+  res.type('html').send(layout('Parent Management', 'parents', content, { subtitle: parentsWithChildren.length + ' parent' + (parentsWithChildren.length !== 1 ? 's' : '') }));
 }));
 
 module.exports = router;

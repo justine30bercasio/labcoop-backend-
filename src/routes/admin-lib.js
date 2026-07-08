@@ -82,6 +82,7 @@ function layout(title, active, content, opts = {}) {
       { icon: '<i class="fas fa-percent"></i>', label: 'Taxes', href: '/admin/taxes', key: 'taxes' },
       { icon: '<i class="fas fa-bell"></i>', label: 'Notifications', href: '/admin/notifications-log', key: 'notifications-log' },
       { icon: '<i class="fas fa-globe"></i>', label: 'Multi-Currency', href: '/admin/currencies', key: 'currencies' },
+      { icon: '<i class="fas fa-family"></i>', label: 'Parent Management', href: '/admin/parents', key: 'parents' },
       { icon: '<i class="fas fa-database"></i>', label: 'Backup & Restore', href: '/admin/backup', key: 'backup' },
       { icon: '<i class="fas fa-gear"></i>', label: 'Settings', href: '/admin/settings', key: 'settings' },
     ]},

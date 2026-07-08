@@ -110,13 +110,7 @@ class _LabCoopAppState extends State<LabCoopApp> {
         break;
       case _AppStartupPage.biometricLogin:
         home = const BiometricLoginPage();
-        return MaterialApp(
-          navigatorKey: _navigatorKey,
-          title: 'LabCoop',
-          theme: AppTheme.lightTheme,
-          debugShowCheckedModeBanner: false,
-          home: home,
-        );
+        break;
       case _AppStartupPage.normal:
       default:
         home = const SplashPage();

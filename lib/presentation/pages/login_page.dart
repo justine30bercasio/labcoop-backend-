@@ -26,7 +26,7 @@ class _LoginPageState extends State<LoginPage>
   final _passwordFocus = FocusNode();
   bool _loading = false;
   bool _obscurePassword = true;
-  bool _bioLoginEnabled = false;
+  bool _bioAvailable = false;
   String? _error;
 
   @override
@@ -40,8 +40,8 @@ class _LoginPageState extends State<LoginPage>
     _animController.forward();
     _cidFocus.addListener(() => setState(() {}));
     _passwordFocus.addListener(() => setState(() {}));
-    SecurityService.isBioLoginEnabled().then((v) {
-      if (mounted) setState(() => _bioLoginEnabled = v);
+    SecurityService.canAuthenticate().then((v) {
+      if (mounted) setState(() => _bioAvailable = v);
     });
   }
 
@@ -418,7 +418,7 @@ class _LoginPageState extends State<LoginPage>
   }
 
   Widget _buildBiometricButton() {
-    if (!_bioLoginEnabled) return const SizedBox.shrink();
+    if (!_bioAvailable) return const SizedBox.shrink();
     return Column(
       children: [
         Row(

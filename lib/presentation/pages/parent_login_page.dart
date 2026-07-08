@@ -1,9 +1,11 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/network/banking_api_service.dart';
+import '../widgets/kyc_selfie_capture.dart';
 import 'parent_dashboard_page.dart';
 
 class ParentLoginPage extends StatefulWidget {
@@ -24,12 +26,15 @@ class _ParentLoginPageState extends State<ParentLoginPage>
   final _pin1Controller = TextEditingController();
   final _pin2Controller = TextEditingController();
   final _idNumberController = TextEditingController();
+  final _otpController = TextEditingController();
   final _pinFocus = FocusNode();
   final _pin1Focus = FocusNode();
   final _pin2Focus = FocusNode();
 
-  // Photo state
-  String? _photoPath;
+  // Selfie capture
+  final _selfieKey = GlobalKey<KycSelfieCaptureState>();
+
+  // ID photo state (file picker for ID photo)
   String? _idPhotoPath;
   final _picker = ImagePicker();
 
@@ -41,8 +46,14 @@ class _ParentLoginPageState extends State<ParentLoginPage>
   ];
   String _selectedIdType = '';
 
+  // OTP state
+  bool _otpSent = false;
+  bool _emailVerified = false;
+  String? _emailVerifyToken;
+  int _otpCountdown = 0;
+
   bool _loading = false;
-  bool _registered = false; // show pending message after registration
+  bool _registered = false;
   String? _error;
 
   @override
@@ -64,6 +75,7 @@ class _ParentLoginPageState extends State<ParentLoginPage>
     _pin1Controller.dispose();
     _pin2Controller.dispose();
     _idNumberController.dispose();
+    _otpController.dispose();
     _pinFocus.dispose();
     _pin1Focus.dispose();
     _pin2Focus.dispose();
@@ -78,21 +90,77 @@ class _ParentLoginPageState extends State<ParentLoginPage>
       _pin1Controller.clear();
       _pin2Controller.clear();
       _idNumberController.clear();
+      _otpController.clear();
       _selectedIdType = '';
-      _photoPath = null;
       _idPhotoPath = null;
+      _otpSent = false;
+      _emailVerified = false;
+      _emailVerifyToken = null;
       _registered = false;
     });
   }
 
-  Future<void> _pickPhoto(String type) async {
-    final x = await _picker.pickImage(source: ImageSource.gallery, maxWidth: 1024, imageQuality: 80);
-    if (x != null) {
-      setState(() {
-        if (type == 'photo') _photoPath = x.path;
-        if (type == 'idPhoto') _idPhotoPath = x.path;
-      });
+  // ── OTP Flow ──
+  Future<void> _sendOtp() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty) { setState(() => _error = 'Enter your email first'); return; }
+    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
+      setState(() => _error = 'Enter a valid email'); return;
     }
+    setState(() { _loading = true; _error = null; });
+    try {
+      await BankingApiService.parentSendOtp(email);
+      if (!mounted) return;
+      setState(() {
+        _otpSent = true;
+        _loading = false;
+        _otpCountdown = 60;
+      });
+      _startOtpCountdown();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { _error = 'Failed to send OTP'; _loading = false; });
+    }
+  }
+
+  void _startOtpCountdown() {
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(seconds: 1));
+      if (!mounted) return false;
+      setState(() {
+        if (_otpCountdown > 0) _otpCountdown--;
+      });
+      return _otpCountdown > 0;
+    });
+  }
+
+  Future<void> _verifyOtp() async {
+    final email = _emailController.text.trim();
+    final otp = _otpController.text.trim();
+    if (otp.length < 6) { setState(() => _error = 'Enter the 6-digit code from your email'); return; }
+    setState(() { _loading = true; _error = null; });
+    try {
+      final result = await BankingApiService.parentVerifyOtp(email, otp);
+      if (!mounted) return;
+      if (result == null || result['emailVerifyToken'] == null) {
+        setState(() { _error = 'Invalid or expired code'; _loading = false; });
+        return;
+      }
+      setState(() {
+        _emailVerified = true;
+        _emailVerifyToken = result['emailVerifyToken'] as String;
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { _error = 'Verification failed'; _loading = false; });
+    }
+  }
+
+  Future<void> _pickIdPhoto() async {
+    final x = await _picker.pickImage(source: ImageSource.camera, imageQuality: 80, maxWidth: 1024);
+    if (x != null) setState(() => _idPhotoPath = x.path);
   }
 
   Future<void> _doLogin() async {
@@ -106,12 +174,11 @@ class _ParentLoginPageState extends State<ParentLoginPage>
       if (!mounted) return;
       if (result == null) { setState(() { _error = 'Connection error'; _loading = false; }); return; }
       if (result['token'] == null) {
-        final msg = result['message'] as String? ?? 'Invalid email or PIN';
         final status = result['status'] as String?;
         if (status == 'pending') {
           setState(() { _error = 'Registration pending admin approval.'; _loading = false; _registered = true; });
         } else {
-          setState(() { _error = msg; _loading = false; });
+          setState(() { _error = result['message'] as String? ?? 'Invalid email or PIN'; _loading = false; });
         }
         return;
       }
@@ -131,6 +198,9 @@ class _ParentLoginPageState extends State<ParentLoginPage>
     if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
       setState(() => _error = 'Enter a valid email'); return;
     }
+    if (!_emailVerified || _emailVerifyToken == null) {
+      setState(() => _error = 'Please verify your email with the OTP code first'); return;
+    }
     final pin1 = _pin1Controller.text.trim();
     final pin2 = _pin2Controller.text.trim();
     if (pin1.length < 6) { setState(() => _error = 'Enter your 6-digit PIN'); return; }
@@ -139,21 +209,29 @@ class _ParentLoginPageState extends State<ParentLoginPage>
     final idNumber = _idNumberController.text.trim();
     if (idNumber.length < 4) { setState(() => _error = 'Enter a valid ID number'); return; }
 
+    final selfieBytes = _selfieKey.currentState?.validatedImageBytes;
+    final selfieName = _selfieKey.currentState?.imageFilename ?? 'selfie.jpg';
+    if (selfieBytes == null) {
+      setState(() => _error = 'Please take a valid selfie (face must be detected and centered)');
+      return;
+    }
+
     setState(() { _loading = true; _error = null; });
     try {
       final displayName = _nameController.text.trim();
-      Map<String, dynamic>? result;
-
-      if (_photoPath != null || _idPhotoPath != null) {
-        result = await BankingApiService.parentRegisterWithPhotos(
-          email, pin1, _selectedIdType, idNumber,
-          displayName: displayName, photoPath: _photoPath, idPhotoPath: _idPhotoPath,
-        );
-      } else {
-        result = await BankingApiService.parentRegister(
-          email, pin1, displayName: displayName, idType: _selectedIdType, idNumber: idNumber,
-        );
+      Uint8List? idPhotoBytes;
+      String? idPhotoFilename;
+      if (_idPhotoPath != null) {
+        idPhotoBytes = await File(_idPhotoPath!).readAsBytes();
+        idPhotoFilename = _idPhotoPath!.split('/').last.split('\\').last;
       }
+
+      final result = await BankingApiService.parentRegisterWithPhotos(
+        email, pin1, _selectedIdType, idNumber, _emailVerifyToken!,
+        displayName: displayName,
+        photoBytes: selfieBytes, photoFilename: selfieName,
+        idPhotoBytes: idPhotoBytes, idPhotoFilename: idPhotoFilename,
+      );
 
       if (!mounted) return;
       if (result == null) {
@@ -162,15 +240,8 @@ class _ParentLoginPageState extends State<ParentLoginPage>
       }
       if (result['status'] == 'pending') {
         setState(() { _registered = true; _loading = false; });
-      } else if (result['token'] != null) {
-        // Old behavior fallback (if no status check)
-        const storage = FlutterSecureStorage();
-        await storage.write(key: 'parent_token', value: result['token'] as String);
-        await storage.write(key: 'parent_email', value: email);
-        if (!mounted) return;
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const ParentDashboardPage()));
       } else {
-        setState(() { _error = 'Registration failed. Email may already be registered.'; _loading = false; });
+        setState(() { _error = result['message'] as String? ?? 'Registration failed'; _loading = false; });
       }
     } catch (e) {
       setState(() { _error = 'Connection error'; _loading = false; });
@@ -215,11 +286,11 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                           ? 'Registration submitted!'
                           : _mode == 0
                               ? 'Monitor & approve your child\'s transactions'
-                              : 'Register to link your child\'s account',
+                              : 'Verify your email to register',
                       style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.6))),
                     const SizedBox(height: 24),
 
-                    // ── Registration Success State ──
+                    // ── Registration Success ──
                     if (_registered)
                       Container(
                         width: double.infinity,
@@ -237,7 +308,7 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
                             const SizedBox(height: 8),
                             Text(
-                              'An admin will review your photo ID and information. You will receive access once approved.\n\nPlease check back later.',
+                              'An admin will review your selfie and ID documents.\nYou will receive access once approved.',
                               textAlign: TextAlign.center,
                               style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.7))),
                             const SizedBox(height: 20),
@@ -254,6 +325,7 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                         ),
                       )
                     else
+
                     // ── Login / Register Form ──
                     Container(
                       width: double.infinity,
@@ -265,7 +337,6 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                       ),
                       child: Column(
                         children: [
-                          // Mode toggle
                           Row(
                             children: [
                               Expanded(child: _modeButton('Login', 0)),
@@ -274,6 +345,8 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                             ],
                           ),
                           const SizedBox(height: 20),
+
+                          // ── Email field (always shown) ──
                           TextField(
                             controller: _emailController,
                             style: const TextStyle(color: Colors.white, fontSize: 14),
@@ -295,10 +368,101 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                                 borderSide: BorderSide(color: AppTheme.accentAmber.withValues(alpha: 0.8), width: 1.8),
                               ),
                               contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                              suffixIcon: _emailVerified
+                                  ? const Icon(Icons.verified, color: Colors.green, size: 20)
+                                  : null,
                             ),
                           ),
 
-                          if (_mode == 1) ...[
+                          // ── OTP Section (register mode only) ──
+                          if (_mode == 1 && !_emailVerified) ...[
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: _loading || _otpCountdown > 0 ? null : _sendOtp,
+                                icon: const Icon(Icons.send, size: 16),
+                                label: Text(_otpCountdown > 0
+                                    ? 'Resend in ${_otpCountdown}s'
+                                    : _otpSent
+                                        ? 'Resend OTP'
+                                        : 'Send OTP Code'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.accentAmber,
+                                  foregroundColor: AppTheme.textDark,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                              ),
+                            ),
+                            if (_otpSent) ...[
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _otpController,
+                                      style: const TextStyle(color: Colors.white, fontSize: 20, letterSpacing: 8),
+                                      cursorColor: AppTheme.accentAmber,
+                                      keyboardType: TextInputType.number,
+                                      maxLength: 6,
+                                      buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+                                      decoration: InputDecoration(
+                                        hintText: '000000',
+                                        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 20, letterSpacing: 8),
+                                        filled: true,
+                                        fillColor: Colors.white.withValues(alpha: 0.1),
+                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(14),
+                                          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(14),
+                                          borderSide: BorderSide(color: AppTheme.accentAmber.withValues(alpha: 0.8), width: 1.8),
+                                        ),
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  SizedBox(
+                                    height: 48,
+                                    child: ElevatedButton(
+                                      onPressed: _loading ? null : _verifyOtp,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.green,
+                                        foregroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      ),
+                                      child: const Text('Verify', style: TextStyle(fontWeight: FontWeight.bold)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+
+                          // ── Email verified message ──
+                          if (_emailVerified)
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+                              ),
+                              child: const Row(
+                                children: [
+                                  Icon(Icons.check_circle, color: Colors.green, size: 16),
+                                  SizedBox(width: 6),
+                                  Text('Email verified', style: TextStyle(color: Colors.green, fontSize: 12)),
+                                ],
+                              ),
+                            ),
+
+                          // ── Register-only fields ──
+                          if (_mode == 1 && _emailVerified) ...[
                             const SizedBox(height: 12),
                             TextField(
                               controller: _nameController,
@@ -321,11 +485,33 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                               ),
                             ),
-                            // Photo picker
+
+                            // Selfie capture (face-verified camera)
                             const SizedBox(height: 12),
-                            _buildPhotoPicker('Your Photo', _photoPath, () => _pickPhoto('photo')),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Selfie Verification',
+                                    style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12, fontWeight: FontWeight.w600)),
+                                  const SizedBox(height: 8),
+                                  KycSelfieCapture(key: _selfieKey),
+                                ],
+                              ),
+                            ),
+
+                            // ID photo (camera)
                             const SizedBox(height: 8),
-                            // ID Type dropdown
+                            _buildPhotoPicker('ID Photo (take a picture of your ID)', _idPhotoPath, _pickIdPhoto),
+
+                            // ID type dropdown
+                            const SizedBox(height: 8),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 16),
                               decoration: BoxDecoration(
@@ -376,13 +562,42 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                               ),
                             ),
-                            // ID photo picker
+
+                            // PIN fields
+                            const SizedBox(height: 4),
+                            Text('Set your 6-digit PIN',
+                              style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11)),
                             const SizedBox(height: 8),
-                            _buildPhotoPicker('ID Photo', _idPhotoPath, () => _pickPhoto('idPhoto')),
+                            TextField(
+                              focusNode: _pin1Focus,
+                              controller: _pin1Controller,
+                              obscureText: true,
+                              obscuringCharacter: '\u25CF',
+                              style: const TextStyle(color: Colors.white, fontSize: 18, letterSpacing: 6),
+                              cursorColor: AppTheme.accentAmber,
+                              keyboardType: TextInputType.number,
+                              textInputAction: TextInputAction.next,
+                              maxLength: 6,
+                              buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+                              decoration: _pinDecoration('Create 6-digit PIN'),
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              focusNode: _pin2Focus,
+                              controller: _pin2Controller,
+                              obscureText: true,
+                              obscuringCharacter: '\u25CF',
+                              style: const TextStyle(color: Colors.white, fontSize: 18, letterSpacing: 6),
+                              cursorColor: AppTheme.accentAmber,
+                              keyboardType: TextInputType.number,
+                              textInputAction: TextInputAction.done,
+                              maxLength: 6,
+                              buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+                              decoration: _pinDecoration('Confirm 6-digit PIN'),
+                            ),
                           ],
 
-                          const SizedBox(height: 16),
-                          // PIN field (login)
+                          // ── PIN field (login) ──
                           if (_mode == 0)
                             TextField(
                               focusNode: _pinFocus,
@@ -408,37 +623,7 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                               decoration: _pinDecoration('6-digit PIN'),
                             ),
 
-                          // PIN fields (register — two for confirmation)
-                          if (_mode == 1) ...[
-                            TextField(
-                              focusNode: _pin1Focus,
-                              controller: _pin1Controller,
-                              obscureText: true,
-                              obscuringCharacter: '\u25CF',
-                              style: const TextStyle(color: Colors.white, fontSize: 18, letterSpacing: 6),
-                              cursorColor: AppTheme.accentAmber,
-                              keyboardType: TextInputType.number,
-                              textInputAction: TextInputAction.next,
-                              maxLength: 6,
-                              buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
-                              decoration: _pinDecoration('Create 6-digit PIN'),
-                            ),
-                            const SizedBox(height: 12),
-                            TextField(
-                              focusNode: _pin2Focus,
-                              controller: _pin2Controller,
-                              obscureText: true,
-                              obscuringCharacter: '\u25CF',
-                              style: const TextStyle(color: Colors.white, fontSize: 18, letterSpacing: 6),
-                              cursorColor: AppTheme.accentAmber,
-                              keyboardType: TextInputType.number,
-                              textInputAction: TextInputAction.done,
-                              maxLength: 6,
-                              buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
-                              decoration: _pinDecoration('Confirm 6-digit PIN'),
-                            ),
-                          ],
-
+                          // ── Error ──
                           if (_error != null)
                             Padding(
                               padding: const EdgeInsets.only(top: 8),
@@ -456,23 +641,24 @@ class _ParentLoginPageState extends State<ParentLoginPage>
 
                           const SizedBox(height: 16),
 
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            width: double.infinity, height: 44,
-                            child: ElevatedButton(
-                              onPressed: _loading ? null : (_mode == 0 ? _doLogin : _doRegister),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.accentAmber,
-                                foregroundColor: AppTheme.textDark,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                elevation: 4,
+                          // ── Submit button ──
+                          if (!(_mode == 1 && !_emailVerified))
+                            SizedBox(
+                              width: double.infinity, height: 44,
+                              child: ElevatedButton(
+                                onPressed: _loading ? null : (_mode == 0 ? _doLogin : _doRegister),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.accentAmber,
+                                  foregroundColor: AppTheme.textDark,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  elevation: 4,
+                                ),
+                                child: _loading
+                                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.textDark))
+                                    : Text(_mode == 0 ? 'Login as Parent' : 'Submit for Approval',
+                                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                               ),
-                              child: _loading
-                                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.textDark))
-                                  : Text(_mode == 0 ? 'Login as Parent' : 'Submit for Approval',
-                                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                             ),
-                          ),
                         ],
                       ),
                     ),
@@ -523,7 +709,7 @@ class _ParentLoginPageState extends State<ParentLoginPage>
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                path != null ? label : 'Tap to add $label',
+                path != null ? label : label,
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: path != null ? 0.9 : 0.5),
                   fontSize: 13,
@@ -532,15 +718,7 @@ class _ParentLoginPageState extends State<ParentLoginPage>
             ),
             if (path != null)
               GestureDetector(
-                onTap: () {
-                  setState(() {
-                    if (label.contains('Photo') && !label.contains('ID')) {
-                      _photoPath = null;
-                    } else {
-                      _idPhotoPath = null;
-                    }
-                  });
-                },
+                onTap: () => setState(() => _idPhotoPath = null),
                 child: Icon(Icons.close, color: Colors.white.withValues(alpha: 0.5), size: 18),
               ),
           ],

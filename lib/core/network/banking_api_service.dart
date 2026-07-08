@@ -271,16 +271,32 @@ class BankingApiService {
 
   // ── Parent Portal ──
 
+  static Future<Map<String, dynamic>?> parentSendOtp(String email) async {
+    try {
+      final resp = await _dio.post('/api/parent/send-otp', data: {'email': email});
+      return resp.data as Map<String, dynamic>;
+    } on DioException { return null; }
+  }
+
+  static Future<Map<String, dynamic>?> parentVerifyOtp(String email, String otp) async {
+    try {
+      final resp = await _dio.post('/api/parent/verify-otp', data: {'email': email, 'otp': otp});
+      return resp.data as Map<String, dynamic>;
+    } on DioException { return null; }
+  }
+
   static Future<Map<String, dynamic>?> parentRegister(
     String email, String pin, {
     String? displayName, String? phone,
     String? idType, String? idNumber,
+    String? emailVerifyToken,
   }) async {
     try {
       final data = {
         'email': email, 'pin': pin,
         'displayName': displayName ?? '', 'phone': phone ?? '',
         'idType': idType ?? '', 'idNumber': idNumber ?? '',
+        'emailVerifyToken': emailVerifyToken ?? '',
       };
       final resp = await _dio.post('/api/parent/register', data: data);
       return resp.data as Map<String, dynamic>;
@@ -289,9 +305,11 @@ class BankingApiService {
 
   static Future<Map<String, dynamic>?> parentRegisterWithPhotos(
     String email, String pin,
-    String idType, String idNumber, {
+    String idType, String idNumber,
+    String emailVerifyToken, {
     String? displayName, String? phone,
-    String? photoPath, String? idPhotoPath,
+    Uint8List? photoBytes, String? photoFilename,
+    Uint8List? idPhotoBytes, String? idPhotoFilename,
   }) async {
     try {
       final formData = FormData.fromMap({
@@ -301,12 +319,13 @@ class BankingApiService {
         'idNumber': idNumber,
         'displayName': displayName ?? '',
         'phone': phone ?? '',
+        'emailVerifyToken': emailVerifyToken,
       });
-      if (photoPath != null) {
-        formData.files.add(MapEntry('photo', await MultipartFile.fromFile(photoPath)));
+      if (photoBytes != null) {
+        formData.files.add(MapEntry('photo', MultipartFile.fromBytes(photoBytes, filename: photoFilename ?? 'selfie.jpg')));
       }
-      if (idPhotoPath != null) {
-        formData.files.add(MapEntry('idPhoto', await MultipartFile.fromFile(idPhotoPath)));
+      if (idPhotoBytes != null) {
+        formData.files.add(MapEntry('idPhoto', MultipartFile.fromBytes(idPhotoBytes, filename: idPhotoFilename ?? 'id_photo.jpg')));
       }
       final resp = await _dio.post('/api/parent/register', data: formData);
       return resp.data as Map<String, dynamic>;

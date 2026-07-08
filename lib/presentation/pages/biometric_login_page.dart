@@ -32,7 +32,8 @@ class _BiometricLoginPageState extends State<BiometricLoginPage> {
     _username = await SecurityService.getSavedUsername();
     if (mounted) {
       setState(() => _loading = false);
-      _triggerBiometric();
+      // Small delay to let the widget render before showing system dialog
+      Future.delayed(const Duration(milliseconds: 300), _triggerBiometric);
     }
   }
 

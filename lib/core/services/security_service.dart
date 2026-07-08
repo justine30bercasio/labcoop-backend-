@@ -36,7 +36,7 @@ class SecurityService {
         localizedReason: reason,
         options: const AuthenticationOptions(
           stickyAuth: true,
-          biometricOnly: false,
+          biometricOnly: true,
         ),
       );
     } catch (_) {

@@ -19,11 +19,9 @@ class _LoginPageState extends State<LoginPage>
   late AnimationController _animController;
   late Animation<double> _fadeScale;
   final _cidController = TextEditingController();
-  final _pinController = TextEditingController();
   final _cidFocus = FocusNode();
   bool _loading = false;
   String? _error;
-  bool _showPinPad = false;
 
   // PIN pad state
   final List<String> _pinDigits = ['', '', '', '', '', ''];
@@ -45,7 +43,6 @@ class _LoginPageState extends State<LoginPage>
   void dispose() {
     _animController.dispose();
     _cidController.dispose();
-    _pinController.dispose();
     _cidFocus.dispose();
     super.dispose();
   }
@@ -267,9 +264,14 @@ class _LoginPageState extends State<LoginPage>
                             controller: _cidController,
                             style: const TextStyle(color: Colors.white, fontSize: 15),
                             cursorColor: AppTheme.accentAmber,
-                            keyboardType: TextInputType.text,
+                            keyboardType: TextInputType.number,
                             textInputAction: TextInputAction.done,
-                            onSubmitted: (_) => setState(() => _showPinPad = true),
+                            onSubmitted: (_) {
+                              // Dismiss keyboard so PIN keypad is the only input
+                              FocusScope.of(context).unfocus();
+                              setState(() {});
+                            },
+                            onChanged: (_) => setState(() {}),
                             decoration: _inputDecoration(
                               hint: 'Member ID (e.g. 000001)',
                               icon: Icons.badge_outlined,
@@ -278,8 +280,11 @@ class _LoginPageState extends State<LoginPage>
                           ),
                           const SizedBox(height: 16),
 
-                          // PIN dots display
-                          _buildPinDots(),
+                          // PIN dots display (tap to dismiss keyboard)
+                          GestureDetector(
+                            onTap: () => FocusScope.of(context).unfocus(),
+                            child: _buildPinDots(),
+                          ),
 
                           if (_error != null)
                             Padding(

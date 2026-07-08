@@ -18,6 +18,7 @@ import '../widgets/notification_bell.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/network/banking_api_service.dart';
 import '../../core/network/dio_client.dart';
+import 'package:dio/dio.dart';
 import 'kyc_page.dart';
 import 'board_page.dart';
 import 'login_page.dart';
@@ -1435,6 +1436,17 @@ class _SettingsPageState extends State<_SettingsPage> {
   final _picker = ImagePicker();
   Map<String, dynamic>? _deletionRequest;
 
+  // Change PIN state
+  final _pinOldController = TextEditingController();
+  final _pinNewController = TextEditingController();
+  final _pinConfirmController = TextEditingController();
+  bool _changingPin = false;
+  bool _pinObscureOld = true;
+  bool _pinObscureNew = true;
+  bool _pinObscureConfirm = true;
+  String? _pinError;
+  String? _pinSuccess;
+
   @override
   void initState() {
     super.initState();
@@ -1513,6 +1525,58 @@ class _SettingsPageState extends State<_SettingsPage> {
     }
   }
 
+  Future<void> _changePin() async {
+    final oldPin = _pinOldController.text;
+    final newPin = _pinNewController.text;
+    final confirmPin = _pinConfirmController.text;
+
+    // Reset messages
+    setState(() { _pinError = null; _pinSuccess = null; });
+
+    if (oldPin.isEmpty || newPin.isEmpty || confirmPin.isEmpty) {
+      setState(() => _pinError = 'Please fill in all PIN fields');
+      return;
+    }
+    if (oldPin.length != 6 || !RegExp(r'^\d{6}$').hasMatch(oldPin)) {
+      setState(() => _pinError = 'Current PIN must be exactly 6 digits');
+      return;
+    }
+    if (newPin.length != 6 || !RegExp(r'^\d{6}$').hasMatch(newPin)) {
+      setState(() => _pinError = 'New PIN must be exactly 6 digits');
+      return;
+    }
+    if (newPin != confirmPin) {
+      setState(() => _pinError = 'New PINs do not match');
+      return;
+    }
+    if (newPin == oldPin) {
+      setState(() => _pinError = 'New PIN must be different from current PIN');
+      return;
+    }
+
+    setState(() => _changingPin = true);
+    try {
+      final api = GetIt.instance<RemoteApiSource>();
+      await api.changePin(oldPin, newPin);
+      if (!mounted) return;
+      setState(() {
+        _pinSuccess = 'PIN changed successfully!';
+        _pinError = null;
+        _changingPin = false;
+        _pinOldController.clear();
+        _pinNewController.clear();
+        _pinConfirmController.clear();
+      });
+    } catch (e) {
+      if (!mounted) return;
+      String msg = 'Failed to change PIN';
+      if (e is DioException) {
+        msg = e.response?.data?['message'] ?? msg;
+      }
+      setState(() { _pinError = msg; _changingPin = false; });
+    }
+  }
+
   Future<void> _requestDeletion() async {
     final reason = _deletionReasonCtrl.text.trim();
     if (reason.length < 5) {
@@ -1573,7 +1637,32 @@ class _SettingsPageState extends State<_SettingsPage> {
   void dispose() {
     _nameController.dispose();
     _deletionReasonCtrl.dispose();
+    _pinOldController.dispose();
+    _pinNewController.dispose();
+    _pinConfirmController.dispose();
     super.dispose();
+  }
+
+  Widget _buildPinField(TextEditingController controller, String hint, bool obscure, VoidCallback toggle) {
+    return TextField(
+      controller: controller,
+      obscureText: obscure,
+      keyboardType: TextInputType.number,
+      maxLength: 6,
+      style: const TextStyle(fontSize: 16),
+      decoration: InputDecoration(
+        hintText: hint,
+        counterText: '',
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+        prefixIcon: const Icon(Icons.pin, color: AppTheme.primaryGreen),
+        suffixIcon: IconButton(
+          icon: Icon(obscure ? Icons.visibility_off : Icons.visibility, size: 20),
+          onPressed: toggle,
+        ),
+        filled: true,
+        fillColor: Colors.white,
+      ),
+    );
   }
 
   @override
@@ -1618,6 +1707,83 @@ class _SettingsPageState extends State<_SettingsPage> {
                       fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ),
+              ),
+              const SizedBox(height: 32),
+              const Divider(),
+              const SizedBox(height: 16),
+
+              // ── Change PIN Section ──
+              const Row(
+                children: [
+                  Icon(Icons.lock_outline, color: AppTheme.primaryGreen, size: 24),
+                  SizedBox(width: 8),
+                  Text('Change PIN',
+                      style: TextStyle(
+                          fontSize: 20, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Your 6-digit PIN is used to log in. Choose a new one you can remember.',
+                style: TextStyle(color: AppTheme.textDark, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              _buildPinField(_pinOldController, 'Current PIN', _pinObscureOld, () {
+                setState(() => _pinObscureOld = !_pinObscureOld);
+              }),
+              const SizedBox(height: 12),
+              _buildPinField(_pinNewController, 'New PIN (6 digits)', _pinObscureNew, () {
+                setState(() => _pinObscureNew = !_pinObscureNew);
+              }),
+              const SizedBox(height: 12),
+              _buildPinField(_pinConfirmController, 'Confirm New PIN', _pinObscureConfirm, () {
+                setState(() => _pinObscureConfirm = !_pinObscureConfirm);
+              }),
+              if (_pinError != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.red.shade200),
+                    ),
+                    child: Text(_pinError!, style: TextStyle(color: Colors.red.shade700, fontSize: 13)),
+                  ),
+                ),
+              if (_pinSuccess != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.green.shade200),
+                    ),
+                    child: Text(_pinSuccess!, style: TextStyle(color: Colors.green.shade700, fontSize: 13)),
+                  ),
+                ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton.icon(
+                  onPressed: _changingPin ? null : _changePin,
+                  icon: _changingPin
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.lock_reset, size: 20),
+                  label: Text(_changingPin ? 'Changing...' : 'Change PIN'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryGreen,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                  ),
+                ),
               ),
               const SizedBox(height: 32),
               const Divider(),

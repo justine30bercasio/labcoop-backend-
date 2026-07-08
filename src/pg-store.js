@@ -45,7 +45,10 @@ class PgStore {
         failed_login_attempts INTEGER DEFAULT 0,
         locked_until TEXT,
         created_at TEXT,
-        updated_at TEXT
+        updated_at TEXT,
+        pin_hash VARCHAR(255) DEFAULT '',
+        parent_email VARCHAR(255) DEFAULT '',
+        consent_status VARCHAR(20) DEFAULT 'none'
       );
       ALTER TABLE accounts ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER DEFAULT 0;
       ALTER TABLE accounts ADD COLUMN IF NOT EXISTS locked_until TEXT;
@@ -66,6 +69,9 @@ class PgStore {
       ALTER TABLE accounts ADD COLUMN IF NOT EXISTS kyc_submitted_at TEXT DEFAULT '';
       ALTER TABLE accounts ADD COLUMN IF NOT EXISTS kyc_verified_at TEXT DEFAULT '';
       ALTER TABLE accounts ADD COLUMN IF NOT EXISTS kyc_rejected_reason TEXT DEFAULT '';
+      ALTER TABLE accounts ADD COLUMN IF NOT EXISTS pin_hash VARCHAR(255) DEFAULT '';
+      ALTER TABLE accounts ADD COLUMN IF NOT EXISTS parent_email VARCHAR(255) DEFAULT '';
+      ALTER TABLE accounts ADD COLUMN IF NOT EXISTS consent_status VARCHAR(20) DEFAULT 'none';
       CREATE TABLE IF NOT EXISTS goal_jars (
         goal_id TEXT PRIMARY KEY,
         account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
@@ -331,10 +337,12 @@ class PgStore {
         created_at TEXT,
         resolved_at TEXT
       );
+      ALTER TABLE parental_consent ADD COLUMN IF NOT EXISTS parent_email VARCHAR(255) DEFAULT '';
       CREATE TABLE IF NOT EXISTS parental_consent (
         consent_id TEXT PRIMARY KEY,
         account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
-        parent_phone TEXT NOT NULL,
+        parent_phone TEXT DEFAULT '',
+        parent_email TEXT DEFAULT '',
         consent_token TEXT NOT NULL,
         status TEXT DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
         rejected_reason TEXT DEFAULT '',
@@ -652,12 +660,15 @@ class PgStore {
       savings_product_id: fields.savings_product_id || null,
       maintaining_balance: fields.maintaining_balance || 0,
       regular_savings_number: fields.regular_savings_number || null,
+      pin_hash: fields.pin_hash || '',
+      parent_email: fields.parent_email || '',
+      consent_status: fields.consent_status || 'none',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
     await this.query(`
-      INSERT INTO accounts (account_id, child_name, member_id, password, password_changed, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, age, gender, savings_schedule, photo_2x2_url, birth_cert_url, id_photo_url, profile_pic_url, kyc_status, selfie_url, is_active, savings_product_id, maintaining_balance, regular_savings_number, created_at, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
+      INSERT INTO accounts (account_id, child_name, member_id, password, password_changed, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, age, gender, savings_schedule, photo_2x2_url, birth_cert_url, id_photo_url, profile_pic_url, kyc_status, selfie_url, is_active, savings_product_id, maintaining_balance, regular_savings_number, pin_hash, parent_email, consent_status, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
     `, [
       account.account_id, account.child_name, account.member_id,
       account.password, account.password_changed, account.actual_balance,
@@ -669,6 +680,7 @@ class PgStore {
       account.kyc_status, account.selfie_url,
       account.is_active, account.savings_product_id, account.maintaining_balance,
       account.regular_savings_number,
+      account.pin_hash, account.parent_email, account.consent_status,
       account.created_at, account.updated_at,
     ]);
     return account;
@@ -703,7 +715,7 @@ class PgStore {
   async updateAccount(accountId, fields, tx) {
     const q = (tx && tx.query) ? tx.query.bind(tx) : (sql, p) => this.query(sql, p);
     // actual_balance and unallocated_balance are SERVER-MANAGED only — never via user-facing API
-    const allowed = ['current_xp', 'child_name', 'parent_phone', 'last_name', 'first_name', 'middle_name', 'birthday', 'age', 'gender', 'savings_schedule', 'photo_2x2_url', 'birth_cert_url', 'id_photo_url', 'profile_pic_url', 'kyc_status', 'selfie_url', 'kyc_submitted_at', 'kyc_verified_at', 'kyc_rejected_reason', 'is_active', 'maintaining_balance', 'regular_savings_number', 'savings_product_id', 'actual_balance', 'unallocated_balance'];
+    const allowed = ['current_xp', 'child_name', 'parent_phone', 'parent_email', 'consent_status', 'last_name', 'first_name', 'middle_name', 'birthday', 'age', 'gender', 'savings_schedule', 'photo_2x2_url', 'birth_cert_url', 'id_photo_url', 'profile_pic_url', 'kyc_status', 'selfie_url', 'kyc_submitted_at', 'kyc_verified_at', 'kyc_rejected_reason', 'is_active', 'maintaining_balance', 'regular_savings_number', 'savings_product_id', 'actual_balance', 'unallocated_balance'];
     const setClauses = [];
     const values = [];
     let idx = 1;

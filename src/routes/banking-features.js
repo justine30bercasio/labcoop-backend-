@@ -4,6 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const { store } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const { generateAmortizationSchedule } = require('../services/interest');
+const { requireConsent } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -151,6 +152,7 @@ router.delete('/standing-orders/:orderId',
 // ── Withdrawal Requests ──
 
 router.post('/withdrawals/request',
+  requireConsent,
   body('account_id').isString().notEmpty().trim(),
   body('amount').isFloat({ min: 1 }),
   body('reason').optional().isString().trim(),

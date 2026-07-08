@@ -12,11 +12,11 @@ function getDb() {
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
     db.exec(`
-      CREATE TABLE IF NOT EXISTS accounts (account_id TEXT PRIMARY KEY, child_name VARCHAR(255) NOT NULL, member_id VARCHAR(20), password VARCHAR(255) DEFAULT '', password_changed INTEGER DEFAULT 0, actual_balance DECIMAL(12,2) DEFAULT 0, unallocated_balance DECIMAL(12,2) DEFAULT 0, current_xp INTEGER DEFAULT 0, parent_phone VARCHAR(20) DEFAULT '', interest_earned DECIMAL(12,2) DEFAULT 0, savings_product_id TEXT, last_name VARCHAR(100) DEFAULT '', first_name VARCHAR(100) DEFAULT '', middle_name VARCHAR(100) DEFAULT '', age INTEGER DEFAULT 0, birthday VARCHAR(10) DEFAULT '', gender VARCHAR(10) DEFAULT '', savings_schedule VARCHAR(50) DEFAULT '', photo_2x2_url TEXT DEFAULT '', birth_cert_url TEXT DEFAULT '', id_photo_url TEXT DEFAULT '', kyc_status TEXT DEFAULT '', selfie_url TEXT DEFAULT '', kyc_submitted_at TEXT DEFAULT '', kyc_verified_at TEXT DEFAULT '', kyc_rejected_reason TEXT DEFAULT '', is_active INTEGER DEFAULT 1, failed_login_attempts INTEGER DEFAULT 0, locked_until TEXT, created_at TEXT, updated_at TEXT);
+      CREATE TABLE IF NOT EXISTS accounts (account_id TEXT PRIMARY KEY, child_name VARCHAR(255) NOT NULL, member_id VARCHAR(20), password VARCHAR(255) DEFAULT '', password_changed INTEGER DEFAULT 0, actual_balance DECIMAL(12,2) DEFAULT 0, unallocated_balance DECIMAL(12,2) DEFAULT 0, current_xp INTEGER DEFAULT 0, parent_phone VARCHAR(20) DEFAULT '', interest_earned DECIMAL(12,2) DEFAULT 0, savings_product_id TEXT, last_name VARCHAR(100) DEFAULT '', first_name VARCHAR(100) DEFAULT '', middle_name VARCHAR(100) DEFAULT '', age INTEGER DEFAULT 0, birthday VARCHAR(10) DEFAULT '', gender VARCHAR(10) DEFAULT '', savings_schedule VARCHAR(50) DEFAULT '', photo_2x2_url TEXT DEFAULT '', birth_cert_url TEXT DEFAULT '', id_photo_url TEXT DEFAULT '', kyc_status TEXT DEFAULT '', selfie_url TEXT DEFAULT '', kyc_submitted_at TEXT DEFAULT '', kyc_verified_at TEXT DEFAULT '', kyc_rejected_reason TEXT DEFAULT '', is_active INTEGER DEFAULT 1, failed_login_attempts INTEGER DEFAULT 0, locked_until TEXT, created_at TEXT, updated_at TEXT, pin_hash VARCHAR(255) DEFAULT '', parent_email VARCHAR(255) DEFAULT '', consent_status VARCHAR(20) DEFAULT 'none');
       CREATE TABLE IF NOT EXISTS gl_accounts (code TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL CHECK(type IN ('asset','liability','equity','income','expense')), is_active INTEGER DEFAULT 1);
       CREATE TABLE IF NOT EXISTS gl_entries (entry_id TEXT PRIMARY KEY, transaction_id TEXT, account_code TEXT NOT NULL REFERENCES gl_accounts(code), debit DECIMAL(12,2) DEFAULT 0, credit DECIMAL(12,2) DEFAULT 0, description TEXT DEFAULT '', created_at TEXT);
       CREATE TABLE IF NOT EXISTS audit_log (log_id TEXT PRIMARY KEY, admin_id TEXT, admin_name TEXT, action TEXT NOT NULL, entity_type TEXT, entity_id TEXT, details TEXT DEFAULT '{}', ip_address TEXT DEFAULT '', created_at TEXT);
-      CREATE TABLE IF NOT EXISTS parental_consent (consent_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, parent_phone TEXT NOT NULL, consent_token TEXT NOT NULL, status TEXT DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')), rejected_reason TEXT DEFAULT '', ip_address TEXT DEFAULT '', created_at TEXT, responded_at TEXT);
+      CREATE TABLE IF NOT EXISTS parental_consent (consent_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, parent_phone TEXT DEFAULT '', parent_email TEXT DEFAULT '', consent_token TEXT NOT NULL, status TEXT DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')), rejected_reason TEXT DEFAULT '', ip_address TEXT DEFAULT '', created_at TEXT, responded_at TEXT);
       CREATE TABLE IF NOT EXISTS account_deletion_requests (request_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, requested_by TEXT DEFAULT 'parent', reason TEXT DEFAULT '', status TEXT DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')), admin_notes TEXT DEFAULT '', created_at TEXT, resolved_at TEXT);
       CREATE TABLE IF NOT EXISTS admin_users (admin_id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role TEXT DEFAULT 'admin' CHECK(role IN ('super_admin','manager','teller','auditor')), display_name TEXT DEFAULT '', email TEXT DEFAULT '', is_active INTEGER DEFAULT 1, created_at TEXT);
     `);
@@ -65,7 +65,10 @@ function getDb() {
     try { db.exec("ALTER TABLE accounts ADD COLUMN kyc_submitted_at TEXT DEFAULT ''"); } catch (_) {}
     try { db.exec("ALTER TABLE accounts ADD COLUMN kyc_verified_at TEXT DEFAULT ''"); } catch (_) {}
     try { db.exec("ALTER TABLE accounts ADD COLUMN kyc_rejected_reason TEXT DEFAULT ''"); } catch (_) {}
-    try { db.exec("ALTER TABLE accounts ADD COLUMN consent_status TEXT DEFAULT 'approved'"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN consent_status TEXT DEFAULT 'none'"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN pin_hash VARCHAR(255) DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE accounts ADD COLUMN parent_email VARCHAR(255) DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE parental_consent ADD COLUMN parent_email TEXT DEFAULT ''"); } catch (_) {}
     try { db.exec("ALTER TABLE admin_users ADD COLUMN branch_id TEXT REFERENCES branches(branch_id)"); } catch (_) {}
     try { db.exec("ALTER TABLE teller_cash ADD COLUMN branch_id TEXT REFERENCES branches(branch_id)"); } catch (_) {}
     try { db.exec("INSERT OR IGNORE INTO branches (branch_id, name, code, address) VALUES ('main', 'Main Branch', 'MAIN', 'Head Office')"); } catch (_) {}
@@ -178,12 +181,15 @@ function createAccount(fields) {
     savings_product_id: fields.savings_product_id || null,
     maintaining_balance: fields.maintaining_balance || 0,
     regular_savings_number: fields.regular_savings_number || null,
+    pin_hash: fields.pin_hash || '',
+    parent_email: fields.parent_email || '',
+    consent_status: fields.consent_status || 'none',
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
   getDb().prepare(`
-    INSERT INTO accounts (account_id, child_name, member_id, password, password_changed, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, age, gender, savings_schedule, photo_2x2_url, birth_cert_url, id_photo_url, profile_pic_url, kyc_status, selfie_url, is_active, savings_product_id, maintaining_balance, regular_savings_number, created_at, updated_at)
-    VALUES (@account_id, @child_name, @member_id, @password, @password_changed, @actual_balance, @unallocated_balance, @current_xp, @parent_phone, @last_name, @first_name, @middle_name, @birthday, @age, @gender, @savings_schedule, @photo_2x2_url, @birth_cert_url, @id_photo_url, @profile_pic_url, @kyc_status, @selfie_url, @is_active, @savings_product_id, @maintaining_balance, @regular_savings_number, @created_at, @updated_at)
+    INSERT INTO accounts (account_id, child_name, member_id, password, password_changed, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, age, gender, savings_schedule, photo_2x2_url, birth_cert_url, id_photo_url, profile_pic_url, kyc_status, selfie_url, is_active, savings_product_id, maintaining_balance, regular_savings_number, pin_hash, parent_email, consent_status, created_at, updated_at)
+    VALUES (@account_id, @child_name, @member_id, @password, @password_changed, @actual_balance, @unallocated_balance, @current_xp, @parent_phone, @last_name, @first_name, @middle_name, @birthday, @age, @gender, @savings_schedule, @photo_2x2_url, @birth_cert_url, @id_photo_url, @profile_pic_url, @kyc_status, @selfie_url, @is_active, @savings_product_id, @maintaining_balance, @regular_savings_number, @pin_hash, @parent_email, @consent_status, @created_at, @updated_at)
   `).run(account);
   return account;
 }
@@ -220,7 +226,7 @@ function _computeAge(birthday) {
 function updateAccount(accountId, fields, tx) {
   // tx ignored — SQLite is synchronous
   // actual_balance and unallocated_balance are SERVER-MANAGED only — never via user-facing API
-  const allowed = ['current_xp', 'child_name', 'parent_phone', 'last_name', 'first_name', 'middle_name', 'birthday', 'age', 'gender', 'savings_schedule', 'photo_2x2_url', 'birth_cert_url', 'id_photo_url', 'profile_pic_url', 'kyc_status', 'selfie_url', 'kyc_submitted_at', 'kyc_verified_at', 'kyc_rejected_reason', 'is_active', 'maintaining_balance', 'regular_savings_number', 'savings_product_id', 'actual_balance', 'unallocated_balance'];
+  const allowed = ['current_xp', 'child_name', 'parent_phone', 'parent_email', 'consent_status', 'last_name', 'first_name', 'middle_name', 'birthday', 'age', 'gender', 'savings_schedule', 'photo_2x2_url', 'birth_cert_url', 'id_photo_url', 'profile_pic_url', 'kyc_status', 'selfie_url', 'kyc_submitted_at', 'kyc_verified_at', 'kyc_rejected_reason', 'is_active', 'maintaining_balance', 'regular_savings_number', 'savings_product_id', 'actual_balance', 'unallocated_balance'];
   const setClauses = [];
   const values = [];
 

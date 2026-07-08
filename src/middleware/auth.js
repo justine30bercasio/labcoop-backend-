@@ -55,4 +55,39 @@ function requireRole(...roles) {
   };
 }
 
-module.exports = { authMiddleware, adminAuthMiddleware, requireOwnership, requireRole };
+function requireConsent(req, res, next) {
+  const { store } = require('../db');
+  store.getAccount(req.accountId).then(account => {
+    if (!account) {
+      return res.status(404).json({ message: 'Account not found' });
+    }
+    const status = account.consent_status || 'none';
+    if (status === 'none') {
+      return res.status(403).json({
+        message: 'Parental consent required. Please submit a consent request with a parent email.',
+        consent_status: status,
+        consentRequired: true,
+      });
+    }
+    if (status === 'pending') {
+      return res.status(403).json({
+        message: 'Parental consent still pending approval. Please ask your parent to check their email.',
+        consent_status: status,
+        consentRequired: true,
+      });
+    }
+    if (status === 'rejected') {
+      return res.status(403).json({
+        message: 'Parental consent was rejected. Please contact support.',
+        consent_status: status,
+        consentRequired: true,
+      });
+    }
+    next();
+  }).catch(err => {
+    console.error('requireConsent error:', err);
+    return res.status(500).json({ message: 'Internal server error' });
+  });
+}
+
+module.exports = { authMiddleware, adminAuthMiddleware, requireOwnership, requireRole, requireConsent };

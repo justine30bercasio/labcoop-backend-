@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const { store, isPostgres } = require('../db');
 const { asyncHandler } = require('../async-handler');
+const { requireConsent } = require('../middleware/auth');
 
 const PROFILE_DIR = path.join(__dirname, '..', 'uploads', 'profiles');
 if (!fs.existsSync(PROFILE_DIR)) fs.mkdirSync(PROFILE_DIR, { recursive: true });
@@ -58,15 +59,17 @@ router.put('/:accountId',
   param('accountId').isString().notEmpty().trim(),
   body('child_name').optional().isString().trim().isLength({ min: 1, max: 100 }),
   body('parent_phone').optional().isString().isLength({ max: 20 }),
+  body('parent_email').optional().isString().isEmail(),
   asyncHandler(async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { child_name, parent_phone } = req.body;
-    const updated = await store.updateAccount(req.params.accountId, {
-      child_name,
-      parent_phone,
-    });
+    const { child_name, parent_phone, parent_email } = req.body;
+    const updates = {};
+    if (child_name !== undefined) updates.child_name = child_name;
+    if (parent_phone !== undefined) updates.parent_phone = parent_phone;
+    if (parent_email !== undefined) updates.parent_email = parent_email;
+    const updated = await store.updateAccount(req.params.accountId, updates);
     if (!updated) return res.status(404).json({ message: 'Account not found' });
     res.json(updated);
   })
@@ -74,6 +77,7 @@ router.put('/:accountId',
 
 router.put('/:accountId/deposit',
   depositLimiter,
+  requireConsent,
   param('accountId').isString().notEmpty().trim(),
   body('amount').isFloat({ min: 0.01 }).withMessage('amount must be > 0'),
   asyncHandler(async (req, res) => {

@@ -4,7 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { store } = require('../db');
-const { authMiddleware } = require('../middleware/auth');
+const { authMiddleware, requireConsent } = require('../middleware/auth');
 const { asyncHandler } = require('../async-handler');
 
 const KYC_DIR = path.join(__dirname, '..', 'uploads', 'kyc');
@@ -29,7 +29,7 @@ const kycUpload = multer({
   }
 });
 
-router.post('/submit', authMiddleware, (req, res) => {
+router.post('/submit', authMiddleware, requireConsent, (req, res) => {
   kycUpload.fields([
     { name: 'selfie', maxCount: 1 },
     { name: 'birth_cert', maxCount: 1 },

@@ -1446,9 +1446,11 @@ router.post('/accounts/create', requireRole(2), asyncHandler(async (req, res) =>
       unallocated_balance: savingsAmt,
       current_xp: Number(current_xp) || 0,
       parent_phone: parent_phone || '',
-      password: bcrypt.hashSync('0000', 10),
+      password: bcrypt.hashSync('000000', 10),
+      pin_hash: bcrypt.hashSync('000000', 10),
       savings_product_id: 'sp_regular',
       maintaining_balance: maintainingBalance,
+      consent_status: 'none',
     });
 
     const branchCode = account.branch_id || '01';

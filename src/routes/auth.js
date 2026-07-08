@@ -15,12 +15,21 @@ const JWT_SECRET = process.env.JWT_SECRET;
 const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY_DAYS = 7;
 
-// Rate limiter for change-password: 3 attempts per 15 minutes per account
-const changePasswordLimiter = rateLimit({
+// Rate limiter for change-pin: 3 attempts per 15 minutes per account
+const changePinLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 3,
   keyGenerator: (req) => req.body?.accountId || req.accountId || 'global',
-  message: { message: 'Too many password change attempts. Try again in 15 minutes.' },
+  message: { message: 'Too many PIN change attempts. Try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Rate limiter for PIN login: 10 attempts per minute per IP (brute force protection)
+const pinLoginLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: { message: 'Too many login attempts. Try again in 1 minute.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -55,15 +64,15 @@ router.get('/accounts', asyncHandler(async (req, res) => {
   res.json(result.rows || []);
 }));
 
-router.post('/login', asyncHandler(async (req, res) => {
-  const { childName, accountId, memberId, password } = req.body;
+router.post('/login', pinLoginLimiter, asyncHandler(async (req, res) => {
+  const { childName, accountId, memberId, password, pin } = req.body;
   if ((!childName || typeof childName !== 'string' || childName.trim().length === 0) &&
       (!accountId || typeof accountId !== 'string' || accountId.trim().length === 0) &&
       (!memberId || typeof memberId !== 'string' || memberId.trim().length === 0)) {
     return res.status(400).json({ message: 'childName, accountId, or memberId is required' });
   }
-  if (!password || typeof password !== 'string') {
-    return res.status(400).json({ message: 'password is required' });
+  if (!pin && !password) {
+    return res.status(400).json({ message: 'PIN (6 digits) or password is required' });
   }
 
   let account;
@@ -104,7 +113,16 @@ router.post('/login', asyncHandler(async (req, res) => {
     account.locked_until = null;
   }
 
-  const valid = bcrypt.compareSync(password, account.password);
+  // Authenticate via PIN first (primary), fallback to password (legacy)
+  let valid = false;
+  if (pin) {
+    if (account.pin_hash) {
+      valid = bcrypt.compareSync(pin, account.pin_hash);
+    }
+  } else if (password) {
+    valid = bcrypt.compareSync(password, account.password);
+  }
+
   if (!valid) {
     // Increment failed attempts and optionally lock
     const newAttempts = failedAttempts + 1;
@@ -146,7 +164,7 @@ router.post('/login', asyncHandler(async (req, res) => {
   res.json({
     token,
     refreshToken: refreshTokenValue,
-    passwordChanged: account.password_changed === 1,
+    pinChanged: account.pin_hash ? true : false,
     account: {
       account_id: account.account_id,
       child_name: account.child_name,
@@ -170,6 +188,8 @@ router.post('/login', asyncHandler(async (req, res) => {
       savings_product_id: account.savings_product_id,
       maintaining_balance: Number(account.maintaining_balance || 0),
       regular_savings_number: account.regular_savings_number,
+      consent_status: account.consent_status || 'none',
+      parent_email: account.parent_email || '',
     },
   });
 }));
@@ -182,7 +202,7 @@ router.post('/register', regUpload.fields([
   const {
     lastName, firstName, middleName,
     birthday, gender,
-    password, parentPhone,
+    pin, parentPhone,
     savingsSchedule,
   } = req.body;
 
@@ -201,11 +221,15 @@ router.post('/register', regUpload.fields([
   if (!savingsSchedule || typeof savingsSchedule !== 'string' || savingsSchedule.trim().length === 0) {
     return res.status(400).json({ message: 'savingsSchedule is required' });
   }
-  if (!password || typeof password !== 'string' || password.length < 8) {
-    return res.status(400).json({ message: 'password is required (min 8 characters)' });
+  // Validate PIN: exactly 6 digits
+  if (!pin || typeof pin !== 'string' || !/^\d{6}$/.test(pin)) {
+    return res.status(400).json({ message: 'PIN must be exactly 6 digits (0-9)' });
   }
-  if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
-    return res.status(400).json({ message: 'password must contain uppercase, lowercase, and a digit' });
+
+  // Validate parent email
+  const parentEmail = (req.body.parentEmail || '').trim();
+  if (!parentEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(parentEmail)) {
+    return res.status(400).json({ message: 'A valid parent email address is required for parental consent' });
   }
 
   const ulast = lastName.trim().toUpperCase();
@@ -236,14 +260,17 @@ router.post('/register', regUpload.fields([
     age: 0, // computed from birthday by store
     gender: gender || '',
     parent_phone: parentPhone || '',
+    parent_email: parentEmail,
     birthday: birthday || '',
     savings_schedule: savingsSchedule || '',
     photo_2x2_url: photo2x2Url,
     birth_cert_url: birthCertUrl,
     id_photo_url: idPhotoUrl,
-    password: bcrypt.hashSync(password, 10),
+    password: bcrypt.hashSync(pin, 10), // store PIN hash as password for backward compat
+    pin_hash: bcrypt.hashSync(pin, 10),
     savings_product_id: 'sp_regular',
     maintaining_balance: maintainingBalance,
+    consent_status: 'none',
   });
   const maxResult = await store.query("SELECT MAX(CAST(member_id AS INTEGER)) as m FROM accounts");
   const maxMember = parseInt(maxResult.rows[0]?.m || '0', 10);
@@ -261,6 +288,62 @@ router.post('/register', regUpload.fields([
   account.savings_product_id = 'sp_regular';
   account.maintaining_balance = maintainingBalance;
   account.regular_savings_number = savingsNumber;
+
+  // Auto-trigger parental consent request via email
+  try {
+    const consentToken = crypto.randomBytes(32).toString('hex');
+    await store.query(
+      `INSERT INTO parental_consent (consent_id, account_id, parent_phone, parent_email, consent_token, status, ip_address, created_at)
+       VALUES ($1, $2, '', $3, $4, 'pending', $5, $6)`,
+      [crypto.randomUUID(), account.account_id, parentEmail, consentToken, req.ip, new Date().toISOString()]
+    );
+    await store.query(
+      'UPDATE accounts SET consent_status = $1 WHERE account_id = $2',
+      ['pending', account.account_id]
+    );
+    account.consent_status = 'pending';
+    // Try to send consent email
+    const consentLink = `https://labcoop-backend.onrender.com/api/parental-consent/approve?token=${consentToken}`;
+    try {
+      const sgMail = require('@sendgrid/mail');
+      if (process.env.SENDGRID_API_KEY) {
+        sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+        const fromEmail = process.env.SENDGRID_FROM_EMAIL || 'labcoopcooperative@gmail.com';
+        await sgMail.send({
+          to: parentEmail,
+          from: fromEmail,
+          subject: `LabCoop: Parental Consent Request for ${displayName}`,
+          html: `
+            <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:520px;margin:0 auto;background:#f0fdf4;border-radius:16px;overflow:hidden;border:1px solid #86efac;">
+              <div style="background:#166534;padding:24px;text-align:center;">
+                <h1 style="color:#fff;margin:0;font-size:22px;">🐷 LabCoop</h1>
+                <p style="color:#bbf7d0;margin:4px 0 0;font-size:14px;">Children's Cooperative Savings</p>
+              </div>
+              <div style="padding:32px 24px;">
+                <h2 style="color:#166534;margin:0 0 12px;font-size:20px;">Hello Parent of ${displayName}!</h2>
+                <p style="color:#374151;line-height:1.6;margin:0 0 16px;">
+                  Your child <strong>${displayName}</strong> has registered for a LabCoop savings account.
+                  To activate their account, we need your consent.
+                </p>
+                <a href="${consentLink}" style="display:block;background:#16a34a;color:#fff;text-align:center;padding:16px 24px;border-radius:12px;text-decoration:none;font-size:18px;font-weight:600;margin:24px 0;">✅ Approve Consent</a>
+                <p style="color:#64748b;font-size:13px;line-height:1.5;margin:16px 0 0;">
+                  By clicking approve, you confirm you are the parent or legal guardian of ${displayName}.
+                  You may revoke consent at any time.
+                </p>
+              </div>
+            </div>`,
+        });
+        console.log(`[REGISTER] Consent email sent to ${parentEmail}`);
+      } else {
+        console.log(`[REGISTER] SENDGRID_API_KEY not set. Consent link: ${consentLink}`);
+      }
+    } catch (emailErr) {
+      console.error('[REGISTER] Failed to send consent email:', emailErr.message);
+    }
+  } catch (consentErr) {
+    console.error('[REGISTER] Failed to create consent request:', consentErr.message);
+    // Non-fatal — account still created, admin can trigger consent manually
+  }
 
   const token = jwt.sign(
     { accountId: account.account_id, childName: account.child_name },
@@ -301,6 +384,8 @@ router.post('/register', regUpload.fields([
       maintaining_balance: account.maintaining_balance,
       regular_savings_number: account.regular_savings_number,
       coins: Number(account.coins) || 0,
+      consent_status: 'pending',
+      parent_email: parentEmail,
     },
   });
 }));
@@ -352,6 +437,8 @@ router.post('/refresh', asyncHandler(async (req, res) => {
       unallocated_balance: Number(account.unallocated_balance),
       current_xp: Number(account.current_xp),
       coins: Number(account.coins) || 0,
+      consent_status: account.consent_status || 'none',
+      parent_email: account.parent_email || '',
     } : undefined,
   });
 }));
@@ -365,7 +452,7 @@ router.post('/logout', asyncHandler(async (req, res) => {
   res.json({ message: 'Logged out successfully' });
 }));
 
-router.post('/change-password', changePasswordLimiter, asyncHandler(async (req, res) => {
+router.post('/change-pin', changePinLimiter, asyncHandler(async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ message: 'Missing or invalid authorization header' });
@@ -373,23 +460,28 @@ router.post('/change-password', changePasswordLimiter, asyncHandler(async (req, 
   const token = authHeader.split(' ')[1];
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    const { oldPassword, newPassword } = req.body;
-    if (!oldPassword || !newPassword || newPassword.length < 8) {
-      return res.status(400).json({ message: 'oldPassword and newPassword (min 8 chars) are required' });
+    const { oldPin, newPin } = req.body;
+    if (!oldPin || !/^\d{6}$/.test(oldPin)) {
+      return res.status(400).json({ message: 'Current PIN is required and must be exactly 6 digits' });
     }
-    if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
-      return res.status(400).json({ message: 'newPassword must contain uppercase, lowercase, and a digit' });
+    if (!newPin || !/^\d{6}$/.test(newPin)) {
+      return res.status(400).json({ message: 'New PIN is required and must be exactly 6 digits' });
     }
 
     const account = await store.getAccount(decoded.accountId);
     if (!account) return res.status(404).json({ message: 'Account not found' });
 
-    const valid = bcrypt.compareSync(oldPassword, account.password);
-    if (!valid) return res.status(401).json({ message: 'Current password is incorrect' });
+    // Check either pin_hash or password for old PIN
+    const hashToCheck = account.pin_hash || account.password;
+    const valid = bcrypt.compareSync(oldPin, hashToCheck);
+    if (!valid) return res.status(401).json({ message: 'Current PIN is incorrect' });
 
-    const hash = bcrypt.hashSync(newPassword, 10);
-    await store.query('UPDATE accounts SET password = $1, password_changed = 1 WHERE account_id = $2', [hash, decoded.accountId]);
-    res.json({ message: 'Password changed successfully' });
+    const hash = bcrypt.hashSync(newPin, 10);
+    await store.query(
+      'UPDATE accounts SET pin_hash = $1, password = $2 WHERE account_id = $3',
+      [hash, hash, decoded.accountId]
+    );
+    res.json({ message: 'PIN changed successfully' });
   } catch (err) {
     return res.status(401).json({ message: 'Invalid or expired token' });
   }

@@ -4,6 +4,7 @@ const { store, isPostgres } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const { calculateLoanSummary } = require('../services/interest');
 const gl = require('../services/gl');
+const { requireConsent } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -70,6 +71,7 @@ router.get('/loans/:loanId',
 );
 
 router.post('/loans/apply',
+  requireConsent,
   body('account_id').isString().notEmpty().trim(),
   body('product_id').optional().isString(),
   body('principal').isFloat({ min: 1 }),

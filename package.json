@@ -17,6 +17,7 @@
     "backup": "bash ../scripts/backup.sh"
   },
   "dependencies": {
+    "@sendgrid/mail": "^8.1.6",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.10.1",
     "connect-pg-simple": "^10.0.0",

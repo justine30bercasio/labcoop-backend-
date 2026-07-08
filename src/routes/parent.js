@@ -44,6 +44,79 @@ const pinLoginLimiter = rateLimit({
 
 const ID_TYPES = ['Passport', "Driver's License", "National ID", "UMID", "SSS ID", "GSIS ID", "PRC ID", "Postal ID", "Voter's ID", "Barangay ID", "School ID", "Company ID", "Other"];
 
+// ── OTP Store (in-memory) ──
+const otpStore = new Map();
+
+// ── Send OTP to parent email ──
+router.post('/send-otp', asyncHandler(async (req, res) => {
+  const { email } = req.body;
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ message: 'Valid email is required' });
+  }
+  const normalEmail = email.toLowerCase().trim();
+  // Rate limit: max 3 OTPs per email per 15 minutes
+  const now = Date.now();
+  const existing = otpStore.get(normalEmail);
+  const attempts = existing ? (existing.attempts || 0) : 0;
+  if (attempts >= 3) {
+    return res.status(429).json({ message: 'Too many OTP requests. Try again in 15 minutes.' });
+  }
+  const otp = crypto.randomInt(100000, 999999).toString();
+  otpStore.set(normalEmail, { otp, expires: now + 600000, attempts: attempts + 1 });
+  // Send via SendGrid
+  try {
+    const sgMail = require('@sendgrid/mail');
+    const apiKey = process.env.SENDGRID_API_KEY;
+    if (apiKey) {
+      sgMail.setApiKey(apiKey);
+      const fromEmail = process.env.SENDGRID_FROM_EMAIL || 'labcoopcooperative@gmail.com';
+      await sgMail.send({
+        to: normalEmail,
+        from: fromEmail,
+        subject: 'LabCoop Parent Portal — Email Verification Code',
+        html: `<div style="font-family:Arial;max-width:480px;margin:0 auto">
+          <h2 style="color:#1a237e">Email Verification</h2>
+          <p style="color:#333">Your 6-digit verification code:</p>
+          <div style="font-size:36px;letter-spacing:8px;font-weight:700;color:#1a237e;text-align:center;padding:20px;background:#f0f0ff;border-radius:8px;margin:16px 0">${otp}</div>
+          <p style="color:#666;font-size:13px">This code expires in 10 minutes.</p>
+          <hr style="border:none;border-top:1px solid #eee">
+          <p style="color:#999;font-size:11px">LabCoop Cooperative — Parent Portal</p>
+        </div>`,
+      });
+    } else {
+      console.warn('SENDGRID_API_KEY not set — OTP would be:', otp);
+    }
+  } catch (e) {
+    console.warn('Failed to send OTP email:', e.message);
+  }
+  res.json({ message: 'If this email is registered, an OTP has been sent.', sent: true });
+}));
+
+// ── Verify OTP ──
+router.post('/verify-otp', asyncHandler(async (req, res) => {
+  const { email, otp } = req.body;
+  if (!email || !otp) return res.status(400).json({ message: 'Email and OTP are required' });
+  const normalEmail = email.toLowerCase().trim();
+  const stored = otpStore.get(normalEmail);
+  if (!stored) return res.status(400).json({ message: 'No OTP requested. Please request one first.' });
+  const now = Date.now();
+  if (now > stored.expires) {
+    otpStore.delete(normalEmail);
+    return res.status(400).json({ message: 'OTP has expired. Please request a new one.' });
+  }
+  if (stored.otp !== otp.trim()) {
+    return res.status(400).json({ message: 'Invalid OTP. Please try again.' });
+  }
+  otpStore.delete(normalEmail);
+  // Issue a short-lived email verification token
+  const emailVerifyToken = jwt.sign(
+    { email: normalEmail, purpose: 'email_verify' },
+    JWT_SECRET,
+    { expiresIn: '15m' }
+  );
+  res.json({ message: 'Email verified successfully', emailVerifyToken, email: normalEmail });
+}));
+
 // ── Parent Auth Middleware ──
 function parentAuth(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -67,9 +140,22 @@ router.post('/register', parentPhotoUpload.fields([
   { name: 'photo', maxCount: 1 },
   { name: 'idPhoto', maxCount: 1 },
 ]), asyncHandler(async (req, res) => {
-  const { email, pin, displayName, phone, idType, idNumber } = req.body;
+  const { email, pin, displayName, phone, idType, idNumber, emailVerifyToken } = req.body;
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(400).json({ message: 'Valid email is required' });
+  }
+  // Verify email ownership via OTP token
+  if (emailVerifyToken) {
+    try {
+      const decoded = jwt.verify(emailVerifyToken, JWT_SECRET);
+      if (decoded.purpose !== 'email_verify' || decoded.email !== email.toLowerCase().trim()) {
+        return res.status(400).json({ message: 'Email verification failed. Please verify your email again.' });
+      }
+    } catch (e) {
+      return res.status(400).json({ message: 'Email verification token expired. Please verify your email again.' });
+    }
+  } else {
+    return res.status(400).json({ message: 'Email verification required. Please verify your email with OTP first.' });
   }
   if (!pin || !/^\d{6}$/.test(pin)) {
     return res.status(400).json({ message: 'PIN must be exactly 6 digits' });

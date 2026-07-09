@@ -262,25 +262,26 @@ class _ParentLoginPageState extends State<ParentLoginPage>
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
+              padding: const EdgeInsets.symmetric(horizontal: 28),
               child: FadeTransition(
                 opacity: _fadeSlide,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 28),
+                    // ── Header ──
                     Container(
-                      width: 80, height: 80,
+                      width: 88, height: 88,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: Colors.white.withValues(alpha: 0.15),
                       ),
-                      child: const Icon(Icons.family_restroom, size: 44, color: Colors.white),
+                      child: const Icon(Icons.family_restroom, size: 48, color: Colors.white),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 18),
                     const Text('Parent Portal',
                       style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 1)),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Text(
                       _registered
                           ? 'Registration submitted!'
@@ -288,38 +289,41 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                               ? 'Monitor & approve your child\'s transactions'
                               : 'Verify your email to register',
                       style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.6))),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 28),
 
                     // ── Registration Success ──
                     if (_registered)
                       Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.all(24),
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
                         decoration: BoxDecoration(
-                          color: Colors.green.withValues(alpha: 0.1),
+                          color: Colors.white.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
                         ),
                         child: Column(
                           children: [
-                            const Icon(Icons.check_circle_outline, color: Colors.green, size: 56),
-                            const SizedBox(height: 12),
+                            const Icon(Icons.check_circle_outline, color: Colors.greenAccent, size: 64),
+                            const SizedBox(height: 16),
                             const Text('Registration Submitted!',
                               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 10),
                             Text(
                               'An admin will review your selfie and ID documents.\nYou will receive access once approved.',
                               textAlign: TextAlign.center,
                               style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.7))),
-                            const SizedBox(height: 20),
-                            ElevatedButton(
-                              onPressed: () => _switchMode(0),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.accentAmber,
-                                foregroundColor: AppTheme.textDark,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            const SizedBox(height: 24),
+                            SizedBox(
+                              width: 200,
+                              child: ElevatedButton(
+                                onPressed: () => _switchMode(0),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.accentAmber,
+                                  foregroundColor: AppTheme.textDark,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                                child: const Text('Back to Login', style: TextStyle(fontWeight: FontWeight.bold)),
                               ),
-                              child: const Text('Back to Login', style: TextStyle(fontWeight: FontWeight.bold)),
                             ),
                           ],
                         ),
@@ -329,7 +333,7 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                     // ── Login / Register Form ──
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(20),
@@ -337,56 +341,36 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                       ),
                       child: Column(
                         children: [
+                          // ── Mode toggle ──
                           Row(
                             children: [
                               Expanded(child: _modeButton('Login', 0)),
-                              const SizedBox(width: 8),
+                              const SizedBox(width: 10),
                               Expanded(child: _modeButton('Register', 1)),
                             ],
                           ),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 24),
 
-                          // ── Email field (always shown) ──
-                          TextField(
+                          // ── Email field ──
+                          _buildField(
                             controller: _emailController,
-                            style: const TextStyle(color: Colors.white, fontSize: 14),
-                            cursorColor: Colors.white70,
+                            hint: 'Email address',
+                            icon: Icons.email_outlined,
                             keyboardType: TextInputType.emailAddress,
-                            decoration: InputDecoration(
-                              hintText: 'Email address',
-                              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 14),
-                              prefixIcon: Icon(Icons.email_outlined, color: Colors.white.withValues(alpha: 0.5), size: 20),
-                              filled: true,
-                              fillColor: Colors.white.withValues(alpha: 0.1),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                                borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                                borderSide: BorderSide(color: AppTheme.accentAmber.withValues(alpha: 0.8), width: 1.8),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                              suffixIcon: _emailVerified
-                                  ? const Icon(Icons.verified, color: Colors.green, size: 20)
-                                  : null,
-                            ),
+                            suffix: _emailVerified ? const Icon(Icons.verified, color: Colors.greenAccent, size: 20) : null,
                           ),
+                          const SizedBox(height: 16),
 
-                          // ── OTP Section (register mode only) ──
+                          // ── OTP Section (register mode, email not yet verified) ──
                           if (_mode == 1 && !_emailVerified) ...[
-                            const SizedBox(height: 12),
                             SizedBox(
-                              width: double.infinity,
+                              width: double.infinity, height: 48,
                               child: ElevatedButton.icon(
                                 onPressed: _loading || _otpCountdown > 0 ? null : _sendOtp,
                                 icon: const Icon(Icons.send, size: 16),
                                 label: Text(_otpCountdown > 0
                                     ? 'Resend in ${_otpCountdown}s'
-                                    : _otpSent
-                                        ? 'Resend OTP'
-                                        : 'Send OTP Code'),
+                                    : _otpSent ? 'Resend OTP Code' : 'Send OTP Code'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppTheme.accentAmber,
                                   foregroundColor: AppTheme.textDark,
@@ -399,34 +383,18 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                               Row(
                                 children: [
                                   Expanded(
-                                    child: TextField(
+                                    child: _buildField(
                                       controller: _otpController,
-                                      style: const TextStyle(color: Colors.white, fontSize: 20, letterSpacing: 8),
-                                      cursorColor: AppTheme.accentAmber,
+                                      hint: 'Enter 6-digit code',
+                                      icon: Icons.pin_outlined,
                                       keyboardType: TextInputType.number,
                                       maxLength: 6,
-                                      buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
-                                      decoration: InputDecoration(
-                                        hintText: '000000',
-                                        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 20, letterSpacing: 8),
-                                        filled: true,
-                                        fillColor: Colors.white.withValues(alpha: 0.1),
-                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                                        enabledBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(14),
-                                          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
-                                        ),
-                                        focusedBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(14),
-                                          borderSide: BorderSide(color: AppTheme.accentAmber.withValues(alpha: 0.8), width: 1.8),
-                                        ),
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                                      ),
+                                      textStyle: const TextStyle(color: Colors.white, fontSize: 20, letterSpacing: 8),
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
+                                  const SizedBox(width: 10),
                                   SizedBox(
-                                    height: 48,
+                                    height: 50, width: 90,
                                     child: ElevatedButton(
                                       onPressed: _loading ? null : _verifyOtp,
                                       style: ElevatedButton.styleFrom(
@@ -440,56 +408,41 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                                 ],
                               ),
                             ],
+                            const SizedBox(height: 4),
                           ],
 
-                          // ── Email verified message ──
+                          // ── Email verified badge ──
                           if (_emailVerified)
                             Container(
                               width: double.infinity,
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                               decoration: BoxDecoration(
                                 color: Colors.green.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(10),
+                                borderRadius: BorderRadius.circular(12),
                                 border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
                               ),
                               child: const Row(
                                 children: [
-                                  Icon(Icons.check_circle, color: Colors.green, size: 16),
-                                  SizedBox(width: 6),
-                                  Text('Email verified', style: TextStyle(color: Colors.green, fontSize: 12)),
+                                  Icon(Icons.check_circle, color: Colors.greenAccent, size: 18),
+                                  SizedBox(width: 8),
+                                  Text('Email verified', style: TextStyle(color: Colors.greenAccent, fontSize: 13, fontWeight: FontWeight.w500)),
                                 ],
                               ),
                             ),
 
-                          // ── Register-only fields ──
+                          // ── Register-only fields (after email verified) ──
                           if (_mode == 1 && _emailVerified) ...[
-                            const SizedBox(height: 12),
-                            TextField(
+                            const SizedBox(height: 16),
+                            _buildField(
                               controller: _nameController,
-                              style: const TextStyle(color: Colors.white, fontSize: 14),
-                              cursorColor: Colors.white70,
-                              decoration: InputDecoration(
-                                hintText: 'Your full name',
-                                hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 14),
-                                prefixIcon: Icon(Icons.person_outline, color: Colors.white.withValues(alpha: 0.5), size: 20),
-                                filled: true, fillColor: Colors.white.withValues(alpha: 0.1),
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: BorderSide(color: AppTheme.accentAmber.withValues(alpha: 0.8), width: 1.8),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                              ),
+                              hint: 'Your full name',
+                              icon: Icons.person_outline,
                             ),
+                            const SizedBox(height: 14),
 
-                            // Selfie capture (face-verified camera)
-                            const SizedBox(height: 12),
+                            // Selfie capture
                             Container(
-                              padding: const EdgeInsets.all(12),
+                              padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(
                                 color: Colors.white.withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(14),
@@ -500,20 +453,20 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                                 children: [
                                   Text('Selfie Verification',
                                     style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12, fontWeight: FontWeight.w600)),
-                                  const SizedBox(height: 8),
+                                  const SizedBox(height: 10),
                                   KycSelfieCapture(key: _selfieKey),
                                 ],
                               ),
                             ),
+                            const SizedBox(height: 12),
 
-                            // ID photo (camera)
-                            const SizedBox(height: 8),
+                            // ID photo
                             _buildPhotoPicker('ID Photo (take a picture of your ID)', _idPhotoPath, _pickIdPhoto),
+                            const SizedBox(height: 12),
 
                             // ID type dropdown
-                            const SizedBox(height: 8),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              padding: const EdgeInsets.symmetric(horizontal: 14),
                               decoration: BoxDecoration(
                                 color: Colors.white.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(14),
@@ -540,76 +493,44 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 8),
-                            TextField(
+                            const SizedBox(height: 12),
+                            _buildField(
                               controller: _idNumberController,
-                              style: const TextStyle(color: Colors.white, fontSize: 14),
-                              cursorColor: Colors.white70,
-                              decoration: InputDecoration(
-                                hintText: 'ID number',
-                                hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 14),
-                                prefixIcon: Icon(Icons.numbers, color: Colors.white.withValues(alpha: 0.5), size: 20),
-                                filled: true, fillColor: Colors.white.withValues(alpha: 0.1),
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: BorderSide(color: AppTheme.accentAmber.withValues(alpha: 0.8), width: 1.8),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                              ),
+                              hint: 'ID number',
+                              icon: Icons.numbers,
                             ),
 
                             // PIN fields
-                            const SizedBox(height: 4),
-                            Text('Set your 6-digit PIN',
-                              style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11)),
-                            const SizedBox(height: 8),
-                            TextField(
+                            const SizedBox(height: 16),
+                            _buildField(
                               focusNode: _pin1Focus,
                               controller: _pin1Controller,
-                              obscureText: true,
-                              obscuringCharacter: '\u25CF',
-                              style: const TextStyle(color: Colors.white, fontSize: 18, letterSpacing: 6),
-                              cursorColor: AppTheme.accentAmber,
-                              keyboardType: TextInputType.number,
+                              hint: 'Create 6-digit PIN',
+                              icon: Icons.lock_outline,
+                              isPin: true,
                               textInputAction: TextInputAction.next,
-                              maxLength: 6,
-                              buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
-                              decoration: _pinDecoration('Create 6-digit PIN'),
                             ),
-                            const SizedBox(height: 8),
-                            TextField(
+                            const SizedBox(height: 12),
+                            _buildField(
                               focusNode: _pin2Focus,
                               controller: _pin2Controller,
-                              obscureText: true,
-                              obscuringCharacter: '\u25CF',
-                              style: const TextStyle(color: Colors.white, fontSize: 18, letterSpacing: 6),
-                              cursorColor: AppTheme.accentAmber,
-                              keyboardType: TextInputType.number,
+                              hint: 'Confirm 6-digit PIN',
+                              icon: Icons.lock_outline,
+                              isPin: true,
                               textInputAction: TextInputAction.done,
-                              maxLength: 6,
-                              buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
-                              decoration: _pinDecoration('Confirm 6-digit PIN'),
                             ),
                           ],
 
-                          // ── PIN field (login) ──
-                          if (_mode == 0)
-                            TextField(
+                          // ── PIN field (login mode) ──
+                          if (_mode == 0) ...[
+                            const SizedBox(height: 4),
+                            _buildField(
                               focusNode: _pinFocus,
                               controller: _pinController,
-                              obscureText: true,
-                              obscuringCharacter: '\u25CF',
-                              style: const TextStyle(color: Colors.white, fontSize: 18, letterSpacing: 6),
-                              cursorColor: AppTheme.accentAmber,
-                              keyboardType: TextInputType.number,
+                              hint: '6-digit PIN',
+                              icon: Icons.lock_outline,
+                              isPin: true,
                               textInputAction: TextInputAction.done,
-                              maxLength: 6,
-                              buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
                               onChanged: (v) {
                                 setState(() { _error = null; });
                                 if (v.length == 6 && !_loading) {
@@ -620,60 +541,115 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                               onSubmitted: (_) {
                                 if (_pinController.text.length == 6 && !_loading) _doLogin();
                               },
-                              decoration: _pinDecoration('6-digit PIN'),
                             ),
+                          ],
 
                           // ── Error ──
                           if (_error != null)
                             Padding(
-                              padding: const EdgeInsets.only(top: 8),
+                              padding: const EdgeInsets.only(top: 14),
                               child: Container(
                                 width: double.infinity,
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                                 decoration: BoxDecoration(
                                   color: Colors.red.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(10),
+                                  borderRadius: BorderRadius.circular(12),
                                   border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
                                 ),
-                                child: Text(_error!, style: TextStyle(color: Colors.orange.shade200, fontSize: 12)),
+                                child: Text(_error!, style: TextStyle(color: Colors.orange.shade200, fontSize: 13)),
                               ),
                             ),
 
-                          const SizedBox(height: 16),
-
                           // ── Submit button ──
-                          if (!(_mode == 1 && !_emailVerified))
+                          if (!(_mode == 1 && !_emailVerified)) ...[
+                            const SizedBox(height: 20),
                             SizedBox(
-                              width: double.infinity, height: 44,
+                              width: double.infinity, height: 50,
                               child: ElevatedButton(
                                 onPressed: _loading ? null : (_mode == 0 ? _doLogin : _doRegister),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppTheme.accentAmber,
                                   foregroundColor: AppTheme.textDark,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                                   elevation: 4,
                                 ),
                                 child: _loading
-                                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.textDark))
+                                    ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: AppTheme.textDark))
                                     : Text(_mode == 0 ? 'Login as Parent' : 'Submit for Approval',
-                                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                               ),
                             ),
+                          ],
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                     TextButton(
                       onPressed: () => Navigator.pop(context),
                       child: Text('\u2190 Back to Child Login', style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 13)),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 28),
                   ],
                 ),
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildField({
+    TextEditingController? controller,
+    FocusNode? focusNode,
+    required String hint,
+    required IconData icon,
+    TextInputType? keyboardType,
+    TextInputAction? textInputAction,
+    bool obscureText = false,
+    bool isPin = false,
+    int? maxLength,
+    Widget? suffix,
+    TextStyle? textStyle,
+    ValueChanged<String>? onChanged,
+    ValueChanged<String>? onSubmitted,
+  }) {
+    return TextField(
+      focusNode: focusNode,
+      controller: controller,
+      obscureText: obscureText || isPin,
+      obscuringCharacter: '\u25CF',
+      style: textStyle ?? TextStyle(
+        color: Colors.white,
+        fontSize: isPin ? 18 : 14,
+        letterSpacing: isPin ? 6 : 0,
+      ),
+      cursorColor: AppTheme.accentAmber,
+      keyboardType: keyboardType ?? TextInputType.text,
+      textInputAction: textInputAction ?? TextInputAction.next,
+      maxLength: maxLength ?? (isPin ? 6 : null),
+      buildCounter: (isPin || maxLength != null)
+          ? (_, {required currentLength, required isFocused, maxLength}) => null
+          : null,
+      onChanged: onChanged,
+      onSubmitted: onSubmitted,
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: isPin ? 14 : 14),
+        prefixIcon: Icon(icon, color: Colors.white.withValues(alpha: 0.5), size: 20),
+        suffixIcon: suffix,
+        filled: true,
+        fillColor: Colors.white.withValues(alpha: 0.1),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: AppTheme.accentAmber.withValues(alpha: 0.8), width: 1.8),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       ),
     );
   }
@@ -746,23 +722,4 @@ class _ParentLoginPageState extends State<ParentLoginPage>
     );
   }
 
-  InputDecoration _pinDecoration(String hint) {
-    return InputDecoration(
-      hintText: hint,
-      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 14),
-      prefixIcon: Icon(Icons.lock_outline, color: Colors.white.withValues(alpha: 0.5), size: 20),
-      filled: true,
-      fillColor: Colors.white.withValues(alpha: 0.1),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: AppTheme.accentAmber.withValues(alpha: 0.8), width: 1.8),
-      ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-    );
   }
-}

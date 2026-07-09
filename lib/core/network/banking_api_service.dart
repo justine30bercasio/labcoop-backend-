@@ -444,4 +444,52 @@ class BankingApiService {
       return resp.data as Map<String, dynamic>;
     } on DioException { return null; }
   }
+
+  // ── Forgot PIN (Parent) ──
+  static Future<Map<String, dynamic>?> parentForgotPinSendOtp(String email) async {
+    try {
+      final resp = await _parentDio.post('/api/parent/forgot-pin', data: {'email': email});
+      return resp.data as Map<String, dynamic>;
+    } on DioException { return null; }
+  }
+
+  static Future<Map<String, dynamic>?> parentForgotPinVerifyOtp(String email, String otp) async {
+    try {
+      final resp = await _parentDio.post('/api/parent/verify-forgot-otp', data: {'email': email, 'otp': otp});
+      return resp.data as Map<String, dynamic>;
+    } on DioException { return null; }
+  }
+
+  static Future<Map<String, dynamic>?> parentForgotPinReset(String resetToken, String newPin) async {
+    try {
+      final resp = await _parentDio.post('/api/parent/reset-pin', data: {'resetToken': resetToken, 'newPin': newPin});
+      return resp.data as Map<String, dynamic>;
+    } on DioException { return null; }
+  }
+
+  // ── Forgot PIN (Child) ──
+  static Future<Map<String, dynamic>?> childForgotPinSendOtp({String? childName, String? accountId, String? memberId}) async {
+    try {
+      final data = <String, dynamic>{};
+      if (childName != null) data['childName'] = childName;
+      if (accountId != null) data['accountId'] = accountId;
+      if (memberId != null) data['memberId'] = memberId;
+      final resp = await _dio.post('/api/auth/forgot-pin-send-otp', data: data);
+      return resp.data as Map<String, dynamic>;
+    } on DioException { return null; }
+  }
+
+  static Future<Map<String, dynamic>?> childForgotPinVerifyOtp(String accountId, String otp) async {
+    try {
+      final resp = await _dio.post('/api/auth/forgot-pin-verify-otp', data: {'accountId': accountId, 'otp': otp});
+      return resp.data as Map<String, dynamic>;
+    } on DioException { return null; }
+  }
+
+  static Future<Map<String, dynamic>?> childForgotPinReset(String resetToken, String newPin) async {
+    try {
+      final resp = await _dio.post('/api/auth/forgot-pin-reset', data: {'resetToken': resetToken, 'newPin': newPin});
+      return resp.data as Map<String, dynamic>;
+    } on DioException { return null; }
+  }
 }

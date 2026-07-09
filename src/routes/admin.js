@@ -2856,13 +2856,6 @@ router.post('/reset-data', requireRole(4), asyncHandler(async (req, res) => {
     for (const t of tables) {
       try { store.query(`DELETE FROM ${t}`); } catch (_) {}
     }
-  }
-      }
-    });
-  } else {
-    for (const t of tables) {
-      try { store.query(`DELETE FROM ${t}`); } catch (_) {}
-    }
     try { store.query("DELETE FROM sqlite_sequence WHERE name IN ('" + tables.join("','") + "')"); } catch (_) {}
   }
   res.redirect('/admin?msg=All+data+reset+successful');

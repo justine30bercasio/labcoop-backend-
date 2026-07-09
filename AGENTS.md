@@ -238,3 +238,17 @@ Flutter app data disappeared on logout/refresh because:
 - **`google_mlkit_face_detection`** already at `^0.13.1` (previous session)
 - `flutter analyze` — 0 errors
 - Flutter `master` pushed: `6df2b21`
+
+=====
+### Session 2026-07-09 — Bug fixes for login, CSRF, OTP/SendGrid, forgot PIN, security
+- **SMTP → SendGrid**: Render free tier blocks outbound SMTP (ports 465, 587 timeout). Switched OTP delivery to `@sendgrid/mail` (HTTPS API via port 443). `SENDGRID_API_KEY` set on Render. From email: `itsmejus10its@gmail.com` (verified Single Sender, name: `MYCOOPPIGGY`).
+- **Root/jailbreak detection disabled**: `SecurityService.isDeviceCompromised()` body commented out for emulator testing.
+- **Admin parent page 500 fix**: `a.birthdate` → `a.birthday as birthdate` in child query (`admin.js:6875`).
+- **parent.js syntax error**: Removed unclosed `try` block in login route.
+- **CSRF on approve/reject**: Changed `<input type="hidden" name="_csrf">` to `?_csrf=${encodeURIComponent(csrf)}` query param on form actions (`admin.js:7005,7018`).
+- **Parent login "Connection error" fix**: `parentLogin()` now returns `e.response?.data` (server error body) on DioException instead of `null`, so UI shows real error message.
+- **All parent DioException handlers fixed**: 12 methods (`parentLogin`, `parentSendOtp`, `parentVerifyOtp`, `parentRegister`, `parentRegisterWithPhotos`, `parentForgotPinSendOtp`, `parentForgotPinVerifyOtp`, `parentForgotPinReset`, `childForgotPinSendOtp`, `childForgotPinVerifyOtp`, `childForgotPinReset`) now return error response data on DioException.
+- **Forgot PIN endpoints**: 3 parent routes in `parent.js` + 3 child routes in `auth.js` — all use `otpStore` map + SendGrid for OTP email to parent email. Flutter API methods in `banking_api_service.dart`.
+- **Debug endpoint**: `GET /debug-smtp` reports SendGrid config status.
+- **APK built** (94.2MB) — `flutter analyze` 0 errors.
+- Backend `main` pushed: `f998377` (7 commits). Flutter `master` uncommitted (banking_api_service.dart changes).

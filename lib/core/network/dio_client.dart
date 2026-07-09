@@ -141,28 +141,23 @@ class DioClient {
     );
 
     // Certificate pinning — SHA-256 fingerprint validation
-    // 1. If pins are configured, only accept certificates whose DER SHA-256
-    //    matches one of the pinned fingerprints (protects against CA compromise).
-    // 2. If no pins are configured, reject ALL untrusted certificates
-    //    (OS trust store only — this is the default secure behavior).
-    try {
-      (dio.httpClientAdapter as IOHttpClientAdapter).onHttpClientCreate = (client) {
-        client.badCertificateCallback = (cert, host, port) {
-          if (_pinnedCertHashes.isEmpty) {
-            // No pins configured — reject untrusted certs (OS trust store only)
-            return false;
-          }
-          try {
-            final fingerprint = sha256.convert(cert.der).toString();
-            return _pinnedCertHashes.contains(fingerprint);
-          } catch (_) {
-            // If we can't compute the fingerprint, reject for safety
-            return false;
-          }
+    // Only enable badCertificateCallback when at least one pin is configured.
+    // When empty, let the OS handle certificate validation natively (default).
+    if (_pinnedCertHashes.isNotEmpty) {
+      try {
+        (dio.httpClientAdapter as IOHttpClientAdapter).onHttpClientCreate = (client) {
+          client.badCertificateCallback = (cert, host, port) {
+            try {
+              final fingerprint = sha256.convert(cert.der).toString();
+              return _pinnedCertHashes.contains(fingerprint);
+            } catch (_) {
+              return false;
+            }
+          };
+          return client;
         };
-        return client;
-      };
-    } catch (_) {}
+      } catch (_) {}
+    }
 
     return dio;
   }

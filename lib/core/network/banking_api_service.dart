@@ -287,14 +287,20 @@ class BankingApiService {
     try {
       final resp = await _parentDio.post('/api/parent/send-otp', data: {'email': email});
       return resp.data as Map<String, dynamic>;
-    } on DioException { return null; }
+    } on DioException catch (e) {
+      if (e.response?.data is Map<String, dynamic>) return e.response?.data as Map<String, dynamic>;
+      return null;
+    }
   }
 
   static Future<Map<String, dynamic>?> parentVerifyOtp(String email, String otp) async {
     try {
       final resp = await _parentDio.post('/api/parent/verify-otp', data: {'email': email, 'otp': otp});
       return resp.data as Map<String, dynamic>;
-    } on DioException { return null; }
+    } on DioException catch (e) {
+      if (e.response?.data is Map<String, dynamic>) return e.response?.data as Map<String, dynamic>;
+      return null;
+    }
   }
 
   static Future<Map<String, dynamic>?> parentRegister(
@@ -312,7 +318,10 @@ class BankingApiService {
       };
       final resp = await _parentDio.post('/api/parent/register', data: data);
       return resp.data as Map<String, dynamic>;
-    } on DioException { return null; }
+    } on DioException catch (e) {
+      if (e.response?.data is Map<String, dynamic>) return e.response?.data as Map<String, dynamic>;
+      return null;
+    }
   }
 
   static Future<Map<String, dynamic>?> parentRegisterWithPhotos(
@@ -341,14 +350,22 @@ class BankingApiService {
       }
       final resp = await _parentDio.post('/api/parent/register', data: formData);
       return resp.data as Map<String, dynamic>;
-    } on DioException { return null; }
+    } on DioException catch (e) {
+      if (e.response?.data is Map<String, dynamic>) return e.response?.data as Map<String, dynamic>;
+      return null;
+    }
   }
 
   static Future<Map<String, dynamic>?> parentLogin(String email, String pin) async {
     try {
       final resp = await _parentDio.post('/api/parent/login', data: {'email': email, 'pin': pin});
       return resp.data as Map<String, dynamic>;
-    } on DioException { return null; }
+    } on DioException catch (e) {
+      if (e.response?.data is Map<String, dynamic>) {
+        return e.response?.data as Map<String, dynamic>;
+      }
+      return null;
+    }
   }
 
   static Future<bool> parentChangePin(String oldPin, String newPin) async {
@@ -393,42 +410,48 @@ class BankingApiService {
 
   static Future<bool> parentApproveWithdrawal(String requestId) async {
     try {
-      await _dio.post('/api/parent/approve-withdrawal/$requestId');
+      await _addParentAuthHeader();
+      await _parentDio.post('/api/parent/approve-withdrawal/$requestId');
       return true;
     } on DioException { return false; }
   }
 
   static Future<bool> parentRejectWithdrawal(String requestId) async {
     try {
-      await _dio.post('/api/parent/reject-withdrawal/$requestId');
+      await _addParentAuthHeader();
+      await _parentDio.post('/api/parent/reject-withdrawal/$requestId');
       return true;
     } on DioException { return false; }
   }
 
   static Future<bool> parentApproveLoan(String loanId) async {
     try {
-      await _dio.post('/api/parent/approve-loan/$loanId');
+      await _addParentAuthHeader();
+      await _parentDio.post('/api/parent/approve-loan/$loanId');
       return true;
     } on DioException { return false; }
   }
 
   static Future<bool> parentRejectLoan(String loanId) async {
     try {
-      await _dio.post('/api/parent/reject-loan/$loanId');
+      await _addParentAuthHeader();
+      await _parentDio.post('/api/parent/reject-loan/$loanId');
       return true;
     } on DioException { return false; }
   }
 
   static Future<List<dynamic>> parentGetLimits() async {
     try {
-      final resp = await _dio.get('/api/parent/limits');
+      await _addParentAuthHeader();
+      final resp = await _parentDio.get('/api/parent/limits');
       return resp.data as List<dynamic>;
     } on DioException { return []; }
   }
 
   static Future<bool> parentSaveLimits(String childAccountId, {double maxDailyWithdrawal = 0, double maxLoanAmount = 0, String requireApprovalFor = 'all'}) async {
     try {
-      await _dio.post('/api/parent/limits', data: {
+      await _addParentAuthHeader();
+      await _parentDio.post('/api/parent/limits', data: {
         'childAccountId': childAccountId,
         'maxDailyWithdrawal': maxDailyWithdrawal,
         'maxLoanAmount': maxLoanAmount,
@@ -440,9 +463,51 @@ class BankingApiService {
 
   static Future<Map<String, dynamic>?> parentGetMe() async {
     try {
-      final resp = await _dio.get('/api/parent/me');
+      await _addParentAuthHeader();
+      final resp = await _parentDio.get('/api/parent/me');
       return resp.data as Map<String, dynamic>;
     } on DioException { return null; }
+  }
+
+  // ── Parent Notifications ──
+  static Future<Map<String, dynamic>?> parentGetNotifications() async {
+    try {
+      await _addParentAuthHeader();
+      final resp = await _parentDio.get('/api/parent/notifications');
+      return resp.data as Map<String, dynamic>;
+    } on DioException { return null; }
+  }
+
+  static Future<void> parentMarkNotifRead(String notifId) async {
+    try {
+      await _addParentAuthHeader();
+      await _parentDio.post('/api/parent/notifications/$notifId/read');
+    } on DioException {}
+  }
+
+  static Future<void> parentMarkAllNotifRead() async {
+    try {
+      await _addParentAuthHeader();
+      await _parentDio.post('/api/parent/notifications/read-all');
+    } on DioException {}
+  }
+
+  // ── Children Transactions ──
+  static Future<List<dynamic>> parentGetChildrenTransactions() async {
+    try {
+      await _addParentAuthHeader();
+      final resp = await _parentDio.get('/api/parent/children-transactions');
+      return (resp.data as Map<String, dynamic>)['transactions'] as List<dynamic>? ?? [];
+    } on DioException { return []; }
+  }
+
+  // ── Pending Deletion Requests ──
+  static Future<List<dynamic>> parentGetPendingDeletions() async {
+    try {
+      await _addParentAuthHeader();
+      final resp = await _parentDio.get('/api/parent/pending-deletions');
+      return (resp.data as Map<String, dynamic>)['deletions'] as List<dynamic>? ?? [];
+    } on DioException { return []; }
   }
 
   // ── Forgot PIN (Parent) ──
@@ -450,21 +515,30 @@ class BankingApiService {
     try {
       final resp = await _parentDio.post('/api/parent/forgot-pin', data: {'email': email});
       return resp.data as Map<String, dynamic>;
-    } on DioException { return null; }
+    } on DioException catch (e) {
+      if (e.response?.data is Map<String, dynamic>) return e.response?.data as Map<String, dynamic>;
+      return null;
+    }
   }
 
   static Future<Map<String, dynamic>?> parentForgotPinVerifyOtp(String email, String otp) async {
     try {
       final resp = await _parentDio.post('/api/parent/verify-forgot-otp', data: {'email': email, 'otp': otp});
       return resp.data as Map<String, dynamic>;
-    } on DioException { return null; }
+    } on DioException catch (e) {
+      if (e.response?.data is Map<String, dynamic>) return e.response?.data as Map<String, dynamic>;
+      return null;
+    }
   }
 
   static Future<Map<String, dynamic>?> parentForgotPinReset(String resetToken, String newPin) async {
     try {
       final resp = await _parentDio.post('/api/parent/reset-pin', data: {'resetToken': resetToken, 'newPin': newPin});
       return resp.data as Map<String, dynamic>;
-    } on DioException { return null; }
+    } on DioException catch (e) {
+      if (e.response?.data is Map<String, dynamic>) return e.response?.data as Map<String, dynamic>;
+      return null;
+    }
   }
 
   // ── Forgot PIN (Child) ──
@@ -476,20 +550,29 @@ class BankingApiService {
       if (memberId != null) data['memberId'] = memberId;
       final resp = await _dio.post('/api/auth/forgot-pin-send-otp', data: data);
       return resp.data as Map<String, dynamic>;
-    } on DioException { return null; }
-  }
+} on DioException catch (e) {
+      if (e.response?.data is Map<String, dynamic>) return e.response?.data as Map<String, dynamic>;
+      return null;
+    }
+}
 
-  static Future<Map<String, dynamic>?> childForgotPinVerifyOtp(String accountId, String otp) async {
+static Future<Map<String, dynamic>?> childForgotPinVerifyOtp(String accountId, String otp) async {
     try {
       final resp = await _dio.post('/api/auth/forgot-pin-verify-otp', data: {'accountId': accountId, 'otp': otp});
       return resp.data as Map<String, dynamic>;
-    } on DioException { return null; }
-  }
+    } on DioException catch (e) {
+      if (e.response?.data is Map<String, dynamic>) return e.response?.data as Map<String, dynamic>;
+      return null;
+    }
+}
 
-  static Future<Map<String, dynamic>?> childForgotPinReset(String resetToken, String newPin) async {
+static Future<Map<String, dynamic>?> childForgotPinReset(String resetToken, String newPin) async {
     try {
       final resp = await _dio.post('/api/auth/forgot-pin-reset', data: {'resetToken': resetToken, 'newPin': newPin});
       return resp.data as Map<String, dynamic>;
-    } on DioException { return null; }
+    } on DioException catch (e) {
+      if (e.response?.data is Map<String, dynamic>) return e.response?.data as Map<String, dynamic>;
+      return null;
+    }
   }
 }

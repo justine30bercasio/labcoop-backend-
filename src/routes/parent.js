@@ -451,7 +451,7 @@ router.get('/pending', parentAuth, asyncHandler(async (req, res) => {
     [req.parentId, 'active']
   );
   const ids = childIds.rows.map(r => r.child_account_id);
-  if (ids.length === 0) return res.json({ withdrawals: [], loans: [] });
+  if (ids.length === 0) return res.json({ withdrawals: [], loans: [], pendingConsents: [] });
   const placeholders = ids.map((_, i) => '$' + (i + 1)).join(',');
   const withdrawals = await store.query(
     `SELECT w.*, a.child_name, a.member_id
@@ -470,10 +470,57 @@ router.get('/pending', parentAuth, asyncHandler(async (req, res) => {
      ORDER BY l.created_at DESC`,
     ids
   );
+  const consents = await store.query(
+    `SELECT c.*, a.child_name, a.member_id
+     FROM parental_consent c
+     JOIN accounts a ON a.account_id = c.account_id
+     WHERE c.account_id IN (${placeholders}) AND c.status = 'pending'
+     ORDER BY c.created_at DESC`,
+    ids
+  );
   res.json({
     withdrawals: withdrawals.rows.map(w => ({ ...w, amount: Number(w.amount) })),
     loans: loans.rows.map(l => ({ ...l, principal: Number(l.principal), amount: Number(l.principal) })),
+    pendingConsents: consents.rows.map(c => ({ ...c })),
   });
+}));
+
+// ── Approve Parental Consent ──
+router.post('/approve-consent/:accountId', parentAuth, asyncHandler(async (req, res) => {
+  const link = await store.query(
+    'SELECT * FROM parent_child_links WHERE parent_id = $1 AND child_account_id = $2 AND status = $3',
+    [req.parentId, req.params.accountId, 'active']
+  );
+  if (link.rows.length === 0) return res.status(403).json({ message: 'This child is not linked to your account' });
+  const account = await store.getAccount(req.params.accountId);
+  if (!account) return res.status(404).json({ message: 'Account not found' });
+  await store.query(
+    'UPDATE accounts SET consent_status = $1 WHERE account_id = $2',
+    ['approved', req.params.accountId]
+  );
+  await store.query(
+    "UPDATE parental_consent SET status = $1, responded_at = $2 WHERE account_id = $3 AND status = 'pending'",
+    ['approved', new Date().toISOString(), req.params.accountId]
+  );
+  res.json({ message: 'Consent approved! Your child can now submit KYC.', consent_status: 'approved' });
+}));
+
+// ── Reject Parental Consent ──
+router.post('/reject-consent/:accountId', parentAuth, asyncHandler(async (req, res) => {
+  const link = await store.query(
+    'SELECT * FROM parent_child_links WHERE parent_id = $1 AND child_account_id = $2 AND status = $3',
+    [req.parentId, req.params.accountId, 'active']
+  );
+  if (link.rows.length === 0) return res.status(403).json({ message: 'This child is not linked to your account' });
+  await store.query(
+    'UPDATE accounts SET consent_status = $1 WHERE account_id = $2',
+    ['rejected', req.params.accountId]
+  );
+  await store.query(
+    "UPDATE parental_consent SET status = $1, responded_at = $2 WHERE account_id = $3 AND status = 'pending'",
+    ['rejected', new Date().toISOString(), req.params.accountId]
+  );
+  res.json({ message: 'Consent rejected.', consent_status: 'rejected' });
 }));
 
 // ── Parent Notifications ──

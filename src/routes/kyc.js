@@ -4,7 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { store } = require('../db');
-const { authMiddleware, requireConsent } = require('../middleware/auth');
+const { authMiddleware } = require('../middleware/auth');
 const { asyncHandler } = require('../async-handler');
 
 const KYC_DIR = path.join(__dirname, '..', 'uploads', 'kyc');
@@ -29,7 +29,7 @@ const kycUpload = multer({
   }
 });
 
-router.post('/submit', authMiddleware, requireConsent, (req, res) => {
+router.post('/submit', authMiddleware, (req, res) => {
   kycUpload.fields([
     { name: 'selfie', maxCount: 1 },
     { name: 'birth_cert', maxCount: 1 },
@@ -61,10 +61,15 @@ router.post('/submit', authMiddleware, requireConsent, (req, res) => {
 router.get('/status', authMiddleware, asyncHandler(async (req, res) => {
   if (!req.accountId) return res.status(401).json({ message: 'Authentication required' });
   const account = await store.query(
-    'SELECT kyc_status, selfie_url, birth_cert_url, photo_2x2_url, kyc_submitted_at, kyc_verified_at, kyc_rejected_reason FROM accounts WHERE account_id = $1',
+    'SELECT kyc_status, selfie_url, birth_cert_url, photo_2x2_url, kyc_submitted_at, kyc_verified_at, kyc_rejected_reason, consent_status, parent_email FROM accounts WHERE account_id = $1',
     [req.accountId]
   ).then(r => r.rows[0]);
   if (!account) return res.status(404).json({ message: 'Account not found' });
+  // Get latest consent request if any
+  const consentResult = await store.query(
+    "SELECT status FROM parental_consent WHERE account_id = $1 ORDER BY created_at DESC LIMIT 1",
+    [req.accountId]
+  );
   res.json({
     kyc_status: account.kyc_status || '',
     selfie_url: account.selfie_url || '',
@@ -73,7 +78,53 @@ router.get('/status', authMiddleware, asyncHandler(async (req, res) => {
     kyc_submitted_at: account.kyc_submitted_at || '',
     kyc_verified_at: account.kyc_verified_at || '',
     kyc_rejected_reason: account.kyc_rejected_reason || '',
+    consent_status: account.consent_status || 'none',
+    parent_email: account.parent_email || '',
+    latest_consent: consentResult.rows[0] || null,
   });
+}));
+
+// ── Request Parental Consent (no email — notifies parent via portal) ──
+router.post('/request-consent', authMiddleware, asyncHandler(async (req, res) => {
+  if (!req.accountId) return res.status(401).json({ message: 'Authentication required' });
+  const account = await store.getAccount(req.accountId);
+  if (!account) return res.status(404).json({ message: 'Account not found' });
+  if (account.consent_status === 'approved') {
+    return res.json({ message: 'Consent already approved.', consent_status: 'approved' });
+  }
+  // Check existing pending request
+  const existing = await store.query(
+    "SELECT * FROM parental_consent WHERE account_id = $1 AND status = 'pending' ORDER BY created_at DESC LIMIT 1",
+    [req.accountId]
+  );
+  if (existing.rows.length === 0) {
+    const token = require('crypto').randomBytes(32).toString('hex');
+    await store.query(
+      `INSERT INTO parental_consent (consent_id, account_id, parent_email, consent_token, status, ip_address, created_at)
+       VALUES ($1, $2, $3, $4, 'pending', $5, $6)`,
+      [require('uuid').v4(), req.accountId, account.parent_email || '', token, req.ip, new Date().toISOString()]
+    );
+    await store.query(
+      'UPDATE accounts SET consent_status = $1 WHERE account_id = $2',
+      ['pending', req.accountId]
+    );
+  }
+  // Notify linked parents
+  const links = await store.query(
+    'SELECT parent_id FROM parent_child_links WHERE child_account_id = $1 AND status = $2',
+    [req.accountId, 'active']
+  );
+  for (const link of links.rows) {
+    try {
+      await store.createParentNotification({
+        parentId: link.parent_id,
+        title: `${account.child_name} needs your consent`,
+        body: 'Review and approve so they can submit KYC documents.',
+        type: 'consent_request',
+      });
+    } catch (_) {}
+  }
+  res.json({ message: 'Consent request sent to parent. Ask them to check the Parent Portal.', consent_status: 'pending' });
 }));
 
 module.exports = router;

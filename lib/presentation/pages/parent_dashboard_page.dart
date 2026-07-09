@@ -18,6 +18,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
   List<dynamic> _children = [];
   List<dynamic> _pendingWithdrawals = [];
   List<dynamic> _pendingLoans = [];
+  List<dynamic> _pendingConsents = [];
   List<dynamic> _pendingDeletions = [];
   List<dynamic> _limits = [];
   List<dynamic> _childTransactions = [];
@@ -115,6 +116,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
         final pending = results[2] as Map<String, dynamic>?;
         _pendingWithdrawals = pending?['withdrawals'] as List<dynamic>? ?? [];
         _pendingLoans = pending?['loans'] as List<dynamic>? ?? [];
+        _pendingConsents = pending?['pendingConsents'] as List<dynamic>? ?? [];
         _limits = results[3] as List<dynamic>? ?? [];
         _childTransactions = results[4] as List<dynamic>? ?? [];
         _pendingDeletions = results[5] as List<dynamic>? ?? [];
@@ -190,6 +192,22 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
     final ok = await BankingApiService.parentRejectLoan(loanId);
     if (ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Loan rejected'), backgroundColor: Colors.red));
+      _loadData();
+    }
+  }
+
+  Future<void> _approveConsent(String accountId) async {
+    final ok = await BankingApiService.parentApproveConsent(accountId);
+    if (ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Consent approved!'), backgroundColor: AppTheme.primaryGreen));
+      _loadData();
+    }
+  }
+
+  Future<void> _rejectConsent(String accountId) async {
+    final ok = await BankingApiService.parentRejectConsent(accountId);
+    if (ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Consent rejected'), backgroundColor: Colors.red));
       _loadData();
     }
   }
@@ -310,6 +328,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
 
   Widget _buildDashboardTab() {
     final totalPending = _pendingWithdrawals.length + _pendingLoans.length;
+    final totalConsents = _pendingConsents.length;
     final totalDeletions = _pendingDeletions.length;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -403,6 +422,37 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
               color: Colors.blue,
             ),
             const SizedBox(height: 8),
+          ],
+          if (totalConsents > 0) ...[
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                const Icon(Icons.family_restroom, color: Color(0xFFD97706), size: 20),
+                const SizedBox(width: 8),
+                Text('Consent Requests', style: TextStyle(color: Color(0xFFD97706), fontSize: 17, fontWeight: FontWeight.bold)),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(color: Color(0xFFD97706), borderRadius: BorderRadius.circular(20)),
+                  child: Text('$totalConsents', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            for (final c in _pendingConsents) ...[
+              _buildPendingCard(
+                childName: c['child_name'] ?? 'Child',
+                type: 'Consent Request',
+                amount: 0,
+                reason: 'Needs parental approval to submit KYC documents',
+                date: c['created_at'] as String? ?? '',
+                onApprove: () { final id = c['account_id'] as String?; if (id != null) _approveConsent(id); },
+                onReject: () { final id = c['account_id'] as String?; if (id != null) _rejectConsent(id); },
+                icon: Icons.family_restroom,
+                color: const Color(0xFFD97706),
+              ),
+              const SizedBox(height: 8),
+            ],
           ],
           if (totalDeletions > 0) ...[
             const SizedBox(height: 24),

@@ -572,7 +572,33 @@ static Future<Map<String, dynamic>?> childForgotPinReset(String resetToken, Stri
       return resp.data as Map<String, dynamic>;
     } on DioException catch (e) {
       if (e.response?.data is Map<String, dynamic>) return e.response?.data as Map<String, dynamic>;
+return null;
+    }
+  }
+
+  // ── Consent (Child) ──
+  static Future<Map<String, dynamic>?> requestParentConsent() async {
+    try {
+      final resp = await _dio.post('/api/kyc/request-consent');
+      return resp.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      if (e.response?.data is Map<String, dynamic>) return e.response?.data as Map<String, dynamic>;
       return null;
     }
+  }
+
+  // ── Consent (Parent) ──
+  static Future<bool> parentApproveConsent(String accountId) async {
+    try {
+      await _parentDio.post('/api/parent/approve-consent/$accountId');
+      return true;
+    } on DioException { return false; }
+  }
+
+  static Future<bool> parentRejectConsent(String accountId) async {
+    try {
+      await _parentDio.post('/api/parent/reject-consent/$accountId');
+      return true;
+    } on DioException { return false; }
   }
 }

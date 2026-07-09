@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:get_it/get_it.dart';
+import '../../core/network/banking_api_service.dart';
 import '../../data/datasources/remote_api_source.dart';
 import '../widgets/kyc_selfie_capture.dart';
 
@@ -20,8 +22,12 @@ class _KycPageState extends State<KycPage> {
   bool _loading = false;
   String? _error;
   bool _success = false;
-  String _existingStatus = '';
+  String _kycStatus = '';
+  String _consentStatus = 'none';
   bool _checkingStatus = true;
+  bool _requestingConsent = false;
+  String? _consentMessage;
+  Timer? _consentPollTimer;
 
   @override
   void initState() {
@@ -29,18 +35,53 @@ class _KycPageState extends State<KycPage> {
     _checkExistingStatus();
   }
 
+  @override
+  void dispose() {
+    _consentPollTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startConsentPolling() {
+    _consentPollTimer?.cancel();
+    _consentPollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (_consentStatus == 'pending' && mounted) {
+        _checkExistingStatus();
+      } else {
+        _consentPollTimer?.cancel();
+      }
+    });
+  }
+
   Future<void> _checkExistingStatus() async {
     try {
       final api = GetIt.instance<RemoteApiSource>();
       final status = await api.getKycStatus();
       if (!mounted) return;
+      final newConsent = status['consent_status']?.toString() ?? 'none';
+      if (newConsent == 'pending') _startConsentPolling();
       setState(() {
-        _existingStatus = status['kyc_status']?.toString() ?? '';
+        _kycStatus = status['kyc_status']?.toString() ?? '';
+        _consentStatus = newConsent;
         _checkingStatus = false;
       });
     } catch (_) {
       if (mounted) setState(() => _checkingStatus = false);
     }
+  }
+
+  Future<void> _requestConsent() async {
+    setState(() { _requestingConsent = true; _error = null; _consentMessage = null; });
+    final result = await BankingApiService.requestParentConsent();
+    if (!mounted) return;
+    if (result == null) {
+      setState(() { _error = 'Failed to send request. Try again.'; _requestingConsent = false; });
+      return;
+    }
+    setState(() {
+      _consentStatus = 'pending';
+      _consentMessage = result['message'] as String? ?? 'Request sent!';
+      _requestingConsent = false;
+    });
   }
 
   Future<void> _pickBirthCert() async {
@@ -87,7 +128,130 @@ class _KycPageState extends State<KycPage> {
       );
     }
 
-    if (_existingStatus == 'verified') {
+    // ── Consent required — show request button ──
+    if (_consentStatus == 'none') {
+      return Scaffold(
+        backgroundColor: const Color(0xFFFFFBEB),
+        appBar: AppBar(
+          title: const Text('Parent Consent Required', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          backgroundColor: const Color(0xFFF59E0B),
+          iconTheme: const IconThemeData(color: Colors.white),
+          elevation: 0,
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+          child: Column(
+            children: [
+              Container(
+                width: 100, height: 100,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF3C7),
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: const Color(0xFFFDE68A), width: 2),
+                ),
+                child: const Icon(Icons.family_restroom, color: Color(0xFFD97706), size: 48),
+              ),
+              const SizedBox(height: 28),
+              const Text('Parental Consent Needed', textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF1F2937))),
+              const SizedBox(height: 10),
+              Text(
+                'Before submitting KYC documents, your parent needs to approve via the Parent Portal.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade600, height: 1.5),
+              ),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity, height: 52,
+                child: ElevatedButton.icon(
+                  onPressed: _requestingConsent ? null : _requestConsent,
+                  icon: _requestingConsent
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.send),
+                  label: Text(_requestingConsent ? 'Sending Request...' : 'Send Request to Parent'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFD97706),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+              if (_consentMessage != null) ...[
+                const SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0FDF4),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFBBF7D0)),
+                  ),
+                  child: Text(_consentMessage!, style: const TextStyle(color: Color(0xFF166534), fontSize: 13)),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
+    // ── Consent Pending — waiting for parent ──
+    if (_consentStatus == 'pending') {
+      return Scaffold(
+        backgroundColor: const Color(0xFFFFFBEB),
+        appBar: AppBar(
+          title: const Text('Waiting for Parent', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          backgroundColor: const Color(0xFFF59E0B),
+          iconTheme: const IconThemeData(color: Colors.white),
+          elevation: 0,
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+          child: Column(
+            children: [
+              Container(
+                width: 100, height: 100,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF3C7),
+                  borderRadius: BorderRadius.circular(28),
+                ),
+                child: const Icon(Icons.hourglass_empty, color: Color(0xFFD97706), size: 48),
+              ),
+              const SizedBox(height: 28),
+              const Text('Waiting for Approval', textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF1F2937))),
+              const SizedBox(height: 10),
+              Text(
+                'Your parent needs to approve your consent request in the Parent Portal.\nAsk them to check their notifications.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade600, height: 1.5),
+              ),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity, height: 52,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    setState(() { _checkingStatus = true; _consentStatus = 'none'; _kycStatus = ''; });
+                    _checkExistingStatus();
+                  },
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Check Status'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFD97706),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // ── KYC already verified ──
+    if (_kycStatus == 'verified') {
       return Scaffold(
         backgroundColor: const Color(0xFFF0FDF4),
         appBar: AppBar(
@@ -186,7 +350,7 @@ class _KycPageState extends State<KycPage> {
       );
     }
 
-    if (_existingStatus == 'pending') {
+    if (_kycStatus == 'pending') {
       return Scaffold(
         backgroundColor: const Color(0xFFFFFBEB),
         appBar: AppBar(

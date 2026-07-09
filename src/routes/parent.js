@@ -218,24 +218,23 @@ router.post('/login', pinLoginLimiter, asyncHandler(async (req, res) => {
   if (!email || !pin) {
     return res.status(400).json({ message: 'Email and PIN are required' });
   }
-  try {
-    const result = await store.query('SELECT * FROM parents WHERE email = $1', [email.toLowerCase().trim()]);
-    if (result.rows.length === 0) {
-      return res.status(401).json({ message: 'Invalid email or PIN' });
-    }
-    const parent = result.rows[0];
-    if (parent.status === 'pending') {
-      return res.status(403).json({ message: 'Your registration is pending admin approval.', status: 'pending' });
-    }
-    if (parent.status === 'rejected') {
-      return res.status(403).json({ message: 'Your registration was rejected. Contact support.', status: 'rejected' });
-    }
-    const valid = bcrypt.compareSync(pin, parent.pin_hash);
-    if (!valid) {
-      return res.status(401).json({ message: 'Invalid email or PIN' });
-    }
-    const token = jwt.sign({ parentId: parent.parent_id, role: 'parent' }, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
-    res.json({
+  const result = await store.query('SELECT * FROM parents WHERE email = $1', [email.toLowerCase().trim()]);
+  if (result.rows.length === 0) {
+    return res.status(401).json({ message: 'Invalid email or PIN' });
+  }
+  const parent = result.rows[0];
+  if (parent.status === 'pending') {
+    return res.status(403).json({ message: 'Your registration is pending admin approval.', status: 'pending' });
+  }
+  if (parent.status === 'rejected') {
+    return res.status(403).json({ message: 'Your registration was rejected. Contact support.', status: 'rejected' });
+  }
+  const valid = bcrypt.compareSync(pin, parent.pin_hash);
+  if (!valid) {
+    return res.status(401).json({ message: 'Invalid email or PIN' });
+  }
+  const token = jwt.sign({ parentId: parent.parent_id, role: 'parent' }, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
+  res.json({
     token,
     parent: {
       parent_id: parent.parent_id,

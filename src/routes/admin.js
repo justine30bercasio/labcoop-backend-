@@ -5836,13 +5836,21 @@ router.post('/reset-database', requireRole(4), asyncHandler(async (req, res) => 
       "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"
     );
     const existingSet = new Set(existing.rows.map(r => r.table_name));
+    console.log('[RESET] Existing tables:', [...existingSet].join(','));
     await store.transaction(async (tx) => {
       for (const t of tables) {
         if (existingSet.has(t)) {
-          await tx.query(`DELETE FROM "${t}"`);
+          const r = await tx.query(`DELETE FROM "${t}"`);
+          console.log(`[RESET] Deleted ${r.rowCount} rows from ${t}`);
+        } else {
+          console.log(`[RESET] Skipping ${t} (not in information_schema)`);
         }
       }
     });
+    console.log('[RESET] Transaction committed successfully');
+    // Double-check parents table is empty
+    const check = await store.query("SELECT COUNT(*) as cnt FROM parents");
+    console.log('[RESET] Parents remaining:', check.rows[0]?.cnt);
   } else {
     for (const t of tables) {
       try { store.query(`DELETE FROM ${t}`); } catch (_) {}

@@ -677,9 +677,9 @@ try {
 });
 
 app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
+  console.error('Unhandled error:', err.message, err.stack?.split('\n')[1] || '');
   if (process.env.NODE_ENV === 'production') {
-    res.status(500).json({ message: 'Internal server error' });
+    res.status(500).json({ message: 'Internal server error', _debug: err.message });
   } else {
     res.status(500).json({ message: 'Internal server error', error: err.message, type: err.type });
   }

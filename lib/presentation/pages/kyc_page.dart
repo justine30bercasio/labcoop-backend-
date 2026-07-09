@@ -77,8 +77,9 @@ class _KycPageState extends State<KycPage> {
       setState(() { _error = 'Failed to send request. Try again.'; _requestingConsent = false; });
       return;
     }
+    final noParentLinked = result['noParentLinked'] == true;
     setState(() {
-      _consentStatus = 'pending';
+      if (!noParentLinked) _consentStatus = 'pending';
       _consentMessage = result['message'] as String? ?? 'Request sent!';
       _requestingConsent = false;
     });

@@ -1026,7 +1026,11 @@ class _ParentNotificationListPageState extends State<_ParentNotificationListPage
             icon: const Icon(Icons.arrow_back),
             onPressed: () => Navigator.of(context).pop(_changed),
           ),
-          title: const Text('Notifications'),
+          title: const Text('Notifications', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          backgroundColor: const Color(0xFF1a237e),
+          foregroundColor: Colors.white,
+          iconTheme: const IconThemeData(color: Colors.white),
+          elevation: 0,
           actions: [
             if (_notifications.any((n) => n['is_read'] == 0))
               TextButton(
@@ -1037,12 +1041,12 @@ class _ParentNotificationListPageState extends State<_ParentNotificationListPage
                     _fetch();
                   } catch (_) {}
                 },
-                child: const Text('Mark all read'),
+                child: const Text('Mark all read', style: TextStyle(color: Colors.white70)),
               ),
           ],
         ),
         body: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? const Center(child: CircularProgressIndicator(color: Color(0xFF1a237e)))
             : _notifications.isEmpty
                 ? const Center(
                     child: Column(
@@ -1055,6 +1059,7 @@ class _ParentNotificationListPageState extends State<_ParentNotificationListPage
                     ),
                   )
                 : RefreshIndicator(
+                    color: const Color(0xFF1a237e),
                     onRefresh: _fetch,
                     child: ListView.separated(
                       itemCount: _notifications.length,

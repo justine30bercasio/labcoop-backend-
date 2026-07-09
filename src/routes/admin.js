@@ -2526,7 +2526,7 @@ router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {
           <div class="label">Health Check</div>
           <div class="desc">View system health status endpoint</div>
         </a>
-        <a href="/admin/reset-data/confirm" class="action-card danger" onclick="return confirmAction('Reset all data? This cannot be undone.')">
+        <a href="/admin/reset-database/confirm" class="action-card danger" onclick="return confirmAction('Reset all data? This cannot be undone.')">
           <div class="icon"><i class="fas fa-exclamation-triangle"></i></div>
           <div class="label">Reset All Data</div>
           <div class="desc">Permanently delete all member data</div>
@@ -2772,7 +2772,7 @@ router.get('/reset-data/confirm', requireRole(4), asyncHandler(async (req, res) 
       <p style="color:var(--danger);font-weight:600;margin-bottom:16px">This will permanently delete ALL member accounts, transactions, goals, badges, loans, and audit data. Reference tables (GL accounts, shop items, quiz questions) will be kept.</p>
       <p style="margin-bottom:16px">Enter your password to confirm this destructive action.</p>
       ${err ? `<p style="color:var(--danger);font-weight:600;margin-bottom:12px">&#x274C; ${err}</p>` : ''}
-      <form method="post" action="/admin/reset-data" style="display:flex;flex-direction:column;gap:12px">
+      <form method="post" action="/admin/reset-data?_csrf=${encodeURIComponent(res.locals.csrfToken)}" style="display:flex;flex-direction:column;gap:12px">
         <div class="field"><label>Your Password</label><input type="password" name="password" required></div>
         <div style="display:flex;gap:8px">
           <button type="submit" class="btn btn-danger">&#x26A0;&#xFE0F; Confirm Reset All Data</button>

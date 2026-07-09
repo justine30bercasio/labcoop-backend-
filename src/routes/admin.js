@@ -7002,8 +7002,7 @@ router.get('/parents', requireRole(3,4), asyncHandler(async (req, res) => {
                 </div>
               </div>
               <div class="action-btns">
-                <form method="post" action="/admin/parents/approve/${h(p.parent_id)}" style="display:inline">
-                  <input type="hidden" name="_csrf" value="${csrf}">
+                <form method="post" action="/admin/parents/approve/${h(p.parent_id)}?_csrf=${encodeURIComponent(csrf)}" style="display:inline">
                   <button type="submit" class="btn btn-success btn-sm" onclick="return confirm('Approve ${h(p.display_name || p.email)}?')"><i class="fas fa-check"></i> Approve</button>
                 </form>
                 <button class="btn btn-danger btn-sm" onclick="document.getElementById('rejectModal_${h(p.parent_id).replace(/-/g,'_')}').classList.add('open')"><i class="fas fa-times"></i> Reject</button>
@@ -7015,8 +7014,7 @@ router.get('/parents', requireRole(3,4), asyncHandler(async (req, res) => {
             <div class="modal-box">
               <h3 style="margin-bottom:12px">Reject Parent Registration</h3>
               <p style="font-size:13px;color:#6b7280;margin-bottom:16px">Reason for rejecting <strong>${h(p.display_name || p.email)}</strong>:</p>
-              <form method="post" action="/admin/parents/reject/${h(p.parent_id)}">
-                <input type="hidden" name="_csrf" value="${csrf}">
+              <form method="post" action="/admin/parents/reject/${h(p.parent_id)}?_csrf=${encodeURIComponent(csrf)}">
                 <textarea name="reason" rows="3" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;margin-bottom:12px;font-size:13px" placeholder="Optional rejection reason..."></textarea>
                 <div style="display:flex;gap:8px">
                   <button type="submit" class="btn btn-danger"><i class="fas fa-times"></i> Confirm Reject</button>

@@ -121,7 +121,7 @@ router.post('/request-consent', authMiddleware, asyncHandler(async (req, res) =>
     }
   } catch (e) {
     console.error('Failed to create/update consent record:', e);
-    return res.status(500).json({ message: 'Failed to process consent request.' });
+    return res.status(500).json({ message: 'Failed to process consent request: ' + (e.message || e) });
   }
   // Notify linked parents
   let notifiedCount = 0;

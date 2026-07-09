@@ -89,9 +89,9 @@ router.post('/request', authMiddleware, asyncHandler(async (req, res) => {
   }
   const token = crypto.randomBytes(32).toString('hex');
   await store.query(
-    `INSERT INTO parental_consent (consent_id, account_id, parent_email, consent_token, status, ip_address, created_at)
-     VALUES ($1, $2, $3, $4, 'pending', $5, $6)`,
-    [crypto.randomUUID(), account.account_id, parentEmail, token, req.ip, new Date().toISOString()]
+    `INSERT INTO parental_consent (consent_id, account_id, parent_phone, parent_email, consent_token, status, ip_address, created_at)
+     VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7)`,
+    [crypto.randomUUID(), account.account_id, (account.parent_phone || '').toString(), parentEmail, token, req.ip, new Date().toISOString()]
   );
   // Update account consent status
   await store.query(

@@ -110,9 +110,9 @@ router.post('/request-consent', authMiddleware, asyncHandler(async (req, res) =>
     if (existing.rows.length === 0) {
       const token = require('crypto').randomBytes(32).toString('hex');
       await store.query(
-        `INSERT INTO parental_consent (consent_id, account_id, parent_email, consent_token, status, ip_address, created_at)
-         VALUES ($1, $2, $3, $4, 'pending', $5, $6)`,
-        [require('uuid').v4(), req.accountId, account.parent_email || '', token, req.ip, new Date().toISOString()]
+        `INSERT INTO parental_consent (consent_id, account_id, parent_phone, parent_email, consent_token, status, ip_address, created_at)
+         VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7)`,
+        [require('uuid').v4(), req.accountId, (account.parent_phone || '').toString(), account.parent_email || '', token, req.ip, new Date().toISOString()]
       );
       await store.query(
         'UPDATE accounts SET consent_status = $1 WHERE account_id = $2',
@@ -121,7 +121,7 @@ router.post('/request-consent', authMiddleware, asyncHandler(async (req, res) =>
     }
   } catch (e) {
     console.error('Failed to create/update consent record:', e);
-    return res.status(500).json({ message: 'Failed to process consent request: ' + (e.message || e) });
+    return res.status(500).json({ message: 'Failed to process consent request.' });
   }
   // Notify linked parents
   let notifiedCount = 0;

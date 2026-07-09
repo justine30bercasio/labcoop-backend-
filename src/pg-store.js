@@ -558,6 +558,7 @@ class PgStore {
     await this.pool.query("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'PHP'").catch(() => {});
     await this.pool.query("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS maintaining_balance DECIMAL(12,2) DEFAULT 0").catch(() => {});
     await this.pool.query("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS regular_savings_number TEXT").catch(() => {});
+    await this.pool.query("ALTER TABLE parental_consent ALTER COLUMN parent_phone SET DEFAULT ''").catch(() => {});
     await this.pool.query("ALTER TABLE checks ADD COLUMN IF NOT EXISTS checkbook_id TEXT").catch(() => {});
     await this.pool.query("ALTER TABLE checks ADD COLUMN IF NOT EXISTS stop_payment INTEGER DEFAULT 0").catch(() => {});
     await this._seedGlAccounts();

@@ -78,6 +78,10 @@ function getDb() {
     try { db.exec("ALTER TABLE parents ADD COLUMN id_number TEXT DEFAULT ''"); } catch (_) {}
     try { db.exec("ALTER TABLE parents ADD COLUMN id_photo_url TEXT DEFAULT ''"); } catch (_) {}
     try { db.exec("ALTER TABLE parents ADD COLUMN status TEXT DEFAULT 'pending'"); } catch (_) {}
+    try { db.exec("ALTER TABLE parents ADD COLUMN address TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE parents ADD COLUMN city TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE parents ADD COLUMN province TEXT DEFAULT ''"); } catch (_) {}
+    try { db.exec("ALTER TABLE parents ADD COLUMN postal_code TEXT DEFAULT ''"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS parent_child_links (link_id TEXT PRIMARY KEY, parent_id TEXT NOT NULL, child_account_id TEXT NOT NULL, linking_code TEXT, status TEXT DEFAULT 'active', created_at TEXT)"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS parent_limits (limit_id TEXT PRIMARY KEY, parent_id TEXT NOT NULL, child_account_id TEXT NOT NULL, max_daily_withdrawal DECIMAL(12,2) DEFAULT 0, max_loan_amount DECIMAL(12,2) DEFAULT 0, require_approval_for TEXT DEFAULT 'all')"); } catch (_) {}
     try { db.exec("ALTER TABLE teller_cash ADD COLUMN branch_id TEXT REFERENCES branches(branch_id)"); } catch (_) {}

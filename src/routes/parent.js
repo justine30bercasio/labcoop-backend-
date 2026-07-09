@@ -702,17 +702,23 @@ router.get('/me', parentAuth, asyncHandler(async (req, res) => {
     phone: p.phone || '', photo_url: p.photo_url || '',
     id_type: p.id_type || '', id_number: p.id_number || '',
     id_photo_url: p.id_photo_url || '', status: p.status,
+    address: p.address || '', city: p.city || '', province: p.province || '',
+    postal_code: p.postal_code || '',
   });
 }));
 
 // ── Update Parent Profile ──
 router.post('/me', parentAuth, asyncHandler(async (req, res) => {
-  const { displayName, phone } = req.body;
+  const { displayName, phone, address, city, province, postalCode } = req.body;
   const updates = [];
   const values = [];
   let idx = 1;
   if (displayName !== undefined) { updates.push(`display_name = $${idx++}`); values.push(displayName); }
   if (phone !== undefined) { updates.push(`phone = $${idx++}`); values.push(phone); }
+  if (address !== undefined) { updates.push(`address = $${idx++}`); values.push(address); }
+  if (city !== undefined) { updates.push(`city = $${idx++}`); values.push(city); }
+  if (province !== undefined) { updates.push(`province = $${idx++}`); values.push(province); }
+  if (postalCode !== undefined) { updates.push(`postal_code = $${idx++}`); values.push(postalCode); }
   if (updates.length === 0) return res.json({ message: 'Nothing to update' });
   values.push(req.parentId);
   await store.query(`UPDATE parents SET ${updates.join(', ')} WHERE parent_id = $${idx}`, values);

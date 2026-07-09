@@ -10,6 +10,7 @@ const sgMail = require('@sendgrid/mail');
 const rateLimit = require('express-rate-limit');
 const { store } = require('../db');
 const { asyncHandler } = require('../async-handler');
+const notifs = require('../services/notifications');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
@@ -502,6 +503,7 @@ router.post('/approve-consent/:accountId', parentAuth, asyncHandler(async (req, 
     "UPDATE parental_consent SET status = $1, responded_at = $2 WHERE account_id = $3 AND status = 'pending'",
     ['approved', new Date().toISOString(), req.params.accountId]
   );
+  notifs.sendPush(req.params.accountId, 'Consent Approved!', 'Your parent approved your KYC request. You can now submit your documents.', { type: 'consent_approved' }).catch(() => {});
   res.json({ message: 'Consent approved! Your child can now submit KYC.', consent_status: 'approved' });
 }));
 
@@ -512,6 +514,8 @@ router.post('/reject-consent/:accountId', parentAuth, asyncHandler(async (req, r
     [req.parentId, req.params.accountId, 'active']
   );
   if (link.rows.length === 0) return res.status(403).json({ message: 'This child is not linked to your account' });
+  const account = await store.getAccount(req.params.accountId);
+  if (!account) return res.status(404).json({ message: 'Account not found' });
   await store.query(
     'UPDATE accounts SET consent_status = $1 WHERE account_id = $2',
     ['rejected', req.params.accountId]
@@ -520,6 +524,7 @@ router.post('/reject-consent/:accountId', parentAuth, asyncHandler(async (req, r
     "UPDATE parental_consent SET status = $1, responded_at = $2 WHERE account_id = $3 AND status = 'pending'",
     ['rejected', new Date().toISOString(), req.params.accountId]
   );
+  notifs.sendPush(req.params.accountId, 'Consent Rejected', 'Your parent did not approve your KYC request.', { type: 'consent_rejected' }).catch(() => {});
   res.json({ message: 'Consent rejected.', consent_status: 'rejected' });
 }));
 

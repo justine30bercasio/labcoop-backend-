@@ -6,6 +6,7 @@ const fs = require('fs');
 const { store } = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 const { asyncHandler } = require('../async-handler');
+const notifs = require('../services/notifications');
 
 const KYC_DIR = path.join(__dirname, '..', 'uploads', 'kyc');
 if (!fs.existsSync(KYC_DIR)) {
@@ -51,6 +52,7 @@ router.post('/submit', authMiddleware, (req, res) => {
       }
 
       await store.updateAccount(accountId, updates);
+      notifs.sendPush(accountId, 'KYC Submitted', 'Your documents are under review.', { type: 'kyc_submitted' }).catch(() => {});
       res.json({ message: 'KYC documents submitted for review', kyc_status: 'pending' });
     } catch (e) {
       console.error('KYC submit error:', e);
@@ -61,17 +63,23 @@ router.post('/submit', authMiddleware, (req, res) => {
 
 router.get('/status', authMiddleware, asyncHandler(async (req, res) => {
   if (!req.accountId) return res.status(401).json({ message: 'Authentication required' });
-  const acctResult = await store.query(
-    'SELECT kyc_status, selfie_url, birth_cert_url, photo_2x2_url, kyc_submitted_at, kyc_verified_at, kyc_rejected_reason, consent_status, parent_email FROM accounts WHERE account_id = $1',
-    [req.accountId]
-  );
-  const account = acctResult.rows[0];
-  if (!account) return res.status(404).json({ message: 'Account not found' });
-  // Get latest consent request if any
-  const consentResult = await store.query(
-    "SELECT status FROM parental_consent WHERE account_id = $1 ORDER BY created_at DESC LIMIT 1",
-    [req.accountId]
-  );
+  let account, consentResult;
+  try {
+    const acctResult = await store.query(
+      'SELECT kyc_status, selfie_url, birth_cert_url, photo_2x2_url, kyc_submitted_at, kyc_verified_at, kyc_rejected_reason, consent_status, parent_email FROM accounts WHERE account_id = $1',
+      [req.accountId]
+    );
+    account = acctResult.rows[0];
+    if (!account) return res.status(404).json({ message: 'Account not found' });
+    const cResult = await store.query(
+      "SELECT status FROM parental_consent WHERE account_id = $1 ORDER BY created_at DESC LIMIT 1",
+      [req.accountId]
+    );
+    consentResult = cResult.rows[0] || null;
+  } catch (e) {
+    console.error('KYC status error:', e);
+    return res.status(500).json({ message: 'Failed to check status. Please try again.' });
+  }
   res.json({
     kyc_status: account.kyc_status || '',
     selfie_url: account.selfie_url || '',
@@ -82,11 +90,11 @@ router.get('/status', authMiddleware, asyncHandler(async (req, res) => {
     kyc_rejected_reason: account.kyc_rejected_reason || '',
     consent_status: account.consent_status || 'none',
     parent_email: account.parent_email || '',
-    latest_consent: consentResult.rows[0] || null,
+    latest_consent: consentResult,
   });
 }));
 
-// ── Request Parental Consent (no email — notifies parent via portal) ──
+// ── Request Parental Consent (notifies parent via notification system) ──
 router.post('/request-consent', authMiddleware, asyncHandler(async (req, res) => {
   if (!req.accountId) return res.status(401).json({ message: 'Authentication required' });
   const account = await store.getAccount(req.accountId);
@@ -94,44 +102,54 @@ router.post('/request-consent', authMiddleware, asyncHandler(async (req, res) =>
   if (account.consent_status === 'approved') {
     return res.json({ message: 'Consent already approved.', consent_status: 'approved' });
   }
-  // Check existing pending request
-  const existing = await store.query(
-    "SELECT * FROM parental_consent WHERE account_id = $1 AND status = 'pending' ORDER BY created_at DESC LIMIT 1",
-    [req.accountId]
-  );
-  if (existing.rows.length === 0) {
-    const token = require('crypto').randomBytes(32).toString('hex');
-    await store.query(
-      `INSERT INTO parental_consent (consent_id, account_id, parent_email, consent_token, status, ip_address, created_at)
-       VALUES ($1, $2, $3, $4, 'pending', $5, $6)`,
-      [require('uuid').v4(), req.accountId, account.parent_email || '', token, req.ip, new Date().toISOString()]
+  try {
+    const existing = await store.query(
+      "SELECT * FROM parental_consent WHERE account_id = $1 AND status = 'pending' ORDER BY created_at DESC LIMIT 1",
+      [req.accountId]
     );
-    await store.query(
-      'UPDATE accounts SET consent_status = $1 WHERE account_id = $2',
-      ['pending', req.accountId]
-    );
+    if (existing.rows.length === 0) {
+      const token = require('crypto').randomBytes(32).toString('hex');
+      await store.query(
+        `INSERT INTO parental_consent (consent_id, account_id, parent_email, consent_token, status, ip_address, created_at)
+         VALUES ($1, $2, $3, $4, 'pending', $5, $6)`,
+        [require('uuid').v4(), req.accountId, account.parent_email || '', token, req.ip, new Date().toISOString()]
+      );
+      await store.query(
+        'UPDATE accounts SET consent_status = $1 WHERE account_id = $2',
+        ['pending', req.accountId]
+      );
+    }
+  } catch (e) {
+    console.error('Failed to create/update consent record:', e);
+    return res.status(500).json({ message: 'Failed to process consent request.' });
   }
   // Notify linked parents
-  const links = await store.query(
-    'SELECT parent_id FROM parent_child_links WHERE child_account_id = $1 AND status = $2',
-    [req.accountId, 'active']
-  );
   let notifiedCount = 0;
-  for (const link of links.rows) {
-    try {
-      await store.createParentNotification({
-        parentId: link.parent_id,
-        title: `${account.child_name} needs your consent`,
-        body: 'Review and approve so they can submit KYC documents.',
-        type: 'consent_request',
-      });
-      notifiedCount++;
-    } catch (_) {}
+  try {
+    const links = await store.query(
+      'SELECT parent_id FROM parent_child_links WHERE child_account_id = $1 AND status = $2',
+      [req.accountId, 'active']
+    );
+    for (const link of links.rows) {
+      try {
+        await store.createParentNotification({
+          parentId: link.parent_id,
+          title: `${account.child_name} needs your consent`,
+          body: 'Review and approve so they can submit KYC documents.',
+          type: 'consent_request',
+        });
+        notifiedCount++;
+      } catch (e) {
+        console.error('Failed to create parent notification:', e);
+      }
+    }
+  } catch (e) {
+    console.error('Failed to query parent links:', e);
   }
   if (notifiedCount === 0) {
     return res.json({ message: 'No parent linked yet. Go to Settings → Link Parent first.', consent_status: 'pending', noParentLinked: true });
   }
-  res.json({ message: 'Consent request sent to parent. Ask them to check the Parent Portal.', consent_status: 'pending' });
+  res.json({ message: 'Consent request sent to parent.', consent_status: 'pending' });
 }));
 
 module.exports = router;

@@ -5770,7 +5770,7 @@ router.get('/reset-database/confirm', requireRole(4), asyncHandler(async (req, r
       <p style="color:var(--danger);font-weight:600;margin-bottom:16px">This will permanently delete ALL member accounts, transactions, goals, badges, loans, and audit data. Reference tables (GL accounts, shop items, quiz questions) will be kept.</p>
       <p style="margin-bottom:16px">Enter your password to confirm this destructive action.</p>
       ${err ? `<p style="color:var(--danger);font-weight:600;margin-bottom:12px">&#x274C; ${err}</p>` : ''}
-      <form method="post" action="/admin/reset-database" style="display:flex;flex-direction:column;gap:12px">
+      <form method="post" action="/admin/reset-database?_csrf=${encodeURIComponent(res.locals.csrfToken)}" style="display:flex;flex-direction:column;gap:12px">
         <div class="field"><label>Your Password</label><input type="password" name="password" required></div>
         <div style="display:flex;gap:8px">
           <button type="submit" class="btn btn-danger">&#x26A0;&#xFE0F; Confirm Reset Database</button>
@@ -5819,14 +5819,16 @@ router.post('/reset-database', requireRole(4), asyncHandler(async (req, res) => 
     'eod_logs',
     'eoy_logs',
     'accounting_periods',
+    'or_series',
+    'archived_transactions',
     'account_deletion_requests',
     'parent_notifications',
     'parental_consent',
     'parent_limits',
     'parent_child_links',
     'parents',
-    'or_series',
-    'archived_transactions',
+    'refresh_tokens',
+    'coin_transactions',
     'accounts',
   ];
   if (isPostgres) {

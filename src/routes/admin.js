@@ -2823,6 +2823,14 @@ router.post('/reset-data', requireRole(4), asyncHandler(async (req, res) => {
     'accounting_periods',
     'or_series',
     'archived_transactions',
+    'account_deletion_requests',
+    'parent_notifications',
+    'parental_consent',
+    'parent_limits',
+    'parent_child_links',
+    'parents',
+    'refresh_tokens',
+    'coin_transactions',
     'accounts',
   ];
   if (isPostgres) {
@@ -2830,11 +2838,25 @@ router.post('/reset-data', requireRole(4), asyncHandler(async (req, res) => {
       "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"
     );
     const existingSet = new Set(existing.rows.map(r => r.table_name));
+    console.log('[RESET-DATA] Existing tables:', [...existingSet].join(','));
     await store.transaction(async (tx) => {
       for (const t of tables) {
         if (existingSet.has(t)) {
-          await tx.query(`DELETE FROM "${t}"`);
+          const r = await tx.query(`DELETE FROM "${t}"`);
+          console.log(`[RESET-DATA] Deleted ${r.rowCount} rows from ${t}`);
+        } else {
+          console.log(`[RESET-DATA] Skipping ${t} (not in information_schema)`);
         }
+      }
+    });
+    console.log('[RESET-DATA] Transaction committed successfully');
+    const check = await store.query("SELECT COUNT(*) as cnt FROM parents");
+    console.log('[RESET-DATA] Parents remaining:', check.rows[0]?.cnt);
+  } else {
+    for (const t of tables) {
+      try { store.query(`DELETE FROM ${t}`); } catch (_) {}
+    }
+  }
       }
     });
   } else {

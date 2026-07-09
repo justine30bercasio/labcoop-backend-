@@ -469,6 +469,21 @@ class BankingApiService {
     } on DioException { return null; }
   }
 
+  static Future<bool> parentUpdateProfile({String? displayName, String? phone, String? address, String? city, String? province, String? postalCode}) async {
+    try {
+      await _addParentAuthHeader();
+      final body = <String, dynamic>{};
+      if (displayName != null && displayName.isNotEmpty) body['displayName'] = displayName;
+      if (phone != null) body['phone'] = phone;
+      if (address != null) body['address'] = address;
+      if (city != null) body['city'] = city;
+      if (province != null) body['province'] = province;
+      if (postalCode != null) body['postalCode'] = postalCode;
+      await _parentDio.post('/api/parent/me', data: body);
+      return true;
+    } on DioException { return false; }
+  }
+
   // ── Parent Notifications ──
   static Future<Map<String, dynamic>?> parentGetNotifications() async {
     try {

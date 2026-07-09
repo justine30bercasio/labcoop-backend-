@@ -286,7 +286,8 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                   children: [
                     _buildDashboardTab(),
                     _buildChildrenTab(),
-                    _buildSettingsTab(),
+                    _buildApprovalsTab(),
+                    _buildProfileTab(),
                   ],
                 ),
       bottomNavigationBar: Container(
@@ -316,9 +317,14 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
               label: 'Children',
             ),
             NavigationDestination(
-              icon: Icon(Icons.tune_outlined),
-              selectedIcon: Icon(Icons.tune),
-              label: 'Settings',
+              icon: Icon(Icons.hourglass_bottom_outlined),
+              selectedIcon: Icon(Icons.hourglass_bottom),
+              label: 'Approvals',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.person_outline),
+              selectedIcon: Icon(Icons.person),
+              label: 'Profile',
             ),
           ],
         ),
@@ -863,7 +869,12 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
     );
   }
 
-  Widget _buildSettingsTab() {
+  Widget _buildApprovalsTab() {
+    final totalConsents = _pendingConsents.length;
+    final totalWithdrawals = _pendingWithdrawals.length;
+    final totalLoans = _pendingLoans.length;
+    final totalDeletions = _pendingDeletions.length;
+    final hasAny = totalConsents + totalWithdrawals + totalLoans + totalDeletions > 0;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -874,98 +885,462 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(color: _indigo.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
-                child: const Icon(Icons.tune, color: _indigo, size: 22),
+                child: const Icon(Icons.hourglass_bottom, color: _indigo, size: 22),
               ),
               const SizedBox(width: 12),
-              Text('Spending Limits', style: TextStyle(color: _indigo, fontSize: 20, fontWeight: FontWeight.bold)),
+              Text('Approvals', style: TextStyle(color: _indigo, fontSize: 20, fontWeight: FontWeight.bold)),
+              if (hasAny) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(color: Colors.orange.shade600, borderRadius: BorderRadius.circular(20)),
+                  child: Text('${totalConsents + totalWithdrawals + totalLoans}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 4),
-          Text('Set maximum amounts your child can transact without approval',
+          Text('Review and respond to requests from your children',
             style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
           const SizedBox(height: 16),
-          if (_children.isEmpty)
+          if (!hasAny)
             Center(
               child: Padding(
                 padding: const EdgeInsets.only(top: 60),
-                child: Text('Link a child first to set limits',
-                  style: TextStyle(color: Colors.grey.shade500, fontSize: 16)),
+                child: Column(
+                  children: [
+                    Icon(Icons.check_circle_outline, color: Colors.grey.shade300, size: 64),
+                    const SizedBox(height: 12),
+                    Text('All caught up!', style: TextStyle(color: Colors.grey.shade500, fontSize: 16, fontWeight: FontWeight.w500)),
+                    Text('No pending approvals', style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
+                  ],
+                ),
               ),
             ),
-          for (final child in _children) ...[
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.grey.shade200),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2))],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          if (totalConsents > 0) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(color: _indigo.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                        child: const Icon(Icons.person, color: _indigo, size: 16),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(child['child_name'] ?? '', style: TextStyle(color: _indigo, fontSize: 15, fontWeight: FontWeight.w600)),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: child['account_id'] is String ? _limitControllers[child['account_id'] as String] : null,
-                    keyboardType: TextInputType.number,
-                    style: TextStyle(color: _indigo, fontSize: 14),
-                    decoration: InputDecoration(
-                      labelText: 'Max daily withdrawal (PHP)',
-                      labelStyle: TextStyle(color: Colors.grey.shade500),
-                      prefixText: 'PHP ',
-                      prefixStyle: TextStyle(color: _indigo),
-                      filled: true,
-                      fillColor: Colors.grey.shade50,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity, height: 44,
-                    child: ElevatedButton(
-                      onPressed: () { final id = child['account_id'] as String?; if (id != null) _saveLimit(id); },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _indigo,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: const Text('Save Limits', style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  ),
+                  const Icon(Icons.family_restroom, color: Color(0xFFD97706), size: 18),
+                  const SizedBox(width: 6),
+                  Text('Consent Requests ($totalConsents)', style: const TextStyle(color: Color(0xFFD97706), fontSize: 15, fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
-            const SizedBox(height: 8),
+            for (final c in _pendingConsents) ...[
+              _buildPendingCard(
+                childName: c['child_name'] ?? 'Child',
+                type: 'Consent Request',
+                amount: 0,
+                reason: 'Needs parental approval to submit KYC documents',
+                date: c['created_at'] as String? ?? '',
+                onApprove: () { final id = c['account_id'] as String?; if (id != null) _approveConsent(id); },
+                onReject: () { final id = c['account_id'] as String?; if (id != null) _rejectConsent(id); },
+                icon: Icons.family_restroom,
+                color: const Color(0xFFD97706),
+              ),
+              const SizedBox(height: 8),
+            ],
+            if (totalWithdrawals + totalLoans > 0) const SizedBox(height: 16),
           ],
-
-          const SizedBox(height: 32),
-          const Divider(),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity, height: 52,
-            child: OutlinedButton.icon(
-              onPressed: _logout,
-              icon: const Icon(Icons.logout, color: Colors.red),
-              label: const Text('Logout', style: TextStyle(color: Colors.red, fontSize: 16, fontWeight: FontWeight.bold)),
-              style: OutlinedButton.styleFrom(
-                side: BorderSide(color: Colors.red.shade200),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          if (totalWithdrawals > 0) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.money_off, color: Colors.orange, size: 18),
+                  const SizedBox(width: 6),
+                  Text('Withdrawal Requests ($totalWithdrawals)', style: TextStyle(color: Colors.orange.shade700, fontSize: 15, fontWeight: FontWeight.bold)),
+                ],
               ),
             ),
-          ),
+            for (final w in _pendingWithdrawals) ...[
+              _buildPendingCard(
+                childName: w['child_name'] ?? 'Child',
+                type: 'Withdrawal',
+                amount: (w['amount'] as num?)?.toDouble() ?? 0,
+                reason: w['reason'] as String? ?? '',
+                date: w['created_at'] as String? ?? '',
+                onApprove: () { final id = w['request_id'] as String?; if (id != null) _approveWithdrawal(id); },
+                onReject: () { final id = w['request_id'] as String?; if (id != null) _rejectWithdrawal(id); },
+                icon: Icons.money_off,
+                color: Colors.orange,
+              ),
+              const SizedBox(height: 8),
+            ],
+            if (totalLoans > 0) const SizedBox(height: 16),
+          ],
+          if (totalLoans > 0) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.account_balance, color: Colors.blue, size: 18),
+                  const SizedBox(width: 6),
+                  Text('Loan Applications ($totalLoans)', style: TextStyle(color: Colors.blue.shade700, fontSize: 15, fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+            for (final l in _pendingLoans) ...[
+              _buildPendingCard(
+                childName: l['child_name'] ?? 'Child',
+                type: 'Loan Application',
+                amount: (l['principal'] as num?)?.toDouble() ?? 0,
+                reason: 'Term: ${l['term_months']} months, ${l['interest_type'] ?? ''}',
+                date: l['created_at'] as String? ?? '',
+                onApprove: () { final id = l['loan_id'] as String?; if (id != null) _approveLoan(id); },
+                onReject: () { final id = l['loan_id'] as String?; if (id != null) _rejectLoan(id); },
+                icon: Icons.account_balance,
+                color: Colors.blue,
+              ),
+              const SizedBox(height: 8),
+            ],
+          ],
+          if (totalDeletions > 0) ...[
+            if (totalConsents + totalWithdrawals + totalLoans > 0) const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.delete_forever, color: Colors.redAccent, size: 18),
+                  const SizedBox(width: 6),
+                  Text('Account Deletion Requests ($totalDeletions)', style: TextStyle(color: Colors.red.shade700, fontSize: 15, fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+            for (final d in _pendingDeletions) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.red.shade200),
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8)],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.person, color: Colors.redAccent, size: 18),
+                        const SizedBox(width: 8),
+                        Text('${d['child_name'] ?? ''}', style: TextStyle(color: _indigo, fontWeight: FontWeight.w600, fontSize: 14)),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    if ((d['reason'] as String?)?.isNotEmpty == true)
+                      Text('Reason: ${d['reason']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                    Text('Requested: ${_fmtDate(d['created_at'] as String? ?? '')}', style: TextStyle(color: Colors.grey.shade400, fontSize: 11)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ],
+          if (!hasAny) const SizedBox(height: 40),
           const SizedBox(height: 40),
         ],
+      ),
+    );
+  }
+
+  Widget _buildProfileTab() {
+    final nameCtrl = TextEditingController(text: _parentInfo?['display_name'] as String? ?? '');
+    final phoneCtrl = TextEditingController(text: _parentInfo?['phone'] as String? ?? '');
+    final addressCtrl = TextEditingController(text: _parentInfo?['address'] as String? ?? '');
+    final cityCtrl = TextEditingController(text: _parentInfo?['city'] as String? ?? '');
+    final provinceCtrl = TextEditingController(text: _parentInfo?['province'] as String? ?? '');
+    final postalCtrl = TextEditingController(text: _parentInfo?['postal_code'] as String? ?? '');
+    bool _saving = false;
+    String? _saveMsg;
+    String? _saveError;
+
+    // ── Old PIN ──
+    final oldPinCtrl = TextEditingController();
+    final newPinCtrl = TextEditingController();
+    bool _changingPin = false;
+    String? _pinMsg;
+    String? _pinError;
+
+    return StatefulBuilder(
+      builder: (context, setLocalState) => SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: _indigo.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+                  child: const Icon(Icons.person, color: _indigo, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Text('My Profile', style: TextStyle(color: _indigo, fontSize: 20, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text('${_parentInfo?['email'] ?? ''}', style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+            const SizedBox(height: 20),
+
+            // ── Display Name ──
+            TextField(
+              controller: nameCtrl,
+              style: TextStyle(color: _indigo, fontSize: 14),
+              decoration: InputDecoration(
+                labelText: 'Display Name',
+                labelStyle: TextStyle(color: Colors.grey.shade500),
+                filled: true, fillColor: Colors.grey.shade50,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // ── Phone ──
+            TextField(
+              controller: phoneCtrl,
+              style: TextStyle(color: _indigo, fontSize: 14),
+              keyboardType: TextInputType.phone,
+              decoration: InputDecoration(
+                labelText: 'Mobile Number',
+                labelStyle: TextStyle(color: Colors.grey.shade500),
+                filled: true, fillColor: Colors.grey.shade50,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // ── Address ──
+            TextField(
+              controller: addressCtrl,
+              style: TextStyle(color: _indigo, fontSize: 14),
+              decoration: InputDecoration(
+                labelText: 'Address',
+                labelStyle: TextStyle(color: Colors.grey.shade500),
+                filled: true, fillColor: Colors.grey.shade50,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(child: TextField(
+                  controller: cityCtrl,
+                  style: TextStyle(color: _indigo, fontSize: 14),
+                  decoration: InputDecoration(
+                    labelText: 'City',
+                    labelStyle: TextStyle(color: Colors.grey.shade500),
+                    filled: true, fillColor: Colors.grey.shade50,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+                  ),
+                )),
+                const SizedBox(width: 12),
+                Expanded(child: TextField(
+                  controller: provinceCtrl,
+                  style: TextStyle(color: _indigo, fontSize: 14),
+                  decoration: InputDecoration(
+                    labelText: 'Province',
+                    labelStyle: TextStyle(color: Colors.grey.shade500),
+                    filled: true, fillColor: Colors.grey.shade50,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+                  ),
+                )),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: postalCtrl,
+              style: TextStyle(color: _indigo, fontSize: 14),
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: 'Postal Code',
+                labelStyle: TextStyle(color: Colors.grey.shade500),
+                filled: true, fillColor: Colors.grey.shade50,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (_saveMsg != null)
+              Container(
+                width: double.infinity, padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)),
+                child: Text(_saveMsg!, style: TextStyle(color: Colors.green.shade800, fontSize: 13)),
+              ),
+            if (_saveError != null)
+              Container(
+                width: double.infinity, padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8)),
+                child: Text(_saveError!, style: TextStyle(color: Colors.red.shade800, fontSize: 13)),
+              ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity, height: 44,
+              child: ElevatedButton(
+                onPressed: _saving ? null : () async {
+                  setLocalState(() { _saving = true; _saveMsg = null; _saveError = null; });
+                  final ok = await BankingApiService.parentUpdateProfile(
+                    displayName: nameCtrl.text,
+                    phone: phoneCtrl.text,
+                    address: addressCtrl.text,
+                    city: cityCtrl.text,
+                    province: provinceCtrl.text,
+                    postalCode: postalCtrl.text,
+                  );
+                  if (!mounted) return;
+                  setLocalState(() {
+                    _saving = false;
+                    if (ok) { _saveMsg = 'Profile updated!'; } else { _saveError = 'Failed to save.'; }
+                  });
+                  if (ok) _loadData();
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: _indigo, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                child: _saving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Save Profile', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ),
+
+            const SizedBox(height: 24),
+            const Divider(),
+            const SizedBox(height: 16),
+
+            // ── Change PIN ──
+            Row(
+              children: [
+                const Icon(Icons.lock_outline, color: _indigo, size: 20),
+                const SizedBox(width: 8),
+                Text('Change PIN', style: TextStyle(color: _indigo, fontSize: 17, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: oldPinCtrl,
+              obscureText: true,
+              maxLength: 6,
+              keyboardType: TextInputType.number,
+              style: TextStyle(color: _indigo, fontSize: 14),
+              decoration: InputDecoration(
+                labelText: 'Current PIN',
+                labelStyle: TextStyle(color: Colors.grey.shade500),
+                filled: true, fillColor: Colors.grey.shade50,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: newPinCtrl,
+              obscureText: true,
+              maxLength: 6,
+              keyboardType: TextInputType.number,
+              style: TextStyle(color: _indigo, fontSize: 14),
+              decoration: InputDecoration(
+                labelText: 'New PIN (6 digits)',
+                labelStyle: TextStyle(color: Colors.grey.shade500),
+                filled: true, fillColor: Colors.grey.shade50,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+              ),
+            ),
+            if (_pinMsg != null)
+              Container(
+                width: double.infinity, padding: const EdgeInsets.all(10), margin: const EdgeInsets.only(top: 8),
+                decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)),
+                child: Text(_pinMsg!, style: TextStyle(color: Colors.green.shade800, fontSize: 13)),
+              ),
+            if (_pinError != null)
+              Container(
+                width: double.infinity, padding: const EdgeInsets.all(10), margin: const EdgeInsets.only(top: 8),
+                decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8)),
+                child: Text(_pinError!, style: TextStyle(color: Colors.red.shade800, fontSize: 13)),
+              ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity, height: 44,
+              child: ElevatedButton(
+                onPressed: _changingPin ? null : () async {
+                  if (oldPinCtrl.text.length != 6 || newPinCtrl.text.length != 6) {
+                    setLocalState(() { _pinError = 'PIN must be exactly 6 digits'; _pinMsg = null; });
+                    return;
+                  }
+                  setLocalState(() { _changingPin = true; _pinMsg = null; _pinError = null; });
+                  final ok = await BankingApiService.parentChangePin(oldPinCtrl.text, newPinCtrl.text);
+                  if (!mounted) return;
+                  setLocalState(() {
+                    _changingPin = false;
+                    if (ok) { _pinMsg = 'PIN changed!'; oldPinCtrl.clear(); newPinCtrl.clear(); }
+                    else { _pinError = 'Current PIN is incorrect.'; }
+                  });
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: _indigo, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                child: _changingPin ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Change PIN', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ),
+
+            const SizedBox(height: 24),
+            const Divider(),
+            const SizedBox(height: 16),
+
+            // ── Link Child ──
+            Row(
+              children: [
+                const Icon(Icons.link, color: _indigo, size: 20),
+                const SizedBox(width: 8),
+                Text('Link a Child', style: TextStyle(color: _indigo, fontSize: 17, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text('Enter the 6-digit code shown in your child\'s app under Settings → Link Parent.',
+              style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _linkCodeController,
+              maxLength: 6,
+              keyboardType: TextInputType.number,
+              style: TextStyle(color: _indigo, fontSize: 14),
+              decoration: InputDecoration(
+                hintText: 'Enter 6-digit code',
+                hintStyle: TextStyle(color: Colors.grey.shade400),
+                filled: true, fillColor: Colors.grey.shade50,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+              ),
+            ),
+            if (_linkError != null)
+              Container(
+                width: double.infinity, padding: const EdgeInsets.all(10), margin: const EdgeInsets.only(top: 8),
+                decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8)),
+                child: Text(_linkError!, style: TextStyle(color: Colors.red.shade800, fontSize: 13)),
+              ),
+            if (_linkSuccess != null)
+              Container(
+                width: double.infinity, padding: const EdgeInsets.all(10), margin: const EdgeInsets.only(top: 8),
+                decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)),
+                child: Text(_linkSuccess!, style: TextStyle(color: Colors.green.shade800, fontSize: 13)),
+              ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity, height: 44,
+              child: ElevatedButton(
+                onPressed: _linking ? null : _linkChild,
+                style: ElevatedButton.styleFrom(backgroundColor: _indigo, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                child: _linking ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Link Child', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ),
+
+            const SizedBox(height: 24),
+            const Divider(),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity, height: 52,
+              child: OutlinedButton.icon(
+                onPressed: _logout,
+                icon: const Icon(Icons.logout, color: Colors.red),
+                label: const Text('Logout', style: TextStyle(color: Colors.red, fontSize: 16, fontWeight: FontWeight.bold)),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: Colors.red.shade200),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 40),
+          ],
+        ),
       ),
     );
   }

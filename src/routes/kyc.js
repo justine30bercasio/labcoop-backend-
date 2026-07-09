@@ -39,7 +39,8 @@ router.post('/submit', authMiddleware, (req, res) => {
       const accountId = req.accountId;
       if (!accountId) return res.status(401).json({ message: 'Authentication required' });
 
-      const account = await store.query('SELECT * FROM accounts WHERE account_id = $1', [accountId]).then(r => r.rows[0]);
+      const acctResult = await store.query('SELECT * FROM accounts WHERE account_id = $1', [accountId]);
+      const account = acctResult.rows[0];
       if (!account) return res.status(404).json({ message: 'Account not found' });
 
       const updates = { kyc_status: 'pending', kyc_submitted_at: new Date().toISOString() };
@@ -60,10 +61,11 @@ router.post('/submit', authMiddleware, (req, res) => {
 
 router.get('/status', authMiddleware, asyncHandler(async (req, res) => {
   if (!req.accountId) return res.status(401).json({ message: 'Authentication required' });
-  const account = await store.query(
+  const acctResult = await store.query(
     'SELECT kyc_status, selfie_url, birth_cert_url, photo_2x2_url, kyc_submitted_at, kyc_verified_at, kyc_rejected_reason, consent_status, parent_email FROM accounts WHERE account_id = $1',
     [req.accountId]
-  ).then(r => r.rows[0]);
+  );
+  const account = acctResult.rows[0];
   if (!account) return res.status(404).json({ message: 'Account not found' });
   // Get latest consent request if any
   const consentResult = await store.query(
@@ -114,6 +116,7 @@ router.post('/request-consent', authMiddleware, asyncHandler(async (req, res) =>
     'SELECT parent_id FROM parent_child_links WHERE child_account_id = $1 AND status = $2',
     [req.accountId, 'active']
   );
+  let notifiedCount = 0;
   for (const link of links.rows) {
     try {
       await store.createParentNotification({
@@ -122,7 +125,11 @@ router.post('/request-consent', authMiddleware, asyncHandler(async (req, res) =>
         body: 'Review and approve so they can submit KYC documents.',
         type: 'consent_request',
       });
+      notifiedCount++;
     } catch (_) {}
+  }
+  if (notifiedCount === 0) {
+    return res.json({ message: 'No parent linked yet. Go to Settings → Link Parent first.', consent_status: 'pending', noParentLinked: true });
   }
   res.json({ message: 'Consent request sent to parent. Ask them to check the Parent Portal.', consent_status: 'pending' });
 }));

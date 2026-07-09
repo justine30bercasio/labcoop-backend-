@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/theme/app_theme.dart';
@@ -20,12 +21,10 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
   List<dynamic> _pendingDeletions = [];
   List<dynamic> _limits = [];
   List<dynamic> _childTransactions = [];
-  List<dynamic> _notifications = [];
   Map<String, dynamic>? _parentInfo;
   bool _loading = true;
   String? _loadError;
   int _notifUnreadCount = 0;
-  bool _showNotifPanel = false;
 
   final _linkCodeController = TextEditingController();
   bool _linking = false;
@@ -69,17 +68,31 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
     BankingApiService.parentGetNotifications().then((data) {
       if (!mounted || data == null) return;
       setState(() {
-        _notifications = data['notifications'] as List<dynamic>? ?? [];
         _notifUnreadCount = data['unreadCount'] as int? ?? 0;
       });
     });
   }
 
-  void _toggleNotifPanel() {
-    setState(() => _showNotifPanel = !_showNotifPanel);
-    if (_showNotifPanel && _notifUnreadCount > 0) {
-      BankingApiService.parentMarkAllNotifRead();
-      setState(() => _notifUnreadCount = 0);
+  void _openNotifPage() async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const _ParentNotificationListPage()),
+    );
+    if (changed == true && mounted) _fetchNotifs();
+  }
+
+  String _fmtDate(String iso) {
+    if (iso.isEmpty) return '';
+    try {
+      final dt = DateTime.parse(iso);
+      final now = DateTime.now();
+      final diff = now.difference(dt);
+      if (diff.inMinutes < 1) return 'Just now';
+      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+      if (diff.inHours < 24) return '${diff.inHours}h ago';
+      if (diff.inDays < 7) return '${diff.inDays}d ago';
+      return '${dt.month}/${dt.day}';
+    } catch (_) {
+      return '';
     }
   }
 
@@ -105,9 +118,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
         _limits = results[3] as List<dynamic>? ?? [];
         _childTransactions = results[4] as List<dynamic>? ?? [];
         _pendingDeletions = results[5] as List<dynamic>? ?? [];
-        final notifData = results[6] as Map<String, dynamic>?;
-        _notifications = notifData?['notifications'] as List<dynamic>? ?? [];
-        _notifUnreadCount = notifData?['unreadCount'] as int? ?? 0;
+        _notifUnreadCount = (results[6] as Map<String, dynamic>?)?['unreadCount'] as int? ?? 0;
         _loading = false;
       });
       _initLimitForms();
@@ -213,13 +224,15 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
         elevation: 0,
         actions: [
           Stack(
+            clipBehavior: Clip.none,
             children: [
-              IconButton(icon: const Icon(Icons.notifications_outlined), onPressed: _toggleNotifPanel),
+              IconButton(icon: const Icon(Icons.notifications_outlined), onPressed: _openNotifPage),
               if (_notifUnreadCount > 0)
                 Positioned(right: 6, top: 6, child: Container(
                   padding: const EdgeInsets.all(4),
                   decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                  child: Text('$_notifUnreadCount', style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                  constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                  child: Text(_notifUnreadCount > 99 ? '99+' : '$_notifUnreadCount', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
                 )),
             ],
           ),
@@ -227,44 +240,37 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
           IconButton(icon: const Icon(Icons.logout), onPressed: _logout),
         ],
       ),
-      body: Column(
-        children: [
-          if (_showNotifPanel) _buildNotifPanel(),
-          Expanded(
-            child: _loadError != null
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.cloud_off, color: Colors.grey.shade400, size: 56),
-                          const SizedBox(height: 16),
-                          Text(_loadError!, textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600, fontSize: 15)),
-                          const SizedBox(height: 20),
-                          ElevatedButton.icon(
-                            onPressed: _loadData,
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Retry'),
-                            style: ElevatedButton.styleFrom(backgroundColor: _indigo, foregroundColor: Colors.white),
-                          ),
-                        ],
-                      ),
+      body: _loadError != null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.cloud_off, color: Colors.grey.shade400, size: 56),
+                    const SizedBox(height: 16),
+                    Text(_loadError!, textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600, fontSize: 15)),
+                    const SizedBox(height: 20),
+                    ElevatedButton.icon(
+                      onPressed: _loadData,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Retry'),
+                      style: ElevatedButton.styleFrom(backgroundColor: _indigo, foregroundColor: Colors.white),
                     ),
-                  )
-                : _loading
-                    ? const Center(child: CircularProgressIndicator())
-                    : IndexedStack(
-                        index: _currentIndex,
-                        children: [
-                          _buildDashboardTab(),
-                          _buildChildrenTab(),
-                          _buildSettingsTab(),
-                        ],
-                      ),
-          ),
-        ],
-      ),
+                  ],
+                ),
+              ),
+            )
+          : _loading
+              ? const Center(child: CircularProgressIndicator())
+              : IndexedStack(
+                  index: _currentIndex,
+                  children: [
+                    _buildDashboardTab(),
+                    _buildChildrenTab(),
+                    _buildSettingsTab(),
+                  ],
+                ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           boxShadow: [
@@ -300,59 +306,6 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
         ),
       ),
     );
-  }
-
-  Widget _buildNotifPanel() {
-    return Container(
-      constraints: const BoxConstraints(maxHeight: 300),
-      decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 8)]),
-      child: _notifications.isEmpty
-          ? const Padding(
-              padding: EdgeInsets.all(20),
-              child: Center(child: Text('No notifications', style: TextStyle(color: Colors.grey))),
-            )
-          : ListView.separated(
-              shrinkWrap: true,
-              itemCount: _notifications.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (ctx, i) {
-                final n = _notifications[i];
-                final isUnread = (n['is_read'] as int? ?? 1) == 0;
-                return ListTile(
-                  dense: true,
-                  leading: Icon(_notifIcon(n['type'] as String? ?? ''), size: 20, color: _indigo),
-                  title: Text('${n['title'] ?? ''}', style: TextStyle(fontSize: 13, fontWeight: isUnread ? FontWeight.bold : FontWeight.normal)),
-                  subtitle: Text('${n['body'] ?? ''}', style: const TextStyle(fontSize: 11)),
-                  trailing: Text(_formatNotifDate(n['created_at'] as String? ?? ''), style: TextStyle(color: Colors.grey.shade400, fontSize: 10)),
-                  onTap: () => BankingApiService.parentMarkNotifRead(n['notif_id'] as String),
-                );
-              },
-            ),
-    );
-  }
-
-  IconData _notifIcon(String type) {
-    switch (type) {
-      case 'withdrawal_request': return Icons.money_off;
-      case 'account_deletion': return Icons.delete_forever;
-      case 'info': return Icons.info_outline;
-      default: return Icons.notifications_outlined;
-    }
-  }
-
-  String _formatNotifDate(String iso) {
-    if (iso.length < 10) return iso;
-    try {
-      final d = DateTime.parse(iso);
-      final now = DateTime.now();
-      final diff = now.difference(d);
-      if (diff.inMinutes < 1) return 'Just now';
-      if (diff.inHours < 1) return '${diff.inMinutes}m ago';
-      if (diff.inDays < 1) return '${diff.inHours}h ago';
-      return '${d.month}/${d.day}';
-    } catch (_) {
-      return iso.substring(0, 10);
-    }
   }
 
   Widget _buildDashboardTab() {
@@ -490,7 +443,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                     const SizedBox(height: 6),
                     if ((d['reason'] as String?)?.isNotEmpty == true)
                       Text('Reason: ${d['reason']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                    Text('Requested: ${_formatNotifDate(d['created_at'] as String? ?? '')}', style: TextStyle(color: Colors.grey.shade400, fontSize: 11)),
+                    Text('Requested: ${_fmtDate(d['created_at'] as String? ?? '')}', style: TextStyle(color: Colors.grey.shade400, fontSize: 11)),
                   ],
                 ),
               ),
@@ -978,5 +931,173 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
         ],
       ),
     );
+  }
+}
+
+class _ParentNotificationListPage extends StatefulWidget {
+  const _ParentNotificationListPage();
+
+  @override
+  State<_ParentNotificationListPage> createState() => _ParentNotificationListPageState();
+}
+
+class _ParentNotificationListPageState extends State<_ParentNotificationListPage> {
+  List<dynamic> _notifications = [];
+  bool _loading = true;
+  bool _changed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetch();
+  }
+
+  Future<void> _fetch() async {
+    try {
+      final data = await BankingApiService.parentGetNotifications();
+      if (mounted) {
+        setState(() {
+          _notifications = (data?['notifications'] as List<dynamic>?) ?? [];
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  String _notifId(dynamic n) {
+    final id = n['notif_id'];
+    return id is String ? id : id.toString();
+  }
+
+  void _markRead(dynamic n) {
+    final notifId = _notifId(n);
+    setState(() {
+      final idx = _notifications.indexWhere((x) => _notifId(x) == notifId);
+      if (idx >= 0) _notifications[idx] = {...(_notifications[idx] as Map), 'is_read': 1};
+    });
+    _changed = true;
+    BankingApiService.parentMarkNotifRead(notifId).catchError((e) {
+      stderr.writeln('Failed to mark $notifId as read: $e');
+    });
+  }
+
+  void _showDetail(dynamic n) {
+    final isRead = n['is_read'] == 1;
+    final title = n['title'] as String? ?? '';
+    final body = n['body'] as String? ?? '';
+    final createdAt = n['created_at'] as String? ?? '';
+    if (!isRead) _markRead(n);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (body.isNotEmpty) ...[
+                Text(body, style: const TextStyle(fontSize: 15, height: 1.4)),
+                const SizedBox(height: 12),
+              ],
+              Text(_formatDate(createdAt), style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close')),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) Navigator.of(context).pop(_changed);
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.of(context).pop(_changed),
+          ),
+          title: const Text('Notifications'),
+          actions: [
+            if (_notifications.any((n) => n['is_read'] == 0))
+              TextButton(
+                onPressed: () async {
+                  try {
+                    await BankingApiService.parentMarkAllNotifRead();
+                    _changed = true;
+                    _fetch();
+                  } catch (_) {}
+                },
+                child: const Text('Mark all read'),
+              ),
+          ],
+        ),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _notifications.isEmpty
+                ? const Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.notifications_none, size: 64, color: Colors.grey),
+                        SizedBox(height: 8),
+                        Text('No notifications yet', style: TextStyle(color: Colors.grey, fontSize: 16)),
+                      ],
+                    ),
+                  )
+                : RefreshIndicator(
+                    onRefresh: _fetch,
+                    child: ListView.separated(
+                      itemCount: _notifications.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, i) {
+                        final n = _notifications[i];
+                        final isRead = n['is_read'] == 1;
+                        final title = n['title'] as String? ?? '';
+                        final body = n['body'] as String? ?? '';
+                        final createdAt = n['created_at'] as String? ?? '';
+                        return ListTile(
+                          leading: Icon(
+                            isRead ? Icons.notifications_none : Icons.notifications_active,
+                            color: isRead ? Colors.grey : Colors.orange,
+                          ),
+                          title: Text(
+                            title,
+                            style: TextStyle(fontWeight: isRead ? FontWeight.normal : FontWeight.bold),
+                          ),
+                          subtitle: body.isNotEmpty ? Text(body, maxLines: 2, overflow: TextOverflow.ellipsis) : null,
+                          trailing: Text(_formatDate(createdAt), style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                          onTap: () => _showDetail(n),
+                        );
+                      },
+                    ),
+                  ),
+      ),
+    );
+  }
+
+  String _formatDate(String iso) {
+    if (iso.isEmpty) return '';
+    try {
+      final dt = DateTime.parse(iso);
+      final now = DateTime.now();
+      final diff = now.difference(dt);
+      if (diff.inMinutes < 1) return 'Just now';
+      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+      if (diff.inHours < 24) return '${diff.inHours}h ago';
+      if (diff.inDays < 7) return '${diff.inDays}d ago';
+      return '${dt.month}/${dt.day}';
+    } catch (_) {
+      return '';
+    }
   }
 }

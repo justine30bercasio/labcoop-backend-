@@ -6,8 +6,10 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const rateLimit = require('express-rate-limit');
+const sgMail = require('@sendgrid/mail');
 const { store } = require('../db');
 const { asyncHandler } = require('../async-handler');
+const otpStore = new Map();
 
 const router = express.Router();
 
@@ -485,6 +487,96 @@ router.post('/change-pin', changePinLimiter, asyncHandler(async (req, res) => {
   } catch (err) {
     return res.status(401).json({ message: 'Invalid or expired token' });
   }
+}));
+
+// ── Child Forgot PIN (uses parent email for OTP) ──
+router.post('/forgot-pin-send-otp', asyncHandler(async (req, res) => {
+  const { childName, accountId, memberId } = req.body;
+  if (!childName && !accountId && !memberId) {
+    return res.status(400).json({ message: 'childName, accountId, or memberId is required' });
+  }
+  let account;
+  if (memberId) {
+    const padded = memberId.trim().padStart(6, '0');
+    const result = await store.query('SELECT * FROM accounts WHERE member_id = $1', [padded]);
+    account = result.rows[0];
+  } else if (accountId) {
+    account = await store.getAccount(accountId.trim());
+  } else {
+    account = await store.getAccountByName(childName.trim());
+  }
+  if (!account) return res.status(404).json({ message: 'Account not found' });
+  const parentEmail = account.parent_email;
+  if (!parentEmail) return res.status(400).json({ message: 'No parent email on file. Contact an admin.' });
+  // Rate limit
+  const now = Date.now();
+  const key = 'child_forgot_' + account.account_id;
+  const existing = otpStore.get(key);
+  if (existing && existing.attempts >= 3) {
+    return res.status(429).json({ message: 'Too many requests. Try again in 15 minutes.' });
+  }
+  const otp = crypto.randomInt(100000, 999999).toString();
+  otpStore.set(key, { otp, expires: now + 600000, attempts: (existing?.attempts || 0) + 1, parentEmail });
+  // Send OTP to parent email
+  const apiKey = process.env.SENDGRID_API_KEY;
+  if (apiKey) {
+    try {
+      sgMail.setApiKey(apiKey);
+      const fromEmail = (process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || 'noreply@labcoop.app').replace(/^"|"$/g, '');
+      const fromName = process.env.MAIL_FROM_NAME || 'MYCOOPPIGGY';
+      await sgMail.send({
+        to: parentEmail,
+        from: { email: fromEmail, name: fromName },
+        subject: 'MySYS — Child PIN Reset Request',
+        html: `<div style="font-family:Arial;max-width:480px;margin:0 auto">
+          <h2 style="color:#1a237e">Child PIN Reset</h2>
+          <p style="color:#333">Your child <strong>${account.child_name}</strong> requested a PIN reset.</p>
+          <p style="color:#333">Use this code to reset their PIN:</p>
+          <div style="font-size:36px;letter-spacing:8px;font-weight:700;color:#1a237e;text-align:center;padding:20px;background:#f0f0ff;border-radius:8px;margin:16px 0">${otp}</div>
+          <p style="color:#666;font-size:13px">This code expires in 10 minutes.</p>
+          <hr style="border:none;border-top:1px solid #eee">
+          <p style="color:#999;font-size:11px">MySYS Cooperative</p>
+        </div>`,
+      });
+      console.log('[child/forgot-pin] OTP sent to parent:', parentEmail);
+    } catch (e) {
+      console.error('[child/forgot-pin] SendGrid error:', e.message);
+      return res.status(500).json({ message: 'Failed to send OTP. Try again later.' });
+    }
+  } else {
+    console.warn('[child/forgot-pin] SENDGRID_API_KEY not set. OTP:', otp);
+  }
+  res.json({ message: 'If the account exists, an OTP has been sent to the parent email.', accountId: account.account_id });
+}));
+
+router.post('/forgot-pin-verify-otp', asyncHandler(async (req, res) => {
+  const { accountId, otp } = req.body;
+  if (!accountId || !otp) return res.status(400).json({ message: 'Account ID and OTP are required' });
+  const key = 'child_forgot_' + accountId;
+  const stored = otpStore.get(key);
+  if (!stored) return res.status(400).json({ message: 'No OTP requested' });
+  if (stored.expires < Date.now()) return res.status(400).json({ message: 'OTP expired' });
+  if (stored.otp !== otp) return res.status(400).json({ message: 'Invalid OTP' });
+  const resetToken = jwt.sign({ accountId, purpose: 'child_pin_reset' }, JWT_SECRET, { expiresIn: '10m' });
+  res.json({ message: 'OTP verified', resetToken });
+}));
+
+router.post('/forgot-pin-reset', asyncHandler(async (req, res) => {
+  const { resetToken, newPin } = req.body;
+  if (!resetToken || !newPin || !/^\d{6}$/.test(newPin)) {
+    return res.status(400).json({ message: 'Valid reset token and 6-digit PIN are required' });
+  }
+  let decoded;
+  try {
+    decoded = jwt.verify(resetToken, JWT_SECRET);
+    if (decoded.purpose !== 'child_pin_reset') throw new Error('Invalid');
+  } catch (e) {
+    return res.status(400).json({ message: 'Invalid or expired reset token' });
+  }
+  const hash = bcrypt.hashSync(newPin, 10);
+  await store.query('UPDATE accounts SET pin_hash = $1, password = $2 WHERE account_id = $3', [hash, hash, decoded.accountId]);
+  otpStore.delete('child_forgot_' + decoded.accountId);
+  res.json({ message: 'PIN reset successfully. You can now login with your new PIN.' });
 }));
 
 module.exports = router;

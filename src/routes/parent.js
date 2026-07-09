@@ -218,23 +218,24 @@ router.post('/login', pinLoginLimiter, asyncHandler(async (req, res) => {
   if (!email || !pin) {
     return res.status(400).json({ message: 'Email and PIN are required' });
   }
-  const result = await store.query('SELECT * FROM parents WHERE email = $1', [email.toLowerCase().trim()]);
-  if (result.rows.length === 0) {
-    return res.status(401).json({ message: 'Invalid email or PIN' });
-  }
-  const parent = result.rows[0];
-  if (parent.status === 'pending') {
-    return res.status(403).json({ message: 'Your registration is pending admin approval.', status: 'pending' });
-  }
-  if (parent.status === 'rejected') {
-    return res.status(403).json({ message: 'Your registration was rejected. Contact support.', status: 'rejected' });
-  }
-  const valid = bcrypt.compareSync(pin, parent.pin_hash);
-  if (!valid) {
-    return res.status(401).json({ message: 'Invalid email or PIN' });
-  }
-  const token = jwt.sign({ parentId: parent.parent_id, role: 'parent' }, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
-  res.json({
+  try {
+    const result = await store.query('SELECT * FROM parents WHERE email = $1', [email.toLowerCase().trim()]);
+    if (result.rows.length === 0) {
+      return res.status(401).json({ message: 'Invalid email or PIN' });
+    }
+    const parent = result.rows[0];
+    if (parent.status === 'pending') {
+      return res.status(403).json({ message: 'Your registration is pending admin approval.', status: 'pending' });
+    }
+    if (parent.status === 'rejected') {
+      return res.status(403).json({ message: 'Your registration was rejected. Contact support.', status: 'rejected' });
+    }
+    const valid = bcrypt.compareSync(pin, parent.pin_hash);
+    if (!valid) {
+      return res.status(401).json({ message: 'Invalid email or PIN' });
+    }
+    const token = jwt.sign({ parentId: parent.parent_id, role: 'parent' }, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
+    res.json({
     token,
     parent: {
       parent_id: parent.parent_id,
@@ -251,10 +252,102 @@ router.post('/login', pinLoginLimiter, asyncHandler(async (req, res) => {
 router.post('/status', asyncHandler(async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ message: 'Email is required' });
-  const result = await store.query('SELECT parent_id, email, display_name, status, created_at FROM parents WHERE email = $1', [email.toLowerCase().trim()]);
-  if (result.rows.length === 0) return res.json({ registered: false });
-  const p = result.rows[0];
-  res.json({ registered: true, status: p.status, email: p.email, display_name: p.display_name });
+  try {
+    const result = await store.query('SELECT parent_id, email, display_name, status, created_at FROM parents WHERE email = $1', [email.toLowerCase().trim()]);
+    if (result.rows.length === 0) return res.json({ registered: false });
+    const p = result.rows[0];
+    res.json({ registered: true, status: p.status, email: p.email, display_name: p.display_name });
+  } catch (e) {
+    console.error('[parent/status] DB error:', e.message);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}));
+
+// ── Parent Forgot PIN: send OTP → verify OTP → reset PIN ──
+router.post('/forgot-pin', asyncHandler(async (req, res) => {
+  const { email } = req.body;
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ message: 'Valid email is required' });
+  }
+  const normalEmail = email.toLowerCase().trim();
+  // Check parent exists
+  const result = await store.query('SELECT parent_id, email, display_name, status FROM parents WHERE email = $1', [normalEmail]);
+  if (result.rows.length === 0) {
+    return res.status(404).json({ message: 'No parent found with that email' });
+  }
+  const parent = result.rows[0];
+  if (parent.status !== 'approved') {
+    return res.status(403).json({ message: 'Your account is not active. Status: ' + parent.status });
+  }
+  // Rate limit: max 3 per email per 15 min
+  const now = Date.now();
+  const existing = otpStore.get(normalEmail + '_forgot');
+  const attempts = existing ? (existing.attempts || 0) : 0;
+  if (attempts >= 3) {
+    return res.status(429).json({ message: 'Too many requests. Try again in 15 minutes.' });
+  }
+  const otp = crypto.randomInt(100000, 999999).toString();
+  otpStore.set(normalEmail + '_forgot', { otp, expires: now + 600000, attempts: attempts + 1 });
+  // Send OTP via SendGrid
+  const apiKey = process.env.SENDGRID_API_KEY;
+  if (apiKey) {
+    try {
+      sgMail.setApiKey(apiKey);
+      const fromEmail = (process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || 'noreply@labcoop.app').replace(/^"|"$/g, '');
+      const fromName = process.env.MAIL_FROM_NAME || 'MYCOOPPIGGY';
+      await sgMail.send({
+        to: normalEmail,
+        from: { email: fromEmail, name: fromName },
+        subject: 'MySYS — Parent PIN Reset Code',
+        html: `<div style="font-family:Arial;max-width:480px;margin:0 auto">
+          <h2 style="color:#1a237e">Reset Your PIN</h2>
+          <p style="color:#333">Use this code to reset your Parent Portal PIN:</p>
+          <div style="font-size:36px;letter-spacing:8px;font-weight:700;color:#1a237e;text-align:center;padding:20px;background:#f0f0ff;border-radius:8px;margin:16px 0">${otp}</div>
+          <p style="color:#666;font-size:13px">This code expires in 10 minutes.</p>
+          <hr style="border:none;border-top:1px solid #eee">
+          <p style="color:#999;font-size:11px">MySYS Cooperative</p>
+        </div>`,
+      });
+    } catch (e) {
+      console.error('[parent/forgot-pin] SendGrid error:', e.message);
+      return res.status(500).json({ message: 'Failed to send OTP. Try again later.' });
+    }
+  } else {
+    console.warn('[parent/forgot-pin] SENDGRID_API_KEY not set. OTP would be:', otp);
+  }
+  res.json({ message: 'If this email is registered, an OTP has been sent.' });
+}));
+
+router.post('/verify-forgot-otp', asyncHandler(async (req, res) => {
+  const { email, otp } = req.body;
+  if (!email || !otp) return res.status(400).json({ message: 'Email and OTP are required' });
+  const normalEmail = email.toLowerCase().trim();
+  const stored = otpStore.get(normalEmail + '_forgot');
+  if (!stored) return res.status(400).json({ message: 'No OTP requested. Please request one first.' });
+  if (stored.expires < Date.now()) return res.status(400).json({ message: 'OTP expired. Request a new one.' });
+  if (stored.otp !== otp) return res.status(400).json({ message: 'Invalid OTP' });
+  // Generate a short-lived reset token
+  const resetToken = jwt.sign({ parentEmail: normalEmail, purpose: 'pin_reset' }, JWT_SECRET, { expiresIn: '10m' });
+  res.json({ message: 'OTP verified', resetToken });
+}));
+
+router.post('/reset-pin', asyncHandler(async (req, res) => {
+  const { resetToken, newPin } = req.body;
+  if (!resetToken || !newPin || !/^\d{6}$/.test(newPin)) {
+    return res.status(400).json({ message: 'Valid reset token and 6-digit PIN are required' });
+  }
+  let decoded;
+  try {
+    decoded = jwt.verify(resetToken, JWT_SECRET);
+    if (decoded.purpose !== 'pin_reset' || !decoded.parentEmail) throw new Error('Invalid token');
+  } catch (e) {
+    return res.status(400).json({ message: 'Invalid or expired reset token' });
+  }
+  const pinHash = bcrypt.hashSync(newPin, 10);
+  await store.query('UPDATE parents SET pin_hash = $1 WHERE email = $2', [pinHash, decoded.parentEmail]);
+  // Clear OTP store
+  otpStore.delete(decoded.parentEmail + '_forgot');
+  res.json({ message: 'PIN reset successfully. You can now login with your new PIN.' });
 }));
 
 // ── Upload parent photo (update after registration) ──

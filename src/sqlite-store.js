@@ -127,6 +127,7 @@ function getDb() {
     try { db.exec("CREATE TABLE IF NOT EXISTS coin_transactions (id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE, amount INTEGER NOT NULL, balance_before INTEGER NOT NULL, balance_after INTEGER NOT NULL, reason TEXT DEFAULT '', created_at TEXT NOT NULL)"); } catch (_) {}
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_coin_tx_account ON coin_transactions(account_id)"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS refresh_tokens (token_id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE, token_hash TEXT NOT NULL, expires_at TEXT NOT NULL, revoked INTEGER DEFAULT 0, created_at TEXT NOT NULL)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS parent_notifications (notif_id TEXT PRIMARY KEY, parent_id TEXT NOT NULL, title TEXT NOT NULL, body TEXT DEFAULT '', type TEXT DEFAULT 'info', is_read INTEGER DEFAULT 0, created_at TEXT)"); } catch (_) {}
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON refresh_tokens(token_hash)"); } catch (_) {}
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_account ON refresh_tokens(account_id)"); } catch (_) {}
     const accounts = [
@@ -900,6 +901,38 @@ function query(sql, params) {
   return { rows };
 }
 
+// ── Parent Notifications ──
+
+function createParentNotification({ parentId, title, body, type = 'info' }) {
+  const id = uuidv4();
+  getDb().prepare(`
+    INSERT INTO parent_notifications (notif_id, parent_id, title, body, type, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(id, parentId, title, body, type, new Date().toISOString());
+  return id;
+}
+
+function getParentNotifications(parentId, limit = 50) {
+  return getDb().prepare(
+    'SELECT * FROM parent_notifications WHERE parent_id = ? ORDER BY created_at DESC LIMIT ?'
+  ).all(parentId, Number(limit));
+}
+
+function getParentUnreadCount(parentId) {
+  const r = getDb().prepare(
+    'SELECT COUNT(*) as cnt FROM parent_notifications WHERE parent_id = ? AND is_read = 0'
+  ).get(parentId);
+  return Number(r?.cnt || 0);
+}
+
+function markParentNotificationRead(notifId) {
+  getDb().prepare('UPDATE parent_notifications SET is_read = 1 WHERE notif_id = ?').run(notifId);
+}
+
+function markAllParentNotificationsRead(parentId) {
+  getDb().prepare('UPDATE parent_notifications SET is_read = 1 WHERE parent_id = ?').run(parentId);
+}
+
 function close() {
   if (db) {
     db.close();
@@ -1111,4 +1144,10 @@ module.exports = {
   getRefreshToken,
   revokeRefreshToken,
   revokeAllAccountTokens,
+  // ── Parent Notifications ──
+  createParentNotification,
+  getParentNotifications,
+  getParentUnreadCount,
+  markParentNotificationRead,
+  markAllParentNotificationsRead,
 };

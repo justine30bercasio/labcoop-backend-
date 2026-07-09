@@ -476,6 +476,64 @@ router.get('/pending', parentAuth, asyncHandler(async (req, res) => {
   });
 }));
 
+// ── Parent Notifications ──
+router.get('/notifications', parentAuth, asyncHandler(async (req, res) => {
+  const notifs = await store.getParentNotifications(req.parentId);
+  const unread = await store.getParentUnreadCount(req.parentId);
+  res.json({ notifications: notifs, unreadCount: unread });
+}));
+
+router.post('/notifications/:notifId/read', parentAuth, asyncHandler(async (req, res) => {
+  await store.markParentNotificationRead(req.params.notifId);
+  res.json({ ok: true });
+}));
+
+router.post('/notifications/read-all', parentAuth, asyncHandler(async (req, res) => {
+  await store.markAllParentNotificationsRead(req.parentId);
+  res.json({ ok: true });
+}));
+
+// ── Children Transactions ──
+router.get('/children-transactions', parentAuth, asyncHandler(async (req, res) => {
+  const childIds = await store.query(
+    'SELECT child_account_id FROM parent_child_links WHERE parent_id = $1 AND status = $2',
+    [req.parentId, 'active']
+  );
+  const ids = childIds.rows.map(r => r.child_account_id);
+  if (ids.length === 0) return res.json({ transactions: [] });
+  const placeholders = ids.map((_, i) => '$' + (i + 1)).join(',');
+  const txns = await store.query(
+    `SELECT t.*, a.child_name, a.member_id
+     FROM transactions t
+     JOIN accounts a ON a.account_id = t.account_id
+     WHERE t.account_id IN (${placeholders})
+     ORDER BY t.created_at DESC
+     LIMIT 100`,
+    ids
+  );
+  res.json({ transactions: txns.rows.map(t => ({ ...t, amount: Number(t.amount) })) });
+}));
+
+// ── Pending Deletion Requests ──
+router.get('/pending-deletions', parentAuth, asyncHandler(async (req, res) => {
+  const childIds = await store.query(
+    'SELECT child_account_id FROM parent_child_links WHERE parent_id = $1 AND status = $2',
+    [req.parentId, 'active']
+  );
+  const ids = childIds.rows.map(r => r.child_account_id);
+  if (ids.length === 0) return res.json({ deletions: [] });
+  const placeholders = ids.map((_, i) => '$' + (i + 1)).join(',');
+  const deletions = await store.query(
+    `SELECT d.*, a.child_name, a.member_id
+     FROM account_deletion_requests d
+     JOIN accounts a ON a.account_id = d.account_id
+     WHERE d.account_id IN (${placeholders}) AND d.status = 'pending'
+     ORDER BY d.created_at DESC`,
+    ids
+  );
+  res.json({ deletions: deletions.rows });
+}));
+
 // ── Approve Withdrawal Request (as parent) ──
 router.post('/approve-withdrawal/:requestId', parentAuth, asyncHandler(async (req, res) => {
   const wrResult = await store.query('SELECT * FROM withdrawal_requests WHERE request_id = $1', [req.params.requestId]);
@@ -491,21 +549,10 @@ router.post('/approve-withdrawal/:requestId', parentAuth, asyncHandler(async (re
   if (!account) return res.status(404).json({ message: 'Account not found' });
   const maintainingBalance = Number(account.maintaining_balance || 0);
   if (Number(account.actual_balance) - Number(wr.amount) < maintainingBalance) {
-    await store.query('UPDATE withdrawal_requests SET status = $1 WHERE request_id = $2', ['rejected', req.params.requestId]);
     return res.status(400).json({ message: `Insufficient balance after maintaining ₱${maintainingBalance.toFixed(2)}` });
   }
-  const newBalance = Math.round((Number(account.actual_balance) - Number(wr.amount)) * 100) / 100;
-  const newUnallocated = Math.round((Number(account.unallocated_balance) - Number(wr.amount)) * 100) / 100;
-  await store.query('UPDATE accounts SET actual_balance = $1, unallocated_balance = $2 WHERE account_id = $3',
-    [newBalance, newUnallocated, wr.account_id]);
-  await store.addTransaction({
-    account_id: wr.account_id,
-    type: 'withdrawal',
-    amount: Number(wr.amount),
-    description: 'Withdrawal (parent approved): ' + (wr.reason || ''),
-  });
-  await store.query('UPDATE withdrawal_requests SET status = $1 WHERE request_id = $2', ['approved', req.params.requestId]);
-  res.json({ message: 'Withdrawal approved and processed', amount: Number(wr.amount) });
+  await store.query('UPDATE withdrawal_requests SET status = $1 WHERE request_id = $2', ['parent_approved', req.params.requestId]);
+  res.json({ message: 'Withdrawal approved by parent. An admin will process payout.', amount: Number(wr.amount) });
 }));
 
 // ── Reject Withdrawal Request ──

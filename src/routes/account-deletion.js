@@ -15,6 +15,19 @@ router.post('/request', authMiddleware, asyncHandler(async (req, res) => {
      VALUES ($1, $2, $3, $4, 'pending', $5)`,
     [require('uuid').v4(), req.accountId, req.body.requested_by || 'parent', reason || '', new Date().toISOString()]
   );
+  // Notify linked parents
+  const parentLinks2 = await store.query(
+    'SELECT parent_id FROM parent_child_links WHERE child_account_id = $1 AND status = $2',
+    [req.accountId, 'active']
+  );
+  for (const link of parentLinks2.rows) {
+    await store.createParentNotification({
+      parentId: link.parent_id,
+      title: 'Account Deletion Request',
+      body: `Your child requested account deletion. Reason: ${reason || 'Not specified'}.`,
+      type: 'account_deletion',
+    }).catch(() => {});
+  }
   res.json({ message: 'Deletion request submitted. An admin will review it.' });
 }));
 

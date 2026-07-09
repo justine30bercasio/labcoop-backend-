@@ -400,6 +400,15 @@ class PgStore {
         created_at TEXT,
         resolved_at TEXT
       );
+      CREATE TABLE IF NOT EXISTS parent_notifications (
+        notif_id TEXT PRIMARY KEY,
+        parent_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        body TEXT DEFAULT '',
+        type TEXT DEFAULT 'info',
+        is_read INTEGER DEFAULT 0,
+        created_at TEXT
+      );
       CREATE TABLE IF NOT EXISTS audit_log (
         log_id TEXT PRIMARY KEY,
         admin_id TEXT,
@@ -1643,6 +1652,41 @@ class PgStore {
       [accountId]
     );
     return res.rows;
+  }
+
+  // ── Parent Notifications ──
+
+  async createParentNotification({ parentId, title, body, type = 'info' }) {
+    const id = uuidv4();
+    await this.query(
+      `INSERT INTO parent_notifications (notif_id, parent_id, title, body, type, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [id, parentId, title, body, type, new Date().toISOString()]
+    );
+    return id;
+  }
+
+  async getParentNotifications(parentId, limit = 50) {
+    return (await this.query(
+      'SELECT * FROM parent_notifications WHERE parent_id = $1 ORDER BY created_at DESC LIMIT $2',
+      [parentId, limit]
+    )).rows;
+  }
+
+  async getParentUnreadCount(parentId) {
+    const r = await this.query(
+      'SELECT COUNT(*) as cnt FROM parent_notifications WHERE parent_id = $1 AND is_read = 0',
+      [parentId]
+    );
+    return Number(r.rows[0]?.cnt || 0);
+  }
+
+  async markParentNotificationRead(notifId) {
+    await this.query('UPDATE parent_notifications SET is_read = 1 WHERE notif_id = $1', [notifId]);
+  }
+
+  async markAllParentNotificationsRead(parentId) {
+    await this.query('UPDATE parent_notifications SET is_read = 1 WHERE parent_id = $1', [parentId]);
   }
 
   // ── Refresh Tokens ──

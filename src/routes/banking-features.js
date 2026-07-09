@@ -182,6 +182,19 @@ router.post('/withdrawals/request',
       amount: Number(amount),
       reason: reason || '',
     });
+    // Notify linked parents
+    const parentLinks = await store.query(
+      'SELECT parent_id FROM parent_child_links WHERE child_account_id = $1 AND status = $2',
+      [account_id, 'active']
+    );
+    for (const link of parentLinks.rows) {
+      await store.createParentNotification({
+        parentId: link.parent_id,
+        title: 'Withdrawal Request',
+        body: `Your child requested a withdrawal of ₱${Number(amount).toFixed(2)}.`,
+        type: 'withdrawal_request',
+      }).catch(() => {});
+    }
     res.status(201).json(request);
   })
 );

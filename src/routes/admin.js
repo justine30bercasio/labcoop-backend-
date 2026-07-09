@@ -3266,7 +3266,7 @@ router.post('/withdrawal-requests/pay/:id', requireRole(2), asyncHandler(async (
 
     const reqData = await store.getWithdrawalRequest(req.params.id);
     if (!reqData) return res.redirect('/admin/withdrawal-requests?error=Request+not+found');
-    if (reqData.status !== 'approved') return res.redirect('/admin/withdrawal-requests?error=Request+must+be+approved+first');
+    if (reqData.status !== 'approved' && reqData.status !== 'parent_approved') return res.redirect('/admin/withdrawal-requests?error=Request+must+be+approved+first');
 
     const account = await store.getAccount(reqData.account_id);
     if (!account) return res.redirect('/admin/withdrawal-requests?error=Account+not+found');

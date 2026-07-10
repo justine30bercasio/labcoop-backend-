@@ -6107,6 +6107,24 @@ router.get('/gl/profit-and-loss', requireRole(1), asyncHandler(async (req, res) 
 
   const notes = await store.getSetting('fs_notes_pnl') || '';
 
+  // Debug: count actual gl_entries in date range
+  const debugCount = await store.query(
+    "SELECT COUNT(*) as cnt FROM gl_entries e JOIN gl_accounts g ON e.account_code = g.code WHERE g.type IN ('income','expense') AND (e.is_voided IS NULL OR e.is_voided = 0) AND e.created_at >= $1 AND e.created_at <= $2",
+    [from, to]
+  );
+  const debugTotal = await store.query(
+    "SELECT COALESCE(SUM(CASE WHEN g.type='income' THEN e.credit - e.debit ELSE 0 END),0) as inc, COALESCE(SUM(CASE WHEN g.type='expense' THEN e.debit - e.credit ELSE 0 END),0) as exp FROM gl_entries e JOIN gl_accounts g ON e.account_code = g.code WHERE (e.is_voided IS NULL OR e.is_voided = 0) AND e.created_at >= $1 AND e.created_at <= $2",
+    [from, to]
+  );
+  const debugHtml = `<div class="card" style="background:#fff3cd;border:1px solid #ffc107;margin-bottom:12px">
+    <div class="card-body-padded" style="font-size:12px">
+      <strong>🔍 Debug:</strong> Range ${from} → ${to} |
+      GL entries for income/expense: ${debugCount.rows[0]?.cnt || 0} |
+      Income total: ₱${Number(debugTotal.rows[0]?.inc || 0).toFixed(2)} |
+      Expense total: ₱${Number(debugTotal.rows[0]?.exp || 0).toFixed(2)}
+    </div>
+  </div>`;
+
   const pnlSection = (title, items, total, color) => `
     <div class="card">
       <div class="card-header"><h4>${title}</h4><span class="count">${items.length} accounts</span></div>
@@ -6135,6 +6153,7 @@ router.get('/gl/profit-and-loss', requireRole(1), asyncHandler(async (req, res) 
       <div class="stat-card"><div class="stat-icon">&#x1F4B8;</div><div class="stat-value" style="color:#dc2626">&#x20B1;${result.totalExpense.toFixed(2)}</div><div class="stat-label">Total Expenses ${priorExpense ? '| Prior: &#x20B1;' + priorExpense.toFixed(2) : ''}</div></div>
       <div class="stat-card"><div class="stat-icon">&#x1F3C6;</div><div class="stat-value" style="color:${result.netProfit >= 0 ? '#16a34a' : '#dc2626'}">${result.netProfit >= 0 ? '+' : ''}&#x20B1;${result.netProfit.toFixed(2)}</div><div class="stat-label">Net ${result.netProfit >= 0 ? 'Profit' : 'Loss'} ${priorNet ? '| Prior: &#x20B1;' + priorNet.toFixed(2) : ''}</div></div>
     </div>
+    ${debugHtml}
     ${result.operatingIncome.length ? pnlSection('Operating Income', result.operatingIncome, result.totalOperatingIncome, '#16a34a') : ''}
     ${result.otherIncome.length ? pnlSection('Other Income', result.otherIncome, result.totalOtherIncome, '#22c55e') : ''}
     <div class="card">

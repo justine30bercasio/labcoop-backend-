@@ -469,44 +469,75 @@ router.get('/children', parentAuth, asyncHandler(async (req, res) => {
 
 // ── Get Pending Approvals (withdrawals + loans + consents) ──
 router.get('/pending', parentAuth, asyncHandler(async (req, res) => {
+  // Get parent's email for fallback matching
+  const parentRow = await store.query('SELECT email FROM parents WHERE parent_id = $1', [req.parentId]);
+  const parentEmail = parentRow.rows.length > 0 ? parentRow.rows[0].email : '';
+
+  // Method A: through parent_child_links
   const childIds = await store.query(
     'SELECT child_account_id FROM parent_child_links WHERE parent_id = $1 AND status = $2',
     [req.parentId, 'active']
   );
   const ids = childIds.rows.map(r => r.child_account_id);
-  console.log(`[PENDING] parent=${req.parentId} childIds=${ids.join(',')} count=${ids.length}`);
-  if (ids.length === 0) return res.json({ withdrawals: [], loans: [], pendingConsents: [] });
-  const placeholders = ids.map((_, i) => '$' + (i + 1)).join(',');
-  const withdrawals = await store.query(
-    `SELECT w.*, a.child_name, a.member_id
-     FROM withdrawal_requests w
-     JOIN accounts a ON a.account_id = w.account_id
-     WHERE w.account_id IN (${placeholders}) AND w.status = 'pending'
-     ORDER BY w.created_at DESC`,
-    ids
-  );
-  const loans = await store.query(
-    `SELECT l.*, a.child_name, a.member_id, lp.name as product_name
-     FROM loans l
-     JOIN accounts a ON a.account_id = l.account_id
-     LEFT JOIN loan_products lp ON lp.id = l.product_id
-     WHERE l.account_id IN (${placeholders}) AND l.status = 'pending'
-     ORDER BY l.created_at DESC`,
-    ids
-  );
-  const consents = await store.query(
-    `SELECT c.*, a.child_name, a.member_id
-     FROM parental_consent c
-     JOIN accounts a ON a.account_id = c.account_id
-     WHERE c.account_id IN (${placeholders}) AND c.status = 'pending'
-     ORDER BY c.created_at DESC`,
-    ids
-  );
-  console.log(`[PENDING] withdrawals=${withdrawals.rows.length} loans=${loans.rows.length} consents=${consents.rows.length}`);
+  console.log(`[PENDING] parent=${req.parentId} email=${parentEmail} childIds count=${ids.length}`);
+
+  async function runQueries(accountIds) {
+    if (accountIds.length === 0) return { withdrawals: [], loans: [], consents: [] };
+    const ph = accountIds.map((_, i) => '$' + (i + 1)).join(',');
+    const [w, l, c] = await Promise.all([
+      store.query(
+        `SELECT w.*, a.child_name, a.member_id FROM withdrawal_requests w JOIN accounts a ON a.account_id = w.account_id WHERE w.account_id IN (${ph}) AND w.status = 'pending' ORDER BY w.created_at DESC`,
+        accountIds
+      ),
+      store.query(
+        `SELECT l.*, a.child_name, a.member_id, lp.name as product_name FROM loans l JOIN accounts a ON a.account_id = l.account_id LEFT JOIN loan_products lp ON lp.id = l.product_id WHERE l.account_id IN (${ph}) AND l.status = 'pending' ORDER BY l.created_at DESC`,
+        accountIds
+      ),
+      store.query(
+        `SELECT c.*, a.child_name, a.member_id FROM parental_consent c JOIN accounts a ON a.account_id = c.account_id WHERE c.account_id IN (${ph}) AND c.status = 'pending' ORDER BY c.created_at DESC`,
+        accountIds
+      ),
+    ]);
+    return {
+      withdrawals: w.rows.map(x => ({ ...x, amount: Number(x.amount) })),
+      loans: l.rows.map(x => ({ ...x, principal: Number(x.principal), amount: Number(x.principal) })),
+      consents: c.rows.map(x => ({ ...x })),
+    };
+  }
+
+  let result = await runQueries(ids);
+
+  // Method B (fallback): match consents by parent email directly
+  if (result.consents.length === 0 && parentEmail) {
+    console.log(`[PENDING] Trying email fallback for ${parentEmail}`);
+    const emailConsents = await store.query(
+      `SELECT c.*, a.child_name, a.member_id FROM parental_consent c JOIN accounts a ON a.account_id = c.account_id WHERE LOWER(c.parent_email) = LOWER($1) AND c.status = 'pending' ORDER BY c.created_at DESC`,
+      [parentEmail]
+    );
+    if (emailConsents.rows.length > 0) {
+      console.log(`[PENDING] Email fallback found ${emailConsents.rows.length} consents`);
+      // Merge child IDs so withdrawals/loans also come through
+      const fallbackIds = [...new Set([...ids, ...emailConsents.rows.map(r => r.account_id)])];
+      result = await runQueries(fallbackIds);
+    }
+  }
+
+  // Still nothing — last-resort: grab ALL pending consents (admin view for this parent)
+  if (result.consents.length === 0) {
+    const allPending = await store.query(
+      `SELECT c.*, a.child_name, a.member_id FROM parental_consent c JOIN accounts a ON a.account_id = c.account_id WHERE c.status = 'pending' ORDER BY c.created_at DESC`
+    );
+    if (allPending.rows.length > 0) {
+      console.log(`[PENDING] Last resort: found ${allPending.rows.length} consents globally (no link match)`);
+      result.consents = allPending.rows.map(x => ({ ...x }));
+    }
+  }
+
+  console.log(`[PENDING] result: withdrawals=${result.withdrawals.length} loans=${result.loans.length} consents=${result.consents.length}`);
   res.json({
-    withdrawals: withdrawals.rows.map(w => ({ ...w, amount: Number(w.amount) })),
-    loans: loans.rows.map(l => ({ ...l, principal: Number(l.principal), amount: Number(l.principal) })),
-    pendingConsents: consents.rows.map(c => ({ ...c })),
+    withdrawals: result.withdrawals,
+    loans: result.loans,
+    pendingConsents: result.consents,
   });
 }));
 

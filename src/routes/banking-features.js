@@ -324,16 +324,74 @@ router.post('/online-deposits',
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     const { account_id, amount, reference_number, sender_name } = req.body;
+    const amt = Number(amount);
+    if (!amt || amt <= 0) return res.status(400).json({ message: 'Invalid amount' });
+
     const account = await store.getAccount(account_id);
     if (!account) return res.status(404).json({ message: 'Account not found' });
 
+    // Create online deposit record
     const deposit = await store.createOnlineDeposit({
       account_id,
-      amount: Number(amount),
+      amount: amt,
       reference_number,
       sender_name: sender_name || '',
     });
-    res.status(201).json(deposit);
+
+    // Use store.transaction for atomicity
+    const runOnlineDeposit = async (tx) => {
+      const q = (tx && tx.query) ? tx.query.bind(tx) : (sql, p) => store.query(sql, p);
+
+      // 1. Update account balance
+      const newBalance = Math.round((Number(account.actual_balance) + amt) * 100) / 100;
+      const newUnallocated = Math.round((Number(account.unallocated_balance) + amt) * 100) / 100;
+      await q(
+        'UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3',
+        [newBalance, newUnallocated, account_id]
+      );
+
+      // 2. Create transaction record
+      const txRecord = await store.addTransaction({
+        account_id,
+        type: 'deposit',
+        amount: amt,
+        description: 'Online deposit: ' + (sender_name || reference_number),
+        reference_type: 'online_deposit',
+        reference_id: deposit?.deposit_id || reference_number,
+        balance_before: Number(account.actual_balance),
+        balance_after: newBalance,
+      }, tx);
+
+      // 3. Post double-entry GL
+      const gl = require('../services/gl');
+      const txId = txRecord?.transaction_id || uuidv4();
+      await gl.postDoubleEntry(txId, [
+        { account_code: '1000', debit: amt, description: 'Online deposit: ' + (account.child_name || 'Member') },
+        { account_code: '2000', credit: amt, description: 'Online deposit: ' + (account.child_name || 'Member') }
+      ], { postedBy: 'system', referenceType: 'online_deposit', referenceNumber: reference_number || txId, tx });
+
+      return txRecord;
+    };
+
+    try {
+      let txRecord;
+      if (typeof store.transaction === 'function') {
+        txRecord = await store.transaction(runOnlineDeposit);
+      } else {
+        txRecord = await runOnlineDeposit();
+      }
+      // Audit log
+      try {
+        const audit = require('../services/audit');
+        await audit.log(req, 'ONLINE_DEPOSIT', 'account', account_id, { amount: amt, reference_number, txId: txRecord?.transaction_id }, account_id);
+      } catch (auditErr) {
+        console.error('[OnlineDeposit] Audit log failed:', auditErr.message);
+      }
+      res.status(201).json({ ...deposit, transaction_id: txRecord?.transaction_id || '' });
+    } catch (e) {
+      console.error('[OnlineDeposit] Error:', e.message);
+      res.status(500).json({ message: 'Online deposit processing failed: ' + e.message });
+    }
   })
 );
 

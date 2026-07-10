@@ -299,6 +299,7 @@ app.use(helmet({
       formAction: ["'self'"],
     },
   },
+  frameguard: { action: 'deny' },
   crossOriginResourcePolicy: { policy: 'cross-origin' },
   strictTransportSecurity: process.env.NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
 }));
@@ -317,10 +318,11 @@ if (isPostgres) {
   sessionStore = new pgSession({ pool: store.getPool(), tableName: 'session', createTableIfMissing: true });
 }
 app.use(session({
-  secret: process.env.SESSION_SECRET,
+  secret: SESSION_SECRET,
   store: sessionStore,
   resave: false,
   saveUninitialized: false,
+  // TODO: In production, ensure cookie.secure is true (HTTPS only). For Render, NODE_ENV should be 'production'.
   cookie: { secure: process.env.NODE_ENV === 'production', httpOnly: true, maxAge: 86400000, sameSite: 'strict' },
 }));
 

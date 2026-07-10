@@ -906,7 +906,7 @@ router.post('/quiz/delete/:id', requireRole(3), asyncHandler(async (req, res) =>
 // ── Accounts Management ──
 
 router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
-
+  // TODO: Add pagination (LIMIT/OFFSET) for large datasets
   const accounts = await sql('SELECT * FROM accounts ORDER BY child_name ASC');
   const q = req.query;
   const toast = q.added ? 'success:Account created.'
@@ -1531,15 +1531,13 @@ router.post('/accounts/create', requireRole(2), asyncHandler(async (req, res) =>
 
 router.post('/accounts/update/:id', requireRole(2), asyncHandler(async (req, res) => {
   try {
-    const { child_name, actual_balance, unallocated_balance, current_xp, parent_phone, last_name, first_name, middle_name, birthday, gender, savings_schedule, is_active } = req.body;
+    const { child_name, current_xp, parent_phone, last_name, first_name, middle_name, birthday, gender, savings_schedule, is_active } = req.body;
     const ulast = (last_name || '').trim().toUpperCase();
     const ufirst = (first_name || '').trim().toUpperCase();
     const umid = (middle_name || '').trim().toUpperCase();
     const displayName = umid ? `${ufirst} ${umid[0]}. ${ulast}` : `${ufirst} ${ulast}`;
     await store.updateAccount(req.params.id, {
       child_name: child_name?.trim() ? child_name.trim().toUpperCase() : displayName,
-      actual_balance: Number(actual_balance),
-      unallocated_balance: Number(unallocated_balance),
       current_xp: Number(current_xp) || 0,
       parent_phone: parent_phone || '',
       last_name: ulast,
@@ -1550,6 +1548,9 @@ router.post('/accounts/update/:id', requireRole(2), asyncHandler(async (req, res
       savings_schedule: savings_schedule || '',
       is_active: is_active !== undefined ? Number(is_active) : 1,
     });
+    // Audit log for account update
+    const audit = require('../services/audit');
+    await audit.log(req, 'ACCOUNT_UPDATE', 'account', req.params.id, { fields: Object.keys(req.body).join(',') });
     res.redirect('/admin/accounts?updated=ok');
   } catch (err) {
     res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
@@ -2267,6 +2268,7 @@ router.post('/loans/disburse/:id', requireRole(3), asyncHandler(async (req, res)
 // ── Transactions Viewer ──
 
 router.get('/transactions', requireRole(1), asyncHandler(async (req, res) => {
+  // TODO: Add pagination (LIMIT/OFFSET) for large datasets
 
   const accounts = await sql('SELECT account_id, child_name FROM accounts ORDER BY child_name ASC');
   const q = req.query;
@@ -3925,6 +3927,12 @@ router.post('/teller/loan-pay/:id', requireRole(2), asyncHandler(async (req, res
     // Update loan
     await store.query("UPDATE loans SET amount_paid = $1, remaining_balance = $2, status = $3, updated_at = CURRENT_TIMESTAMP WHERE loan_id = $4", [newAmountPaid, newRemainingBalance, newStatus, loan_id]);
 
+    // Deduct from account balance
+    const newAccountBalance = Math.round((Number(account.actual_balance) - val) * 100) / 100;
+    const newUnallocated = Math.round((Number(account.unallocated_balance) - val) * 100) / 100;
+    await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3",
+      [newAccountBalance, Math.max(0, newUnallocated), accountId]);
+
     // Record transaction
     const txResult = await store.addTransaction({
       account_id: accountId,
@@ -3934,7 +3942,7 @@ router.post('/teller/loan-pay/:id', requireRole(2), asyncHandler(async (req, res
       reference_type: 'loan',
       reference_id: loan.loan_id,
       balance_before: Number(account.actual_balance),
-      balance_after: Number(account.actual_balance),
+      balance_after: newAccountBalance,
     });
     const txId = txResult?.transaction_id || '';
     await store.query('UPDATE gl_entries SET transaction_id = $1 WHERE entry_id = $2', [txId, glTxId]).catch(() => {});
@@ -5915,7 +5923,7 @@ router.get('/gl/trial-balance', requireRole(1), asyncHandler(async (req, res) =>
 
   if (req.query.export === 'csv') {
     let csv = 'Code,Account,Type,Debit,Credit,Balance\n';
-    result.rows.forEach(r => { csv += `${r.code},${r.name},${r.type},${r.debit.toFixed(2)},${r.credit.toFixed(2)},${r.balance.toFixed(2)}\n`; });
+    result.rows.forEach(r => { csv += `${safeCsv(r.code)},${safeCsv(r.name)},${safeCsv(r.type)},${r.debit.toFixed(2)},${r.credit.toFixed(2)},${r.balance.toFixed(2)}\n`; });
     csv += `TOTAL,,,${totalD.toFixed(2)},${totalC.toFixed(2)},${(totalD - totalC).toFixed(2)}\n`;
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="trial_balance_${safeHeader(date||'all')}.csv"`);
@@ -6036,7 +6044,7 @@ router.get('/gl/balance-sheet', requireRole(1), asyncHandler(async (req, res) =>
 
   if (req.query.export === 'csv') {
     let csv = 'Category,Account,Amount\n';
-    const writeSection = (label, items) => items.forEach(i => { csv += `${label},${i.name},${i.balance.toFixed(2)}\n`; });
+    const writeSection = (label, items) => items.forEach(i => { csv += `${safeCsv(label)},${safeCsv(i.name)},${i.balance.toFixed(2)}\n`; });
     writeSection('Current Assets', result.currentAssets);
     writeSection('Non-Current Assets', result.nonCurrentAssets);
     writeSection('Current Liabilities', result.currentLiabilities);
@@ -6151,7 +6159,7 @@ router.get('/gl/profit-and-loss', requireRole(1), asyncHandler(async (req, res) 
 
   if (req.query.export === 'csv') {
     let csv = 'Category,Account,Amount\n';
-    const w = (cat, items) => items.forEach(i => { csv += `${cat},${i.name},${i.amount.toFixed(2)}\n`; });
+    const w = (cat, items) => items.forEach(i => { csv += `${safeCsv(cat)},${safeCsv(i.name)},${i.amount.toFixed(2)}\n`; });
     w('Operating Income', result.operatingIncome);
     w('Other Income', result.otherIncome);
     w('Operating Expenses', result.operatingExpense);
@@ -6249,7 +6257,7 @@ router.get('/gl/ledger', requireRole(1), asyncHandler(async (req, res) => {
       const d = Number(e.debit), c = Number(e.credit);
       const isAE = ['asset','expense'].includes(accounts.find(x => x.code === selected)?.type);
       const bal = isAE ? d - c : c - d;
-      csv += `${(e.created_at||'').slice(0,10)},${(e.transaction_id||'').slice(0,8)},${e.reference_number||''},${e.description||''},${d.toFixed(2)},${c.toFixed(2)},${bal.toFixed(2)}\n`;
+      csv += `${safeCsv((e.created_at||'').slice(0,10))},${safeCsv((e.transaction_id||'').slice(0,8))},${safeCsv(e.reference_number||'')},${safeCsv(e.description||'')},${d.toFixed(2)},${c.toFixed(2)},${bal.toFixed(2)}\n`;
     });
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="ledger_${safeHeader(selected)}.csv"`);
@@ -6299,7 +6307,7 @@ router.get('/gl/journal', requireRole(1), asyncHandler(async (req, res) => {
   if (req.query.export === 'csv') {
     let csv = 'Date,Folio,AccountCode,AccountName,Debit,Credit,Reference,Description\n';
     entries.forEach(e => {
-      csv += `${(e.created_at||'').slice(0,10)},${(e.transaction_id||'').slice(0,8)},${e.account_code},${e.account_name},${Number(e.debit).toFixed(2)},${Number(e.credit).toFixed(2)},${e.reference_number||''},${(e.description||'').replace(/"/g,'""')}\n`;
+      csv += `${safeCsv((e.created_at||'').slice(0,10))},${safeCsv((e.transaction_id||'').slice(0,8))},${safeCsv(e.account_code)},${safeCsv(e.account_name)},${Number(e.debit).toFixed(2)},${Number(e.credit).toFixed(2)},${safeCsv(e.reference_number||'')},${safeCsv((e.description||'').replace(/"/g,'""'))}\n`;
     });
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="general_journal_${safeHeader(from)}_${safeHeader(to)}.csv"`);

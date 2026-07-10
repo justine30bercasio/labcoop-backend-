@@ -4,6 +4,7 @@ const rateLimit = require('express-rate-limit');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { v4: uuidv4 } = require('uuid');
 const { store, isPostgres } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const { requireConsent } = require('../middleware/auth');
@@ -94,22 +95,36 @@ router.put('/:accountId/deposit',
         unallocated_balance: Math.round((Number(account.unallocated_balance) + Number(amount)) * 100) / 100,
       }, tx);
 
-      await store.addTransaction({
+      const txRecord = await store.addTransaction({
         account_id: req.params.accountId,
         type: 'deposit',
         amount: Number(amount),
         description: 'Teller cash deposit',
       }, tx);
 
-      return updated;
+      // Post GL entry
+      const gl = require('../services/gl');
+      const glTxId = txRecord?.transaction_id || uuidv4();
+      await gl.postDoubleEntry(glTxId, [
+        { account_code: '1000', debit: Number(amount), description: 'API deposit: ' + (account.child_name || 'Member') },
+        { account_code: '2000', credit: Number(amount), description: 'API deposit: ' + (account.child_name || 'Member') }
+      ], { postedBy: 'api', referenceType: 'deposit', referenceNumber: glTxId, tx });
+
+      return { ...updated, transaction_id: txRecord?.transaction_id || glTxId };
     };
 
     try {
-      const updated = isPostgres ? await store.transaction(async (tx) => {
-        const result = await runDeposit(tx);
-        return result;
+      const result = isPostgres ? await store.transaction(async (tx) => {
+        return await runDeposit(tx);
       }) : await runDeposit();
-      res.json(updated);
+      // Audit log
+      try {
+        const audit = require('../services/audit');
+        await audit.log(req, 'API_DEPOSIT', 'account', req.params.accountId, { amount: Number(amount) }, req.params.accountId);
+      } catch (auditErr) {
+        console.error('[Accounts] Audit log failed:', auditErr.message);
+      }
+      res.json(result);
     } catch (e) {
       res.status(404).json({ message: e.message });
     }

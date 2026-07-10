@@ -6,6 +6,20 @@ function startScheduler() {
       const sql = (q, p) => store.query(q, p || []).then(r => r.rows);
       const one = (q, p) => store.query(q, p || []).then(r => r.rows[0]);
 
+      // ── Persistent Lock Check ──
+      const lockCheck = await one("SELECT value FROM settings WHERE key = 'scheduler_lock'");
+      if (lockCheck && lockCheck.value === '1') {
+        const lockAge = await one("SELECT created_at FROM settings WHERE key = 'scheduler_lock_updated'");
+        if (lockAge && (Date.now() - new Date(lockAge.created_at).getTime()) < 7200000) {
+          return; // Another instance is running, lock is fresh (< 2 hours old)
+        }
+        // Lock is stale; we'll overwrite it
+      }
+      // Acquire lock
+      await store.setSetting('scheduler_lock', '1');
+      await store.setSetting('scheduler_lock_updated', new Date().toISOString());
+
+    try {
       const accounts = await sql('SELECT * FROM accounts');
       const now = new Date();
 
@@ -74,7 +88,7 @@ function startScheduler() {
                 ], { postedBy: 'system', referenceType: 'interest', referenceNumber: txId });
               }
             } catch (glErr) {
-              console.error('[Scheduler] GL post for interest failed:', glErr.message);
+              console.error('[Scheduler] GL post for interest failed account_id=' + account.account_id + ': ' + glErr.message);
             }
             console.log(`[Scheduler] Credited PHP ${netInterest} (net of ${taxAmount} withholding) to ${account.child_name}`);
           }
@@ -93,8 +107,9 @@ function startScheduler() {
             console.log(`[Scheduler] Skipping standing order ${order.order_id} for ${order.child_name}: insufficient balance`);
             continue;
           }
-          // Check maintaining balance
-          const maintainingBalance = Number(order.maintaining_balance || 0);
+          // Check maintaining balance (from ACCOUNT, not order)
+          const accountForOrder = await one('SELECT * FROM accounts WHERE account_id = $1', [order.account_id]);
+          const maintainingBalance = Number(accountForOrder?.maintaining_balance || 0);
           if (Number(order.actual_balance) - amount < maintainingBalance) {
             console.log(`[Scheduler] Skipping standing order ${order.order_id} for ${order.child_name}: would drop below maintaining balance of ₱${maintainingBalance.toFixed(2)}`);
             continue;
@@ -198,14 +213,32 @@ function startScheduler() {
             accIntPayCount++;
           }
 
+          // 3. Accrue interest on active term deposits
+          const activeTDs = await sql("SELECT * FROM term_deposits WHERE status='active'");
+          let accTDCount = 0;
+          for (const td of activeTDs) {
+            const monthlyInt = Math.round(Number(td.amount) * Number(td.interest_rate) / 100 / 12 * 100) / 100;
+            if (monthlyInt <= 0) continue;
+            const { v4: uuidv4 } = require('uuid');
+            const entryId = uuidv4();
+            await gl.postDoubleEntry(entryId, [
+              { account_code: '5000', debit: monthlyInt, description: 'TD interest accrual ' + (td.td_number || td.td_id.slice(0,8)) },
+              { account_code: '2500', credit: monthlyInt, description: 'Accrued interest - TD ' + (td.td_number || td.td_id.slice(0,8)) }
+            ], { postedBy: 'scheduler', referenceType: 'accrual', referenceNumber: 'TD-ACR-' + period });
+            accTDCount++;
+          }
+
           await store.setSetting('last_accrual_run', period);
-          log(`Accrual complete: ${accIntCount} loans, ${accIntPayCount} savings — ${period}`);
+          log(`Accrual complete: ${accIntCount} loans, ${accIntPayCount} savings, ${accTDCount} term deposits — ${period}`);
         } catch (err) {
           console.error('[Scheduler] Accrual error:', err.message);
         }
       }
     } catch (err) {
       console.error('[Scheduler] Error:', err.message);
+    }
+    } finally {
+      await store.setSetting('scheduler_lock', '0');
     }
   }, 60 * 60 * 1000);
 

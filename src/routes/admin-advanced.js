@@ -9,6 +9,10 @@ const sql = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows);
 const one = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows[0]);
 const fmt = v => '\u20B1' + Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const safeHeader = v => String(v || '').replace(/[\r\n]/g, '').trim();
+const safeCsv = v => {
+  const s = String(v || '');
+  return /^[=+\-@]/.test(s) ? "'" + s : s;
+};
 
 const router = express.Router();
 const ROLE_LEVELS = { super_admin: 4, manager: 3, teller: 2, auditor: 1 };
@@ -220,7 +224,8 @@ router.get('/late-fees', requireRole(2), asyncHandler(async (req, res) => {
 router.get('/late-fees/charge/:id', requireRole(2), asyncHandler(async (req, res) => {
   const loan = await one('SELECT * FROM loans WHERE loan_id = $1', [req.params.id]);
   if (!loan) return res.redirect('/admin/late-fees?error=Loan+not+found');
-  const fee = 50; // flat late fee per occurrence
+  const feeConfig = await one("SELECT amount FROM fees WHERE name = 'Late Payment Fee' AND is_active = 1");
+  const fee = feeConfig ? Number(feeConfig.amount) : 50; // default to 50 if not configured
   const newAccrued = Number(loan.late_fee_accrued||0) + fee;
   await store.query('UPDATE loans SET late_fee_accrued=$1, last_late_fee_date=$2 WHERE loan_id=$3', [newAccrued, new Date().toISOString(), req.params.id]);
   // Post fee to account
@@ -297,6 +302,19 @@ router.post('/term-deposits/create', requireRole(2), asyncHandler(async (req, re
   await store.query('INSERT INTO transactions (transaction_id,account_id,type,amount,balance_before,balance_after,description,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
     [txId, account_id, 'td_placement', Number(amount), Number(acc.actual_balance), Number(acc.actual_balance)-Number(amount), 'Time deposit placement '+tdNumber, new Date().toISOString()]);
   await store.query('UPDATE accounts SET actual_balance = actual_balance - $1 WHERE account_id = $2', [Number(amount), account_id]);
+  // Post GL entry
+  try {
+    const gl = require('../services/gl');
+    const txIdForGl = uuidv4();
+    await gl.postDoubleEntry(txIdForGl, [
+      { account_code: '1000', debit: Number(amount), description: 'Time deposit placement ' + tdNumber },
+      { account_code: '2100', credit: Number(amount), description: 'Time deposit placement ' + tdNumber }
+    ], { postedBy: req.session.adminName || 'admin', referenceType: 'td_placement', referenceNumber: tdNumber });
+    // Link GL entry to transaction
+    await store.query('UPDATE gl_entries SET transaction_id = $1 WHERE entry_id = $2', [txId, txIdForGl]).catch(() => {});
+  } catch (glErr) {
+    console.error('[TermDeposit] GL post failed:', glErr.message);
+  }
   res.redirect('/admin/term-deposits?created=ok');
 }));
 
@@ -305,6 +323,19 @@ router.get('/term-deposits/mature/:id', requireRole(2), asyncHandler(async (req,
   if (!td) return res.redirect('/admin/term-deposits?error=TD+not+found');
   const interest = Number(td.amount) * Number(td.interest_rate)/100 * Number(td.term_days)/365;
   await store.query('UPDATE term_deposits SET status=$1, interest_earned=$2 WHERE td_id=$3', ['matured', interest, req.params.id]);
+  // Post GL for interest accrual reversal
+  try {
+    const gl = require('../services/gl');
+    const interestVal = Math.round(interest * 100) / 100;
+    if (interestVal > 0) {
+      await gl.postDoubleEntry(uuidv4(), [
+        { account_code: '2100', debit: interestVal, description: 'TD interest accrual reversal ' + td.td_number },
+        { account_code: '5000', credit: interestVal, description: 'TD interest expense ' + td.td_number }
+      ], { postedBy: req.session.adminName || 'admin', referenceType: 'td_maturity', referenceNumber: td.td_number });
+    }
+  } catch (glErr) {
+    console.error('[TermDeposit] GL maturity post failed:', glErr.message);
+  }
   res.redirect('/admin/term-deposits?matured=ok');
 }));
 
@@ -319,6 +350,18 @@ router.get('/term-deposits/close/:id', requireRole(2), asyncHandler(async (req, 
   await store.query('INSERT INTO transactions (transaction_id,account_id,type,amount,balance_before,balance_after,description,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
     [txId, td.account_id, 'td_maturity', payout, Number(acc.actual_balance), Number(acc.actual_balance)+payout, 'Time deposit maturity payout '+td.td_number, new Date().toISOString()]);
   await store.query('UPDATE accounts SET actual_balance = actual_balance + $1 WHERE account_id = $2', [payout, td.account_id]);
+  // Post GL for maturity payout
+  try {
+    const gl = require('../services/gl');
+    const interestEarned = Number(td.interest_earned || 0);
+    await gl.postDoubleEntry(txId, [
+      { account_code: '2100', debit: Number(td.amount), description: 'TD maturity payout ' + td.td_number },
+      { account_code: '5000', debit: interestEarned, description: 'TD interest expense ' + td.td_number },
+      { account_code: '1000', credit: payout, description: 'TD maturity payout ' + td.td_number }
+    ], { postedBy: req.session.adminName || 'admin', referenceType: 'td_payout', referenceNumber: td.td_number });
+  } catch (glErr) {
+    console.error('[TermDeposit] GL payout post failed:', glErr.message);
+  }
   res.redirect('/admin/term-deposits?closed=ok');
 }));
 
@@ -377,6 +420,16 @@ router.post('/share-capital/subscribe', requireRole(2), asyncHandler(async (req,
   await store.query('INSERT INTO transactions (transaction_id,account_id,type,amount,balance_before,balance_after,description,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
     [txId, account_id, 'share_subscription', total, Number(acc.actual_balance), Number(acc.actual_balance)-total, 'Share subscription - '+shares+' shares', new Date().toISOString()]);
   await store.query('UPDATE accounts SET actual_balance = actual_balance - $1 WHERE account_id = $2', [total, account_id]);
+  // Post GL for share subscription
+  try {
+    const gl = require('../services/gl');
+    await gl.postDoubleEntry(uuidv4(), [
+      { account_code: '1000', debit: total, description: 'Share subscription - ' + shares + ' shares' },
+      { account_code: '3000', credit: total, description: 'Share subscription - ' + shares + ' shares' }
+    ], { postedBy: req.session.adminName || 'admin', referenceType: 'share_subscription' });
+  } catch (glErr) {
+    console.error('[ShareCapital] GL post failed:', glErr.message);
+  }
   res.redirect('/admin/share-capital?subscribed=ok');
 }));
 
@@ -446,6 +499,22 @@ router.get('/dividends/pay/:id', requireRole(3), asyncHandler(async (req, res) =
     await store.query('UPDATE accounts SET actual_balance = actual_balance + $1 WHERE account_id = $2', [amount, sh.account_id]);
   }
   await store.query('UPDATE dividends SET status=$1, paid_date=$2 WHERE dividend_id=$3', ['paid', new Date().toISOString(), req.params.id]);
+  // Post GL for dividend payout
+  try {
+    const totalPayout = shareholders.reduce((s, sh) => {
+      const amt = Number(sh.total_shares) * Number(div.per_share);
+      return s + (amt > 0 ? amt : 0);
+    }, 0);
+    if (totalPayout > 0) {
+      const gl = require('../services/gl');
+      await gl.postDoubleEntry(uuidv4(), [
+        { account_code: '3000', debit: totalPayout, description: 'Dividend payout ' + div.year },
+        { account_code: '1000', credit: totalPayout, description: 'Dividend payout ' + div.year }
+      ], { postedBy: req.session.adminName || 'admin', referenceType: 'dividend_payout', referenceNumber: 'DIV-' + div.year });
+    }
+  } catch (glErr) {
+    console.error('[Dividend] GL payout post failed:', glErr.message);
+  }
   res.redirect('/admin/dividends?paid=ok');
 }));
 
@@ -679,11 +748,11 @@ router.get('/cash-flow', requireRole(1), asyncHandler(async (req, res) => {
   </script>` : '<div class="card"><div class="card-body-padded" style="text-align:center;color:var(--text-muted);padding:40px"><i class="fas fa-chart-line" style="font-size:48px;opacity:0.3;display:block;margin-bottom:12px"></i> No transactions found for this period.</div></div>'}`;
   if (req.query.export === 'csv') {
     let csv = 'Month,Inflows,Outflows,Net\n';
-    monthly.forEach(m => { const n = Number(m.inflows) - Number(m.outflows); csv += `${m.month},${Number(m.inflows).toFixed(2)},${Number(m.outflows).toFixed(2)},${n.toFixed(2)}\n`; });
+    monthly.forEach(m => { const n = Number(m.inflows) - Number(m.outflows); csv += `${safeCsv(m.month)},${Number(m.inflows).toFixed(2)},${Number(m.outflows).toFixed(2)},${n.toFixed(2)}\n`; });
     csv += `TOTAL,${totalIn.toFixed(2)},${totalOut.toFixed(2)},${net.toFixed(2)}\n`;
     csv += `\nOpening Balance,${op.toFixed(2)}\nClosing Balance,${cl.toFixed(2)}\n`;
     csv += `\nCategory,Amount\n`;
-    categories.forEach(c => { csv += `${c.type},${Number(c.total).toFixed(2)}\n`; });
+    categories.forEach(c => { csv += `${safeCsv(c.type)},${Number(c.total).toFixed(2)}\n`; });
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="cash_flow_${safeHeader(from)}_${safeHeader(to)}.csv"`);
     return res.send(csv);
@@ -818,7 +887,7 @@ router.get('/budget', requireRole(3), asyncHandler(async (req, res) => {
     actuals.forEach(r => {
       const b = Number(budgets[r.code] || 0);
       const a = Number(r.bal);
-      csv += `${r.code} - ${r.name},${b.toFixed(2)},${a.toFixed(2)},${(a-b).toFixed(2)}\n`;
+      csv += `${safeCsv(r.code + ' - ' + r.name)},${b.toFixed(2)},${a.toFixed(2)},${(a-b).toFixed(2)}\n`;
     });
     csv += `TOTAL INCOME,${incBudget.toFixed(2)},${incTotal.toFixed(2)},${(incTotal-incBudget).toFixed(2)}\n`;
     csv += `TOTAL EXPENSES,${expBudget.toFixed(2)},${expTotal.toFixed(2)},${(expTotal-expBudget).toFixed(2)}\n`;
@@ -984,7 +1053,7 @@ router.get('/withholding-tax', requireRole(3), asyncHandler(async (req, res) => 
     let csv = 'IncomeType,GrossAmount,TaxRate,TaxWithheld,NetAmount\n';
     csv += `Interest Income,${interestGross.toFixed(2)},${iRate}%,${interestWithheld.toFixed(2)},${(interestGross - interestWithheld).toFixed(2)}\n`;
     csv += `Dividend Income,${divGross.toFixed(2)},${dRate}%,${divWithheld.toFixed(2)},${(divGross - divWithheld).toFixed(2)}\n`;
-    csv += `TOTAL,${(interestGross + divGross).toFixed(2)},,${totalWithheld.toFixed(2)},${(interestGross + divGross - totalWithheld).toFixed(2)}\n`;
+    csv += `${safeCsv('TOTAL')},${(interestGross + divGross).toFixed(2)},,${totalWithheld.toFixed(2)},${(interestGross + divGross - totalWithheld).toFixed(2)}\n`;
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="withholding_tax_${safeHeader(year)}.csv"`);
     return res.send(csv);

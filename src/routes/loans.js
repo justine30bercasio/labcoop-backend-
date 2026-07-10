@@ -4,6 +4,7 @@ const { store, isPostgres } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const { calculateLoanSummary } = require('../services/interest');
 const gl = require('../services/gl');
+const audit = require('../services/audit');
 const { requireConsent } = require('../middleware/auth');
 
 const router = express.Router();
@@ -120,6 +121,13 @@ router.post('/loans/apply',
       purpose: purpose || '',
     });
 
+    // Audit log
+    try {
+      await audit.log(req, 'LOAN_APPLY', 'loan', loan.loan_id, { amount: Number(principal), term: term_months }, account_id);
+    } catch (auditErr) {
+      console.error('[Loans] Audit log failed:', auditErr.message);
+    }
+
     res.status(201).json(loan);
   })
 );
@@ -140,6 +148,12 @@ router.put('/loans/:loanId/approve',
       approved_by: req.body.approved_by,
       approved_at: new Date().toISOString(),
     });
+    // Audit log
+    try {
+      await audit.log(req, 'LOAN_APPROVE', 'loan', req.params.loanId, { approved_by: req.body.approved_by }, loan.account_id);
+    } catch (auditErr) {
+      console.error('[Loans] Audit log failed:', auditErr.message);
+    }
     res.json(updated);
   })
 );
@@ -152,6 +166,12 @@ router.put('/loans/:loanId/reject',
     if (loan.status !== 'pending') return res.status(400).json({ message: 'Loan is not in pending status' });
 
     const updated = await store.updateLoan(req.params.loanId, { status: 'rejected' });
+    // Audit log
+    try {
+      await audit.log(req, 'LOAN_REJECT', 'loan', req.params.loanId, {}, loan.account_id);
+    } catch (auditErr) {
+      console.error('[Loans] Audit log failed:', auditErr.message);
+    }
     res.json(updated);
   })
 );
@@ -206,6 +226,13 @@ router.put('/loans/:loanId/disburse',
 
     try {
       const result = isPostgres ? await store.transaction(async (tx) => doDisburse(tx)) : await doDisburse();
+      // Audit log
+      try {
+        const loan = await store.getLoan(req.params.loanId);
+        await audit.log(req, 'LOAN_DISBURSE', 'loan', req.params.loanId, { amount: loan?.principal || 0 }, loan?.account_id);
+      } catch (auditErr) {
+        console.error('[Loans] Audit log failed:', auditErr.message);
+      }
       res.json(result);
     } catch (e) {
       res.status(400).json({ message: e.message });
@@ -292,6 +319,13 @@ router.post('/loans/:loanId/pay',
 
     try {
       const updatedLoan = isPostgres ? await store.transaction(async (tx) => doPay(tx)) : await doPay();
+      // Audit log
+      try {
+        const { account_id, amount } = req.body;
+        await audit.log(req, 'LOAN_PAYMENT', 'loan', req.params.loanId, { amount: Number(amount) }, account_id);
+      } catch (auditErr) {
+        console.error('[Loans] Audit log failed:', auditErr.message);
+      }
       const payments = await store.getLoanPayments(req.params.loanId);
       res.json({ loan: updatedLoan, payments });
     } catch (e) {

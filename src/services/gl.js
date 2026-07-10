@@ -15,7 +15,11 @@ async function postDoubleEntry(transactionId, entries, opts = {}) {
   const period = await store.getOrCreatePeriod(now);
   const periodId = period ? period.period_id : null;
 
+  // Verify all account codes exist and are active
   for (const e of entries) {
+    const acctCheck = await store.query('SELECT is_active FROM gl_accounts WHERE code = $1', [e.account_code]);
+    if (!acctCheck.rows.length) throw new Error('GL account ' + e.account_code + ' not found');
+    if (!acctCheck.rows[0].is_active) throw new Error('GL account ' + e.account_code + ' is inactive');
     totalDebit += Number(e.debit || 0);
     totalCredit += Number(e.credit || 0);
   }
@@ -23,7 +27,7 @@ async function postDoubleEntry(transactionId, entries, opts = {}) {
     throw new Error('GL entries not balanced: debits=' + totalDebit + ' credits=' + totalCredit);
   }
   const doInserts = async (tx) => {
-    const q = (tx && tx.query) ? tx.query.bind(tx) : (sql, p) => store.query(sql, p);
+    const q = (tx && typeof tx.query === 'function') ? tx.query.bind(tx) : (sql, p) => store.query(sql, p);
     for (const e of entries) {
       await q(
         'INSERT INTO gl_entries (entry_id, transaction_id, account_code, debit, credit, description, posted_by, reference_type, reference_number, period_id, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
@@ -50,7 +54,7 @@ async function getTrialBalance(asOf) {
        COALESCE(SUM(e.debit),0) as total_debit,
        COALESCE(SUM(e.credit),0) as total_credit
      FROM gl_accounts g
-     LEFT JOIN gl_entries e ON g.code = e.account_code ${onClause}
+     LEFT JOIN gl_entries e ON g.code = e.account_code AND (e.is_voided IS NULL OR e.is_voided = 0) ${onClause}
      GROUP BY g.code, g.name, g.type, g.category
      ORDER BY g.code`, params
   );
@@ -102,7 +106,7 @@ async function getProfitAndLoss(fromDate, toDate) {
        COALESCE(SUM(e.debit),0) as total_debit,
        COALESCE(SUM(e.credit),0) as total_credit
      FROM gl_accounts g
-     JOIN gl_entries e ON g.code = e.account_code
+     JOIN gl_entries e ON g.code = e.account_code AND (e.is_voided IS NULL OR e.is_voided = 0)
      WHERE ${where.join(' AND ')}
      GROUP BY g.code, g.name, g.type, g.category
      ORDER BY g.code`, params

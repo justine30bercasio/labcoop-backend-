@@ -143,13 +143,11 @@ router.post('/login', pinLoginLimiter, asyncHandler(async (req, res) => {
     return res.status(401).json({ message: 'Invalid credentials' });
   }
 
-  // Successful login — reset failed attempts
-  if (failedAttempts > 0 || account.locked_until) {
-    await store.query(
-      'UPDATE accounts SET failed_login_attempts = 0, locked_until = NULL WHERE account_id = $1',
-      [account.account_id]
-    );
-  }
+  // Successful login — always reset failed attempts
+  await store.query(
+    'UPDATE accounts SET failed_login_attempts = 0, locked_until = NULL WHERE account_id = $1',
+    [account.account_id]
+  );
 
   const token = jwt.sign(
     { accountId: account.account_id },

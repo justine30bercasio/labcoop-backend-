@@ -520,6 +520,16 @@ class BankingApiService {
     } on DioException {}
   }
 
+  static Future<void> parentRegisterFcmToken(String token) async {
+    try {
+      await _addParentAuthHeader();
+      await _parentDio.post('/api/parent/register-fcm-token', data: {
+        'fcmToken': token,
+        'devicePlatform': 'android',
+      });
+    } on DioException {}
+  }
+
   // ── Children Transactions ──
   static Future<List<dynamic>> parentGetChildrenTransactions() async {
     try {

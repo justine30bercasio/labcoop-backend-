@@ -54,6 +54,15 @@ class NotificationService {
   static String? _currentToken;
   static final List<VoidCallback> _onNotificationReceived = [];
 
+  /// Returns the current FCM token, or null if not yet initialized.
+  static Future<String?> getCurrentToken() async {
+    if (_currentToken != null) return _currentToken;
+    try {
+      _currentToken = await _firebaseMessaging.getToken();
+    } catch (_) {}
+    return _currentToken;
+  }
+
   /// Register a callback that fires when a push notification arrives in the foreground.
   static void addListener(VoidCallback cb) => _onNotificationReceived.add(cb);
   static void removeListener(VoidCallback cb) =>

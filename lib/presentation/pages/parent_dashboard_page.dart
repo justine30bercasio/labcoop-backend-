@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/network/banking_api_service.dart';
+import '../../core/services/notification_service.dart';
 import 'parent_login_page.dart';
 
 class ParentDashboardPage extends StatefulWidget {
@@ -46,7 +47,18 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadData();
       _startNotifPolling();
+      _registerParentFcm();
     });
+  }
+
+  Future<void> _registerParentFcm() async {
+    try {
+      final token = await NotificationService.getCurrentToken();
+      if (token != null) {
+        await BankingApiService.parentRegisterFcmToken(token);
+        stderr.writeln('[ParentFCM] Registered parent FCM token');
+      }
+    } catch (_) {}
   }
 
   @override
@@ -62,10 +74,11 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
   void _startNotifPolling() {
     _notifTimer?.cancel();
     _fetchNotifs();
-    _notifTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchNotifs());
+    _notifTimer = Timer.periodic(const Duration(seconds: 15), (_) => _fetchNotifs());
   }
 
   Future<void> _fetchNotifs() async {
+    int prevUnread = _notifUnreadCount;
     // Try lightweight unread-count endpoint first
     try {
       final count = await BankingApiService.parentGetUnreadCount();
@@ -73,29 +86,36 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
         if (count >= 0) {
           stderr.writeln('[ParentNotif] unread-count: $count');
           setState(() => _notifUnreadCount = count);
-          return;
         }
-        stderr.writeln('[ParentNotif] unread-count returned $count, falling back');
       }
     } catch (_) {}
-    // Fallback: get full notification list
-    try {
-      final data = await BankingApiService.parentGetNotifications();
-      if (mounted && data != null) {
-        final count = data['unreadCount'] as int? ?? 0;
-        stderr.writeln('[ParentNotif] fallback unread-count: $count');
-        setState(() => _notifUnreadCount = count);
-      }
-    } catch (e) {
-      stderr.writeln('[ParentNotif] fallback failed: $e');
+    // If unread count changed or we got no data, refresh full pending list
+    // This ensures the Approvals tab stays in sync with notifications
+    if (_notifUnreadCount > 0 || _notifUnreadCount != prevUnread) {
+      try {
+        final pending = await BankingApiService.parentGetPending();
+        if (mounted && pending != null) {
+          setState(() {
+            _pendingWithdrawals = pending['withdrawals'] as List<dynamic>? ?? [];
+            _pendingLoans = pending['loans'] as List<dynamic>? ?? [];
+            _pendingConsents = pending['pendingConsents'] as List<dynamic>? ?? [];
+          });
+        }
+      } catch (_) {}
     }
   }
 
-  void _openNotifPage() async {
-    final changed = await Navigator.of(context).push<bool>(
+  Future<void> _openNotifPage() async {
+    final result = await Navigator.of(context).push<int>(
       MaterialPageRoute(builder: (_) => const _ParentNotificationListPage()),
     );
-    if (changed == true && mounted) _fetchNotifs();
+    if (!mounted) return;
+    if (result == 2) {
+      // Navigate to Approvals tab
+      setState(() => _currentIndex = 2);
+    } else if (result == 1) {
+      _fetchNotifs();
+    }
   }
 
   String _fmtDate(String iso) {
@@ -1388,7 +1408,7 @@ class _ParentNotificationListPage extends StatefulWidget {
 class _ParentNotificationListPageState extends State<_ParentNotificationListPage> {
   List<dynamic> _notifications = [];
   bool _loading = true;
-  bool _changed = false;
+  int _popResult = 0; // 0=nothing, 1=refresh, 2=go-to-approvals
 
   @override
   void initState() {
@@ -1421,18 +1441,30 @@ class _ParentNotificationListPageState extends State<_ParentNotificationListPage
       final idx = _notifications.indexWhere((x) => _notifId(x) == notifId);
       if (idx >= 0) _notifications[idx] = {...(_notifications[idx] as Map), 'is_read': 1};
     });
-    _changed = true;
+    _popResult = 1;
     BankingApiService.parentMarkNotifRead(notifId).catchError((e) {
       stderr.writeln('Failed to mark $notifId as read: $e');
     });
   }
 
-  void _showDetail(dynamic n) {
+  void _onNotifTap(dynamic n) {
     final isRead = n['is_read'] == 1;
+    final notifType = n['type'] as String? ?? '';
+    final notifId = _notifId(n);
+    // Navigate to Approvals tab for consent/withdrawal/loan/deletion notifications
+    if (['consent_request', 'withdrawal_request', 'account_deletion'].contains(notifType)) {
+      if (!isRead) {
+        BankingApiService.parentMarkNotifRead(notifId).catchError((_) {});
+      }
+      _popResult = 2; // signal: go to Approvals tab
+      Navigator.of(context).pop(2);
+      return;
+    }
+    // Default: show detail dialog
+    if (!isRead) _markRead(n);
     final title = n['title'] as String? ?? '';
     final body = n['body'] as String? ?? '';
     final createdAt = n['created_at'] as String? ?? '';
-    if (!isRead) _markRead(n);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1462,13 +1494,13 @@ class _ParentNotificationListPageState extends State<_ParentNotificationListPage
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) Navigator.of(context).pop(_changed);
+        if (!didPop) Navigator.of(context).pop(_popResult);
       },
       child: Scaffold(
         appBar: AppBar(
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
-            onPressed: () => Navigator.of(context).pop(_changed),
+            onPressed: () => Navigator.of(context).pop(_popResult),
           ),
           title: const Text('Notifications', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           backgroundColor: const Color(0xFF1a237e),
@@ -1481,7 +1513,7 @@ class _ParentNotificationListPageState extends State<_ParentNotificationListPage
                 onPressed: () async {
                   try {
                     await BankingApiService.parentMarkAllNotifRead();
-                    _changed = true;
+                    _popResult = 1;
                     _fetch();
                   } catch (_) {}
                 },
@@ -1525,7 +1557,7 @@ class _ParentNotificationListPageState extends State<_ParentNotificationListPage
                           ),
                           subtitle: body.isNotEmpty ? Text(body, maxLines: 2, overflow: TextOverflow.ellipsis) : null,
                           trailing: Text(_formatDate(createdAt), style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                          onTap: () => _showDetail(n),
+                          onTap: () => _onNotifTap(n),
                         );
                       },
                     ),

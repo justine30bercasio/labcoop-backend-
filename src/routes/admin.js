@@ -6879,6 +6879,197 @@ router.post('/board/delete/:id', requireRole(3), asyncHandler(async (req, res) =
   res.redirect('/admin/board?deleted=ok');
 }));
 
+// ── Pending Approvals (test page) ──
+router.get('/pending-approvals', requireRole(3,4), asyncHandler(async (req, res) => {
+  const [consents, withdrawals, deletions] = await Promise.all([
+    store.query(`
+      SELECT c.*, a.child_name, a.member_id
+      FROM parental_consent c
+      JOIN accounts a ON a.account_id = c.account_id
+      WHERE c.status = 'pending'
+      ORDER BY c.created_at DESC
+    `),
+    store.query(`
+      SELECT w.*, a.child_name, a.member_id
+      FROM withdrawal_requests w
+      JOIN accounts a ON a.account_id = w.account_id
+      WHERE w.status = 'pending'
+      ORDER BY w.created_at DESC
+    `),
+    store.query(`
+      SELECT d.*, a.child_name, a.member_id
+      FROM account_deletion_requests d
+      JOIN accounts a ON a.account_id = d.account_id
+      WHERE d.status = 'pending'
+      ORDER BY d.created_at DESC
+    `),
+  ]);
+
+  const escHtml = (s) => { if (typeof s !== 'string') s = String(s ?? ''); return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+  const h = escHtml;
+
+  let content = `<div style="max-width:1200px;margin:0 auto;padding:20px">
+    <h2 style="margin-bottom:24px">Pending Approvals</h2>
+    <div style="display:flex;gap:16px;margin-bottom:32px">
+      <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:16px;flex:1">
+        <div style="font-size:28px;font-weight:700">${consents.rows.length}</div>
+        <div style="color:#856404">Pending Consents</div>
+      </div>
+      <div style="background:#cce5ff;border:1px solid #007bff;border-radius:8px;padding:16px;flex:1">
+        <div style="font-size:28px;font-weight:700">${withdrawals.rows.length}</div>
+        <div style="color:#004085">Pending Withdrawals</div>
+      </div>
+      <div style="background:#f8d7da;border:1px solid #dc3545;border-radius:8px;padding:16px;flex:1">
+        <div style="font-size:28px;font-weight:700">${deletions.rows.length}</div>
+        <div style="color:#721c24">Pending Deletions</div>
+      </div>
+    </div>`;
+
+  // ── Consents ──
+  content += `<h3 style="margin:32px 0 16px">Parental Consent Requests</h3>`;
+  if (consents.rows.length === 0) {
+    content += `<p style="color:#6b7280">No pending consent requests.</p>`;
+  } else {
+    content += `<table class="tbl"><thead><tr>
+      <th>Child</th><th>Account ID</th><th>Requested</th><th>Actions</th>
+    </tr></thead><tbody>`;
+    for (const c of consents.rows) {
+      content += `<tr>
+        <td><strong>${h(c.child_name)}</strong> <span style="color:#6b7280;font-size:12px">(${h(c.member_id || '—')})</span></td>
+        <td style="font-family:monospace;font-size:12px">${h(c.account_id.slice(0,8))}…</td>
+        <td>${new Date(c.created_at).toLocaleString()}</td>
+        <td>
+          <form method="POST" action="/admin/pending-approvals/approve-consent/${c.id}" style="display:inline" onsubmit="return confirm('Approve this consent request?')">
+            <input type="hidden" name="_csrf" value="${h(req.session?.csrf || '')}">
+            <button class="btn btn-sm btn-success">Approve</button>
+          </form>
+          <form method="POST" action="/admin/pending-approvals/reject-consent/${c.id}" style="display:inline" onsubmit="return confirm('Reject this consent request?')">
+            <input type="hidden" name="_csrf" value="${h(req.session?.csrf || '')}">
+            <button class="btn btn-sm btn-danger">Reject</button>
+          </form>
+        </td>
+      </tr>`;
+    }
+    content += `</tbody></table>`;
+  }
+
+  // ── Withdrawals ──
+  content += `<h3 style="margin:32px 0 16px">Withdrawal Requests</h3>`;
+  if (withdrawals.rows.length === 0) {
+    content += `<p style="color:#6b7280">No pending withdrawal requests.</p>`;
+  } else {
+    content += `<table class="tbl"><thead><tr>
+      <th>Child</th><th>Amount</th><th>Requested</th><th>Actions</th>
+    </tr></thead><tbody>`;
+    for (const w of withdrawals.rows) {
+      content += `<tr>
+        <td><strong>${h(w.child_name)}</strong> <span style="color:#6b7280;font-size:12px">(${h(w.member_id || '—')})</span></td>
+        <td>$${Number(w.amount).toFixed(2)}</td>
+        <td>${new Date(w.created_at).toLocaleString()}</td>
+        <td>
+          <form method="POST" action="/admin/pending-approvals/approve-withdrawal/${w.id}" style="display:inline" onsubmit="return confirm('Approve this withdrawal?')">
+            <input type="hidden" name="_csrf" value="${h(req.session?.csrf || '')}">
+            <button class="btn btn-sm btn-success">Approve</button>
+          </form>
+          <form method="POST" action="/admin/pending-approvals/reject-withdrawal/${w.id}" style="display:inline" onsubmit="return confirm('Reject this withdrawal?')">
+            <input type="hidden" name="_csrf" value="${h(req.session?.csrf || '')}">
+            <button class="btn btn-sm btn-danger">Reject</button>
+          </form>
+        </td>
+      </tr>`;
+    }
+    content += `</tbody></table>`;
+  }
+
+  // ── Deletions ──
+  content += `<h3 style="margin:32px 0 16px">Account Deletion Requests</h3>`;
+  if (deletions.rows.length === 0) {
+    content += `<p style="color:#6b7280">No pending deletion requests.</p>`;
+  } else {
+    content += `<table class="tbl"><thead><tr>
+      <th>Child</th><th>Reason</th><th>Requested</th><th>Actions</th>
+    </tr></thead><tbody>`;
+    for (const d of deletions.rows) {
+      content += `<tr>
+        <td><strong>${h(d.child_name)}</strong> <span style="color:#6b7280;font-size:12px">(${h(d.member_id || '—')})</span></td>
+        <td style="max-width:300px;white-space:normal">${h(d.reason || '—')}</td>
+        <td>${new Date(d.created_at).toLocaleString()}</td>
+        <td>
+          <form method="POST" action="/admin/pending-approvals/approve-deletion/${d.id}" style="display:inline" onsubmit="return confirm('Approve account deletion? This cannot be undone.')">
+            <input type="hidden" name="_csrf" value="${h(req.session?.csrf || '')}">
+            <button class="btn btn-sm btn-success">Approve</button>
+          </form>
+          <form method="POST" action="/admin/pending-approvals/reject-deletion/${d.id}" style="display:inline" onsubmit="return confirm('Reject this deletion request?')">
+            <input type="hidden" name="_csrf" value="${h(req.session?.csrf || '')}">
+            <button class="btn btn-sm btn-danger">Reject</button>
+          </form>
+        </td>
+      </tr>`;
+    }
+    content += `</tbody></table>`;
+  }
+
+  content += `</div>`;
+  res.type('html').send(layout('Pending Approvals', 'pending-approvals', content));
+}));
+
+// ── Admin: Approve/Reject Actions for Pending Approvals ──
+router.post('/pending-approvals/approve-consent/:id', requireRole(3,4), asyncHandler(async (req, res) => {
+  const row = await store.query('SELECT * FROM parental_consent WHERE id = $1', [req.params.id]);
+  if (row.rows.length === 0) return res.redirect('/admin/pending-approvals?error=Not+found');
+  const c = row.rows[0];
+  if (c.status !== 'pending') return res.redirect('/admin/pending-approvals?error=Already+processed');
+  await store.query("UPDATE parental_consent SET status = 'approved', updated_at = NOW() WHERE id = $1", [req.params.id]);
+  await store.query("UPDATE accounts SET consent_status = 'approved' WHERE account_id = $1", [c.account_id]);
+  res.redirect('/admin/pending-approvals?success=Consent+approved');
+}));
+
+router.post('/pending-approvals/reject-consent/:id', requireRole(3,4), asyncHandler(async (req, res) => {
+  const row = await store.query('SELECT * FROM parental_consent WHERE id = $1', [req.params.id]);
+  if (row.rows.length === 0) return res.redirect('/admin/pending-approvals?error=Not+found');
+  const c = row.rows[0];
+  if (c.status !== 'pending') return res.redirect('/admin/pending-approvals?error=Already+processed');
+  await store.query("UPDATE parental_consent SET status = 'rejected', updated_at = NOW() WHERE id = $1", [req.params.id]);
+  await store.query("UPDATE accounts SET consent_status = 'rejected' WHERE account_id = $1", [c.account_id]);
+  res.redirect('/admin/pending-approvals?success=Consent+rejected');
+}));
+
+router.post('/pending-approvals/approve-withdrawal/:id', requireRole(3,4), asyncHandler(async (req, res) => {
+  const row = await store.query('SELECT * FROM withdrawal_requests WHERE id = $1', [req.params.id]);
+  if (row.rows.length === 0) return res.redirect('/admin/pending-approvals?error=Not+found');
+  const w = row.rows[0];
+  if (w.status !== 'pending') return res.redirect('/admin/pending-approvals?error=Already+processed');
+  await store.query("UPDATE withdrawal_requests SET status = 'approved', updated_at = NOW() WHERE id = $1", [req.params.id]);
+  res.redirect('/admin/pending-approvals?success=Withdrawal+approved');
+}));
+
+router.post('/pending-approvals/reject-withdrawal/:id', requireRole(3,4), asyncHandler(async (req, res) => {
+  const row = await store.query('SELECT * FROM withdrawal_requests WHERE id = $1', [req.params.id]);
+  if (row.rows.length === 0) return res.redirect('/admin/pending-approvals?error=Not+found');
+  const w = row.rows[0];
+  if (w.status !== 'pending') return res.redirect('/admin/pending-approvals?error=Already+processed');
+  await store.query("UPDATE withdrawal_requests SET status = 'rejected', updated_at = NOW() WHERE id = $1", [req.params.id]);
+  res.redirect('/admin/pending-approvals?success=Withdrawal+rejected');
+}));
+
+router.post('/pending-approvals/approve-deletion/:id', requireRole(3,4), asyncHandler(async (req, res) => {
+  const row = await store.query('SELECT * FROM account_deletion_requests WHERE id = $1', [req.params.id]);
+  if (row.rows.length === 0) return res.redirect('/admin/pending-approvals?error=Not+found');
+  const d = row.rows[0];
+  if (d.status !== 'pending') return res.redirect('/admin/pending-approvals?error=Already+processed');
+  await store.query("UPDATE account_deletion_requests SET status = 'approved', updated_at = NOW() WHERE id = $1", [req.params.id]);
+  res.redirect('/admin/pending-approvals?success=Deletion+approved');
+}));
+
+router.post('/pending-approvals/reject-deletion/:id', requireRole(3,4), asyncHandler(async (req, res) => {
+  const row = await store.query('SELECT * FROM account_deletion_requests WHERE id = $1', [req.params.id]);
+  if (row.rows.length === 0) return res.redirect('/admin/pending-approvals?error=Not+found');
+  const d = row.rows[0];
+  if (d.status !== 'pending') return res.redirect('/admin/pending-approvals?error=Already+processed');
+  await store.query("UPDATE account_deletion_requests SET status = 'rejected', updated_at = NOW() WHERE id = $1", [req.params.id]);
+  res.redirect('/admin/pending-approvals?success=Deletion+rejected');
+}));
+
 // ── Parent Management ──
 router.get('/parents', requireRole(3,4), asyncHandler(async (req, res) => {
   const q = req.query.q ? req.query.q.trim() : '';

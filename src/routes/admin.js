@@ -7021,6 +7021,7 @@ router.post('/pending-approvals/approve-consent/:id', requireRole(3,4), asyncHan
   if (c.status !== 'pending') return res.redirect('/admin/pending-approvals?error=Already+processed');
   await store.query("UPDATE parental_consent SET status = 'approved', updated_at = NOW() WHERE id = $1", [req.params.id]);
   await store.query("UPDATE accounts SET consent_status = 'approved' WHERE account_id = $1", [c.account_id]);
+  notifs.notifyConsentApproved(c.account_id).catch(() => {});
   res.redirect('/admin/pending-approvals?success=Consent+approved');
 }));
 
@@ -7031,6 +7032,7 @@ router.post('/pending-approvals/reject-consent/:id', requireRole(3,4), asyncHand
   if (c.status !== 'pending') return res.redirect('/admin/pending-approvals?error=Already+processed');
   await store.query("UPDATE parental_consent SET status = 'rejected', updated_at = NOW() WHERE id = $1", [req.params.id]);
   await store.query("UPDATE accounts SET consent_status = 'rejected' WHERE account_id = $1", [c.account_id]);
+  notifs.notifyConsentRejected(c.account_id).catch(() => {});
   res.redirect('/admin/pending-approvals?success=Consent+rejected');
 }));
 
@@ -7040,6 +7042,7 @@ router.post('/pending-approvals/approve-withdrawal/:id', requireRole(3,4), async
   const w = row.rows[0];
   if (w.status !== 'pending') return res.redirect('/admin/pending-approvals?error=Already+processed');
   await store.query("UPDATE withdrawal_requests SET status = 'approved', updated_at = NOW() WHERE id = $1", [req.params.id]);
+  notifs.notifyWithdrawalApproved(w.account_id, w.amount, '').catch(() => {});
   res.redirect('/admin/pending-approvals?success=Withdrawal+approved');
 }));
 
@@ -7049,6 +7052,7 @@ router.post('/pending-approvals/reject-withdrawal/:id', requireRole(3,4), asyncH
   const w = row.rows[0];
   if (w.status !== 'pending') return res.redirect('/admin/pending-approvals?error=Already+processed');
   await store.query("UPDATE withdrawal_requests SET status = 'rejected', updated_at = NOW() WHERE id = $1", [req.params.id]);
+  notifs.notifyWithdrawalRejected(w.account_id, w.amount, '').catch(() => {});
   res.redirect('/admin/pending-approvals?success=Withdrawal+rejected');
 }));
 

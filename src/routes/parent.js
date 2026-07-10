@@ -673,6 +673,8 @@ router.post('/approve-withdrawal/:requestId', parentAuth, asyncHandler(async (re
     return res.status(400).json({ message: `Insufficient balance after maintaining ₱${maintainingBalance.toFixed(2)}` });
   }
   await store.query('UPDATE withdrawal_requests SET status = $1 WHERE request_id = $2', ['parent_approved', req.params.requestId]);
+  // Notify child
+  notifs.notifyWithdrawalApproved(wr.account_id, wr.amount, 'Approved by parent, pending admin payout').catch(() => {});
   res.json({ message: 'Withdrawal approved by parent. An admin will process payout.', amount: Number(wr.amount) });
 }));
 
@@ -687,6 +689,8 @@ router.post('/reject-withdrawal/:requestId', parentAuth, asyncHandler(async (req
   );
   if (link.rows.length === 0) return res.status(403).json({ message: 'This child is not linked to your account' });
   await store.query('UPDATE withdrawal_requests SET status = $1 WHERE request_id = $2', ['rejected', req.params.requestId]);
+  // Notify child
+  notifs.notifyWithdrawalRejected(wr.account_id, wr.amount, 'Rejected by parent').catch(() => {});
   res.json({ message: 'Withdrawal request rejected' });
 }));
 
@@ -702,6 +706,8 @@ router.post('/approve-loan/:loanId', parentAuth, asyncHandler(async (req, res) =
   );
   if (link.rows.length === 0) return res.status(403).json({ message: 'This child is not linked to your account' });
   await store.query('UPDATE loans SET status = $1 WHERE loan_id = $2', ['approved_by_parent', req.params.loanId]);
+  // Notify child
+  notifs.notifyLoanApprovedByParent(loan.account_id, loan.principal).catch(() => {});
   res.json({ message: 'Loan pre-approved by parent. An admin will process disbursement.' });
 }));
 
@@ -716,6 +722,8 @@ router.post('/reject-loan/:loanId', parentAuth, asyncHandler(async (req, res) =>
   );
   if (link.rows.length === 0) return res.status(403).json({ message: 'This child is not linked to your account' });
   await store.query('UPDATE loans SET status = $1 WHERE loan_id = $2', ['rejected_by_parent', req.params.loanId]);
+  // Notify child
+  notifs.notifyLoanRejectedByParent(loan.account_id, loan.principal).catch(() => {});
   res.json({ message: 'Loan application rejected' });
 }));
 

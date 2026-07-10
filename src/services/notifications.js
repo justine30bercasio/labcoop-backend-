@@ -176,6 +176,26 @@ const NotifEvents = {
     body: `PHP ${Number(amount).toFixed(2)} GCash payment confirmed. Your account has been credited.`,
     data: { type: 'paymongo_success', amount: String(amount) },
   }),
+  CONSENT_APPROVED: () => ({
+    title: 'Parent Consent Approved!',
+    body: 'Your parent has approved your KYC consent. You can now submit your identification documents.',
+    data: { type: 'consent_approved' },
+  }),
+  CONSENT_REJECTED: (reason) => ({
+    title: 'Parent Consent Rejected',
+    body: `Your parent did not approve your KYC consent${reason ? ': ' + reason : ''}.`,
+    data: { type: 'consent_rejected', reason: reason || '' },
+  }),
+  LOAN_APPROVED_BY_PARENT: (amount) => ({
+    title: 'Loan Pre-Approved by Parent!',
+    body: `Your loan application for PHP ${Number(amount).toFixed(2)} has been pre-approved by your parent. An admin will process disbursement.`,
+    data: { type: 'loan_parent_approved', amount: String(amount) },
+  }),
+  LOAN_REJECTED_BY_PARENT: (amount) => ({
+    title: 'Loan Rejected by Parent',
+    body: `Your loan application for PHP ${Number(amount).toFixed(2)} was not approved by your parent.`,
+    data: { type: 'loan_parent_rejected', amount: String(amount) },
+  }),
 };
 
 async function notifyWithdrawalApproved(accountId, amount, reason) {
@@ -218,6 +238,26 @@ async function notifyKycRejected(accountId, reason) {
   await sendPush(accountId, ev.title, ev.body, ev.data);
 }
 
+async function notifyConsentApproved(accountId) {
+  const ev = NotifEvents.CONSENT_APPROVED();
+  await sendPush(accountId, ev.title, ev.body, ev.data);
+}
+
+async function notifyConsentRejected(accountId, reason) {
+  const ev = NotifEvents.CONSENT_REJECTED(reason);
+  await sendPush(accountId, ev.title, ev.body, ev.data);
+}
+
+async function notifyLoanApprovedByParent(accountId, amount) {
+  const ev = NotifEvents.LOAN_APPROVED_BY_PARENT(amount);
+  await sendPush(accountId, ev.title, ev.body, ev.data);
+}
+
+async function notifyLoanRejectedByParent(accountId, amount) {
+  const ev = NotifEvents.LOAN_REJECTED_BY_PARENT(amount);
+  await sendPush(accountId, ev.title, ev.body, ev.data);
+}
+
 function isFirebaseReady() {
   return !!_app;
 }
@@ -243,6 +283,10 @@ module.exports = {
   notifyPaymongoPaymentSuccess,
   notifyKycApproved,
   notifyKycRejected,
+  notifyConsentApproved,
+  notifyConsentRejected,
+  notifyLoanApprovedByParent,
+  notifyLoanRejectedByParent,
   isFirebaseReady,
   getDiagnostics,
 };

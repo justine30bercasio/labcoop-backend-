@@ -6088,9 +6088,9 @@ router.post('/gl/balance-sheet/notes', requireRole(3), asyncHandler(async (req, 
 router.get('/gl/profit-and-loss', requireRole(1), asyncHandler(async (req, res) => {
   const { getProfitAndLoss } = require('../services/gl');
   const now = new Date();
-  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+  const yearStart = now.getFullYear() + '-01-01';
   const todayStr = now.toISOString().slice(0,10);
-  const from = (req.query.from || firstDay).replace(/[^0-9\-]/g, '').slice(0, 10);
+  const from = (req.query.from || yearStart).replace(/[^0-9\-]/g, '').slice(0, 10);
   const to = (req.query.to || todayStr).replace(/[^0-9\-]/g, '').slice(0, 10);
   const result = await getProfitAndLoss(from, to);
 

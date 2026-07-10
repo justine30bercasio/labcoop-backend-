@@ -118,7 +118,7 @@ async function getBalanceSheet(asOf) {
 
 async function getProfitAndLoss(fromDate, toDate) {
   const params = [];
-  const joinConditions = ["e.is_voided IS NULL OR e.is_voided = 0"];
+  const joinConditions = ["(e.is_voided IS NULL OR e.is_voided = 0)"];
   if (fromDate) { joinConditions.push('e.created_at >= $' + (params.length + 1)); params.push(fromDate); }
   if (toDate) { joinConditions.push('e.created_at <= $' + (params.length + 1)); params.push(toDate); }
   const res = await store.query(

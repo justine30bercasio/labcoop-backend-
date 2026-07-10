@@ -467,13 +467,14 @@ router.get('/children', parentAuth, asyncHandler(async (req, res) => {
   })));
 }));
 
-// ── Get Pending Approvals (withdrawals + loans) ──
+// ── Get Pending Approvals (withdrawals + loans + consents) ──
 router.get('/pending', parentAuth, asyncHandler(async (req, res) => {
   const childIds = await store.query(
     'SELECT child_account_id FROM parent_child_links WHERE parent_id = $1 AND status = $2',
     [req.parentId, 'active']
   );
   const ids = childIds.rows.map(r => r.child_account_id);
+  console.log(`[PENDING] parent=${req.parentId} childIds=${ids.join(',')} count=${ids.length}`);
   if (ids.length === 0) return res.json({ withdrawals: [], loans: [], pendingConsents: [] });
   const placeholders = ids.map((_, i) => '$' + (i + 1)).join(',');
   const withdrawals = await store.query(
@@ -501,6 +502,7 @@ router.get('/pending', parentAuth, asyncHandler(async (req, res) => {
      ORDER BY c.created_at DESC`,
     ids
   );
+  console.log(`[PENDING] withdrawals=${withdrawals.rows.length} loans=${loans.rows.length} consents=${consents.rows.length}`);
   res.json({
     withdrawals: withdrawals.rows.map(w => ({ ...w, amount: Number(w.amount) })),
     loans: loans.rows.map(l => ({ ...l, principal: Number(l.principal), amount: Number(l.principal) })),

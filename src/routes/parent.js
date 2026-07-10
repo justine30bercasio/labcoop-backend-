@@ -535,6 +535,12 @@ router.get('/notifications', parentAuth, asyncHandler(async (req, res) => {
   res.json({ notifications: notifs, unreadCount: unread });
 }));
 
+// Lightweight unread count endpoint for polling (matching kid's /notifications/unread-count)
+router.get('/notifications/unread-count', parentAuth, asyncHandler(async (req, res) => {
+  const unread = await store.getParentUnreadCount(req.parentId);
+  res.json({ unreadCount: unread });
+}));
+
 router.post('/notifications/:notifId/read', parentAuth, asyncHandler(async (req, res) => {
   await store.markParentNotificationRead(req.params.notifId);
   res.json({ ok: true });

@@ -361,7 +361,10 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
         ),
         child: NavigationBar(
           selectedIndex: _currentIndex,
-          onDestinationSelected: (i) => setState(() => _currentIndex = i),
+          onDestinationSelected: (i) {
+            setState(() => _currentIndex = i);
+            if (i == 2) _refreshPending(); // Fetch fresh pending data when switching to Approvals tab
+          },
           backgroundColor: Colors.white,
           elevation: 0,
           indicatorColor: _indigo.withValues(alpha: 0.12),
@@ -932,13 +935,24 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
     );
   }
 
+  Future<void> _refreshAll() async {
+    await _refreshPending();
+    try {
+      final data = await BankingApiService.parentGetPendingDeletions();
+      if (mounted) setState(() => _pendingDeletions = data);
+    } catch (_) {}
+  }
+
   Widget _buildApprovalsTab() {
     final totalConsents = _pendingConsents.length;
     final totalWithdrawals = _pendingWithdrawals.length;
     final totalLoans = _pendingLoans.length;
     final totalDeletions = _pendingDeletions.length;
     final hasAny = totalConsents + totalWithdrawals + totalLoans + totalDeletions > 0;
-    return SingleChildScrollView(
+    return RefreshIndicator(
+      onRefresh: _refreshAll,
+      child: SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1106,7 +1120,8 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
           const SizedBox(height: 40),
         ],
       ),
-    );
+    ),
+  );
   }
 
   Widget _buildProfileTab() {

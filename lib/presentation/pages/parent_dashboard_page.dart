@@ -111,10 +111,34 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
     );
     if (!mounted) return;
     if (result == 2) {
-      // Navigate to Approvals tab
-      setState(() => _currentIndex = 2);
+      // Navigate to Approvals tab + fresh pending data
+      await _refreshPending();
+      if (mounted) setState(() => _currentIndex = 2);
     } else if (result == 1) {
       _fetchNotifs();
+    }
+  }
+
+  Future<void> _refreshPending() async {
+    try {
+      final pending = await BankingApiService.parentGetPending();
+      if (mounted) {
+        if (pending != null) {
+          final w = (pending['withdrawals'] as List<dynamic>?)?.length ?? 0;
+          final l = (pending['loans'] as List<dynamic>?)?.length ?? 0;
+          final c = (pending['pendingConsents'] as List<dynamic>?)?.length ?? 0;
+          stderr.writeln('[ParentRefresh] pending: withdrawals=$w loans=$l consents=$c');
+          setState(() {
+            _pendingWithdrawals = pending['withdrawals'] as List<dynamic>? ?? [];
+            _pendingLoans = pending['loans'] as List<dynamic>? ?? [];
+            _pendingConsents = pending['pendingConsents'] as List<dynamic>? ?? [];
+          });
+        } else {
+          stderr.writeln('[ParentRefresh] parentGetPending returned null');
+        }
+      }
+    } catch (e) {
+      stderr.writeln('[ParentRefresh] error: $e');
     }
   }
 

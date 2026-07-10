@@ -7,7 +7,8 @@ import '../../firebase_options.dart';
 import '../network/dio_client.dart';
 
 /// Local notifications plugin instance for foreground use.
-final FlutterLocalNotificationsPlugin _localNotifs = FlutterLocalNotificationsPlugin();
+final FlutterLocalNotificationsPlugin _localNotifs =
+    FlutterLocalNotificationsPlugin();
 
 /// Top-level background message handler — MUST be a top-level function
 /// (not a class method) for Firebase to invoke it in a separate isolate.
@@ -35,7 +36,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       showWhen: true,
     );
     const iosDetails = DarwinNotificationDetails();
-    const details = NotificationDetails(android: androidDetails, iOS: iosDetails);
+    const details =
+        NotificationDetails(android: androidDetails, iOS: iosDetails);
     await _localNotifs.show(
       DateTime.now().millisecondsSinceEpoch ~/ 1000,
       title,
@@ -54,10 +56,12 @@ class NotificationService {
 
   /// Register a callback that fires when a push notification arrives in the foreground.
   static void addListener(VoidCallback cb) => _onNotificationReceived.add(cb);
-  static void removeListener(VoidCallback cb) => _onNotificationReceived.remove(cb);
+  static void removeListener(VoidCallback cb) =>
+      _onNotificationReceived.remove(cb);
 
   static Future<void> init() async {
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -77,7 +81,8 @@ class NotificationService {
     if (settings.authorizationStatus == AuthorizationStatus.authorized ||
         settings.authorizationStatus == AuthorizationStatus.provisional) {
       _currentToken = await _firebaseMessaging.getToken();
-      stderr.writeln('[FCM] Token obtained: ${_currentToken?.substring(0, 20)}...');
+      stderr.writeln(
+          '[FCM] Token obtained: ${_currentToken?.substring(0, 20)}...');
       await _registerToken();
 
       FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
@@ -111,7 +116,8 @@ class NotificationService {
 
   static Future<void> registerAfterLogin() async {
     _currentToken = await _firebaseMessaging.getToken();
-    stderr.writeln('[FCM] Re-registering after login: ${_currentToken?.substring(0, 20)}...');
+    stderr.writeln(
+        '[FCM] Re-registering after login: ${_currentToken?.substring(0, 20)}...');
     await _registerToken();
   }
 
@@ -120,20 +126,25 @@ class NotificationService {
     final title = message.notification?.title ?? message.data['title'] ?? '';
     final body = message.notification?.body ?? message.data['body'] ?? '';
     if (title.isNotEmpty || body.isNotEmpty) {
-      await showLocalNotification(title, body, message.data.cast<String, String>());
+      await showLocalNotification(
+          title, body, message.data.cast<String, String>());
     }
     for (final cb in List.of(_onNotificationReceived)) {
-      try { cb(); } catch (_) {}
+      try {
+        cb();
+      } catch (_) {}
     }
   }
 
   static void _onNotificationTap(NotificationResponse response) {}
 
   static Future<void> _handleNotificationOpened(RemoteMessage message) async {
-    stderr.writeln('[FCM] Opened from notification: ${message.notification?.title}');
+    stderr.writeln(
+        '[FCM] Opened from notification: ${message.notification?.title}');
   }
 
-  static Future<void> showLocalNotification(String title, String body, [Map<String, String>? data]) async {
+  static Future<void> showLocalNotification(String title, String body,
+      [Map<String, String>? data]) async {
     const androidDetails = AndroidNotificationDetails(
       'labcoop_notifications',
       'LabCoop Notifications',
@@ -143,7 +154,8 @@ class NotificationService {
       showWhen: true,
     );
     const iosDetails = DarwinNotificationDetails();
-    const details = NotificationDetails(android: androidDetails, iOS: iosDetails);
+    const details =
+        NotificationDetails(android: androidDetails, iOS: iosDetails);
 
     await _localNotifs.show(
       DateTime.now().millisecondsSinceEpoch ~/ 1000,

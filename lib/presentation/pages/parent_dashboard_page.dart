@@ -137,9 +137,11 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
         _limits = results[3] as List<dynamic>? ?? [];
         _childTransactions = results[4] as List<dynamic>? ?? [];
         _pendingDeletions = results[5] as List<dynamic>? ?? [];
-        _notifUnreadCount = (results[6] as Map<String, dynamic>?)?['unreadCount'] as int? ?? 0;
+        final notifData = results[6] as Map<String, dynamic>?;
+        _notifUnreadCount = (notifData?['unreadCount'] as int?) ?? 0;
         _loading = false;
       });
+      stderr.writeln('[ParentLoad] children=${_children.length} withdrawals=${_pendingWithdrawals.length} loans=${_pendingLoans.length} consents=${_pendingConsents.length} deletions=${_pendingDeletions.length} unread=$_notifUnreadCount');
       _initLimitForms();
     } on TimeoutException {
       if (!mounted) return;

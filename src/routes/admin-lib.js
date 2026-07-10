@@ -848,9 +848,13 @@ function reportTable(headers, rows, opts = {}) {
 
 function reportSection(title, items, total, opts = {}) {
   const { color = '#000', totalLabel = 'TOTAL ' + title.toUpperCase() } = opts;
-  const rows = items.map(i => ({
-    cells: [i.name, `<span style="color:${color};font-weight:600">${i.amount || i.balance || 0}</span>`]
-  }));
+  const rows = items.map(i => {
+    const isContra = i.is_contra == 1 || i.is_contra === '1';
+    const label = isContra ? '(Less) ' + i.name : i.name;
+    const val = i.amount != null ? i.amount : (i.balance != null ? i.balance : 0);
+    const display = val < 0 ? '(\u20B1' + Math.abs(val).toFixed(2) + ')' : '\u20B1' + Math.abs(val).toFixed(2);
+    return { cells: [label, `<span style="color:${color};font-weight:600">${display}</span>`] };
+  });
   return `<div class="section-title">${title}</div>
   <table>
     <thead><tr><th>Account</th><th class="num">Amount</th></tr></thead>

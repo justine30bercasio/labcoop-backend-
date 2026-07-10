@@ -5907,8 +5907,13 @@ function bsSection(title, items, total, color) {
       <div class="card-body" style="padding:0">
       <table>
         <tr><th>Account</th><th class="num">Amount</th></tr>
-        ${items.map(r => `<tr><td>${r.name}</td><td class="num mono" style="color:${color};font-weight:600">&#x20B1;${Math.abs(r.balance).toFixed(2)}</td></tr>`).join('')}
-        <tr style="font-weight:700;background:var(--bg2)"><td>TOTAL ${title.toUpperCase()}</td><td class="num mono" style="color:${color}">&#x20B1;${total.toFixed(2)}</td></tr>
+        ${items.map(r => {
+          const isContra = r.is_contra == 1 || r.is_contra === '1';
+          const label = isContra ? '(Less) ' + r.name : r.name;
+          const amt = r.balance < 0 ? '(' + Math.abs(r.balance).toFixed(2) + ')' : Math.abs(r.balance).toFixed(2);
+          return `<tr><td>${label}</td><td class="num mono" style="color:${color};font-weight:600">&#x20B1;${amt}</td></tr>`;
+        }).join('')}
+        <tr style="font-weight:700;background:var(--bg2)"><td>TOTAL ${title.toUpperCase()}</td><td class="num mono" style="color:${color}">&#x20B1;${Math.abs(total).toFixed(2)}</td></tr>
       </table></div>
     </div>`;
 }
@@ -5960,7 +5965,7 @@ router.get('/gl/trial-balance', requireRole(1), asyncHandler(async (req, res) =>
         <td><span class="badge badge-gray" style="font-size:10px">${r.category || '-'}</span></td>
         <td class="num mono">${r.debit ? '&#x20B1;' + r.debit.toFixed(2) : '-'}</td>
         <td class="num mono">${r.credit ? '&#x20B1;' + r.credit.toFixed(2) : '-'}</td>
-        <td class="num mono" style="color:${r.balance >= 0 ? '#16a34a' : '#dc2626'};font-weight:600">&#x20B1;${Math.abs(r.balance).toFixed(2)} ${(r.type === 'asset' || r.type === 'expense') ? (r.balance >= 0 ? 'DR' : 'CR') : (r.balance >= 0 ? 'CR' : 'DR')}</td>
+        <td class="num mono" style="color:${r.balance >= 0 ? '#16a34a' : '#dc2626'};font-weight:600">&#x20B1;${Math.abs(r.balance).toFixed(2)} ${(() => { const _c = r.is_contra == 1 || r.is_contra == '1'; const _d = (r.type === 'asset' || r.type === 'expense') !== _c; return _d ? (r.balance >= 0 ? 'DR' : 'CR') : (r.balance >= 0 ? 'CR' : 'DR'); })()}</td>
       </tr>`).join('')}
       <tr style="font-weight:700;background:var(--bg2)"><td colspan="4">TOTAL</td>
         <td class="num mono">&#x20B1;${totalD.toFixed(2)}</td>
@@ -5973,7 +5978,7 @@ router.get('/gl/trial-balance', requireRole(1), asyncHandler(async (req, res) =>
     const totalD = result.rows.reduce((s, r) => s + r.debit, 0);
     const totalC = result.rows.reduce((s, r) => s + r.credit, 0);
     const rows = result.rows.map(r => ({
-      cells: [r.code, r.name, `<span class="badge badge-${r.type === 'asset' || r.type === 'expense' ? 'red' : r.type === 'liability' || r.type === 'equity' ? 'blue' : 'green'}">${r.type}</span>`, r.category || '-', fmt(r.debit), fmt(r.credit), (r.balance >= 0 ? '' : '-') + fmt(Math.abs(r.balance)), (r.type === 'asset' || r.type === 'expense') ? (r.balance >= 0 ? 'DR' : 'CR') : (r.balance >= 0 ? 'CR' : 'DR')]
+      cells: [r.code, r.name, `<span class="badge badge-${r.type === 'asset' || r.type === 'expense' ? 'red' : r.type === 'liability' || r.type === 'equity' ? 'blue' : 'green'}">${r.type}</span>`, r.category || '-', fmt(r.debit), fmt(r.credit), (r.balance >= 0 ? '' : '-') + fmt(Math.abs(r.balance)), (() => { const _c = r.is_contra == 1 || r.is_contra == '1'; const _d = (r.type === 'asset' || r.type === 'expense') !== _c; return _d ? (r.balance >= 0 ? 'DR' : 'CR') : (r.balance >= 0 ? 'CR' : 'DR'); })()]
     }));
     const printContent = reportStats([
       { label: 'GL Accounts', value: result.rows.length },

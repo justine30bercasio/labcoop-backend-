@@ -50,21 +50,27 @@ async function getTrialBalance(asOf) {
   const onClause = asOf ? 'AND e.created_at <= $' + (params.length + 1) : '';
   if (asOf) params.push(asOf);
   const res = await store.query(
-    `SELECT g.code, g.name, g.type, g.category,
+    `SELECT g.code, g.name, g.type, g.category, g.is_contra,
        COALESCE(SUM(e.debit),0) as total_debit,
        COALESCE(SUM(e.credit),0) as total_credit
      FROM gl_accounts g
      LEFT JOIN gl_entries e ON g.code = e.account_code AND (e.is_voided IS NULL OR e.is_voided = 0) ${onClause}
-     GROUP BY g.code, g.name, g.type, g.category
+     GROUP BY g.code, g.name, g.type, g.category, g.is_contra
      ORDER BY g.code`, params
   );
-  const rows = res.rows.map(r => ({
-    code: r.code, name: r.name, type: r.type, category: r.category || '',
-    debit: Number(r.total_debit), credit: Number(r.total_credit),
-    balance: (r.type === 'asset' || r.type === 'expense')
+  const rows = res.rows.map(r => {
+    const isContra = r.is_contra === 1 || r.is_contra === '1';
+    const isDebitNormal = (r.type === 'asset' || r.type === 'expense') !== isContra;
+    const balance = isDebitNormal
       ? Number(r.total_debit) - Number(r.total_credit)
-      : Number(r.total_credit) - Number(r.total_debit),
-  }));
+      : Number(r.total_credit) - Number(r.total_debit);
+    return {
+      code: r.code, name: r.name, type: r.type, category: r.category || '',
+      is_contra: r.is_contra,
+      debit: Number(r.total_debit), credit: Number(r.total_credit),
+      balance,
+    };
+  });
   const totalD = rows.reduce((s, r) => s + r.debit, 0);
   const totalC = rows.reduce((s, r) => s + r.credit, 0);
   return { rows, totalDebit: totalD, totalCredit: totalC };
@@ -72,11 +78,25 @@ async function getTrialBalance(asOf) {
 
 async function getBalanceSheet(asOf) {
   const { rows } = await getTrialBalance(asOf);
-  const currentAssets = rows.filter(r => r.type === 'asset' && r.category === 'current_asset');
-  const nonCurrentAssets = rows.filter(r => r.type === 'asset' && r.category === 'non_current_asset');
-  const currentLiabilities = rows.filter(r => r.type === 'liability' && r.category === 'current_liability');
-  const nonCurrentLiabilities = rows.filter(r => r.type === 'liability' && r.category === 'non_current_liability');
-  const equity = rows.filter(r => r.type === 'equity');
+
+  // For Balance Sheet, contra accounts should be SUBTRACTED (their balance negated).
+  // E.g., Accumulated Depreciation (contra-asset) reduces Property & Equipment.
+  const adjustedRows = rows.map(r => {
+    const isContra = r.is_contra == 1 || r.is_contra === '1';
+    if (isContra) {
+      // Contra-asset → negate (subtract from assets)
+      // Contra-liability → negate (add to liabilities, rare but correct)
+      // Contra-equity → negate (subtract from equity)
+      return { ...r, balance: -r.balance };
+    }
+    return r;
+  });
+
+  const currentAssets = adjustedRows.filter(r => r.type === 'asset' && r.category === 'current_asset');
+  const nonCurrentAssets = adjustedRows.filter(r => r.type === 'asset' && r.category === 'non_current_asset');
+  const currentLiabilities = adjustedRows.filter(r => r.type === 'liability' && r.category === 'current_liability');
+  const nonCurrentLiabilities = adjustedRows.filter(r => r.type === 'liability' && r.category === 'non_current_liability');
+  const equity = adjustedRows.filter(r => r.type === 'equity');
   // Calculate net income from income/expense accounts not yet closed to retained earnings
   const income = rows.filter(r => r.type === 'income').reduce((s, r) => s + r.balance, 0);
   const expense = rows.filter(r => r.type === 'expense').reduce((s, r) => s + r.balance, 0);
@@ -102,13 +122,13 @@ async function getProfitAndLoss(fromDate, toDate) {
   if (fromDate) { joinConditions.push('e.created_at >= $' + (params.length + 1)); params.push(fromDate); }
   if (toDate) { joinConditions.push('e.created_at <= $' + (params.length + 1)); params.push(toDate); }
   const res = await store.query(
-    `SELECT g.code, g.name, g.type, g.category,
+    `SELECT g.code, g.name, g.type, g.category, g.is_contra,
        COALESCE(SUM(e.debit),0) as total_debit,
        COALESCE(SUM(e.credit),0) as total_credit
      FROM gl_accounts g
      LEFT JOIN gl_entries e ON g.code = e.account_code AND ${joinConditions.join(' AND ')}
      WHERE g.type IN ('income','expense')
-     GROUP BY g.code, g.name, g.type, g.category
+     GROUP BY g.code, g.name, g.type, g.category, g.is_contra
      ORDER BY g.code`, params
   );
   const operatingIncome = [];
@@ -117,10 +137,12 @@ async function getProfitAndLoss(fromDate, toDate) {
   const otherExpense = [];
   let totalOperatingIncome = 0, totalOtherIncome = 0, totalOperatingExpense = 0, totalOtherExpense = 0;
   for (const r of res.rows) {
-    const balance = r.type === 'income'
-      ? Number(r.total_credit) - Number(r.total_debit)
-      : Number(r.total_debit) - Number(r.total_credit);
-    const item = { code: r.code, name: r.name, amount: balance, category: r.category || '' };
+    const isContra = r.is_contra === 1 || r.is_contra === '1';
+    const isDebitNormal = (r.type === 'asset' || r.type === 'expense') !== isContra;
+    const balance = isDebitNormal
+      ? Number(r.total_debit) - Number(r.total_credit)
+      : Number(r.total_credit) - Number(r.total_debit);
+    const item = { code: r.code, name: r.name, amount: balance, category: r.category || '', is_contra: r.is_contra };
     if (r.type === 'income') {
       if (r.category === 'other_income') {
         otherIncome.push(item);

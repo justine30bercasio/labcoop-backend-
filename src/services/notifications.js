@@ -36,6 +36,41 @@ function _getMessaging() {
   return getMessaging(_app);
 }
 
+async function sendParentPush(parentId, title, body, data) {
+  const messaging = _getMessaging();
+  if (!FCM_ENABLED || !messaging) {
+    console.error(`[NOTIFICATION] Parent push skipped — Firebase not configured (target parent: ${parentId})`);
+    return;
+  }
+  const tokens = await store.getParentFcmTokens(parentId);
+  if (!tokens || tokens.length === 0) {
+    console.error(`[NOTIFICATION] No parent FCM tokens for parent ${parentId}`);
+    return;
+  }
+  const message = {
+    data: {
+      title,
+      body,
+      ...(data ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])) : {}),
+    },
+    tokens: tokens.map(t => t.fcm_token),
+  };
+  const response = await messaging.sendEachForMulticast(message);
+  console.log(`Parent push sent to ${parentId}: ${response.successCount} success, ${response.failureCount} failures`);
+  let firstError = null;
+  for (let i = 0; i < response.responses.length; i++) {
+    const resp = response.responses[i];
+    if (!resp.success && resp.error) {
+      console.error(`Parent FCM error for token ${tokens[i]?.fcm_token?.slice(0, 20)}...:`, resp.error.message);
+      if (resp.error.code === 'messaging/registration-token-not-registered') {
+        // Parent FCM tokens don't have an unregister method yet, just log
+        console.warn(`Parent FCM token ${tokens[i]?.fcm_token?.slice(0, 20)}... is no longer registered`);
+      }
+      if (!firstError) firstError = resp.error.message;
+    }
+  }
+}
+
 async function sendPush(accountId, title, body, data) {
   const messaging = _getMessaging();
   if (!FCM_ENABLED || !messaging) {
@@ -199,6 +234,7 @@ function getDiagnostics() {
 
 module.exports = {
   sendPush,
+  sendParentPush,
   notifyWithdrawalApproved,
   notifyWithdrawalRejected,
   notifyWithdrawalPaid,

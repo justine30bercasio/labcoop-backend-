@@ -5,6 +5,7 @@ const { store } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const { generateAmortizationSchedule } = require('../services/interest');
 const { requireConsent } = require('../middleware/auth');
+const notifs = require('../services/notifications');
 
 const router = express.Router();
 
@@ -194,6 +195,10 @@ router.post('/withdrawals/request',
         body: `Your child requested a withdrawal of ₱${Number(amount).toFixed(2)}.`,
         type: 'withdrawal_request',
       }).catch(() => {});
+      // Send FCM push to parent
+      try {
+        await notifs.sendParentPush(link.parent_id, 'Withdrawal Request', `Your child requested a withdrawal of ₱${Number(amount).toFixed(2)}.`, { type: 'withdrawal_request' });
+      } catch (_) {}
     }
     res.status(201).json(request);
   })

@@ -428,6 +428,10 @@ router.post('/link-child', parentAuth, asyncHandler(async (req, res) => {
         type: 'consent_request',
       });
       console.log(`[LINK-CHILD] Created notification for existing pending consent (child=${child.account_id})`);
+      // Also send FCM push to parent
+      try {
+        await notifs.sendParentPush(req.parentId, `${child.child_name} needs your consent`, 'Review and approve so they can submit KYC documents.', { type: 'consent_request', childAccountId: child.account_id });
+      } catch (_) {}
     }
   } catch (e) {
     console.error('Failed to check for pending consent on link:', e);
@@ -567,6 +571,14 @@ router.post('/notifications/:notifId/read', parentAuth, asyncHandler(async (req,
 router.post('/notifications/read-all', parentAuth, asyncHandler(async (req, res) => {
   await store.markAllParentNotificationsRead(req.parentId);
   res.json({ ok: true });
+}));
+
+// ── Parent FCM Token Registration ──
+router.post('/register-fcm-token', parentAuth, asyncHandler(async (req, res) => {
+  const { fcmToken, devicePlatform } = req.body;
+  if (!fcmToken) return res.status(400).json({ message: 'fcmToken is required' });
+  await store.registerParentFcmToken(req.parentId, fcmToken, devicePlatform || '');
+  res.json({ message: 'Parent FCM token registered' });
 }));
 
 // ── Children Transactions ──

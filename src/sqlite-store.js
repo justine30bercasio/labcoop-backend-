@@ -24,6 +24,7 @@ function getDb() {
     try { db.exec("ALTER TABLE admin_users ADD COLUMN email TEXT DEFAULT ''"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS online_deposits (deposit_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, amount DECIMAL(12,2) NOT NULL, reference_number VARCHAR(255) DEFAULT '', sender_name VARCHAR(255) DEFAULT '', payment_method VARCHAR(50) DEFAULT 'gcash', status VARCHAR(20) DEFAULT 'pending', admin_notes TEXT DEFAULT '', created_at TEXT, resolved_at TEXT)"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS fcm_tokens (token_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, fcm_token TEXT NOT NULL, device_platform VARCHAR(20) DEFAULT '', created_at TEXT, updated_at TEXT)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS parent_fcm_tokens (token_id TEXT PRIMARY KEY, parent_id TEXT NOT NULL, fcm_token TEXT NOT NULL, device_platform VARCHAR(20) DEFAULT '', created_at TEXT, updated_at TEXT)"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '')"); } catch (_) {}
     try { db.exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('gcash_number', '09171234567')"); } catch (_) {}
     try { db.exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('gcash_name', 'LabCoop Savings')"); } catch (_) {}
@@ -897,6 +898,24 @@ function unregisterFcmToken(accountId, fcmToken) {
   getDb().prepare('DELETE FROM fcm_tokens WHERE account_id = ? AND fcm_token = ?').run(accountId, fcmToken);
 }
 
+// ── Parent FCM Tokens ──
+function getParentFcmTokens(parentId) {
+  return getDb().prepare('SELECT * FROM parent_fcm_tokens WHERE parent_id = ?').all(parentId);
+}
+
+function registerParentFcmToken(parentId, fcmToken, devicePlatform) {
+  const existing = getDb().prepare('SELECT * FROM parent_fcm_tokens WHERE parent_id = ? AND fcm_token = ?').get(parentId, fcmToken);
+  if (existing) {
+    getDb().prepare('UPDATE parent_fcm_tokens SET updated_at = ? WHERE token_id = ?').run(new Date().toISOString(), existing.token_id);
+    return existing;
+  }
+  const token_id = uuidv4();
+  getDb().prepare('INSERT INTO parent_fcm_tokens (token_id, parent_id, fcm_token, device_platform, created_at, updated_at) VALUES (?,?,?,?,?,?)').run(
+    token_id, parentId, fcmToken, devicePlatform || '', new Date().toISOString(), new Date().toISOString()
+  );
+  return { token_id, parent_id: parentId, fcm_token: fcmToken, device_platform: devicePlatform || '' };
+}
+
 function query(sql, params) {
   const db = getDb();
   const adaptedSql = sql.replace(/\$(\d+)/g, '?');
@@ -1154,4 +1173,7 @@ module.exports = {
   getParentUnreadCount,
   markParentNotificationRead,
   markAllParentNotificationsRead,
+  // ── Parent FCM Tokens ──
+  getParentFcmTokens,
+  registerParentFcmToken,
 };

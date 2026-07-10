@@ -138,6 +138,10 @@ router.post('/request-consent', authMiddleware, asyncHandler(async (req, res) =>
           body: 'Review and approve so they can submit KYC documents.',
           type: 'consent_request',
         });
+        // Send FCM push to parent
+        try {
+          await notifs.sendParentPush(link.parent_id, `${account.child_name} needs your consent`, 'Review and approve so they can submit KYC documents.', { type: 'consent_request', childAccountId: req.accountId });
+        } catch (_) {}
         notifiedCount++;
       } catch (e) {
         console.error('Failed to create parent notification:', e);

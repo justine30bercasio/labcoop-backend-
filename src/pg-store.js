@@ -438,6 +438,14 @@ class PgStore {
         created_at TEXT,
         updated_at TEXT
       );
+      CREATE TABLE IF NOT EXISTS parent_fcm_tokens (
+        token_id TEXT PRIMARY KEY,
+        parent_id TEXT NOT NULL REFERENCES parents(parent_id) ON DELETE CASCADE,
+        fcm_token TEXT NOT NULL,
+        device_platform VARCHAR(20) DEFAULT '',
+        created_at TEXT,
+        updated_at TEXT
+      );
       CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL DEFAULT ''
@@ -1522,6 +1530,39 @@ class PgStore {
       'DELETE FROM fcm_tokens WHERE account_id = $1 AND fcm_token = $2',
       [accountId, fcmToken]
     );
+  }
+
+  // ── Parent FCM Tokens ──
+  async getParentFcmTokens(parentId) {
+    const res = await this.query('SELECT * FROM parent_fcm_tokens WHERE parent_id = $1', [parentId]);
+    return res.rows;
+  }
+
+  async registerParentFcmToken(parentId, fcmToken, devicePlatform) {
+    const existing = await this.query(
+      'SELECT * FROM parent_fcm_tokens WHERE parent_id = $1 AND fcm_token = $2',
+      [parentId, fcmToken]
+    );
+    if (existing.rows.length > 0) {
+      await this.query(
+        'UPDATE parent_fcm_tokens SET updated_at = $1 WHERE token_id = $2',
+        [new Date().toISOString(), existing.rows[0].token_id]
+      );
+      return existing.rows[0];
+    }
+    const token = {
+      token_id: uuidv4(),
+      parent_id: parentId,
+      fcm_token: fcmToken,
+      device_platform: devicePlatform || '',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    await this.query(
+      'INSERT INTO parent_fcm_tokens (token_id, parent_id, fcm_token, device_platform, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6)',
+      [token.token_id, token.parent_id, token.fcm_token, token.device_platform, token.created_at, token.updated_at]
+    );
+    return token;
   }
 
   async assignOrNumber(type) {

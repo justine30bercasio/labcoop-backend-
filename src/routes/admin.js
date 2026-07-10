@@ -6109,11 +6109,11 @@ router.get('/gl/profit-and-loss', requireRole(1), asyncHandler(async (req, res) 
 
   // Debug: count actual gl_entries in date range
   const debugCount = await store.query(
-    "SELECT COUNT(*) as cnt FROM gl_entries e JOIN gl_accounts g ON e.account_code = g.code WHERE g.type IN ('income','expense') AND (e.is_voided IS NULL OR e.is_voided = 0) AND e.created_at >= $1 AND e.created_at <= $2",
+    "SELECT COUNT(*) as cnt FROM gl_entries e JOIN gl_accounts g ON e.account_code = g.code WHERE g.type IN ('income','expense') AND (e.is_voided IS NULL OR e.is_voided = 0) AND DATE(e.created_at) >= $1 AND DATE(e.created_at) <= $2",
     [from, to]
   );
   const debugTotal = await store.query(
-    "SELECT COALESCE(SUM(CASE WHEN g.type='income' THEN e.credit - e.debit ELSE 0 END),0) as inc, COALESCE(SUM(CASE WHEN g.type='expense' THEN e.debit - e.credit ELSE 0 END),0) as exp FROM gl_entries e JOIN gl_accounts g ON e.account_code = g.code WHERE (e.is_voided IS NULL OR e.is_voided = 0) AND e.created_at >= $1 AND e.created_at <= $2",
+    "SELECT COALESCE(SUM(CASE WHEN g.type='income' THEN e.credit - e.debit ELSE 0 END),0) as inc, COALESCE(SUM(CASE WHEN g.type='expense' THEN e.debit - e.credit ELSE 0 END),0) as exp FROM gl_entries e JOIN gl_accounts g ON e.account_code = g.code WHERE (e.is_voided IS NULL OR e.is_voided = 0) AND DATE(e.created_at) >= $1 AND DATE(e.created_at) <= $2",
     [from, to]
   );
   const debugHtml = `<div class="card" style="background:#fff3cd;border:1px solid #ffc107;margin-bottom:12px">

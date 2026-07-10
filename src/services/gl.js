@@ -47,7 +47,7 @@ async function postDoubleEntry(transactionId, entries, opts = {}) {
 
 async function getTrialBalance(asOf) {
   const params = [];
-  const onClause = asOf ? 'AND e.created_at <= $' + (params.length + 1) : '';
+  const onClause = asOf ? 'AND DATE(e.created_at) <= $' + (params.length + 1) : '';
   if (asOf) params.push(asOf);
   const res = await store.query(
     `SELECT g.code, g.name, g.type, g.category, g.is_contra,
@@ -119,8 +119,8 @@ async function getBalanceSheet(asOf) {
 async function getProfitAndLoss(fromDate, toDate) {
   const params = [];
   const joinConditions = ["(e.is_voided IS NULL OR e.is_voided = 0)"];
-  if (fromDate) { joinConditions.push('e.created_at >= $' + (params.length + 1)); params.push(fromDate); }
-  if (toDate) { joinConditions.push('e.created_at <= $' + (params.length + 1)); params.push(toDate); }
+  if (fromDate) { joinConditions.push('DATE(e.created_at) >= $' + (params.length + 1)); params.push(fromDate); }
+  if (toDate) { joinConditions.push('DATE(e.created_at) <= $' + (params.length + 1)); params.push(toDate); }
   const res = await store.query(
     `SELECT g.code, g.name, g.type, g.category, g.is_contra,
        COALESCE(SUM(e.debit),0) as total_debit,
@@ -184,8 +184,8 @@ async function getAccountLedger(accountCode, limit = 100, offset = 0) {
 async function getGeneralJournal(fromDate, toDate) {
   const params = [];
   const where = [];
-  if (fromDate) { where.push('e.created_at >= $' + (params.length + 1)); params.push(fromDate); }
-  if (toDate) { where.push('e.created_at <= $' + (params.length + 1)); params.push(toDate); }
+  if (fromDate) { where.push('DATE(e.created_at) >= $' + (params.length + 1)); params.push(fromDate); }
+  if (toDate) { where.push('DATE(e.created_at) <= $' + (params.length + 1)); params.push(toDate); }
   const res = await store.query(
     `SELECT e.entry_id, e.transaction_id, e.account_code, g.name as account_name,
        e.debit, e.credit, e.description, e.reference_type, e.reference_number,
@@ -203,8 +203,8 @@ async function getSubsidiaryLedger(referenceType, accountCode, fromDate, toDate)
   const where = [];
   if (referenceType) { where.push('e.reference_type = $' + (params.length + 1)); params.push(referenceType); }
   if (accountCode) { where.push('e.account_code = $' + (params.length + 1)); params.push(accountCode); }
-  if (fromDate) { where.push('e.created_at >= $' + (params.length + 1)); params.push(fromDate); }
-  if (toDate) { where.push('e.created_at <= $' + (params.length + 1)); params.push(toDate); }
+  if (fromDate) { where.push('DATE(e.created_at) >= $' + (params.length + 1)); params.push(fromDate); }
+  if (toDate) { where.push('DATE(e.created_at) <= $' + (params.length + 1)); params.push(toDate); }
   const res = await store.query(
     `SELECT e.*, g.name as account_name FROM gl_entries e
      JOIN gl_accounts g ON e.account_code = g.code

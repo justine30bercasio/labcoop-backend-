@@ -646,6 +646,14 @@ const adminAuthRouter = require('./routes/admin-auth');
 const adminRouter = require('./routes/admin');
 const microbankRouter = require('./routes/admin-microbank');
 const advancedRouter = require('./routes/admin-advanced');
+const adminLib = require('./routes/admin-lib');
+// Set role level for sidebar filtering
+app.use('/admin', (req, res, next) => {
+  const roleMap = adminLib.ROLE_LEVELS;
+  const level = roleMap && req.session && req.session.adminRole ? (roleMap[req.session.adminRole] ?? 4) : 4;
+  adminLib.setRoleLevel(level);
+  next();
+});
 app.use('/admin', adminAuthRouter);
 app.use('/admin', csrfProtection, adminRouter);
 app.use('/admin', csrfProtection, microbankRouter);

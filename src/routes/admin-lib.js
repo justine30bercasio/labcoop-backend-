@@ -1,97 +1,112 @@
+const ROLE_LEVELS = { super_admin: 4, manager: 3, teller: 2, auditor: 1 };
+let currentRoleLevel = 4; // default: show all
+
+function setRoleLevel(level) { currentRoleLevel = level; }
+
 function layout(title, active, content, opts = {}) {
   const { toast, counts, subtitle, headerActions } = opts;
 
    const menuGroups = [
-    { icon: '<i class="fas fa-chart-pie"></i>', label: 'Dashboard', key: 'dashboard', href: '/admin' },
-    { icon: '<i class="fas fa-users"></i>', label: 'Members', key: 'members', children: [
-      { icon: '<i class="fas fa-user"></i>', label: 'Accounts', href: '/admin/accounts', key: 'accounts' },
-      { icon: '<i class="fas fa-passport"></i>', label: 'KYC', href: '/admin/kyc', key: 'kyc' },
-      { icon: '<i class="fas fa-restroom"></i>', label: 'Demographics', href: '/admin/member-demographics', key: 'member-demographics' },
-      { icon: '<i class="fas fa-building"></i>', label: 'Branches', href: '/admin/branches', key: 'branches' },
+    { minRole: 1, icon: '<i class="fas fa-chart-pie"></i>', label: 'Dashboard', key: 'dashboard', href: '/admin' },
+    { minRole: 1, icon: '<i class="fas fa-users"></i>', label: 'Members', key: 'members', children: [
+      { minRole: 1, icon: '<i class="fas fa-user"></i>', label: 'Accounts', href: '/admin/accounts', key: 'accounts' },
+      { minRole: 1, icon: '<i class="fas fa-passport"></i>', label: 'KYC', href: '/admin/kyc', key: 'kyc' },
+      { minRole: 1, icon: '<i class="fas fa-restroom"></i>', label: 'Demographics', href: '/admin/member-demographics', key: 'member-demographics' },
+      { minRole: 3, icon: '<i class="fas fa-building"></i>', label: 'Branches', href: '/admin/branches', key: 'branches' },
     ]},
-    { icon: '<i class="fas fa-piggy-bank"></i>', label: 'Savings & Deposits', key: 'deposits', children: [
-      { icon: '<i class="fas fa-piggy-bank"></i>', label: 'Savings Products', href: '/admin/savings-products', key: 'savings-products' },
-      { icon: '<i class="fas fa-clock"></i>', label: 'Term Deposits', href: '/admin/term-deposits', key: 'term-deposits' },
-      { icon: '<i class="fas fa-coins"></i>', label: 'Share Capital', href: '/admin/share-capital', key: 'share-capital' },
-      { icon: '<i class="fas fa-chart-line"></i>', label: 'Dividends', href: '/admin/dividends', key: 'dividends' },
-      { icon: '<i class="fas fa-money-bill-trend-up"></i>', label: 'Overdrafts', href: '/admin/overdrafts', key: 'overdrafts' },
-      { icon: '<i class="fas fa-gear"></i>', label: 'Savings Settings', href: '/admin/savings-settings', key: 'savings-settings' },
+    { minRole: 1, icon: '<i class="fas fa-piggy-bank"></i>', label: 'Savings & Deposits', key: 'deposits', children: [
+      { minRole: 3, icon: '<i class="fas fa-piggy-bank"></i>', label: 'Savings Products', href: '/admin/savings-products', key: 'savings-products' },
+      { minRole: 2, icon: '<i class="fas fa-clock"></i>', label: 'Term Deposits', href: '/admin/term-deposits', key: 'term-deposits' },
+      { minRole: 2, icon: '<i class="fas fa-coins"></i>', label: 'Share Capital', href: '/admin/share-capital', key: 'share-capital' },
+      { minRole: 3, icon: '<i class="fas fa-chart-line"></i>', label: 'Dividends', href: '/admin/dividends', key: 'dividends' },
+      { minRole: 2, icon: '<i class="fas fa-money-bill-trend-up"></i>', label: 'Overdrafts', href: '/admin/overdrafts', key: 'overdrafts' },
+      { minRole: 3, icon: '<i class="fas fa-gear"></i>', label: 'Savings Settings', href: '/admin/savings-settings', key: 'savings-settings' },
     ]},
-    { icon: '<i class="fas fa-sack-dollar"></i>', label: 'Loans', key: 'loans-group', children: [
-      { icon: '<i class="fas fa-sack-dollar"></i>', label: 'Loans', href: '/admin/loans', key: 'loans' },
-      { icon: '<i class="fas fa-hand-holding-hand"></i>', label: 'Loan Products', href: '/admin/loan-products', key: 'loan-products' },
-      { icon: '<i class="fas fa-hand-holding-hand"></i>', label: 'Collateral', href: '/admin/collateral', key: 'collateral' },
-      { icon: '<i class="fas fa-user-check"></i>', label: 'Guarantors', href: '/admin/guarantors', key: 'guarantors' },
-      { icon: '<i class="fas fa-chart-simple"></i>', label: 'Asset Classification', href: '/admin/asset-classification', key: 'asset-classification' },
-      { icon: '<i class="fas fa-clock"></i>', label: 'Late Fees', href: '/admin/late-fees', key: 'late-fees' },
-      { icon: '<i class="fas fa-star"></i>', label: 'Credit Scoring', href: '/admin/credit-scores', key: 'credit-scores' },
-      { icon: '<i class="fas fa-arrows-rotate"></i>', label: 'Loan Restructure', href: '/admin/loan-restructure', key: 'loan-restructure' },
-      { icon: '<i class="fas fa-people-group"></i>', label: 'Lending Groups', href: '/admin/groups', key: 'groups' },
+    { minRole: 1, icon: '<i class="fas fa-sack-dollar"></i>', label: 'Loans', key: 'loans-group', children: [
+      { minRole: 1, icon: '<i class="fas fa-sack-dollar"></i>', label: 'Loans', href: '/admin/loans', key: 'loans' },
+      { minRole: 3, icon: '<i class="fas fa-hand-holding-hand"></i>', label: 'Loan Products', href: '/admin/loan-products', key: 'loan-products' },
+      { minRole: 2, icon: '<i class="fas fa-hand-holding-hand"></i>', label: 'Collateral', href: '/admin/collateral', key: 'collateral' },
+      { minRole: 2, icon: '<i class="fas fa-user-check"></i>', label: 'Guarantors', href: '/admin/guarantors', key: 'guarantors' },
+      { minRole: 2, icon: '<i class="fas fa-chart-simple"></i>', label: 'Asset Classification', href: '/admin/asset-classification', key: 'asset-classification' },
+      { minRole: 2, icon: '<i class="fas fa-clock"></i>', label: 'Late Fees', href: '/admin/late-fees', key: 'late-fees' },
+      { minRole: 2, icon: '<i class="fas fa-star"></i>', label: 'Credit Scoring', href: '/admin/credit-scores', key: 'credit-scores' },
+      { minRole: 3, icon: '<i class="fas fa-arrows-rotate"></i>', label: 'Loan Restructure', href: '/admin/loan-restructure', key: 'loan-restructure' },
+      { minRole: 2, icon: '<i class="fas fa-people-group"></i>', label: 'Lending Groups', href: '/admin/groups', key: 'groups' },
     ]},
-    { icon: '<i class="fas fa-hand-holding-dollar"></i>', label: 'Teller & Payments', key: 'teller-group', children: [
-      { icon: '<i class="fas fa-hand-holding-dollar"></i>', label: 'Teller Counter', href: '/admin/teller', key: 'teller' },
-      { icon: '<i class="fas fa-cash-register"></i>', label: 'Teller Cash', href: '/admin/teller-cash', key: 'teller-cash' },
-      { icon: '<i class="fas fa-money-check"></i>', label: 'Checks', href: '/admin/checks', key: 'checks' },
-      { icon: '<i class="fas fa-book"></i>', label: 'Checkbooks', href: '/admin/checkbooks', key: 'checkbooks' },
-      { icon: '<i class="fas fa-file-invoice"></i>', label: 'Demand Drafts', href: '/admin/demand-drafts', key: 'demand-drafts' },
-      { icon: '<i class="fas fa-money-bill-transfer"></i>', label: 'Withdrawals', href: '/admin/withdrawal-requests', key: 'withdrawal-requests' },
+    { minRole: 2, icon: '<i class="fas fa-hand-holding-dollar"></i>', label: 'Teller & Payments', key: 'teller-group', children: [
+      { minRole: 2, icon: '<i class="fas fa-hand-holding-dollar"></i>', label: 'Teller Counter', href: '/admin/teller', key: 'teller' },
+      { minRole: 2, icon: '<i class="fas fa-cash-register"></i>', label: 'Teller Cash', href: '/admin/teller-cash', key: 'teller-cash' },
+      { minRole: 2, icon: '<i class="fas fa-money-check"></i>', label: 'Checks', href: '/admin/checks', key: 'checks' },
+      { minRole: 2, icon: '<i class="fas fa-book"></i>', label: 'Checkbooks', href: '/admin/checkbooks', key: 'checkbooks' },
+      { minRole: 2, icon: '<i class="fas fa-file-invoice"></i>', label: 'Demand Drafts', href: '/admin/demand-drafts', key: 'demand-drafts' },
+      { minRole: 2, icon: '<i class="fas fa-money-bill-transfer"></i>', label: 'Withdrawals', href: '/admin/withdrawal-requests', key: 'withdrawal-requests' },
     ]},
-    { icon: '<i class="fas fa-chart-bar"></i>', label: 'Reports', key: 'reports', children: [
-      { icon: '<i class="fas fa-coins"></i>', label: 'Deposit Summary', href: '/admin/reports/deposit-summary', key: 'deposit-summary' },
-      { icon: '<i class="fas fa-calendar-day"></i>', label: 'Daily Collection', href: '/admin/reports/daily-collection', key: 'daily-collection' },
-      { icon: '<i class="fas fa-user"></i>', label: 'Member Ledger', href: '/admin/reports/member-ledger', key: 'member-ledger' },
-      { icon: '<i class="fas fa-clock"></i>', label: 'Loan Aging', href: '/admin/reports/loan-aging', key: 'loan-aging' },
-      { icon: '<i class="fas fa-chart-pie"></i>', label: 'Loan Portfolio', href: '/admin/reports/loan-portfolio', key: 'loan-portfolio' },
-      { icon: '<i class="fas fa-file-lines"></i>', label: 'Audit Reports', href: '/admin/audit', key: 'audit' },
+    { minRole: 1, icon: '<i class="fas fa-chart-bar"></i>', label: 'Reports', key: 'reports', children: [
+      { minRole: 2, icon: '<i class="fas fa-coins"></i>', label: 'Deposit Summary', href: '/admin/reports/deposit-summary', key: 'deposit-summary' },
+      { minRole: 2, icon: '<i class="fas fa-calendar-day"></i>', label: 'Daily Collection', href: '/admin/reports/daily-collection', key: 'daily-collection' },
+      { minRole: 2, icon: '<i class="fas fa-user"></i>', label: 'Member Ledger', href: '/admin/reports/member-ledger', key: 'member-ledger' },
+      { minRole: 2, icon: '<i class="fas fa-clock"></i>', label: 'Loan Aging', href: '/admin/reports/loan-aging', key: 'loan-aging' },
+      { minRole: 2, icon: '<i class="fas fa-chart-pie"></i>', label: 'Loan Portfolio', href: '/admin/reports/loan-portfolio', key: 'loan-portfolio' },
+      { minRole: 1, icon: '<i class="fas fa-file-lines"></i>', label: 'Audit Reports', href: '/admin/audit', key: 'audit' },
     ]},
-    { icon: '<i class="fas fa-scale-balanced"></i>', label: 'Accounting', key: 'accounting', children: [
-      { icon: '<i class="fas fa-list"></i>', label: 'Chart of Accounts', href: '/admin/gl/accounts', key: 'gl-accounts' },
-      { icon: '<i class="fas fa-scale-balanced"></i>', label: 'Trial Balance', href: '/admin/gl/trial-balance', key: 'gl-trial' },
-      { icon: '<i class="fas fa-file-invoice"></i>', label: 'Balance Sheet', href: '/admin/gl/balance-sheet', key: 'gl-bsheet' },
-      { icon: '<i class="fas fa-chart-line"></i>', label: 'Profit & Loss', href: '/admin/gl/profit-and-loss', key: 'gl-pnl' },
-      { icon: '<i class="fas fa-book"></i>', label: 'General Ledger', href: '/admin/gl/ledger', key: 'gl-ledger' },
-      { icon: '<i class="fas fa-book-open"></i>', label: 'General Journal', href: '/admin/gl/journal', key: 'gl-journal' },
-      { icon: '<i class="fas fa-money-bill-wave"></i>', label: 'Cash Flow', href: '/admin/cash-flow', key: 'cash-flow' },
-      { icon: '<i class="fas fa-calculator"></i>', label: 'Withholding Tax', href: '/admin/withholding-tax', key: 'withholding-tax' },
-      { icon: '<i class="fas fa-chart-bar"></i>', label: 'Budget vs Actual', href: '/admin/budget', key: 'budget' },
-      { icon: '<i class="fas fa-clipboard-check"></i>', label: 'Regulatory', href: '/admin/regulatory-reports', key: 'regulatory-reports' },
+    { minRole: 1, icon: '<i class="fas fa-scale-balanced"></i>', label: 'Accounting', key: 'accounting', children: [
+      { minRole: 1, icon: '<i class="fas fa-list"></i>', label: 'Chart of Accounts', href: '/admin/gl/accounts', key: 'gl-accounts' },
+      { minRole: 1, icon: '<i class="fas fa-scale-balanced"></i>', label: 'Trial Balance', href: '/admin/gl/trial-balance', key: 'gl-trial' },
+      { minRole: 1, icon: '<i class="fas fa-file-invoice"></i>', label: 'Balance Sheet', href: '/admin/gl/balance-sheet', key: 'gl-bsheet' },
+      { minRole: 1, icon: '<i class="fas fa-chart-line"></i>', label: 'Profit & Loss', href: '/admin/gl/profit-and-loss', key: 'gl-pnl' },
+      { minRole: 1, icon: '<i class="fas fa-book"></i>', label: 'General Ledger', href: '/admin/gl/ledger', key: 'gl-ledger' },
+      { minRole: 1, icon: '<i class="fas fa-book-open"></i>', label: 'General Journal', href: '/admin/gl/journal', key: 'gl-journal' },
+      { minRole: 1, icon: '<i class="fas fa-money-bill-wave"></i>', label: 'Cash Flow', href: '/admin/cash-flow', key: 'cash-flow' },
+      { minRole: 3, icon: '<i class="fas fa-calculator"></i>', label: 'Withholding Tax', href: '/admin/withholding-tax', key: 'withholding-tax' },
+      { minRole: 3, icon: '<i class="fas fa-chart-bar"></i>', label: 'Budget vs Actual', href: '/admin/budget', key: 'budget' },
+      { minRole: 1, icon: '<i class="fas fa-clipboard-check"></i>', label: 'Regulatory', href: '/admin/regulatory-reports', key: 'regulatory-reports' },
     ]},
-    { icon: '<i class="fas fa-arrows-spin"></i>', label: 'Operations', key: 'operations', children: [
-      { icon: '<i class="fas fa-arrows-spin"></i>', label: 'Transactions', href: '/admin/transactions', key: 'transactions' },
-      { icon: '<i class="fas fa-calendar-check"></i>', label: 'End of Day', href: '/admin/eod', key: 'eod' },
-      { icon: '<i class="fas fa-calendar-alt"></i>', label: 'End of Month', href: '/admin/eom', key: 'eom' },
-      { icon: '<i class="fas fa-calendar-alt"></i>', label: 'Year-End', href: '/admin/eoy', key: 'eoy' },
-      { icon: '<i class="fas fa-file-invoice"></i>', label: 'Statements', href: '/admin/statements', key: 'statements' },
-      { icon: '<i class="fas fa-door-closed"></i>', label: 'Account Closure', href: '/admin/account-closure', key: 'account-closure' },
-      { icon: '<i class="fas fa-tags"></i>', label: 'Fees', href: '/admin/fees', key: 'fees' },
-      { icon: '<i class="fas fa-calendar-lock"></i>', label: 'Accounting Periods', href: '/admin/accounting-periods', key: 'accounting-periods' },
+    { minRole: 1, icon: '<i class="fas fa-arrows-spin"></i>', label: 'Operations', key: 'operations', children: [
+      { minRole: 1, icon: '<i class="fas fa-arrows-spin"></i>', label: 'Transactions', href: '/admin/transactions', key: 'transactions' },
+      { minRole: 1, icon: '<i class="fas fa-calendar-check"></i>', label: 'End of Day', href: '/admin/eod', key: 'eod' },
+      { minRole: 1, icon: '<i class="fas fa-calendar-alt"></i>', label: 'End of Month', href: '/admin/eom', key: 'eom' },
+      { minRole: 1, icon: '<i class="fas fa-calendar-alt"></i>', label: 'Year-End', href: '/admin/eoy', key: 'eoy' },
+      { minRole: 1, icon: '<i class="fas fa-file-invoice"></i>', label: 'Statements', href: '/admin/statements', key: 'statements' },
+      { minRole: 3, icon: '<i class="fas fa-door-closed"></i>', label: 'Account Closure', href: '/admin/account-closure', key: 'account-closure' },
+      { minRole: 3, icon: '<i class="fas fa-tags"></i>', label: 'Fees', href: '/admin/fees', key: 'fees' },
+      { minRole: 3, icon: '<i class="fas fa-calendar-lock"></i>', label: 'Accounting Periods', href: '/admin/accounting-periods', key: 'accounting-periods' },
     ]},
-    { icon: '<i class="fas fa-gamepad"></i>', label: 'Gamification', key: 'gamification', children: [
-      { icon: '<i class="fas fa-store"></i>', label: 'Shop', href: '/admin/shop', key: 'shop' },
-      { icon: '<i class="fas fa-circle-question"></i>', label: 'Quiz', href: '/admin/quiz', key: 'quiz' },
-      { icon: '<i class="fas fa-bullseye"></i>', label: 'Goals', href: '/admin/goals', key: 'goals' },
-      { icon: '<i class="fas fa-medal"></i>', label: 'Badges', href: '/admin/badges', key: 'badges' },
-      { icon: '<i class="fas fa-users"></i>', label: 'Board of Directors', href: '/admin/board', key: 'board' },
+    { minRole: 1, icon: '<i class="fas fa-gamepad"></i>', label: 'Gamification', key: 'gamification', children: [
+      { minRole: 1, icon: '<i class="fas fa-store"></i>', label: 'Shop', href: '/admin/shop', key: 'shop' },
+      { minRole: 1, icon: '<i class="fas fa-circle-question"></i>', label: 'Quiz', href: '/admin/quiz', key: 'quiz' },
+      { minRole: 1, icon: '<i class="fas fa-bullseye"></i>', label: 'Goals', href: '/admin/goals', key: 'goals' },
+      { minRole: 1, icon: '<i class="fas fa-medal"></i>', label: 'Badges', href: '/admin/badges', key: 'badges' },
+      { minRole: 1, icon: '<i class="fas fa-users"></i>', label: 'Board of Directors', href: '/admin/board', key: 'board' },
     ]},
-    { icon: '<i class="fas fa-clipboard-list"></i>', label: 'Administration', key: 'admin-group', children: [
-      { icon: '<i class="fas fa-user-shield"></i>', label: 'Admin Users', href: '/admin/users', key: 'users' },
-      { icon: '<i class="fas fa-clipboard-list"></i>', label: 'Audit Log', href: '/admin/audit-log', key: 'audit-log' },
-      { icon: '<i class="fas fa-list"></i>', label: 'Enhanced Audit', href: '/admin/enhanced-audit', key: 'enhanced-audit' },
-      { icon: '<i class="fas fa-file-pen"></i>', label: 'Printable Forms', href: '/admin/forms', key: 'forms' },
-      { icon: '<i class="fas fa-calendar-day"></i>', label: 'Holidays', href: '/admin/holidays', key: 'holidays' },
-      { icon: '<i class="fas fa-percent"></i>', label: 'Taxes', href: '/admin/taxes', key: 'taxes' },
-      { icon: '<i class="fas fa-bell"></i>', label: 'Notifications', href: '/admin/notifications-log', key: 'notifications-log' },
-      { icon: '<i class="fas fa-globe"></i>', label: 'Multi-Currency', href: '/admin/currencies', key: 'currencies' },
-      { icon: '<i class="fas fa-check-double"></i>', label: 'Pending Approvals', href: '/admin/pending-approvals', key: 'pending-approvals' },
-      { icon: '<i class="fas fa-family"></i>', label: 'Parent Management', href: '/admin/parents', key: 'parents' },
-      { icon: '<i class="fas fa-database"></i>', label: 'Backup & Restore', href: '/admin/backup', key: 'backup' },
-      { icon: '<i class="fas fa-gear"></i>', label: 'Settings', href: '/admin/settings', key: 'settings' },
+    { minRole: 1, icon: '<i class="fas fa-clipboard-list"></i>', label: 'Administration', key: 'admin-group', children: [
+      { minRole: 4, icon: '<i class="fas fa-user-shield"></i>', label: 'Admin Users', href: '/admin/users', key: 'users' },
+      { minRole: 1, icon: '<i class="fas fa-clipboard-list"></i>', label: 'Audit Log', href: '/admin/audit-log', key: 'audit-log' },
+      { minRole: 3, icon: '<i class="fas fa-list"></i>', label: 'Enhanced Audit', href: '/admin/enhanced-audit', key: 'enhanced-audit' },
+      { minRole: 1, icon: '<i class="fas fa-file-pen"></i>', label: 'Printable Forms', href: '/admin/forms', key: 'forms' },
+      { minRole: 3, icon: '<i class="fas fa-calendar-day"></i>', label: 'Holidays', href: '/admin/holidays', key: 'holidays' },
+      { minRole: 3, icon: '<i class="fas fa-percent"></i>', label: 'Taxes', href: '/admin/taxes', key: 'taxes' },
+      { minRole: 1, icon: '<i class="fas fa-bell"></i>', label: 'Notifications', href: '/admin/notifications-log', key: 'notifications-log' },
+      { minRole: 3, icon: '<i class="fas fa-globe"></i>', label: 'Multi-Currency', href: '/admin/currencies', key: 'currencies' },
+      { minRole: 3, icon: '<i class="fas fa-check-double"></i>', label: 'Pending Approvals', href: '/admin/pending-approvals', key: 'pending-approvals' },
+      { minRole: 3, icon: '<i class="fas fa-family"></i>', label: 'Parent Management', href: '/admin/parents', key: 'parents' },
+      { minRole: 3, icon: '<i class="fas fa-database"></i>', label: 'Backup & Restore', href: '/admin/backup', key: 'backup' },
+      { minRole: 3, icon: '<i class="fas fa-gear"></i>', label: 'Settings', href: '/admin/settings', key: 'settings' },
     ]},
   ];
 
   function isActive(key) {
     if (key === active) return true;
     return false;
+  }
+
+  function hasAccess(item) {
+    return (item.minRole || 1) <= currentRoleLevel;
+  }
+  function filterMenu(g) {
+    if (g.href) return hasAccess(g) ? g : null;
+    const filteredChildren = (g.children || []).filter(hasAccess);
+    if (filteredChildren.length === 0) return null;
+    return { ...g, children: filteredChildren };
   }
 
   function renderGroup(g) {
@@ -118,7 +133,7 @@ function layout(title, active, content, opts = {}) {
     </div>`;
   }
 
-  const sidebarNav = menuGroups.map(renderGroup).join('');
+  const sidebarNav = menuGroups.map(filterMenu).filter(Boolean).map(renderGroup).join('');
 
   const toastHtml = toast ? `<div class="toast ${toast.startsWith('error:') ? 'error' : 'success'}">${toast.startsWith('error:') ? '&#x274C; ' + toast.slice(6) : '&#x2705; ' + toast.slice(8)}</div>` : '';
 
@@ -869,4 +884,4 @@ function reportStats(items) {
   return `<div class="stats-grid-print">${items.map(i => `<div><div class="val">${i.value}</div><div>${i.label}</div></div>`).join('')}</div>`;
 }
 
-module.exports = { layout, printLayout, h, reportTable, reportSection, reportStats };
+module.exports = { layout, printLayout, h, reportTable, reportSection, reportStats, setRoleLevel, ROLE_LEVELS };

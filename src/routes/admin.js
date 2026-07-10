@@ -3521,7 +3521,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
     : '';
 
   const receipt = qry.receipt ? (await one("SELECT t.*, a.child_name, a.member_id FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id WHERE t.transaction_id = $1", [qry.receipt])) : null;
-  const adminRole = Number(req.session.role) || 0;
+  const adminRole = ROLE_LEVELS[req.session.adminRole] ?? 0;
 
   const bankStyle = `<style>
   .teller-bar { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 24px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,0.04); }

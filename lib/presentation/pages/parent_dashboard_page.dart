@@ -631,7 +631,8 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('$type — $childName', style: const TextStyle(color: _indigo, fontWeight: FontWeight.w600, fontSize: 14)),
-                    Text('PHP ${amount.toStringAsFixed(2)}', style: const TextStyle(color: AppTheme.accentAmber, fontWeight: FontWeight.bold, fontSize: 16)),
+                    if (amount > 0)
+                      Text('PHP ${amount.toStringAsFixed(2)}', style: const TextStyle(color: AppTheme.accentAmber, fontWeight: FontWeight.bold, fontSize: 16)),
                   ],
                 ),
               ),

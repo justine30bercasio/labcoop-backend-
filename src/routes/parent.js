@@ -414,6 +414,24 @@ router.post('/link-child', parentAuth, asyncHandler(async (req, res) => {
      VALUES ($1, $2, $3, $4, 'active', $5)`,
     [linkId, req.parentId, child.account_id, code, new Date().toISOString()]
   );
+  // Notify parent if there's an existing pending consent request for this child
+  try {
+    const pendingConsent = await store.query(
+      "SELECT * FROM parental_consent WHERE account_id = $1 AND status = 'pending' ORDER BY created_at DESC LIMIT 1",
+      [child.account_id]
+    );
+    if (pendingConsent.rows.length > 0) {
+      await store.createParentNotification({
+        parentId: req.parentId,
+        title: `${child.child_name} needs your consent`,
+        body: 'Review and approve so they can submit KYC documents.',
+        type: 'consent_request',
+      });
+      console.log(`[LINK-CHILD] Created notification for existing pending consent (child=${child.account_id})`);
+    }
+  } catch (e) {
+    console.error('Failed to check for pending consent on link:', e);
+  }
   await store.query(
     "UPDATE accounts SET link_code = '', link_code_expires_at = '' WHERE account_id = $1",
     [child.account_id]

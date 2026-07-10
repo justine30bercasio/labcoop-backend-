@@ -490,7 +490,7 @@ router.get('/pending', parentAuth, asyncHandler(async (req, res) => {
         accountIds
       ),
       store.query(
-        `SELECT l.*, a.child_name, a.member_id, lp.name as product_name FROM loans l JOIN accounts a ON a.account_id = l.account_id LEFT JOIN loan_products lp ON lp.id = l.product_id WHERE l.account_id IN (${ph}) AND l.status = 'pending' ORDER BY l.created_at DESC`,
+        `SELECT l.*, a.child_name, a.member_id, lp.name as product_name FROM loans l JOIN accounts a ON a.account_id = l.account_id LEFT JOIN loan_products lp ON lp.product_id = l.product_id WHERE l.account_id IN (${ph}) AND l.status = 'pending' ORDER BY l.created_at DESC`,
         accountIds
       ),
       store.query(

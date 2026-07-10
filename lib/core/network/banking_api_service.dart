@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -491,6 +492,18 @@ class BankingApiService {
       final resp = await _parentDio.get('/api/parent/notifications');
       return resp.data as Map<String, dynamic>;
     } on DioException { return null; }
+  }
+
+  static Future<int> parentGetUnreadCount() async {
+    try {
+      await _addParentAuthHeader();
+      final resp = await _parentDio.get('/api/parent/notifications/unread-count');
+      final data = resp.data as Map<String, dynamic>;
+      return (data['unreadCount'] as num?)?.toInt() ?? 0;
+    } on DioException catch (e) {
+      stderr.writeln('[ParentNotif] unread-count failed: $e');
+      return -1;
+    }
   }
 
   static Future<void> parentMarkNotifRead(String notifId) async {

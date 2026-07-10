@@ -65,13 +65,30 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
     _notifTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchNotifs());
   }
 
-  void _fetchNotifs() {
-    BankingApiService.parentGetNotifications().then((data) {
-      if (!mounted || data == null) return;
-      setState(() {
-        _notifUnreadCount = data['unreadCount'] as int? ?? 0;
-      });
-    });
+  Future<void> _fetchNotifs() async {
+    // Try lightweight unread-count endpoint first
+    try {
+      final count = await BankingApiService.parentGetUnreadCount();
+      if (mounted) {
+        if (count >= 0) {
+          stderr.writeln('[ParentNotif] unread-count: $count');
+          setState(() => _notifUnreadCount = count);
+          return;
+        }
+        stderr.writeln('[ParentNotif] unread-count returned $count, falling back');
+      }
+    } catch (_) {}
+    // Fallback: get full notification list
+    try {
+      final data = await BankingApiService.parentGetNotifications();
+      if (mounted && data != null) {
+        final count = data['unreadCount'] as int? ?? 0;
+        stderr.writeln('[ParentNotif] fallback unread-count: $count');
+        setState(() => _notifUnreadCount = count);
+      }
+    } catch (e) {
+      stderr.writeln('[ParentNotif] fallback failed: $e');
+    }
   }
 
   void _openNotifPage() async {

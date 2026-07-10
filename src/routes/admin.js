@@ -3185,8 +3185,8 @@ router.get('/withdrawal-requests', requireRole(1), asyncHandler(async (req, res)
 
   const pendingCount = requests.filter(r => r.status === 'pending').length;
 
-  const statusColors = { pending: 'badge-amber', approved: 'badge-blue', rejected: 'badge-red', paid: 'badge-gray' };
-  const statusLabels = { pending: 'Pending', approved: 'Approved', rejected: 'Rejected', paid: 'Paid' };
+  const statusColors = { pending: 'badge-amber', approved: 'badge-blue', rejected: 'badge-red', paid: 'badge-gray', parent_approved: 'badge-purple' };
+  const statusLabels = { pending: 'Pending', approved: 'Approved', rejected: 'Rejected', paid: 'Paid', parent_approved: 'Parent Approved' };
 
   const content = `
   <div class="stats-grid">
@@ -3202,6 +3202,7 @@ router.get('/withdrawal-requests', requireRole(1), asyncHandler(async (req, res)
           <select name="status" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px" data-auto-submit="true">
             <option value="">All Status</option>
             <option value="pending"${filterStatus === 'pending' ? ' selected' : ''}>Pending</option>
+            <option value="parent_approved"${filterStatus === 'parent_approved' ? ' selected' : ''}>Parent Approved</option>
             <option value="approved"${filterStatus === 'approved' ? ' selected' : ''}>Approved</option>
             <option value="rejected"${filterStatus === 'rejected' ? ' selected' : ''}>Rejected</option>
             <option value="paid"${filterStatus === 'paid' ? ' selected' : ''}>Paid</option>
@@ -3235,6 +3236,13 @@ router.get('/withdrawal-requests', requireRole(1), asyncHandler(async (req, res)
           <form method="post" action="/admin/withdrawal-requests/pay/${r.request_id}" style="display:inline" data-confirm="Process payment of &#x20B1;${Number(r.amount).toFixed(2)} to ${r.child_name}? This will deduct from their balance.">
             <button type="submit" class="btn btn-amber btn-xs">&#x1F4B5; Pay Out</button>
           </form>
+        ` : r.status === 'parent_approved' ? `
+          <form method="post" action="/admin/withdrawal-requests/approve/${r.request_id}" style="display:inline" data-confirm="Approve withdrawal of &#x20B1;${Number(r.amount).toFixed(2)}?">
+            <button type="submit" class="btn btn-primary btn-xs">&#x2705; Approve</button>
+          </form>
+          <form method="post" action="/admin/withdrawal-requests/reject/${r.request_id}" style="display:inline" data-confirm="Reject this request?">
+            <button type="submit" class="btn btn-danger btn-xs">&#x274C; Reject</button>
+          </form>
         ` : '<span style="font-size:11px;color:var(--text-muted)">—</span>'}
       </div></td>
     </tr>`).join('')}
@@ -3254,7 +3262,7 @@ router.post('/withdrawal-requests/approve/:id', requireRole(3), asyncHandler(asy
   try {
     const reqData = await store.getWithdrawalRequest(req.params.id);
     if (!reqData) return res.redirect('/admin/withdrawal-requests?error=Request+not+found');
-    if (reqData.status !== 'pending') return res.redirect('/admin/withdrawal-requests?error=Request+is+not+pending');
+    if (!['pending','parent_approved'].includes(reqData.status)) return res.redirect('/admin/withdrawal-requests?error=Request+is+not+pending+or+parent+approved');
     await store.updateWithdrawalRequest(req.params.id, { status: 'approved', resolved_at: new Date().toISOString() });
     notifs.notifyWithdrawalApproved(reqData.account_id, reqData.amount, reqData.reason).catch(() => {});
     res.redirect('/admin/withdrawal-requests?approved=ok');

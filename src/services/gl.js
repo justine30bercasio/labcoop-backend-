@@ -97,17 +97,17 @@ async function getBalanceSheet(asOf) {
 }
 
 async function getProfitAndLoss(fromDate, toDate) {
-  const where = ["g.type IN ('income','expense')"];
   const params = [];
-  if (fromDate) { where.push('e.created_at >= $' + (params.length + 1)); params.push(fromDate); }
-  if (toDate) { where.push('e.created_at <= $' + (params.length + 1)); params.push(toDate); }
+  const joinConditions = ["e.is_voided IS NULL OR e.is_voided = 0"];
+  if (fromDate) { joinConditions.push('e.created_at >= $' + (params.length + 1)); params.push(fromDate); }
+  if (toDate) { joinConditions.push('e.created_at <= $' + (params.length + 1)); params.push(toDate); }
   const res = await store.query(
     `SELECT g.code, g.name, g.type, g.category,
        COALESCE(SUM(e.debit),0) as total_debit,
        COALESCE(SUM(e.credit),0) as total_credit
      FROM gl_accounts g
-     LEFT JOIN gl_entries e ON g.code = e.account_code AND (e.is_voided IS NULL OR e.is_voided = 0)
-     WHERE ${where.join(' AND ')}
+     LEFT JOIN gl_entries e ON g.code = e.account_code AND ${joinConditions.join(' AND ')}
+     WHERE g.type IN ('income','expense')
      GROUP BY g.code, g.name, g.type, g.category
      ORDER BY g.code`, params
   );

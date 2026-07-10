@@ -552,9 +552,9 @@ router.post('/reject-consent/:accountId', parentAuth, asyncHandler(async (req, r
 
 // ── Parent Notifications ──
 router.get('/notifications', parentAuth, asyncHandler(async (req, res) => {
-  const notifs = await store.getParentNotifications(req.parentId);
+  const notifList = await store.getParentNotifications(req.parentId);
   const unread = await store.getParentUnreadCount(req.parentId);
-  res.json({ notifications: notifs, unreadCount: unread });
+  res.json({ notifications: notifList, unreadCount: unread });
 }));
 
 // Lightweight unread count endpoint for polling (matching kid's /notifications/unread-count)

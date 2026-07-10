@@ -1469,7 +1469,7 @@ router.post('/accounts/create', requireRole(2), asyncHandler(async (req, res) =>
         description: 'Membership fee',
         reference_type: 'account_create',
         reference_id: account.account_id,
-        balance_before: 0,
+        balance_before: savingsAmt,
         balance_after: savingsAmt,
       });
       try {

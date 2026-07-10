@@ -106,7 +106,7 @@ async function getProfitAndLoss(fromDate, toDate) {
        COALESCE(SUM(e.debit),0) as total_debit,
        COALESCE(SUM(e.credit),0) as total_credit
      FROM gl_accounts g
-     JOIN gl_entries e ON g.code = e.account_code AND (e.is_voided IS NULL OR e.is_voided = 0)
+     LEFT JOIN gl_entries e ON g.code = e.account_code AND (e.is_voided IS NULL OR e.is_voided = 0)
      WHERE ${where.join(' AND ')}
      GROUP BY g.code, g.name, g.type, g.category
      ORDER BY g.code`, params

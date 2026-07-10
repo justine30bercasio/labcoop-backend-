@@ -799,7 +799,7 @@ router.get('/budget', requireRole(3), asyncHandler(async (req, res) => {
 
   // Get actuals from GL for ALL income/expense accounts
   const actuals = await sql(`SELECT g.code, g.name, g.type, g.category,
-    COALESCE(SUM(CASE WHEN e.id IS NOT NULL THEN
+    COALESCE(SUM(CASE WHEN e.entry_id IS NOT NULL THEN
       CASE WHEN g.type='income' THEN e.credit - e.debit ELSE e.debit - e.credit END
     ELSE 0 END),0) as bal
     FROM gl_accounts g LEFT JOIN gl_entries e ON g.code = e.account_code AND e.created_at LIKE $1

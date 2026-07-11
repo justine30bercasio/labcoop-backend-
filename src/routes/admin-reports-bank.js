@@ -7,6 +7,7 @@
 
 const express = require('express');
 const router = express.Router();
+const { store } = require('../db');
 const { layout, printLayout, h, reportTable, reportSection, reportStats, fmt, fmtTrn } = require('./admin-lib');
 
 // ── Shared Styles for Bank Reports ──
@@ -490,7 +491,6 @@ router.get('/reports/bank/cash-position', requireRole(2), asyncHandler(async (re
   const one = (s, p) => store.query(s, p || []).then(r => r.rows[0]);
 
   const date = (req.query.date || new Date().toISOString().slice(0, 10)).replace(/[^0-9\-]/g, '').slice(0, 10);
-  const useActual = req.query.actual === '1';
 
   // Get previous day's close
   const prevClose = await one("SELECT * FROM eod_logs WHERE date < $1 ORDER BY date DESC LIMIT 1", [date]);
@@ -678,6 +678,6 @@ router.get('/reports/bank/cash-position', requireRole(2), asyncHandler(async (re
   }
 
   res.type('html').send(layout('Daily Cash Position', 'bank-cash-position', content, { subtitle: 'Professional bank cash position report' }));
-});
+}));
 
 module.exports = router;

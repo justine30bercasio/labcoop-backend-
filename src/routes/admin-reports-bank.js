@@ -481,7 +481,7 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
       showSignatures: true,
       templateOverlay: true,
       templateTop: '40mm',
-      templateBottom: '40mm'
+      templateBottom: '60mm'
     }));
   }
 

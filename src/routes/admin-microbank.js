@@ -388,7 +388,7 @@ router.get('/passbook/:id', requireRole(1), asyncHandler(async (req, res) => {
   let balance = 0;
   const rows = txns.map(t => {
     const amt = Number(t.amount);
-    const isCredit = ['deposit', 'interest_credit', 'interest', 'loan_disbursement', 'td_maturity', 'fee', 'penalty', 'reward', 'loan_payment'].includes(t.type);
+    const isCredit = ['deposit', 'interest_credit', 'interest', 'loan_disbursement', 'td_maturity', 'reward'].includes(t.type);
     if (isCredit) balance += amt; else balance -= amt;
     const now = new Date().toISOString().slice(0, 10);
     return `<tr>

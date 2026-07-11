@@ -760,7 +760,7 @@ router.get('/cash-flow', requireRole(1), asyncHandler(async (req, res) => {
   if (req.query.print) {
     const fmtAmt = v => '\u20B1' + Number(v || 0).toFixed(2);
     const signedCat = (types, signs) => categories.filter(c => types.includes(c.type)).map(c => ({ name: c.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), amount: Number(c.total) * (signs[c.type] || 1) }));
-    const s = { deposit: 1, interest_credit: 1, fee: -1, withdrawal: -1, loan_disbursement: -1, loan_payment: 1, penalty: 1, interest_income: 1, interest: 1 };
+    const s = { deposit: 1, interest_credit: 1, fee: 1, withdrawal: -1, loan_disbursement: -1, loan_payment: 1, penalty: 1, interest_income: 1, interest: 1 };
     const operating = signedCat(['deposit','interest_credit','fee','withdrawal','penalty','interest_income','interest','loan_payment'], s);
     const investing = signedCat(['loan_disbursement'], s);
     const financing = signedCat([], s);

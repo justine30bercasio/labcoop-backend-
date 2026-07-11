@@ -209,8 +209,8 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
   const xpTop = [...accounts].sort((a,b) => Number(b.current_xp) - Number(a.current_xp)).slice(0, 6);
   const maxXp = Math.max(...xpTop.map(a => Number(a.current_xp)), 1);
 
-  const cashIn = transactions.filter(t => ['deposit','loan_disbursement','interest_credit','interest','fee','penalty','interest_income','td_maturity','reward'].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
-  const cashOut = transactions.filter(t => ['withdrawal','loan_payment'].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
+  const cashIn = transactions.filter(t => ['deposit','fee','penalty','interest_income','loan_payment','td_maturity','reward'].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
+  const cashOut = transactions.filter(t => ['withdrawal','loan_disbursement'].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
   const netFlow = cashIn - cashOut;
 
   const pendingTotal = pendingLoans + pendingWithdrawals + pendingOnlineDeposits;
@@ -407,7 +407,7 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
       ${transactions.slice(0, 8).map(t => {
         const dateStr = t.created_at ? t.created_at.slice(0, 10) : '';
         const badgeCls = ({deposit:'badge-green',withdrawal:'badge-red',loan_disbursement:'badge-amber',loan_payment:'badge-blue',interest_credit:'badge-purple',interest:'badge-purple',allocation:'badge-purple'})[t.type] || 'badge-gray';
-        const isInflow = ['deposit','loan_disbursement','interest_credit','interest','fee','penalty','interest_income','td_maturity','reward'].includes(t.type);
+        const isInflow = ['deposit','loan_disbursement','interest_credit','interest','interest_income','td_maturity','reward'].includes(t.type);
         return `<tr>
         <td>${t.child_name || '-'}</td>
         <td><span class="badge ${badgeCls}">${t.type.replace(/_/g,' ')}</span></td>
@@ -4117,8 +4117,8 @@ router.get('/audit', requireRole(1), asyncHandler(async (req, res) => {
   // Stats
   const stats = await one(`
     SELECT COUNT(*) as total,
-      SUM(CASE WHEN t.type IN ('deposit','loan_disbursement','interest_credit','interest','fee','penalty','interest_income','td_maturity','reward') THEN t.amount ELSE 0 END) as credits,
-      SUM(CASE WHEN t.type IN ('withdrawal','loan_payment','auto_save','purchase','td_placement') THEN t.amount ELSE 0 END) as debits,
+      SUM(CASE WHEN t.type IN ('deposit','loan_disbursement','interest_credit','interest','interest_income','td_maturity','reward') THEN t.amount ELSE 0 END) as credits,
+      SUM(CASE WHEN t.type IN ('withdrawal','loan_payment','auto_save','purchase','td_placement','fee','penalty') THEN t.amount ELSE 0 END) as debits,
       SUM(CASE WHEN t.type='deposit' THEN t.amount ELSE 0 END) as total_deposits,
       SUM(CASE WHEN t.type='withdrawal' THEN t.amount ELSE 0 END) as total_withdrawals,
       SUM(CASE WHEN t.type='loan_disbursement' THEN t.amount ELSE 0 END) as total_loans,
@@ -4182,8 +4182,8 @@ router.get('/audit', requireRole(1), asyncHandler(async (req, res) => {
     </div>
     <div class="card-body">
       ${txns.length === 0 ? '<div style="text-align:center;padding:48px;color:var(--text-muted)">No transactions found for the selected filters.</div>' : '<table><tr><th>Receipt #</th><th>Date &amp; Time</th><th>Member</th><th>ID</th><th>Type</th><th>Amount</th><th>Balance Delta</th><th>Description</th><th>Ref</th></tr>' + txns.map(t => {
-        const sign = (t.type==='deposit'||t.type==='loan_disbursement'||t.type==='interest_credit'||t.type==='interest'||t.type==='fee'||t.type==='penalty'||t.type==='interest_income'||t.type==='td_maturity'||t.type==='reward'||t.type==='loan_payment') ? '+' : '-';
-        const col = (t.type==='deposit'||t.type==='loan_disbursement'||t.type==='interest_credit'||t.type==='interest'||t.type==='fee'||t.type==='penalty'||t.type==='interest_income'||t.type==='td_maturity'||t.type==='reward'||t.type==='loan_payment') ? '#16a34a' : '#dc2626';
+        const sign = (t.type==='deposit'||t.type==='loan_disbursement'||t.type==='interest_credit'||t.type==='interest'||t.type==='interest_income'||t.type==='td_maturity'||t.type==='reward') ? '+' : '-';
+        const col = (t.type==='deposit'||t.type==='loan_disbursement'||t.type==='interest_credit'||t.type==='interest'||t.type==='interest_income'||t.type==='td_maturity'||t.type==='reward') ? '#16a34a' : '#dc2626';
         const delta = t.balance_before != null ? '<span style="color:' + col + '">' + sign + '&#x20B1;' + Number(t.amount).toFixed(2) + '</span>' : '-';
         const bg = ({deposit:'badge-green',withdrawal:'badge-red',loan_disbursement:'badge-amber',loan_payment:'badge-blue',interest_credit:'badge-purple',interest:'badge-purple',allocation:'badge-gray'})[t.type] || 'badge-gray';
         return '<tr><td class="mono"><a href="/admin/teller?account=' + t.account_id + '&receipt=' + t.transaction_id + '" style="color:var(--accent);text-decoration:none">' + (t.transaction_id||'').slice(0,8).toUpperCase() + '</a></td><td class="mono" style="font-size:11px">' + (t.created_at||'').slice(0,19).replace('T',' ') + '</td><td>' + (t.child_name||'') + '</td><td class="mono" style="font-size:11px;color:var(--text-muted)">' + (t.member_id||'-') + '</td><td><span class="badge ' + bg + '">' + t.type.replace(/_/g,' ') + '</span></td><td class="num mono" style="color:' + col + '">' + sign + '&#x20B1;' + Number(t.amount).toFixed(2) + '</td><td class="num mono">' + delta + '</td><td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted)">' + (t.description||'-') + '</td><td class="mono" style="font-size:11px;color:var(--text-muted)">' + (t.reference_id ? (t.reference_type||'') + ':' + (t.reference_id||'').slice(0,8) : '-') + '</td></tr>';
@@ -4595,8 +4595,8 @@ router.get('/reports/member-ledger', requireRole(2), asyncHandler(async (req, re
       name: first.child_name,
       memberId: first.member_id,
       balance: first.balance,
-      totalIn: searchResults.rows.filter(r => ['deposit','loan_payment','interest_income','interest_credit','interest','fee','penalty','td_maturity','reward','loan_disbursement'].includes(r.type)).reduce((s, r) => s + parseFloat(r.amount || 0), 0),
-      totalOut: searchResults.rows.filter(r => ['withdrawal','auto_save','purchase','td_placement'].includes(r.type)).reduce((s, r) => s + parseFloat(r.amount || 0), 0),
+      totalIn: searchResults.rows.filter(r => ['deposit','interest_income','interest_credit','interest','td_maturity','reward','loan_disbursement'].includes(r.type)).reduce((s, r) => s + parseFloat(r.amount || 0), 0),
+      totalOut: searchResults.rows.filter(r => ['withdrawal','auto_save','purchase','td_placement','fee','penalty','loan_payment'].includes(r.type)).reduce((s, r) => s + parseFloat(r.amount || 0), 0),
       count: searchResults.rows.length
     };
   }
@@ -4637,7 +4637,7 @@ router.get('/reports/member-ledger', requireRole(2), asyncHandler(async (req, re
       <tr><th>Date</th><th>TRN#</th><th>Type</th><th>Description</th><th>Amount</th><th>Ext. Ref</th></tr>
       ${searchResults.rows.map(r => {
         const amt = parseFloat(r.amount || 0);
-        const isCredit = ['deposit','interest_income','loan_disbursement','loan_payment','interest_credit','interest','fee','penalty','td_maturity','reward'].includes(r.type);
+        const isCredit = ['deposit','interest_income','loan_disbursement','interest_credit','interest','td_maturity','reward'].includes(r.type);
         return '<tr>' +
           '<td class="mono" style="font-size:11px">' + (r.created_at||'').slice(0,19).replace('T',' ') + '</td>' +
           '<td class="mono" style="font-size:11px;font-weight:600">' + fmtTrn(r) + '</td>' +
@@ -4659,7 +4659,7 @@ router.get('/reports/member-ledger', requireRole(2), asyncHandler(async (req, re
   if (req.query.export === 'csv' && searchResults.rows.length) {
     let csv = 'TRN#,Date,Type,Description,Amount,Ext. Ref\n';
     searchResults.rows.forEach(r => {
-      const isCredit = ['deposit','interest_income','loan_disbursement','loan_payment','interest_credit','interest','fee','penalty','td_maturity','reward'].includes(r.type);
+      const isCredit = ['deposit','interest_income','loan_disbursement','interest_credit','interest','td_maturity','reward'].includes(r.type);
       csv += `"${fmtTrn(r)}","${r.created_at}",${r.type},"${(r.description||'').replace(/"/g,'""')}",${isCredit ? '' : '-'}${r.amount},"${r.reference_id||''}"\n`;
     });
     res.setHeader('Content-Type', 'text/csv');
@@ -4875,7 +4875,7 @@ router.get('/eod', requireRole(1), asyncHandler(async (req, res) => {
       <table>
         <tr><th>TRN#</th><th>Time</th><th>Member</th><th>Type</th><th>Amount</th></tr>
         ${txs.slice(0, 50).map(t => {
-          const isCredit = ['deposit','loan_payment','interest_income','fee','penalty','interest_credit','interest','td_maturity','reward'].includes(t.type);
+          const isCredit = ['deposit','interest_income','interest_credit','interest','td_maturity','reward'].includes(t.type);
           return '<tr>' +
             '<td class="mono" style="font-size:11px;font-weight:600">' + fmtTrn(t) + '</td>' +
             '<td class="mono" style="font-size:11px">' + (t.created_at||'').slice(11,19) + '</td>' +
@@ -4963,7 +4963,7 @@ router.get('/eom', requireRole(1), asyncHandler(async (req, res) => {
 
   // Monthly transaction stats
   const txStats = await one(`SELECT
-    COALESCE(SUM(CASE WHEN type IN ('deposit','interest_credit','interest','interest_income','fee','penalty','td_maturity','reward') THEN amount ELSE 0 END),0) as deposits,
+    COALESCE(SUM(CASE WHEN type IN ('deposit','interest_credit','interest','interest_income','td_maturity','reward') THEN amount ELSE 0 END),0) as deposits,
     COALESCE(SUM(CASE WHEN type IN ('withdrawal','loan_payment','auto_save','purchase','td_placement') THEN amount ELSE 0 END),0) as withdrawals,
     COALESCE(SUM(CASE WHEN type='loan_disbursement' THEN amount ELSE 0 END),0) as loans_granted,
     COALESCE(SUM(CASE WHEN type='fee' THEN amount ELSE 0 END),0) as fees,
@@ -5156,8 +5156,8 @@ router.get('/statements', requireRole(1), asyncHandler(async (req, res) => {
   let openingBalance = 0;
   if (memberId && statements.length > 0) {
     const balBefore = await one(`
-      SELECT COALESCE(SUM(CASE WHEN type IN ('deposit','interest_credit','loan_disbursement','interest','fee','penalty','interest_income','td_maturity','reward') THEN amount
-        WHEN type IN ('withdrawal','loan_payment','auto_save','purchase','td_placement') THEN -amount ELSE 0 END), 0) as bal
+      SELECT COALESCE(SUM(CASE WHEN type IN ('deposit','interest_credit','loan_disbursement','interest','interest_income','td_maturity','reward') THEN amount
+        WHEN type IN ('withdrawal','loan_payment','auto_save','purchase','td_placement','fee','penalty') THEN -amount ELSE 0 END), 0) as bal
       FROM transactions t JOIN accounts a ON t.account_id = a.account_id
       WHERE a.member_id = $1 AND DATE(t.created_at) < $2
     `, [memberId, fromDate]);
@@ -5165,8 +5165,8 @@ router.get('/statements', requireRole(1), asyncHandler(async (req, res) => {
   }
 
   let runningBalance = openingBalance;
-  const totalIn = statements.filter(t => ['deposit','interest_credit','interest','loan_disbursement','fee','penalty','interest_income','td_maturity','reward'].includes(t.type)).reduce((s, t) => s + Number(t.amount), 0);
-  const totalOut = statements.filter(t => ['withdrawal','loan_payment','auto_save','purchase','td_placement'].includes(t.type)).reduce((s, t) => s + Number(t.amount), 0);
+  const totalIn = statements.filter(t => ['deposit','interest_credit','interest','loan_disbursement','interest_income','td_maturity','reward'].includes(t.type)).reduce((s, t) => s + Number(t.amount), 0);
+  const totalOut = statements.filter(t => ['withdrawal','loan_payment','auto_save','purchase','td_placement','fee','penalty'].includes(t.type)).reduce((s, t) => s + Number(t.amount), 0);
   const closingBalance = openingBalance + totalIn - totalOut;
 
   const content = `
@@ -5220,7 +5220,7 @@ router.get('/statements', requireRole(1), asyncHandler(async (req, res) => {
       </tr>
       ${statements.map(t => {
         const amt = Number(t.amount);
-        const isCredit = ['deposit','interest_credit','interest','loan_disbursement','fee','penalty','interest_income','td_maturity','reward','loan_payment'].includes(t.type);
+        const isCredit = ['deposit','interest_credit','interest','loan_disbursement','interest_income','td_maturity','reward'].includes(t.type);
         runningBalance += isCredit ? amt : -amt;
         return '<tr>' +
           '<td class="mono" style="font-size:11px">' + (t.created_at||'').slice(0,10) + '</td>' +

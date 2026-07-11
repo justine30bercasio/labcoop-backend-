@@ -8,7 +8,15 @@
 const express = require('express');
 const router = express.Router();
 const { store } = require('../db');
-const { layout, printLayout, h, reportTable, reportSection, reportStats, fmt, fmtTrn } = require('./admin-lib');
+const { asyncHandler } = require('../async-handler');
+const { layout, printLayout, h, reportTable, reportSection, reportStats, fmt, fmtTrn, ROLE_LEVELS } = require('./admin-lib');
+
+const requireRole = (minLevel) => (req, res, next) => {
+  if (!req.session || !req.session.adminId) return res.redirect('/admin/login');
+  const level = ROLE_LEVELS[req.session.adminRole] ?? 0;
+  if (level < minLevel) return res.status(403).send('Forbidden');
+  next();
+};
 
 // ── Shared Styles for Bank Reports ──
 const BANK_REPORT_STYLE = `

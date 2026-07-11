@@ -577,7 +577,7 @@ const { router: legalRouter } = require('./routes/legal');
 app.use('/legal', legalRouter);
 
 app.get('/org-template.png', (req, res) => {
-  const filePath = path.resolve(__dirname, '../../assets/images/org.png');
+  const filePath = path.resolve(__dirname, 'public/org-template.png');
   if (!fs.existsSync(filePath)) {
     return res.status(404).type('text').send('Not found');
   }

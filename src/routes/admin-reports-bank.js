@@ -9,7 +9,7 @@ const express = require('express');
 const router = express.Router();
 const { store } = require('../db');
 const { asyncHandler } = require('../async-handler');
-const { layout, printLayout, h, reportTable, reportSection, reportStats, fmt, fmtTrn, ROLE_LEVELS } = require('./admin-lib');
+const { layout, printLayout, h, reportTable, reportSection, reportStats, fmt, fmtTrn, ROLE_LEVELS, ORG_TEMPLATE_DATA_URI } = require('./admin-lib');
 
 const requireRole = (minLevel) => (req, res, next) => {
   if (!req.session || !req.session.adminId) return res.redirect('/admin/login');
@@ -22,8 +22,20 @@ const requireRole = (minLevel) => (req, res, next) => {
 const BANK_REPORT_STYLE = `
 <style>
   /* ── FULL-VIEW BANK-GRADE LAYOUT ── */
-  .br-container { width:100%; max-width:none; padding:0; }
-  .br-card { width:100%; background:var(--card); border:1px solid var(--border); border-radius:16px; margin-bottom:24px; box-shadow:0 4px 24px rgba(0,0,0,0.06); overflow:hidden; }
+  .br-container { width:100%; max-width:none; padding:0; position:relative; }
+  .br-container::before {
+    content:'';
+    position:absolute;
+    inset:-12px 0 0 0;
+    background: ${ORG_TEMPLATE_DATA_URI ? `url('${ORG_TEMPLATE_DATA_URI}') center top / 100% auto no-repeat` : 'none'};
+    opacity:0.08;
+    pointer-events:none;
+    z-index:0;
+  }
+  .br-container > * { position:relative; z-index:1; }
+  .br-org-banner { margin-bottom:18px; }
+  .br-org-banner img { display:block; width:100%; height:170px; object-fit:cover; object-position:top center; border-radius:16px; box-shadow:0 4px 20px rgba(0,0,0,0.08); background:#fff; }
+  .br-card { width:100%; background:rgba(255,255,255,0.96); border:1px solid var(--border); border-radius:16px; margin-bottom:24px; box-shadow:0 4px 24px rgba(0,0,0,0.06); overflow:hidden; }
 
   /* ── HEADER WITH GOLD ACCENT ── */
   .br-header { background:linear-gradient(135deg,#0d2818 0%,#1a5c2a 50%,#0d2818 100%); color:#fff; padding:28px 36px; position:relative; border-bottom:3px solid #c8a84e; }
@@ -280,6 +292,7 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
 
   const content = BANK_REPORT_STYLE + `
   <div class="br-container">
+    ${ORG_TEMPLATE_DATA_URI ? `<div class="br-org-banner"><img src="${ORG_TEMPLATE_DATA_URI}" alt="Org template header"></div>` : ''}
     <div class="br-toolbar">
       <div class="field"><label>Member</label>
         <select id="brMember" onchange="location.href='/admin/reports/bank/statement?member_id='+this.value+'&from='+document.getElementById('brFrom').value+'&to='+document.getElementById('brTo').value">

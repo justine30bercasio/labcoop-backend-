@@ -1,5 +1,18 @@
+const fs = require('fs');
+const path = require('path');
+
 const ROLE_LEVELS = { super_admin: 4, manager: 3, teller: 2, auditor: 1 };
 let currentRoleLevel = 4; // default: show all
+
+const ORG_TEMPLATE_DATA_URI = (() => {
+  try {
+    const filePath = path.resolve(__dirname, '../../../assets/images/org.png');
+    if (!fs.existsSync(filePath)) return '';
+    return 'data:image/png;base64,' + fs.readFileSync(filePath).toString('base64');
+  } catch (_) {
+    return '';
+  }
+})();
 
 function setRoleLevel(level) { currentRoleLevel = level; }
 
@@ -775,11 +788,26 @@ function printLayout(title, content, opts = {}) {
     ${showPageNumbers ? "@bottom-center { content: 'Page ' counter(page) ' of ' counter(pages); font-size: 9px; color: #666; }" : ''}
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Courier New', Courier, 'Lucida Sans Typewriter', monospace; font-size: 10pt; line-height: 1.5; color: #000; }
-  .report-header { text-align: center; margin-bottom: 4mm; padding-bottom: 3mm; border-bottom: 2px solid #000; }
-  .report-header h1 { font-size: 14pt; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 1mm; }
-  .report-header .company-details { font-size: 8pt; color: #333; line-height: 1.4; }
-  .report-header .tin { font-size: 8pt; color: #555; }
+  body {
+    position: relative;
+    font-family: 'Courier New', Courier, 'Lucida Sans Typewriter', monospace;
+    font-size: 10pt;
+    line-height: 1.5;
+    color: #000;
+    background: #fff;
+  }
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: ${ORG_TEMPLATE_DATA_URI ? `url('${ORG_TEMPLATE_DATA_URI}') center top / 100% auto no-repeat` : 'none'};
+    opacity: 0.10;
+    pointer-events: none;
+    z-index: 0;
+  }
+  body > * { position: relative; z-index: 1; }
+  .org-banner { margin-bottom: 4mm; }
+  .org-banner img { display:block; width:100%; height:auto; }
   .report-title { text-align: center; margin: 4mm 0 3mm 0; }
   .report-title h2 { font-size: 12pt; font-weight: 700; text-decoration: underline; margin-bottom: 1mm; }
   .report-title .subtitle { font-size: 9pt; color: #444; }
@@ -819,11 +847,7 @@ function printLayout(title, content, opts = {}) {
 </style>
 </head>
 <body>
-  <div class="report-header">
-    <h1>${companyName}</h1>
-    <div class="company-details">${companyAddress}</div>
-    <div class="tin">TIN: ${companyTin}</div>
-  </div>
+  ${ORG_TEMPLATE_DATA_URI ? `<div class="org-banner"><img src="${ORG_TEMPLATE_DATA_URI}" alt="${h(companyName)} report template"></div>` : ''}
   <div class="report-title">
     <h2>${title}</h2>
     ${subtitle ? `<div class="subtitle">${subtitle}</div>` : ''}
@@ -889,4 +913,4 @@ function reportStats(items) {
   return `<div class="stats-grid-print">${items.map(i => `<div><div class="val">${i.value}</div><div>${i.label}</div></div>`).join('')}</div>`;
 }
 
-module.exports = { layout, printLayout, h, reportTable, reportSection, reportStats, setRoleLevel, ROLE_LEVELS };
+module.exports = { layout, printLayout, h, reportTable, reportSection, reportStats, setRoleLevel, ROLE_LEVELS, ORG_TEMPLATE_DATA_URI };

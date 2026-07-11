@@ -646,6 +646,7 @@ const adminAuthRouter = require('./routes/admin-auth');
 const adminRouter = require('./routes/admin');
 const microbankRouter = require('./routes/admin-microbank');
 const advancedRouter = require('./routes/admin-advanced');
+const bankReportRouter = require('./routes/admin-reports-bank');
 const adminLib = require('./routes/admin-lib');
 // Set role level for sidebar filtering
 app.use('/admin', (req, res, next) => {
@@ -658,6 +659,7 @@ app.use('/admin', adminAuthRouter);
 app.use('/admin', csrfProtection, adminRouter);
 app.use('/admin', csrfProtection, microbankRouter);
 app.use('/admin', csrfProtection, advancedRouter);
+app.use('/admin', csrfProtection, bankReportRouter);
 
 // ── Custom 404 — Lottie animation directly embedded ──
 const lottieData = JSON.stringify(require('../public/404.json'));

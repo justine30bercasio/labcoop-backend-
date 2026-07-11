@@ -49,6 +49,11 @@ function layout(title, active, content, opts = {}) {
       { minRole: 2, icon: '<i class="fas fa-chart-pie"></i>', label: 'Loan Portfolio', href: '/admin/reports/loan-portfolio', key: 'loan-portfolio' },
       { minRole: 1, icon: '<i class="fas fa-file-lines"></i>', label: 'Audit Reports', href: '/admin/audit', key: 'audit' },
     ]},
+    { minRole: 1, icon: '<i class="fas fa-landmark"></i>', label: 'Bank Reports', key: 'bank-reports', style: 'border-top:1px solid rgba(255,255,255,0.06);padding-top:2px;margin-top:2px', children: [
+      { minRole: 2, icon: '<i class="fas fa-building-columns"></i>', label: 'Bank Statement', href: '/admin/reports/bank/statement', key: 'bank-statement' },
+      { minRole: 2, icon: '<i class="fas fa-certificate"></i>', label: 'Certificate of Deposit', href: '/admin/reports/bank/certificate', key: 'bank-certificate' },
+      { minRole: 3, icon: '<i class="fas fa-cash-register"></i>', label: 'Daily Cash Position', href: '/admin/reports/bank/cash-position', key: 'bank-cash-position' },
+    ]},
     { minRole: 1, icon: '<i class="fas fa-scale-balanced"></i>', label: 'Accounting', key: 'accounting', children: [
       { minRole: 1, icon: '<i class="fas fa-list"></i>', label: 'Chart of Accounts', href: '/admin/gl/accounts', key: 'gl-accounts' },
       { minRole: 1, icon: '<i class="fas fa-scale-balanced"></i>', label: 'Trial Balance', href: '/admin/gl/trial-balance', key: 'gl-trial' },

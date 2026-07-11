@@ -793,21 +793,22 @@ function printLayout(title, content, opts = {}) {
   .template-sheet {
     position: relative;
     min-height: 297mm;
-    background: url('${ORG_TEMPLATE_URL}') center top / 100% 100% no-repeat;
-    overflow: hidden;
-    page-break-inside: avoid;
+    background: none;
+    overflow: visible;
+    page-break-inside: auto;
   }
   .template-sheet::before {
     content: '';
-    position: absolute;
+    position: fixed;
     inset: 0;
-    background: rgba(255,255,255,0.04);
+    background: url('${ORG_TEMPLATE_URL}') center top / 100% 100% no-repeat;
+    opacity: 1;
     pointer-events: none;
   }
   .template-content {
-    position: absolute;
-    inset: ${templateTop} 15mm ${templateBottom} 15mm;
-    overflow: hidden;
+    position: relative;
+    padding: ${templateTop} 15mm ${templateBottom} 15mm;
+    overflow: visible;
   }
   .template-content > * { position: relative; z-index: 1; }
   .report-sheet {
@@ -815,7 +816,7 @@ function printLayout(title, content, opts = {}) {
     min-height: 0;
     background: none;
     padding: 0;
-    overflow: hidden;
+    overflow: visible;
   }
   .report-sheet > * { position: relative; z-index: 1; }
   .report-title { text-align: center; margin: 4mm 0 3mm 0; }
@@ -824,9 +825,11 @@ function printLayout(title, content, opts = {}) {
   .report-title .date-range { font-size: 8pt; color: #555; margin-top: 1mm; }
   .report-meta { text-align: right; font-size: 7pt; color: #666; margin-bottom: 2mm; }
   table { width: 100%; border-collapse: collapse; margin-bottom: 3mm; font-size: 8.5pt; }
+  table { page-break-inside: auto; break-inside: auto; }
   thead th { background: #e0e0e0; font-weight: 700; text-align: left; padding: 2mm 1.5mm; border: 1px solid #000; font-size: 8pt; text-transform: uppercase; }
   thead th.num { text-align: right; }
   tbody td { padding: 1.5mm 1.5mm; border: 1px solid #999; vertical-align: top; }
+  tr { break-inside: avoid; page-break-inside: avoid; }
   tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
   tbody tr:nth-child(even) { background: #f5f5f5; }
   tbody tr.total-row { font-weight: 700; background: #e8e8e8; border-top: 2px solid #000; }

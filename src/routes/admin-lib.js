@@ -768,7 +768,7 @@ function printLayout(title, content, opts = {}) {
     showDisclaimer = true,
     templateOverlay = false,
     templateTop = '44mm',
-    templateBottom = '60mm',
+    templateBottom = '1in',
   } = opts;
 
   return `<!DOCTYPE html>

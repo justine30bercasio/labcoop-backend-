@@ -607,7 +607,7 @@ router.get('/cash-flow', requireRole(1), asyncHandler(async (req, res) => {
   const now = new Date(); const firstDay = new Date(now.getFullYear(),now.getMonth(),1).toISOString().slice(0,10);
   const today = now.toISOString().slice(0,10);
   const from = (req.query.from || firstDay).replace(/[^0-9\-]/g, '').slice(0, 10); const to = (req.query.to || today).replace(/[^0-9\-]/g, '').slice(0, 10);
-  const deposits = await one("SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type IN ($1,$2,$3,$4,$5,$6,$7) AND created_at BETWEEN $8 AND $9", ['deposit','interest_credit','fee','loan_payment','penalty','interest_income','interest', from+'T00:00:00', to+'T23:59:59']);
+  const deposits = await one("SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type IN ($1,$2,$3,$4,$5) AND created_at BETWEEN $6 AND $7", ['deposit','fee','loan_payment','penalty','interest_income', from+'T00:00:00', to+'T23:59:59']);
   const withdrawals = await one("SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type=$1 AND created_at BETWEEN $2 AND $3", ['withdrawal', from+'T00:00:00', to+'T23:59:59']);
   const loanDisb = await one("SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type=$1 AND created_at BETWEEN $2 AND $3", ['loan_disbursement', from+'T00:00:00', to+'T23:59:59']);
   const opCash = await one("SELECT COALESCE(SUM(debit),0) - COALESCE(SUM(credit),0) as bal FROM gl_entries WHERE account_code='1000' AND created_at < $1", [from+'T00:00:00']);
@@ -628,7 +628,7 @@ router.get('/cash-flow', requireRole(1), asyncHandler(async (req, res) => {
   const monthExpr = isPostgres ? "to_char(created_at::timestamp, 'YYYY-MM')" : "strftime('%Y-%m', created_at)";
   const monthly = await sql(`
     SELECT ${monthExpr} as month,
-      COALESCE(SUM(CASE WHEN type IN ('deposit','interest_credit','fee','loan_payment','penalty','interest_income','interest') THEN amount ELSE 0 END),0) as inflows,
+      COALESCE(SUM(CASE WHEN type IN ('deposit','fee','loan_payment','penalty','interest_income') THEN amount ELSE 0 END),0) as inflows,
       COALESCE(SUM(CASE WHEN type IN ('withdrawal','loan_disbursement') THEN amount ELSE 0 END),0) as outflows
     FROM transactions WHERE created_at BETWEEN $1 AND $2 GROUP BY month ORDER BY month
   `, [from+'T00:00:00', to+'T23:59:59']);
@@ -760,8 +760,8 @@ router.get('/cash-flow', requireRole(1), asyncHandler(async (req, res) => {
   if (req.query.print) {
     const fmtAmt = v => '\u20B1' + Number(v || 0).toFixed(2);
     const signedCat = (types, signs) => categories.filter(c => types.includes(c.type)).map(c => ({ name: c.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), amount: Number(c.total) * (signs[c.type] || 1) }));
-    const s = { deposit: 1, interest_credit: 1, fee: 1, withdrawal: -1, loan_disbursement: -1, loan_payment: 1, penalty: 1, interest_income: 1, interest: 1 };
-    const operating = signedCat(['deposit','interest_credit','fee','withdrawal','penalty','interest_income','interest','loan_payment'], s);
+    const s = { deposit: 1, interest_credit: 0, fee: 1, withdrawal: -1, loan_disbursement: -1, loan_payment: 1, penalty: 1, interest_income: 1, interest: 0, td_maturity: -1, td_placement: 1 };
+    const operating = signedCat(['deposit','fee','withdrawal','penalty','interest_income','loan_payment'], s);
     const investing = signedCat(['loan_disbursement'], s);
     const financing = signedCat([], s);
     const operatingTotal = operating.reduce((a, i) => a + i.amount, 0);

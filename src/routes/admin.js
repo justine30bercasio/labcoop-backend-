@@ -349,7 +349,7 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
         <div style="width:${cashIn + cashOut > 0 ? (cashIn / (cashIn + cashOut) * 100).toFixed(1) : 50}%;height:100%;background:var(--accent);border-radius:3px 0 0 3px"></div>
         <div style="flex:1;height:100%;background:#ef4444;border-radius:0 3px 3px 0"></div>
       </div>
-      <div class="mini-legend" style="margin-top:4px"><span style="color:#16a34a">${(cashIn + cashOut > 0 ? (cashIn / (cashIn + cashOut) * 100).toFixed(0) : 0)}% deposits</span><span style="color:#dc2626">${(cashIn + cashOut > 0 ? (cashOut / (cashIn + cashOut) * 100).toFixed(0) : 0)}% withdrawals</span></div>
+      <div class="mini-legend" style="margin-top:4px"><span style="color:#16a34a">${(cashIn + cashOut > 0 ? (cashIn / (cashIn + cashOut) * 100).toFixed(0) : 0)}% inflows</span><span style="color:#dc2626">${(cashIn + cashOut > 0 ? (cashOut / (cashIn + cashOut) * 100).toFixed(0) : 0)}% withdrawals</span></div>
     </div>
     <div class="chart-card">
       <div class="chart-title">Transaction Activity</div>
@@ -436,7 +436,7 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
         data: {
           labels: ${JSON.stringify(dayLabels)},
           datasets: [
-            { label: 'Deposits', data: ${JSON.stringify(dayDeposits)}, backgroundColor: 'rgba(34,197,94,0.7)', borderColor: '#22c55e', borderWidth: 1, borderRadius: 3 },
+            { label: 'Collections', data: ${JSON.stringify(dayDeposits)}, backgroundColor: 'rgba(34,197,94,0.7)', borderColor: '#22c55e', borderWidth: 1, borderRadius: 3 },
             { label: 'Withdrawals', data: ${JSON.stringify(dayWithdrawals)}, backgroundColor: 'rgba(59,130,246,0.7)', borderColor: '#3b82f6', borderWidth: 1, borderRadius: 3 }
           ]
         },
@@ -1123,7 +1123,7 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
     ? '<tr><td colspan="6" class="no-data">No transactions yet</td></tr>'
     : transactions.map(t => {
         const badgeCls = ({deposit:'badge-green',withdrawal:'badge-red',loan_disbursement:'badge-amber',loan_payment:'badge-blue',interest_credit:'badge-purple',interest:'badge-purple',allocation:'badge-purple',td_placement:'badge-amber',td_maturity:'badge-blue',fee:'badge-red',reward:'badge-green',purchase:'badge-gray'})[t.type] || 'badge-gray';
-        const isInflow = ['deposit','loan_disbursement','interest_credit','interest','td_maturity','reward','fee'].includes(t.type);
+        const isInflow = ['deposit','loan_disbursement','interest_credit','interest','interest_income','td_maturity','reward'].includes(t.type);
         const sign = isInflow ? '+' : '-';
         const col = isInflow ? 'var(--accent)' : 'var(--red)';
         return `<tr>
@@ -3727,7 +3727,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
         ${recentTxs.length === 0 ? '<div style="text-align:center;padding:32px;color:var(--text-muted)">No transactions yet.</div>' : '<table class="tx-table"><tr><th>Type</th><th>Amount</th><th>Description</th><th>Date</th><th></th></tr>' + recentTxs.map(tx => {
             var tc = ({deposit:'deposit',withdrawal:'withdrawal',loan_payment:'loan_payment',loan_disbursement:'loan_disbursement',interest:'interest',interest_credit:'interest',allocation:'allocation'})[tx.type] || 'deposit';
             var sign = tx.type === 'deposit' || tx.type === 'loan_disbursement' || tx.type === 'interest' || tx.type === 'interest_credit' ? '+' : '-';
-            var col = tx.type === 'deposit' || tx.type === 'loan_disbursement' || tx.type === 'interest' || tx.type === 'interest_credit' ? '#16a34a' : tx.type === 'withdrawal' ? '#dc2626' : 'var(--text)';
+            var col = tx.type === 'deposit' || tx.type === 'loan_disbursement' || tx.type === 'interest' || tx.type === 'interest_credit' ? '#16a34a' : '#dc2626';
             return '<tr><td><span class="tx-type-badge ' + h(tc) + '">' + h(tx.type.replace(/_/g,' ')) + (tx.voided_at ? ' VOIDED' : '') + '</span></td><td class="tx-amt" style="color:' + h(col) + '">' + sign + '&#x20B1;' + Number(tx.amount).toFixed(2) + '</td><td class="tx-desc">' + h(tx.description||'-') + (tx.voided_at ? '<br><span style="font-size:10px;color:#dc2626">Voided by ' + h(tx.voided_by||'') + '</span>' : '') + '</td><td class="tx-date">' + h((tx.created_at||'').slice(0,16).replace('T',' ')) + '</td><td style="white-space:nowrap">' + (tx.voided_at ? '<span style="color:#dc2626;font-size:10px;font-weight:600"><i class="fas fa-ban"></i> VOIDED</span>' : '<a class="rcpt-link" href="?account=' + encodeURIComponent(selectedId) + '&receipt=' + encodeURIComponent(tx.transaction_id) + (searchQ ? '&q=' + encodeURIComponent(searchQ) : '') + '" title="View receipt"><i class="fas fa-receipt"></i></a>' + (adminRole >= 3 && ['deposit','withdrawal','loan_payment','interest','interest_credit','auto_save','fee','penalty'].includes(tx.type) ? ' <button class="btn btn-outline btn-xs" style="color:#dc2626;padding:2px 6px;font-size:10px" onclick="openVoidModal(\'' + h(tx.transaction_id) + '\',\'' + h(tx.type.replace(/_/g,' ')) + '\',\'' + Number(tx.amount).toFixed(2) + '\')"><i class="fas fa-ban"></i> Void</button>' : '')) + '</td></tr>';
           }).join('') + '</table>'}
       </div>
@@ -4792,8 +4792,8 @@ router.get('/eod', requireRole(1), asyncHandler(async (req, res) => {
 
   // Today's transactions
   const txs = await sql(`SELECT t.*, a.child_name, a.member_id FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id WHERE DATE(t.created_at) = $1 ORDER BY t.created_at ASC`, [date]);
-  const totalCollections = txs.filter(t => ['deposit','loan_payment','interest_income','fee','penalty','interest_credit','interest','td_maturity','reward'].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
-  const totalDisbursements = txs.filter(t => ['withdrawal','loan_disbursement'].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
+  const totalCollections = txs.filter(t => ['deposit','loan_payment','interest_income','fee','penalty'].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
+  const totalDisbursements = txs.filter(t => ['withdrawal','loan_disbursement','td_maturity'].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
   const txCount = txs.length;
 
   // Previous day's closing cash = today's opening cash

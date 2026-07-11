@@ -3,16 +3,7 @@ const path = require('path');
 
 const ROLE_LEVELS = { super_admin: 4, manager: 3, teller: 2, auditor: 1 };
 let currentRoleLevel = 4; // default: show all
-
-const ORG_TEMPLATE_DATA_URI = (() => {
-  try {
-    const filePath = path.resolve(__dirname, '../../../assets/images/org.png');
-    if (!fs.existsSync(filePath)) return '';
-    return 'data:image/png;base64,' + fs.readFileSync(filePath).toString('base64');
-  } catch (_) {
-    return '';
-  }
-})();
+const ORG_TEMPLATE_URL = '/org-template.png';
 
 function setRoleLevel(level) { currentRoleLevel = level; }
 
@@ -800,7 +791,7 @@ function printLayout(title, content, opts = {}) {
     content: '';
     position: fixed;
     inset: 0;
-    background: ${ORG_TEMPLATE_DATA_URI ? `url('${ORG_TEMPLATE_DATA_URI}') center top / 100% auto no-repeat` : 'none'};
+    background: url('${ORG_TEMPLATE_URL}') center top / 100% auto no-repeat;
     opacity: 0.10;
     pointer-events: none;
     z-index: 0;
@@ -847,7 +838,7 @@ function printLayout(title, content, opts = {}) {
 </style>
 </head>
 <body>
-  ${ORG_TEMPLATE_DATA_URI ? `<div class="org-banner"><img src="${ORG_TEMPLATE_DATA_URI}" alt="${h(companyName)} report template"></div>` : ''}
+  <div class="org-banner"><img src="${ORG_TEMPLATE_URL}" alt="${h(companyName)} report template"></div>
   <div class="report-title">
     <h2>${title}</h2>
     ${subtitle ? `<div class="subtitle">${subtitle}</div>` : ''}
@@ -913,4 +904,4 @@ function reportStats(items) {
   return `<div class="stats-grid-print">${items.map(i => `<div><div class="val">${i.value}</div><div>${i.label}</div></div>`).join('')}</div>`;
 }
 
-module.exports = { layout, printLayout, h, reportTable, reportSection, reportStats, setRoleLevel, ROLE_LEVELS, ORG_TEMPLATE_DATA_URI };
+module.exports = { layout, printLayout, h, reportTable, reportSection, reportStats, setRoleLevel, ROLE_LEVELS, ORG_TEMPLATE_URL };

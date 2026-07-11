@@ -9,7 +9,7 @@ const express = require('express');
 const router = express.Router();
 const { store } = require('../db');
 const { asyncHandler } = require('../async-handler');
-const { layout, printLayout, h, reportTable, reportSection, reportStats, fmt, fmtTrn, ROLE_LEVELS, ORG_TEMPLATE_DATA_URI } = require('./admin-lib');
+const { layout, printLayout, h, reportTable, reportSection, reportStats, fmt, fmtTrn, ROLE_LEVELS, ORG_TEMPLATE_URL } = require('./admin-lib');
 
 const requireRole = (minLevel) => (req, res, next) => {
   if (!req.session || !req.session.adminId) return res.redirect('/admin/login');
@@ -27,7 +27,7 @@ const BANK_REPORT_STYLE = `
     content:'';
     position:absolute;
     inset:-12px 0 0 0;
-    background: ${ORG_TEMPLATE_DATA_URI ? `url('${ORG_TEMPLATE_DATA_URI}') center top / 100% auto no-repeat` : 'none'};
+    background: url('${ORG_TEMPLATE_URL}') center top / 100% auto no-repeat;
     opacity:0.08;
     pointer-events:none;
     z-index:0;
@@ -292,7 +292,7 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
 
   const content = BANK_REPORT_STYLE + `
   <div class="br-container">
-    ${ORG_TEMPLATE_DATA_URI ? `<div class="br-org-banner"><img src="${ORG_TEMPLATE_DATA_URI}" alt="Org template header"></div>` : ''}
+    <div class="br-org-banner"><img src="${ORG_TEMPLATE_URL}" alt="Org template header"></div>
     <div class="br-toolbar">
       <div class="field"><label>Member</label>
         <select id="brMember" onchange="location.href='/admin/reports/bank/statement?member_id='+this.value+'&from='+document.getElementById('brFrom').value+'&to='+document.getElementById('brTo').value">

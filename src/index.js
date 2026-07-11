@@ -576,6 +576,15 @@ app.use('/api/webhooks', webhookRouter);
 const { router: legalRouter } = require('./routes/legal');
 app.use('/legal', legalRouter);
 
+app.get('/org-template.png', (req, res) => {
+  const filePath = path.resolve(__dirname, '../../assets/images/org.png');
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).type('text').send('Not found');
+  }
+  res.set('Cache-Control', 'public, max-age=86400');
+  res.sendFile(filePath);
+});
+
 // ── Ensure upload directories exist (Render's ephemeral fs wipes them on deploy) ──
 for (const sub of ['shop', 'board', 'profiles', 'kyc', 'registration']) {
   const d = path.join(__dirname, 'uploads', sub);

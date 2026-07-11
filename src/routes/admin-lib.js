@@ -766,6 +766,9 @@ function printLayout(title, content, opts = {}) {
     showPageNumbers = true,
     showSignatures = true,
     showDisclaimer = true,
+    templateOverlay = false,
+    templateTop = '44mm',
+    templateBottom = '18mm',
   } = opts;
 
   return `<!DOCTYPE html>
@@ -775,7 +778,7 @@ function printLayout(title, content, opts = {}) {
 <style>
   @page {
     size: ${orientation === 'landscape' ? 'A4 landscape' : 'A4 portrait'};
-    margin: 20mm 15mm 25mm 15mm;
+    margin: ${templateOverlay ? '0' : '20mm 15mm 25mm 15mm'};
     ${showPageNumbers ? "@bottom-center { content: 'Page ' counter(page) ' of ' counter(pages); font-size: 9px; color: #666; }" : ''}
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -787,19 +790,32 @@ function printLayout(title, content, opts = {}) {
     color: #000;
     background: #fff;
   }
-  .report-sheet {
+  .template-sheet {
     position: relative;
-    min-height: calc(297mm - 45mm);
-    background: url('${ORG_TEMPLATE_URL}') center top / 100% auto no-repeat;
-    padding: 74mm 15mm 34mm 15mm;
+    min-height: 297mm;
+    background: url('${ORG_TEMPLATE_URL}') center top / 100% 100% no-repeat;
     overflow: hidden;
+    page-break-inside: avoid;
   }
-  .report-sheet::before {
+  .template-sheet::before {
     content: '';
     position: absolute;
     inset: 0;
-    background: rgba(255,255,255,0.10);
+    background: rgba(255,255,255,0.04);
     pointer-events: none;
+  }
+  .template-content {
+    position: absolute;
+    inset: ${templateTop} 15mm ${templateBottom} 15mm;
+    overflow: hidden;
+  }
+  .template-content > * { position: relative; z-index: 1; }
+  .report-sheet {
+    position: relative;
+    min-height: 0;
+    background: none;
+    padding: 0;
+    overflow: hidden;
   }
   .report-sheet > * { position: relative; z-index: 1; }
   .report-title { text-align: center; margin: 4mm 0 3mm 0; }
@@ -841,7 +857,7 @@ function printLayout(title, content, opts = {}) {
 </style>
 </head>
 <body>
-  <div class="report-sheet">
+  ${templateOverlay ? '<div class="template-sheet"><div class="template-content"><div class="report-sheet">' : '<div class="report-sheet">'}
   <div class="report-title">
     <h2>${title}</h2>
     ${subtitle ? `<div class="subtitle">${subtitle}</div>` : ''}
@@ -858,7 +874,7 @@ function printLayout(title, content, opts = {}) {
     <div class="signature-block"><div class="line"></div><div class="label">${signatureLine3}</div><div class="sub-label">(Printed Name &amp; Signature)</div></div>
   </div>` : ''}
   <div class="footer-note">This report is system-generated from LabCoop Banking System</div>
-  </div>
+  ${templateOverlay ? '</div></div></div>' : '</div>'}
 </body>
 </html>`;
 }

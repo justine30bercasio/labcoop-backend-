@@ -478,7 +478,10 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
     return res.type('html').send(printLayout('Statement of Account — ' + (account.child_name || ''), printContent, {
       subtitle: 'Official Bank Statement',
       dateRange: fromDate + ' to ' + toDate,
-      showSignatures: true
+      showSignatures: true,
+      templateOverlay: true,
+      templateTop: '40mm',
+      templateBottom: '16mm'
     }));
   }
 

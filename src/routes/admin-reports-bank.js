@@ -21,66 +21,141 @@ const requireRole = (minLevel) => (req, res, next) => {
 // ── Shared Styles for Bank Reports ──
 const BANK_REPORT_STYLE = `
 <style>
-  .br-container { max-width:900px; margin:0 auto; }
-  .br-card { background:var(--card); border:1px solid var(--border); border-radius:12px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,0.04); overflow:hidden; }
-  .br-header { background:linear-gradient(135deg,#0d2818,#1a5c2a); color:#fff; padding:20px 28px; }
-  .br-header .br-bank-name { font-size:20px; font-weight:800; letter-spacing:1px; }
-  .br-header .br-bank-sub { font-size:11px; opacity:0.8; margin-top:2px; }
-  .br-header .br-report-title { font-size:13px; opacity:0.9; margin-top:6px; text-transform:uppercase; letter-spacing:0.5px; }
-  .br-body { padding:24px 28px; }
-  .br-member-info { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px; padding-bottom:16px; border-bottom:2px solid var(--border); }
-  .br-member-info .br-field { display:flex; flex-direction:column; }
-  .br-member-info .br-label { font-size:9px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); font-weight:600; }
-  .br-member-info .br-value { font-size:13px; font-weight:600; color:var(--text); margin-top:1px; }
-  .br-summary-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:20px; }
-  .br-summary-item { background:var(--bg); border-radius:8px; padding:12px 16px; text-align:center; border:1px solid var(--border); }
-  .br-summary-item .br-sum-label { font-size:9px; text-transform:uppercase; letter-spacing:0.3px; color:var(--text-muted); font-weight:600; }
-  .br-summary-item .br-sum-value { font-size:18px; font-weight:800; font-family:var(--mono); margin-top:2px; }
+  /* ── FULL-VIEW BANK-GRADE LAYOUT ── */
+  .br-container { width:100%; max-width:none; padding:0; }
+  .br-card { width:100%; background:var(--card); border:1px solid var(--border); border-radius:16px; margin-bottom:24px; box-shadow:0 4px 24px rgba(0,0,0,0.06); overflow:hidden; }
+
+  /* ── HEADER WITH GOLD ACCENT ── */
+  .br-header { background:linear-gradient(135deg,#0d2818 0%,#1a5c2a 50%,#0d2818 100%); color:#fff; padding:28px 36px; position:relative; border-bottom:3px solid #c8a84e; }
+  .br-header::before { content:''; position:absolute; top:0; left:0; right:0; height:4px; background:linear-gradient(90deg,#c8a84e,#f0d78c,#c8a84e); }
+  .br-header .br-bank-row { display:flex; justify-content:space-between; align-items:flex-start; }
+  .br-header .br-bank-left { }
+  .br-header .br-bank-name { font-size:22px; font-weight:800; letter-spacing:1.5px; }
+  .br-header .br-bank-sub { font-size:11px; opacity:0.75; margin-top:3px; }
+  .br-header .br-report-title { font-size:16px; font-weight:700; letter-spacing:2px; text-transform:uppercase; margin-top:8px; color:#f0d78c; }
+  .br-header .br-bank-right { text-align:right; font-size:10px; opacity:0.7; line-height:1.5; }
+
+  /* ── BODY ── */
+  .br-body { padding:32px 36px; }
+
+  /* ── MEMBER INFO PANEL ── */
+  .br-member-panel { display:flex; justify-content:space-between; align-items:center; margin-bottom:28px; padding:20px 24px; background:linear-gradient(135deg,#f8fafc,#f0fdf4); border-radius:12px; border:1px solid var(--border); }
+  .br-member-panel .br-member-left { display:grid; grid-template-columns:1fr 1fr; gap:8px 32px; }
+  .br-member-panel .br-field { display:flex; flex-direction:column; }
+  .br-member-panel .br-label { font-size:9px; text-transform:uppercase; letter-spacing:0.8px; color:var(--text-muted); font-weight:700; }
+  .br-member-panel .br-value { font-size:14px; font-weight:700; color:var(--text); margin-top:2px; }
+  .br-member-panel .br-value.mono { font-family:var(--mono); }
+  .br-member-panel .br-status-badge { display:inline-flex; align-items:center; gap:6px; padding:6px 16px; border-radius:20px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; }
+  .br-member-panel .br-status-badge.active { background:#dcfce7; color:#16a34a; border:1px solid #bbf7d0; }
+  .br-member-panel .br-status-badge.inactive { background:#fef2f2; color:#dc2626; border:1px solid #fecaca; }
+  [data-theme="dark"] .br-member-panel { background:linear-gradient(135deg,#1a231c,#0f2012); }
+  [data-theme="dark"] .br-member-panel .br-status-badge.active { background:#052e16; color:#4ade80; }
+
+  /* ── SUMMARY CARDS ── */
+  .br-summary-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:28px; }
+  .br-summary-item { background:var(--card); border-radius:12px; padding:18px 20px; text-align:center; position:relative; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.04); }
+  .br-summary-item::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; }
+  .br-summary-item.blue::before { background:linear-gradient(90deg,#2563eb,#60a5fa); }
+  .br-summary-item.green::before { background:linear-gradient(90deg,#16a34a,#4ade80); }
+  .br-summary-item.red::before { background:linear-gradient(90deg,#dc2626,#f87171); }
+  .br-summary-item.gold::before { background:linear-gradient(90deg,#c8a84e,#f0d78c); }
+  .br-summary-item .br-sum-icon { font-size:18px; margin-bottom:4px; opacity:0.6; }
+  .br-summary-item .br-sum-label { font-size:9px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); font-weight:700; }
+  .br-summary-item .br-sum-value { font-size:24px; font-weight:800; font-family:var(--mono); margin-top:4px; }
   .br-summary-item .br-sum-value.green { color:#16a34a; }
   .br-summary-item .br-sum-value.red { color:#dc2626; }
   .br-summary-item .br-sum-value.blue { color:#2563eb; }
-  .br-table { width:100%; border-collapse:collapse; font-size:12px; }
-  .br-table th { background:var(--bg); font-size:10px; text-transform:uppercase; letter-spacing:0.3px; color:var(--text-muted); font-weight:600; padding:8px 12px; text-align:left; border-bottom:2px solid var(--border); }
+  .br-summary-item .br-sum-value.gold { color:#c8a84e; }
+
+  /* ── TRANSACTION TABLE ── */
+  .br-table-wrap { border:1px solid var(--border); border-radius:12px; overflow:hidden; margin-bottom:8px; }
+  .br-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .br-table thead { background:linear-gradient(135deg,#f8fafc,#f0fdf4); }
+  .br-table th { font-size:10px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); font-weight:700; padding:12px 16px; text-align:left; border-bottom:2px solid var(--border); }
   .br-table th.right { text-align:right; }
-  .br-table td { padding:8px 12px; border-bottom:1px solid var(--border); font-size:12px; }
+  .br-table td { padding:12px 16px; border-bottom:1px solid var(--border); font-size:13px; vertical-align:middle; }
   .br-table td.right { text-align:right; font-family:var(--mono); font-weight:600; }
-  .br-table td.mono { font-family:var(--mono); font-size:11px; }
-  .br-table tr:hover td { background:rgba(0,0,0,0.02); }
-  .br-table tr.total-row td { font-weight:700; background:var(--bg); border-top:2px solid var(--accent); font-size:12px; }
-  .br-table .credit { color:#16a34a; }
-  .br-table .debit { color:#dc2626; }
-  .br-toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:16px; }
-  .br-toolbar .field { display:flex; flex-direction:column; }
-  .br-toolbar .field label { font-size:10px; font-weight:600; color:var(--text-muted); margin-bottom:2px; text-transform:uppercase; letter-spacing:0.3px; }
-  .br-toolbar .field input, .br-toolbar .field select { padding:7px 12px; border:2px solid var(--border); border-radius:6px; font-size:12px; outline:none; background:var(--card); }
-  .br-toolbar .field input:focus, .br-toolbar .field select:focus { border-color:var(--accent); }
-  .br-cert { max-width:680px; margin:0 auto; background:var(--card); border:2px solid var(--accent); border-radius:12px; overflow:hidden; }
-  .br-cert-header { background:var(--accent); color:#fff; text-align:center; padding:20px; }
-  .br-cert-header h2 { font-size:18px; font-weight:800; letter-spacing:2px; margin:0; }
-  .br-cert-header .br-cert-sub { font-size:11px; opacity:0.85; margin-top:3px; }
-  .br-cert-body { padding:28px 32px; }
+  .br-table td.mono { font-family:var(--mono); font-size:12px; }
+  .br-table tbody tr { transition:background 0.15s ease; }
+  .br-table tbody tr:nth-child(even) { background:rgba(0,0,0,0.015); }
+  .br-table tbody tr:hover { background:rgba(22,163,74,0.04); }
+  .br-table tbody tr.total-row { background:linear-gradient(135deg,#f0fdf4,#dcfce7) !important; }
+  .br-table tbody tr.total-row td { font-weight:800; border-top:2px solid #16a34a; font-size:13px; color:var(--text); }
+  .br-table .credit { color:#16a34a; font-weight:700; }
+  .br-table .debit { color:#dc2626; font-weight:700; }
+  .br-table .info-row { color:var(--text-muted); font-style:italic; }
+  .br-table .info-row td { font-size:12px; }
+  .br-table td .tx-type { display:inline-block; padding:2px 10px; border-radius:4px; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.3px; }
+  .br-table td .tx-type.deposit { background:#dcfce7; color:#16a34a; }
+  .br-table td .tx-type.withdrawal { background:#fef2f2; color:#dc2626; }
+  .br-table td .tx-type.fee { background:#fefce8; color:#a16207; }
+  .br-table td .tx-type.penalty { background:#fef2f2; color:#dc2626; }
+  .br-table td .tx-type.loan_payment { background:#e0f2fe; color:#0284c7; }
+  .br-table td .tx-type.interest_credit { background:#f0fdf4; color:#16a34a; }
+  .br-table td .tx-type.auto_save { background:#f3e8ff; color:#7c3aed; }
+  .br-table td .tx-type.purchase { background:#fce7f3; color:#db2777; }
+  .br-table td .tx-type.default { background:var(--bg); color:var(--text-muted); }
+
+  /* ── TOOLBAR ── */
+  .br-toolbar { width:100%; display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:24px; padding:16px 20px; background:var(--card); border:1px solid var(--border); border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,0.03); }
+  .br-toolbar .field { display:flex; flex-direction:column; min-width:160px; }
+  .br-toolbar .field label { font-size:9px; font-weight:700; color:var(--text-muted); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px; }
+  .br-toolbar .field input, .br-toolbar .field select { padding:8px 14px; border:2px solid var(--border); border-radius:8px; font-size:13px; outline:none; background:var(--card); transition:border-color 0.2s; }
+  .br-toolbar .field input:focus, .br-toolbar .field select:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(46,125,50,0.1); }
+
+  /* ── LEGAL / FOOTER ── */
+  .br-footer { width:100%; margin-top:24px; padding:16px 20px; background:var(--bg); border-radius:12px; border:1px solid var(--border); }
+  .br-footer .br-legal { font-size:10px; color:var(--text-muted); text-align:center; line-height:1.6; }
+  .br-footer .br-legal strong { color:var(--text); }
+
+  /* ── CERTIFICATE (unchanged structure) ── */
+  .br-cert { max-width:720px; margin:0 auto; background:var(--card); border:2px solid var(--accent); border-radius:16px; overflow:hidden; box-shadow:0 4px 24px rgba(0,0,0,0.08); }
+  .br-cert-header { background:linear-gradient(135deg,#0d2818,#1a5c2a); color:#fff; text-align:center; padding:24px; border-bottom:3px solid #c8a84e; }
+  .br-cert-header h2 { font-size:20px; font-weight:800; letter-spacing:3px; margin:0; }
+  .br-cert-header .br-cert-sub { font-size:11px; opacity:0.85; margin-top:4px; }
+  .br-cert-body { padding:32px 36px; }
   .br-cert-body .br-cert-greeting { font-size:12px; color:var(--text-muted); margin-bottom:16px; }
-  .br-cert-body .br-cert-name { font-size:22px; font-weight:800; color:var(--text); margin-bottom:16px; }
-  .br-cert-body .br-cert-amount { text-align:center; font-size:28px; font-weight:800; color:var(--accent); font-family:var(--mono); padding:16px; border:2px dashed var(--border); border-radius:8px; margin-bottom:16px; }
-  .br-cert-body .br-cert-words { text-align:center; font-size:13px; color:var(--text-muted); margin-bottom:20px; font-style:italic; }
-  .br-cert-body .br-cert-details { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:20px; }
-  .br-cert-body .br-cert-details .br-field { display:flex; flex-direction:column; }
-  .br-cert-body .br-cert-details .br-label { font-size:9px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); font-weight:600; }
-  .br-cert-body .br-cert-details .br-value { font-size:13px; font-weight:600; margin-top:1px; }
-  .br-cert-body .br-cert-footer { display:flex; justify-content:space-between; padding-top:16px; border-top:1px solid var(--border); }
-  .br-cert-body .br-cert-footer .br-signature { text-align:center; }
-  .br-cert-body .br-cert-footer .br-signature .br-sig-line { width:180px; border-top:1px solid #000; margin:32px auto 4px auto; }
-  .br-cert-body .br-cert-footer .br-signature .br-sig-label { font-size:10px; color:var(--text-muted); }
-  .br-legal { font-size:9px; color:var(--text-muted); text-align:center; margin-top:12px; line-height:1.4; }
+  .br-cert-body .br-cert-name { font-size:24px; font-weight:800; color:var(--text); margin-bottom:16px; }
+  .br-cert-body .br-cert-amount { text-align:center; font-size:32px; font-weight:800; color:var(--accent); font-family:var(--mono); padding:20px; border:2px dashed var(--border); border-radius:12px; margin-bottom:16px; background:linear-gradient(135deg,#f0fdf4,#f8fafc); }
+  .br-cert-body .br-cert-words { text-align:center; font-size:13px; color:var(--text-muted); margin-bottom:24px; font-style:italic; }
+  .br-cert-body .br-cert-details { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:24px; }
+  .br-cert-body .br-cert-details .br-field { display:flex; flex-direction:column; padding:8px 12px; background:var(--bg); border-radius:8px; }
+  .br-cert-body .br-cert-details .br-label { font-size:9px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); font-weight:700; }
+  .br-cert-body .br-cert-details .br-value { font-size:14px; font-weight:700; margin-top:2px; }
+  .br-cert-body .br-cert-footer { display:flex; justify-content:space-between; padding-top:20px; border-top:2px solid var(--border); }
+  .br-cert-body .br-cert-footer .br-signature { text-align:center; flex:1; }
+  .br-cert-body .br-cert-footer .br-signature .br-sig-line { width:160px; border-top:1px solid #000; margin:36px auto 4px auto; }
+  .br-cert-body .br-cert-footer .br-signature .br-sig-label { font-size:10px; color:var(--text-muted); font-weight:600; }
+
+  /* ── CERTIFICATE AMOUNT BOX (new prominent design) ── */
+  .br-cert-amount-box { text-align:center; padding:28px 20px; border:2px dashed #c8a84e; border-radius:16px; margin-bottom:24px; background:linear-gradient(135deg,#fefce8,#fffef0,#fefce8); }
+  .br-cert-amount-box .br-cert-amount-label { font-size:9px; text-transform:uppercase; letter-spacing:1.5px; color:#8b7d3c; font-weight:700; margin-bottom:8px; }
+  .br-cert-amount-box .br-cert-amount-figure { font-size:38px; font-weight:800; color:#0d2818; font-family:var(--mono); }
+  .br-cert-amount-box .br-cert-amount-words { font-size:12px; color:#8b7d3c; font-style:italic; margin-top:6px; }
+  [data-theme="dark"] .br-cert-amount-box { background:linear-gradient(135deg,#1a1a0e,#0f2012,#1a1a0e); }
+  [data-theme="dark"] .br-cert-amount-box .br-cert-amount-figure { color:#f0d78c; }
+
+  /* ── SIGNATURES ── */
+  .br-signatures { display:flex; justify-content:space-around; margin-top:28px; padding-top:24px; border-top:2px solid var(--border); }
+  .br-signatures .br-sig-block { text-align:center; flex:1; }
+  .br-signatures .br-sig-block .br-sig-line { width:160px; border-top:1px solid #000; margin:40px auto 4px auto; }
+  .br-signatures .br-sig-block .br-sig-label { font-size:10px; color:var(--text-muted); font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
+
   @media print {
     .br-toolbar, .br-toolbar *, .btn, button, input, select, .sidebar, .sidebar *, .page-header { display:none !important; }
-    .br-card { break-inside:avoid; border:1px solid #000; box-shadow:none; }
+    .br-card { break-inside:avoid; border:1px solid #000; box-shadow:none; border-radius:0; }
     .br-header { background:#0d2818 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
     .br-summary-item { border:1px solid #999; }
+    .br-summary-item::before { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
     .br-cert { border:2px solid #000; }
-    .br-cert-header { background:#2E7D32 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .br-cert-header { background:#0d2818 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .br-cert-amount-box { border:2px dashed #000 !important; }
+    .br-table-wrap { border:1px solid #999; border-radius:0; }
     .br-table th { background:#f0f0f0 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-    .br-table tr.total-row td { background:#e8e8e8 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .br-table tbody tr.total-row { background:#e8e8e8 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .br-member-panel { background:#f8fafc !important; border:1px solid #999; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .br-footer { border:1px solid #999; }
+    .br-signatures .br-sig-block .br-sig-line { padding-top:0; }
   }
 </style>`;
 
@@ -222,101 +297,124 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
     </div>
     ${!memberId ? `
     <div class="br-card">
-      <div class="br-body" style="text-align:center;padding:60px">
-        <i class="fas fa-hand-point-left" style="font-size:48px;opacity:0.3;display:block;margin-bottom:12px"></i>
-        <h3 style="color:var(--text-muted);font-weight:400">Select a member to view their bank statement</h3>
+      <div class="br-body" style="text-align:center;padding:80px">
+        <i class="fas fa-hand-point-left" style="font-size:56px;opacity:0.2;display:block;margin-bottom:16px;color:var(--accent)"></i>
+        <h3 style="color:var(--text-muted);font-weight:400;font-size:16px">Select a member to view their bank statement</h3>
       </div>
     </div>` : account ? `
-    <!-- Bank Statement Header -->
+    <!-- ── BANK STATEMENT ── -->
     <div class="br-card">
+      <!-- Header with Gold Accent -->
       <div class="br-header">
-        <div class="br-bank-name">LABCOOP SAVINGS BANK</div>
-        <div class="br-bank-sub">123 Rizal Street, Barangay Poblacion ● TIN: 123-456-789-000</div>
-        <div class="br-report-title">Statement of Account</div>
+        <div class="br-bank-row">
+          <div class="br-bank-left">
+            <div class="br-bank-name">🏦 LABCOOP SAVINGS BANK</div>
+            <div class="br-bank-sub">123 Rizal Street, Barangay Poblacion ● TIN: 123-456-789-000 ● (02) 1234-5678</div>
+            <div class="br-report-title">Statement of Account</div>
+          </div>
+          <div class="br-bank-right">
+            <div>Member Since: ${(account.created_at || '').slice(0, 7) || '-'}</div>
+            <div>Page 1 of 1</div>
+          </div>
+        </div>
       </div>
+
       <div class="br-body">
-        <!-- Member Information -->
-        <div class="br-member-info">
-          <div class="br-field">
-            <span class="br-label">Account Holder</span>
-            <span class="br-value">${h(account.child_name)}</span>
+        <!-- Member Information Panel -->
+        <div class="br-member-panel">
+          <div class="br-member-left">
+            <div class="br-field">
+              <span class="br-label">Account Holder</span>
+              <span class="br-value">${h(account.child_name)}</span>
+            </div>
+            <div class="br-field">
+              <span class="br-label">Member ID</span>
+              <span class="br-value mono">${h(account.member_id)}</span>
+            </div>
+            <div class="br-field">
+              <span class="br-label">Account Number</span>
+              <span class="br-value mono">${h(account.regular_savings_number || account.member_id)}</span>
+            </div>
+            <div class="br-field">
+              <span class="br-label">Statement Period</span>
+              <span class="br-value mono">${fromDate} — ${toDate}</span>
+            </div>
           </div>
-          <div class="br-field">
-            <span class="br-label">Member ID</span>
-            <span class="br-value">${h(account.member_id)}</span>
-          </div>
-          <div class="br-field">
-            <span class="br-label">Account Number</span>
-            <span class="br-value">${h(account.regular_savings_number || account.member_id)}</span>
-          </div>
-          <div class="br-field">
-            <span class="br-label">Statement Period</span>
-            <span class="br-value">${fromDate} to ${toDate}</span>
+          <div class="br-status-badge ${account.is_active == 1 ? 'active' : 'inactive'}">
+            <i class="fas ${account.is_active == 1 ? 'fa-check-circle' : 'fa-times-circle'}"></i>
+            ${account.is_active == 1 ? 'Active' : 'Inactive'}
           </div>
         </div>
 
         <!-- Summary Cards -->
         <div class="br-summary-grid">
-          <div class="br-summary-item">
+          <div class="br-summary-item blue">
+            <div class="br-sum-icon"><i class="fas fa-wallet"></i></div>
             <div class="br-sum-label">Opening Balance</div>
             <div class="br-sum-value blue">₱${openingBalance.toFixed(2)}</div>
           </div>
-          <div class="br-summary-item" style="border-left:3px solid #16a34a">
+          <div class="br-summary-item green">
+            <div class="br-sum-icon"><i class="fas fa-arrow-down"></i></div>
             <div class="br-sum-label">Total Deposits</div>
-            <div class="br-sum-value green">₱${totalCredits.toFixed(2)}</div>
+            <div class="br-sum-value green">+₱${totalCredits.toFixed(2)}</div>
           </div>
-          <div class="br-summary-item" style="border-left:3px solid #dc2626">
+          <div class="br-summary-item red">
+            <div class="br-sum-icon"><i class="fas fa-arrow-up"></i></div>
             <div class="br-sum-label">Total Withdrawals</div>
-            <div class="br-sum-value red">₱${totalDebits.toFixed(2)}</div>
+            <div class="br-sum-value red">−₱${totalDebits.toFixed(2)}</div>
           </div>
-          <div class="br-summary-item" style="border-left:3px solid #2563eb">
+          <div class="br-summary-item gold">
+            <div class="br-sum-icon"><i class="fas fa-landmark"></i></div>
             <div class="br-sum-label">Closing Balance</div>
-            <div class="br-sum-value blue">₱${closingBalance.toFixed(2)}</div>
+            <div class="br-sum-value gold">₱${closingBalance.toFixed(2)}</div>
           </div>
         </div>
 
         <!-- Transactions Table -->
-        <h4 style="font-size:12px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:8px">Transaction History</h4>
-        ${transactions.length === 0 ? '<p style="text-align:center;padding:24px;color:var(--text-muted)">No transactions for this period.</p>' : `
-        <table class="br-table">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Ref #</th>
-              <th>Type</th>
-              <th>Description</th>
-              <th class="right">Deposits (₱)</th>
-              <th class="right">Withdrawals (₱)</th>
-              <th class="right">Balance (₱)</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr style="font-weight:600;background:var(--bg)">
-              <td colspan="4">Opening Balance</td>
-              <td></td><td></td>
-              <td class="right" style="font-weight:700">₱${openingBalance.toFixed(2)}</td>
-            </tr>
-            ${txRows}
-            <tr class="total-row">
-              <td colspan="4"><strong>TOTAL</strong></td>
-              <td class="right credit">₱${totalCredits.toFixed(2)}</td>
-              <td class="right debit">₱${totalDebits.toFixed(2)}</td>
-              <td class="right" style="color:#2563eb">₱${closingBalance.toFixed(2)}</td>
-            </tr>
-          </tbody>
-        </table>`}
+        <div class="br-table-wrap">
+          <table class="br-table">
+            <thead>
+              <tr>
+                <th style="width:100px">Date</th>
+                <th style="width:90px">Ref #</th>
+                <th style="width:120px">Type</th>
+                <th>Description</th>
+                <th class="right" style="width:130px">Deposits (₱)</th>
+                <th class="right" style="width:130px">Withdrawals (₱)</th>
+                <th class="right" style="width:130px">Balance (₱)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="font-weight:700;background:var(--bg)">
+                <td colspan="4">Opening Balance</td>
+                <td></td><td></td>
+                <td class="right">₱${openingBalance.toFixed(2)}</td>
+              </tr>
+              ${txRows}
+              <tr class="total-row">
+                <td colspan="4"><strong>TOTAL</strong></td>
+                <td class="right credit">₱${totalCredits.toFixed(2)}</td>
+                <td class="right debit">₱${totalDebits.toFixed(2)}</td>
+                <td class="right">₱${closingBalance.toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
-        <div class="br-legal">
-          This statement is a computer-generated document and does not require a physical signature.<br>
-          For inquiries, please contact LabCoop Savings Bank at (02) 1234-5678 or email support@labcoop.com.<br>
-          Generated on ${new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+        <!-- Footer -->
+        <div class="br-footer">
+          <div class="br-legal">
+            <strong>Disclaimer:</strong> This statement is a computer-generated document and does not require a physical signature.<br>
+            For inquiries, please contact LabCoop Savings Bank at <strong>(02) 1234-5678</strong> or email <strong>support@labcoop.com</strong><br>
+            Generated on ${new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} — PH Time
+          </div>
         </div>
       </div>
     </div>` : `
     <div class="br-card">
-      <div class="br-body" style="text-align:center;padding:60px">
-        <i class="fas fa-user-slash" style="font-size:48px;opacity:0.3;display:block;margin-bottom:12px"></i>
-        <h3 style="color:var(--text-muted);font-weight:400">Member not found or inactive</h3>
+      <div class="br-body" style="text-align:center;padding:80px">
+        <i class="fas fa-user-slash" style="font-size:56px;opacity:0.2;display:block;margin-bottom:16px;color:var(--accent)"></i>
+        <h3 style="color:var(--text-muted);font-weight:400;font-size:16px">Member not found or inactive</h3>
       </div>
     </div>`}
   </div>`;
@@ -423,80 +521,139 @@ router.get('/reports/bank/certificate', requireRole(1), asyncHandler(async (req,
       ${account ? '<a href="/admin/reports/bank/certificate?member_id=' + memberId + '&print=1" target="_blank" class="btn btn-outline btn-sm"><i class="fas fa-print"></i> Print Certificate</a>' : ''}
     </div>
     ${!memberId ? `
-    <div class="br-card"><div class="br-body" style="text-align:center;padding:60px">
-      <i class="fas fa-hand-point-left" style="font-size:48px;opacity:0.3;display:block;margin-bottom:12px"></i>
-      <h3 style="color:var(--text-muted);font-weight:400">Select a member to issue a certificate</h3>
+    <div class="br-card"><div class="br-body" style="text-align:center;padding:80px">
+      <i class="fas fa-hand-point-left" style="font-size:56px;opacity:0.2;display:block;margin-bottom:16px;color:var(--accent)"></i>
+      <h3 style="color:var(--text-muted);font-weight:400;font-size:16px">Select a member to issue a certificate</h3>
     </div></div>` : account ? `
-    <div class="br-cert">
-      <div class="br-cert-header">
-        <h2>CERTIFICATE OF DEPOSIT BALANCE</h2>
-        <div class="br-cert-sub">LabCoop Savings Bank ● Member Savings Account</div>
-      </div>
-      <div class="br-cert-body">
-        <div class="br-cert-greeting">TO WHOM IT MAY CONCERN:</div>
-        <div class="br-cert-name">${h(account.child_name)}</div>
-        <div class="br-cert-amount">₱ ${balance.toFixed(2)}</div>
-        <div class="br-cert-words">${balanceWords}</div>
-        <div class="br-cert-details">
-          <div class="br-field"><span class="br-label">Member ID</span><span class="br-value">${h(account.member_id)}</span></div>
-          <div class="br-field"><span class="br-label">Account Number</span><span class="br-value">${h(account.regular_savings_number || account.member_id)}</span></div>
-          <div class="br-field"><span class="br-label">Date Issued</span><span class="br-value">${today}</span></div>
-          <div class="br-field"><span class="br-label">Account Status</span><span class="br-value" style="color:${account.is_active == 1 ? '#16a34a' : '#dc2626'}">${account.is_active == 1 ? 'Active' : 'Inactive'}</span></div>
-          <div class="br-field"><span class="br-label">Date Opened</span><span class="br-value">${(account.created_at || '').slice(0, 10) || '-'}</span></div>
-          <div class="br-field"><span class="br-label">Interest Rate</span><span class="br-value">${account.savings_product_id ? '2% per month' : 'Standard Rate'}</span></div>
+    <!-- ── CERTIFICATE OF DEPOSIT BALANCE ── -->
+    <div class="br-card">
+      <div class="br-header">
+        <div class="br-bank-row">
+          <div class="br-bank-left">
+            <div class="br-bank-name">🏦 LABCOOP SAVINGS BANK</div>
+            <div class="br-bank-sub">123 Rizal Street, Barangay Poblacion ● TIN: 123-456-789-000 ● (02) 1234-5678</div>
+            <div class="br-report-title">Certificate of Deposit Balance</div>
+          </div>
+          <div class="br-bank-right">
+            <div>Date Issued: ${today}</div>
+          </div>
         </div>
-        <div class="br-cert-footer">
-          <div class="br-signature">
+      </div>
+      <div class="br-body">
+        <!-- Account Summary Cards -->
+        <div class="br-summary-grid" style="grid-template-columns:repeat(3,1fr)">
+          <div class="br-summary-item blue">
+            <div class="br-sum-icon"><i class="fas fa-user"></i></div>
+            <div class="br-sum-label">Account Holder</div>
+            <div class="br-sum-value" style="font-size:16px;color:var(--text);font-family:inherit">${h(account.child_name)}</div>
+          </div>
+          <div class="br-summary-item gold">
+            <div class="br-sum-icon"><i class="fas fa-coins"></i></div>
+            <div class="br-sum-label">Current Balance</div>
+            <div class="br-sum-value gold">₱${balance.toFixed(2)}</div>
+          </div>
+          <div class="br-summary-item green">
+            <div class="br-sum-icon"><i class="fas fa-check-circle"></i></div>
+            <div class="br-sum-label">Account Status</div>
+            <div class="br-sum-value" style="font-size:14px;color:${account.is_active == 1 ? '#16a34a' : '#dc2626'};font-family:inherit">${account.is_active == 1 ? '● Active' : '● Inactive'}</div>
+          </div>
+        </div>
+
+        <!-- Amount Display (Prominent) -->
+        <div class="br-cert-amount-box">
+          <div class="br-cert-amount-label">SAVINGS BALANCE</div>
+          <div class="br-cert-amount-figure">₱ ${balance.toFixed(2)}</div>
+          <div class="br-cert-amount-words">${balanceWords}</div>
+        </div>
+
+        <!-- Details Grid -->
+        <div class="br-member-panel" style="margin-top:0">
+          <div class="br-member-left" style="grid-template-columns:1fr 1fr 1fr">
+            <div class="br-field">
+              <span class="br-label">Member ID</span>
+              <span class="br-value mono">${h(account.member_id)}</span>
+            </div>
+            <div class="br-field">
+              <span class="br-label">Account Number</span>
+              <span class="br-value mono">${h(account.regular_savings_number || account.member_id)}</span>
+            </div>
+            <div class="br-field">
+              <span class="br-label">Date Opened</span>
+              <span class="br-value">${(account.created_at || '').slice(0, 10) || '-'}</span>
+            </div>
+            <div class="br-field">
+              <span class="br-label">Interest Rate</span>
+              <span class="br-value">${account.savings_product_id ? '2% per month' : 'Standard Rate'}</span>
+            </div>
+            <div class="br-field">
+              <span class="br-label">TIN</span>
+              <span class="br-value mono">123-456-789-000</span>
+            </div>
+            <div class="br-field">
+              <span class="br-label">Certificate No.</span>
+              <span class="br-value mono">CDB-${(account.member_id || '').slice(0,8).toUpperCase() || '0000'}-${date.replace(/-/g,'')}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Signatures -->
+        <div class="br-signatures">
+          <div class="br-sig-block">
             <div class="br-sig-line"></div>
             <div class="br-sig-label">Branch Manager</div>
           </div>
-          <div class="br-signature">
+          <div class="br-sig-block">
             <div class="br-sig-line"></div>
             <div class="br-sig-label">Account Officer</div>
           </div>
-          <div class="br-signature">
+          <div class="br-sig-block">
             <div class="br-sig-line"></div>
             <div class="br-sig-label">Member Services</div>
           </div>
         </div>
-        <div class="br-legal" style="margin-top:20px">
-          This certificate is issued upon request and reflects the savings balance as of the date indicated.<br>
-          LabCoop Savings Bank ● 123 Rizal Street, Barangay Poblacion ● TIN: 123-456-789-000
+
+        <!-- Footer -->
+        <div class="br-footer">
+          <div class="br-legal">
+            <strong>Disclaimer:</strong> This certificate is issued upon request and reflects the savings balance as of <strong>${today}</strong>.<br>
+            LabCoop Savings Bank ● 123 Rizal Street, Barangay Poblacion ● TIN: 123-456-789-000 ● (02) 1234-5678
+          </div>
         </div>
       </div>
     </div>` : `
-    <div class="br-card"><div class="br-body" style="text-align:center;padding:60px">
-      <i class="fas fa-user-slash" style="font-size:48px;opacity:0.3;display:block;margin-bottom:12px"></i>
-      <h3 style="color:var(--text-muted);font-weight:400">Member not found or inactive</h3>
+    <div class="br-card"><div class="br-body" style="text-align:center;padding:80px">
+      <i class="fas fa-user-slash" style="font-size:56px;opacity:0.2;display:block;margin-bottom:16px;color:var(--accent)"></i>
+      <h3 style="color:var(--text-muted);font-weight:400;font-size:16px">Member not found or inactive</h3>
     </div></div>`}
   </div>`;
 
   if (req.query.print === '1' && account) {
     const printContent = `
-    <div style="text-align:center;margin-bottom:4mm">
-      <h2 style="font-size:14pt;font-weight:800;letter-spacing:2px">LABCOOP SAVINGS BANK</h2>
-      <p style="font-size:9pt">123 Rizal Street, Barangay Poblacion ● TIN: 123-456-789-000</p>
+    <div style="border-bottom:3px solid #c8a84e;margin-bottom:4mm;padding-bottom:2mm">
+      <h2 style="font-size:14pt;font-weight:800;letter-spacing:2px;color:#0d2818">LABCOOP SAVINGS BANK</h2>
+      <p style="font-size:8pt;color:#555">123 Rizal Street, Barangay Poblacion ● TIN: 123-456-789-000 ● (02) 1234-5678</p>
     </div>
-    <div style="text-align:center;margin:6mm 0;border:2px solid #000;padding:20px 0">
-      <h1 style="font-size:16pt;font-weight:800;letter-spacing:2px;margin-bottom:2mm">CERTIFICATE OF DEPOSIT BALANCE</h1>
-      <p style="font-size:9pt;color:#555">Member Savings Account</p>
+    <div style="text-align:center;margin:4mm 0;border:2px solid #c8a84e;padding:12px 0;background:linear-gradient(135deg,#fefce8,#fffef0)">
+      <h1 style="font-size:16pt;font-weight:800;letter-spacing:2px;color:#0d2818">CERTIFICATE OF DEPOSIT BALANCE</h1>
+      <p style="font-size:9pt;color:#666">Member Savings Account</p>
     </div>
-    <p style="margin-bottom:3mm">TO WHOM IT MAY CONCERN:</p>
-    <p style="font-size:13pt;font-weight:700;margin-bottom:3mm">${h(account.child_name)}</p>
-    <p style="font-size:18pt;font-weight:800;text-align:center;padding:4mm;border:2px dashed #000;margin-bottom:2mm">₱ ${balance.toFixed(2)}</p>
-    <p style="font-size:10pt;text-align:center;font-style:italic;margin-bottom:4mm">${balanceWords}</p>
-    <table style="width:100%;font-size:9pt;margin-bottom:4mm">
+    <p style="font-size:10pt;margin-bottom:2mm"><b>TO WHOM IT MAY CONCERN:</b></p>
+    <p style="font-size:14pt;font-weight:700;margin-bottom:3mm;color:#0d2818">${h(account.child_name)}</p>
+    <table style="width:100%;font-size:9pt;margin-bottom:3mm">
       <tr><td style="width:50%"><b>Member ID:</b> ${h(account.member_id)}</td><td><b>Date Issued:</b> ${today}</td></tr>
       <tr><td><b>Account #:</b> ${h(account.regular_savings_number || account.member_id)}</td><td><b>Status:</b> ${account.is_active == 1 ? 'Active' : 'Inactive'}</td></tr>
     </table>
-    <div style="display:flex;justify-content:space-between;margin-top:8mm">
-      <div style="text-align:center;width:30%"><div style="border-top:1px solid #000;margin-bottom:1mm;padding-top:20mm"></div><div style="font-size:8pt">Branch Manager</div></div>
-      <div style="text-align:center;width:30%"><div style="border-top:1px solid #000;margin-bottom:1mm;padding-top:20mm"></div><div style="font-size:8pt">Account Officer</div></div>
-      <div style="text-align:center;width:30%"><div style="border-top:1px solid #000;margin-bottom:1mm;padding-top:20mm"></div><div style="font-size:8pt">Member Services</div></div>
+    <p style="font-size:10pt;font-weight:600;margin-bottom:1mm">SAVINGS BALANCE</p>
+    <p style="font-size:22pt;font-weight:800;text-align:center;padding:3mm;border:2px dashed #c8a84e;background:#fefce8;margin-bottom:2mm">₱ ${balance.toFixed(2)}</p>
+    <p style="font-size:10pt;text-align:center;font-style:italic;color:#555;margin-bottom:4mm">${balanceWords}</p>
+    <div style="display:flex;justify-content:space-between;margin-top:6mm">
+      <div style="text-align:center;width:30%"><div style="border-top:1px solid #000;margin-bottom:1mm;padding-top:15mm"></div><div style="font-size:8pt">Branch Manager</div></div>
+      <div style="text-align:center;width:30%"><div style="border-top:1px solid #000;margin-bottom:1mm;padding-top:15mm"></div><div style="font-size:8pt">Account Officer</div></div>
+      <div style="text-align:center;width:30%"><div style="border-top:1px solid #000;margin-bottom:1mm;padding-top:15mm"></div><div style="font-size:8pt">Member Services</div></div>
     </div>
-    <div style="text-align:center;font-size:7pt;color:#666;margin-top:4mm;border-top:1px solid #ccc;padding-top:2mm">
-      This certificate is issued upon request and reflects the savings balance as of the date indicated.<br>
-      LabCoop Savings Bank ● 123 Rizal Street, Barangay Poblacion ● TIN: 123-456-789-000
+    <div style="text-align:center;font-size:7pt;color:#666;margin-top:4mm;border-top:1px solid #c8a84e;padding-top:2mm">
+      This certificate is issued upon request and reflects the savings balance as of <b>${today}</b>.<br>
+      LabCoop Savings Bank ● 123 Rizal Street, Barangay Poblacion ● TIN: 123-456-789-000 ● (02) 1234-5678
     </div>`;
     return res.type('html').send(printLayout('Certificate of Deposit Balance — ' + (account.child_name || ''), printContent, {
       subtitle: 'OFFICIAL CERTIFICATE',
@@ -573,76 +730,89 @@ router.get('/reports/bank/cash-position', requireRole(2), asyncHandler(async (re
 
     <div class="br-card">
       <div class="br-header">
-        <div class="br-bank-name">LABCOOP SAVINGS BANK</div>
-        <div class="br-bank-sub">123 Rizal Street, Barangay Poblacion ● TIN: 123-456-789-000</div>
-        <div class="br-report-title">Daily Cash Position Report</div>
+        <div class="br-bank-row">
+          <div class="br-bank-left">
+            <div class="br-bank-name">🏦 LABCOOP SAVINGS BANK</div>
+            <div class="br-bank-sub">123 Rizal Street, Barangay Poblacion ● TIN: 123-456-789-000 ● (02) 1234-5678</div>
+            <div class="br-report-title">Daily Cash Position Report</div>
+          </div>
+          <div class="br-bank-right">
+            <div>Report Date: ${date}</div>
+          </div>
+        </div>
       </div>
       <div class="br-body">
-        <div style="margin-bottom:16px;font-size:11px;color:var(--text-muted)">
-          <strong>Report Date:</strong> ${date}
-        </div>
 
         <!-- Cash Position Summary -->
         <div class="br-summary-grid" style="grid-template-columns:repeat(5,1fr)">
-          <div class="br-summary-item" style="border-left:3px solid #2563eb">
+          <div class="br-summary-item blue">
+            <div class="br-sum-icon"><i class="fas fa-wallet"></i></div>
             <div class="br-sum-label">Opening Cash</div>
             <div class="br-sum-value blue">₱${openingCash.toFixed(2)}</div>
           </div>
-          <div class="br-summary-item" style="border-left:3px solid #16a34a">
+          <div class="br-summary-item green">
+            <div class="br-sum-icon"><i class="fas fa-arrow-down"></i></div>
             <div class="br-sum-label">Cash In (Collections)</div>
             <div class="br-sum-value green">+₱${cashIn.toFixed(2)}</div>
           </div>
-          <div class="br-summary-item" style="border-left:3px solid #dc2626">
+          <div class="br-summary-item red">
+            <div class="br-sum-icon"><i class="fas fa-arrow-up"></i></div>
             <div class="br-sum-label">Cash Out (Disbursements)</div>
-            <div class="br-sum-value red">-₱${cashOut.toFixed(2)}</div>
+            <div class="br-sum-value red">−₱${cashOut.toFixed(2)}</div>
           </div>
-          <div class="br-summary-item" style="border-left:3px solid #f59e0b">
+          <div class="br-summary-item gold">
+            <div class="br-sum-icon"><i class="fas fa-chart-line"></i></div>
             <div class="br-sum-label">Net Cash Flow</div>
-            <div class="br-sum-value" style="color:${netCashFlow >= 0 ? '#16a34a' : '#dc2626'}">${netCashFlow >= 0 ? '+' : ''}₱${netCashFlow.toFixed(2)}</div>
+            <div class="br-sum-value" style="color:${netCashFlow >= 0 ? '#16a34a' : '#dc2626'}">${netCashFlow >= 0 ? '+₱' : '−₱'}${Math.abs(netCashFlow).toFixed(2)}</div>
           </div>
-          <div class="br-summary-item" style="border-left:3px solid #2563eb;background:#eff6ff">
+          <div class="br-summary-item blue" style="background:#eff6ff">
+            <div class="br-sum-icon"><i class="fas fa-landmark"></i></div>
             <div class="br-sum-label" style="font-weight:800">Closing Cash</div>
-            <div class="br-sum-value blue" style="font-size:22px">₱${closingCash.toFixed(2)}</div>
+            <div class="br-sum-value blue">₱${closingCash.toFixed(2)}</div>
           </div>
         </div>
 
         <!-- Breakdown Table -->
-        <h4 style="font-size:12px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin:16px 0 8px 0">Transaction Breakdown</h4>
-        <table class="br-table">
-          <thead>
-            <tr>
-              <th>Transaction Type</th>
-              <th>Category</th>
-              <th class="right">Count</th>
-              <th class="right">Amount (₱)</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${typeRows}
-            <tr class="total-row">
-              <td colspan="2"><strong>TOTAL TRANSACTIONS</strong></td>
-              <td class="right">${txs.length}</td>
-              <td class="right">₱${txs.reduce((s,t) => s + Number(t.amount), 0).toFixed(2)}</td>
-            </tr>
-            <tr class="total-row">
-              <td colspan="3"><strong>CASH IN (Collections)</strong></td>
-              <td class="right" style="color:#16a34a">₱${cashIn.toFixed(2)}</td>
-            </tr>
-            <tr class="total-row">
-              <td colspan="3"><strong>CASH OUT (Disbursements)</strong></td>
-              <td class="right" style="color:#dc2626">₱${cashOut.toFixed(2)}</td>
-            </tr>
-            <tr class="total-row">
-              <td colspan="3"><strong>NON-CASH ENTRIES</strong></td>
-              <td class="right" style="color:#8b5cf6">₱${nonCash.toFixed(2)}</td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="br-table-wrap">
+          <table class="br-table">
+            <thead>
+              <tr>
+                <th>Transaction Type</th>
+                <th>Category</th>
+                <th class="right">Count</th>
+                <th class="right">Amount (₱)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${typeRows}
+              <tr class="total-row">
+                <td colspan="2"><strong>TOTAL TRANSACTIONS</strong></td>
+                <td class="right">${txs.length}</td>
+                <td class="right">₱${txs.reduce((s,t) => s + Number(t.amount), 0).toFixed(2)}</td>
+              </tr>
+              <tr class="total-row">
+                <td colspan="3"><strong>CASH IN (Collections)</strong></td>
+                <td class="right credit">₱${cashIn.toFixed(2)}</td>
+              </tr>
+              <tr class="total-row">
+                <td colspan="3"><strong>CASH OUT (Disbursements)</strong></td>
+                <td class="right debit">₱${cashOut.toFixed(2)}</td>
+              </tr>
+              <tr class="total-row">
+                <td colspan="3"><strong>NON-CASH ENTRIES</strong></td>
+                <td class="right" style="color:#8b5cf6;font-weight:700">₱${nonCash.toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
-        <div class="br-legal">
-          This report reflects the daily cash position based on posted transactions.<br>
-          Non-cash entries (interest credits, rewards) are shown separately and do not affect the cash balance.<br>
-          Generated on ${new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+        <!-- Footer -->
+        <div class="br-footer">
+          <div class="br-legal">
+            <strong>Disclaimer:</strong> This report reflects the daily cash position based on posted transactions.<br>
+            Non-cash entries (interest credits, rewards) are shown separately and do not affect the cash balance.<br>
+            Generated on ${new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} — PH Time
+          </div>
         </div>
       </div>
     </div>
@@ -650,25 +820,28 @@ router.get('/reports/bank/cash-position', requireRole(2), asyncHandler(async (re
 
   if (req.query.print === '1') {
     const printContent = `
-    <div style="margin-bottom:3mm">
-      <table style="width:100%;font-size:9pt">
-        <tr><td><b>Report Date:</b> ${date}</td><td style="text-align:right"><b>Opening Cash:</b> ₱${openingCash.toFixed(2)}</td></tr>
-      </table>
+    <div style="border-bottom:3px solid #c8a84e;margin-bottom:3mm;padding-bottom:2mm">
+      <h2 style="font-size:14pt;font-weight:800;letter-spacing:2px;color:#0d2818">LABCOOP SAVINGS BANK</h2>
+      <p style="font-size:8pt;color:#555">123 Rizal Street, Barangay Poblacion ● TIN: 123-456-789-000 ● (02) 1234-5678</p>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-bottom:3mm">
+      <div><b>Report Date:</b> ${date}</div>
+      <div><b>Opening Cash:</b> ₱${openingCash.toFixed(2)}</div>
     </div>
     <div style="display:flex;gap:2mm;margin-bottom:3mm">
-      <div style="flex:1;border:1px solid #999;padding:2mm;text-align:center"><b>Cash In</b><br>₱${cashIn.toFixed(2)}</div>
-      <div style="flex:1;border:1px solid #999;padding:2mm;text-align:center"><b>Cash Out</b><br>₱${cashOut.toFixed(2)}</div>
-      <div style="flex:1;border:1px solid #999;padding:2mm;text-align:center"><b>Net Flow</b><br>${netCashFlow >= 0 ? '+' : ''}₱${netCashFlow.toFixed(2)}</div>
-      <div style="flex:1;border:2px solid #000;padding:2mm;text-align:center;font-weight:700"><b>Closing Cash</b><br>₱${closingCash.toFixed(2)}</div>
+      <div style="flex:1;border:1px solid #16a34a;padding:2mm;text-align:center"><b style="color:#16a34a">Cash In</b><br>₱${cashIn.toFixed(2)}</div>
+      <div style="flex:1;border:1px solid #dc2626;padding:2mm;text-align:center"><b style="color:#dc2626">Cash Out</b><br>₱${cashOut.toFixed(2)}</div>
+      <div style="flex:1;border:1px solid #f59e0b;padding:2mm;text-align:center"><b style="color:#f59e0b">Net Flow</b><br>₱${netCashFlow.toFixed(2)}</div>
+      <div style="flex:1;border:2px solid #2563eb;padding:2mm;text-align:center;font-weight:700"><b style="color:#2563eb">Closing Cash</b><br>₱${closingCash.toFixed(2)}</div>
     </div>
     <table>
       <thead><tr><th>Type</th><th>Category</th><th class="num">Count</th><th class="num">Amount</th></tr></thead>
       <tbody>${typeRows}</tbody>
       <tfoot>
         <tr style="font-weight:700;background:#e8e8e8"><td colspan="2">TOTAL</td><td class="num">${txs.length}</td><td class="num">₱${txs.reduce((s,t) => s + Number(t.amount), 0).toFixed(2)}</td></tr>
-        <tr style="font-weight:700;background:#e8e8e8"><td colspan="3">CASH IN (Collections)</td><td class="num" style="color:#16a34a">₱${cashIn.toFixed(2)}</td></tr>
-        <tr style="font-weight:700;background:#e8e8e8"><td colspan="3">CASH OUT (Disbursements)</td><td class="num" style="color:#dc2626">₱${cashOut.toFixed(2)}</td></tr>
-        <tr style="font-weight:700;background:#e8e8e8"><td colspan="3">NON-CASH ENTRIES</td><td class="num" style="color:#8b5cf6">₱${nonCash.toFixed(2)}</td></tr>
+        <tr style="font-weight:700;background:#e8e8e8"><td colspan="3" style="color:#16a34a">CASH IN (Collections)</td><td class="num" style="color:#16a34a;font-weight:700">₱${cashIn.toFixed(2)}</td></tr>
+        <tr style="font-weight:700;background:#e8e8e8"><td colspan="3" style="color:#dc2626">CASH OUT (Disbursements)</td><td class="num" style="color:#dc2626;font-weight:700">₱${cashOut.toFixed(2)}</td></tr>
+        <tr style="font-weight:700;background:#e8e8e8"><td colspan="3" style="color:#8b5cf6">NON-CASH ENTRIES</td><td class="num" style="color:#8b5cf6;font-weight:700">₱${nonCash.toFixed(2)}</td></tr>
       </tfoot>
     </table>`;
     return res.type('html').send(printLayout('Daily Cash Position Report — ' + date, printContent, {
@@ -682,9 +855,9 @@ router.get('/reports/bank/cash-position', requireRole(2), asyncHandler(async (re
   if (req.query.format === 'csv') {
     let csv = 'Daily Cash Position Report,' + date + '\n\n';
     csv += 'Opening Cash,₱' + openingCash.toFixed(2) + '\n';
-    csv += 'Cash In (Collections),₱' + cashIn.toFixed(2) + '\n';
-    csv += 'Cash Out (Disbursements),₱' + cashOut.toFixed(2) + '\n';
-    csv += 'Net Cash Flow,₱' + netCashFlow.toFixed(2) + '\n';
+    csv += 'Cash In (Collections),+₱' + cashIn.toFixed(2) + '\n';
+    csv += 'Cash Out (Disbursements),−₱' + cashOut.toFixed(2) + '\n';
+    csv += 'Net Cash Flow,' + (netCashFlow >= 0 ? '+₱' : '−₱') + Math.abs(netCashFlow).toFixed(2) + '\n';
     csv += 'Closing Cash,₱' + closingCash.toFixed(2) + '\n\n';
     csv += 'Type,Category,Count,Amount\n';
     Object.keys(byType).sort().forEach(type => {

@@ -147,9 +147,10 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
     account = await one("SELECT * FROM accounts WHERE member_id = $1 AND is_active = 1", [memberId]);
     if (account) {
       // Get opening balance before the period
+      // Note: fee/penalty do NOT affect actual_balance (savings balance) — they are informational/income entries
       const balBefore = await one(`
-        SELECT COALESCE(SUM(CASE WHEN type IN ('deposit','interest_credit','interest','interest_income','loan_disbursement','td_maturity','reward') THEN amount
-          WHEN type IN ('withdrawal','fee','penalty','loan_payment','auto_save','purchase','td_placement') THEN -amount ELSE 0 END), 0) as bal
+        SELECT COALESCE(SUM(CASE WHEN type IN ('deposit','interest_credit','interest','loan_disbursement','td_maturity','reward') THEN amount
+          WHEN type IN ('withdrawal','loan_payment','auto_save','purchase','td_placement') THEN -amount ELSE 0 END), 0) as bal
         FROM transactions WHERE account_id = $1 AND DATE(created_at) < $2
       `, [account.account_id, fromDate]);
       openingBalance = Number(balBefore?.bal || 0);
@@ -161,13 +162,14 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
         ORDER BY created_at ASC
       `, [account.account_id, fromDate, toDate]);
 
-      // Calculate totals using FIXED classification
+      // Calculate totals — only include types that affect actual_balance (savings balance)
+      // fee/penalty do NOT deduct from savings — they are informational/income entries
       totalCredits = transactions.filter(t =>
-        ['deposit','interest_credit','interest','interest_income','loan_disbursement','td_maturity','reward'].includes(t.type)
+        ['deposit','interest_credit','interest'].includes(t.type)
       ).reduce((s, t) => s + Number(t.amount), 0);
 
       totalDebits = transactions.filter(t =>
-        ['withdrawal','fee','penalty','loan_payment','auto_save','purchase','td_placement'].includes(t.type)
+        ['withdrawal','loan_payment','auto_save','purchase','td_placement'].includes(t.type)
       ).reduce((s, t) => s + Number(t.amount), 0);
 
       closingBalance = openingBalance + totalCredits - totalDebits;
@@ -175,11 +177,18 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
   }
 
   // Build transaction rows
+  // isBalanceAffecting: only types that change actual_balance (savings balance)
+  // fee/penalty do NOT affect savings balance — they are informational/income entries
+  const BALANCE_CREDIT = ['deposit','interest_credit','interest'];
+  const BALANCE_DEBIT = ['withdrawal','loan_payment','auto_save','purchase','td_placement'];
   let runningBalance = openingBalance;
   const txRows = transactions.map(t => {
     const amt = Number(t.amount);
-    const isCredit = ['deposit','interest_credit','interest','interest_income','loan_disbursement','td_maturity','reward'].includes(t.type);
-    if (isCredit) runningBalance += amt; else runningBalance -= amt;
+    const isBalanceCredit = BALANCE_CREDIT.includes(t.type);
+    const isBalanceDebit = BALANCE_DEBIT.includes(t.type);
+    const affectsBalance = isBalanceCredit || isBalanceDebit;
+    if (isBalanceCredit) runningBalance += amt;
+    else if (isBalanceDebit) runningBalance -= amt;
     const typeLabel = t.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
     const dateStr = (t.created_at || '').slice(0, 10);
     const refStr = t.reference_id ? (t.reference_id).slice(0, 8).toUpperCase() : '-';
@@ -188,9 +197,9 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
       <td class="mono">${refStr}</td>
       <td><span class="br-type-badge type-${t.type}">${typeLabel}</span></td>
       <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${h(t.description || typeLabel)}</td>
-      <td class="right credit">${isCredit ? '₱' + amt.toFixed(2) : ''}</td>
-      <td class="right debit">${!isCredit ? '₱' + amt.toFixed(2) : ''}</td>
-      <td class="right" style="font-weight:700">₱${runningBalance.toFixed(2)}</td>
+      <td class="right credit">${isBalanceCredit ? '₱' + amt.toFixed(2) : ''}</td>
+      <td class="right debit">${isBalanceDebit ? '₱' + amt.toFixed(2) : ''}</td>
+      <td class="right" style="font-weight:700">${affectsBalance ? '₱' + runningBalance.toFixed(2) : '—'}</td>
     </tr>`;
   }).join('');
 
@@ -257,7 +266,7 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
             <div class="br-sum-value green">₱${totalCredits.toFixed(2)}</div>
           </div>
           <div class="br-summary-item" style="border-left:3px solid #dc2626">
-            <div class="br-sum-label">Total Withdrawals/Charges</div>
+            <div class="br-sum-label">Total Withdrawals</div>
             <div class="br-sum-value red">₱${totalDebits.toFixed(2)}</div>
           </div>
           <div class="br-summary-item" style="border-left:3px solid #2563eb">
@@ -333,16 +342,18 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
         <tr><td colspan="4" style="font-weight:600">Opening Balance</td><td></td><td></td><td class="num" style="font-weight:600">₱${openingBalance.toFixed(2)}</td></tr>
         ${transactions.map(t => {
           const amt = Number(t.amount);
-          const isCredit = ['deposit','interest_credit','interest','interest_income','loan_disbursement','td_maturity','reward'].includes(t.type);
+          const isBalCredit = ['deposit','interest_credit','interest'].includes(t.type);
+          const isBalDebit = ['withdrawal','loan_payment','auto_save','purchase','td_placement'].includes(t.type);
+          const affectsBal = isBalCredit || isBalDebit;
           const typeLabel = t.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
           return `<tr>
             <td>${(t.created_at||'').slice(0,10)}</td>
             <td class="mono">${t.reference_id ? t.reference_id.slice(0,8).toUpperCase() : '-'}</td>
             <td>${typeLabel}</td>
             <td style="max-width:100px">${h(t.description || typeLabel)}</td>
-            <td class="num">${isCredit ? '₱' + amt.toFixed(2) : ''}</td>
-            <td class="num">${!isCredit ? '₱' + amt.toFixed(2) : ''}</td>
-            <td class="num">₱${(function(){ let b=openingBalance; transactions.slice(0,transactions.indexOf(t)+1).forEach(tx => { const a=Number(tx.amount); const ic=['deposit','interest_credit','interest','interest_income','loan_disbursement','td_maturity','reward'].includes(tx.type); if(ic) b+=a; else b-=a; }); return b.toFixed(2); })()}</td>
+            <td class="num">${isBalCredit ? '₱' + amt.toFixed(2) : ''}</td>
+            <td class="num">${isBalDebit ? '₱' + amt.toFixed(2) : ''}</td>
+            <td class="num">${affectsBal ? '₱' + (function(){ let b=openingBalance; transactions.slice(0,transactions.indexOf(t)+1).forEach(tx => { const a=Number(tx.amount); const c=['deposit','interest_credit','interest'].includes(tx.type); const d=['withdrawal','loan_payment','auto_save','purchase','td_placement'].includes(tx.type); if(c) b+=a; else if(d) b-=a; }); return b.toFixed(2); })() : '—'}</td>
           </tr>`;
         }).join('')}
         <tr style="font-weight:700;background:#e8e8e8">
@@ -366,10 +377,13 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
     csv += `,,,Opening Balance,,,₱${rb.toFixed(2)}\n`;
     transactions.forEach(t => {
       const amt = Number(t.amount);
-      const isCredit = ['deposit','interest_credit','interest','interest_income','loan_disbursement','td_maturity','reward'].includes(t.type);
-      if (isCredit) rb += amt; else rb -= amt;
+      const isBalCredit = ['deposit','interest_credit','interest'].includes(t.type);
+      const isBalDebit = ['withdrawal','loan_payment','auto_save','purchase','td_placement'].includes(t.type);
+      const affectsBal = isBalCredit || isBalDebit;
+      if (isBalCredit) rb += amt;
+      else if (isBalDebit) rb -= amt;
       const typeLabel = t.type.replace(/_/g,' ');
-      csv += `"${(t.created_at||'').slice(0,10)}","${t.reference_id ? t.reference_id.slice(0,8).toUpperCase() : '-'}",${typeLabel},"${(t.description||'').replace(/"/g,'""')}",${isCredit ? amt.toFixed(2) : ''},${!isCredit ? amt.toFixed(2) : ''},₱${rb.toFixed(2)}\n`;
+      csv += `"${(t.created_at||'').slice(0,10)}","${t.reference_id ? t.reference_id.slice(0,8).toUpperCase() : '-'}",${typeLabel},"${(t.description||'').replace(/"/g,'""')}",${isBalCredit ? amt.toFixed(2) : ''},${isBalDebit ? amt.toFixed(2) : ''},${affectsBal ? '₱' + rb.toFixed(2) : '—'}\n`;
     });
     csv += `,,,,₱${totalCredits.toFixed(2)},₱${totalDebits.toFixed(2)},₱${closingBalance.toFixed(2)}\n`;
     res.setHeader('Content-Type', 'text/csv');

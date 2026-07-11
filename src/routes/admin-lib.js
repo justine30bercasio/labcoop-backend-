@@ -787,18 +787,21 @@ function printLayout(title, content, opts = {}) {
     color: #000;
     background: #fff;
   }
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
+  .report-sheet {
+    position: relative;
+    min-height: calc(297mm - 45mm);
     background: url('${ORG_TEMPLATE_URL}') center top / 100% auto no-repeat;
-    opacity: 0.10;
-    pointer-events: none;
-    z-index: 0;
+    padding: 74mm 15mm 34mm 15mm;
+    overflow: hidden;
   }
-  body > * { position: relative; z-index: 1; }
-  .org-banner { margin-bottom: 4mm; }
-  .org-banner img { display:block; width:100%; height:auto; }
+  .report-sheet::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0.10);
+    pointer-events: none;
+  }
+  .report-sheet > * { position: relative; z-index: 1; }
   .report-title { text-align: center; margin: 4mm 0 3mm 0; }
   .report-title h2 { font-size: 12pt; font-weight: 700; text-decoration: underline; margin-bottom: 1mm; }
   .report-title .subtitle { font-size: 9pt; color: #444; }
@@ -838,7 +841,7 @@ function printLayout(title, content, opts = {}) {
 </style>
 </head>
 <body>
-  <div class="org-banner"><img src="${ORG_TEMPLATE_URL}" alt="${h(companyName)} report template"></div>
+  <div class="report-sheet">
   <div class="report-title">
     <h2>${title}</h2>
     ${subtitle ? `<div class="subtitle">${subtitle}</div>` : ''}
@@ -855,6 +858,7 @@ function printLayout(title, content, opts = {}) {
     <div class="signature-block"><div class="line"></div><div class="label">${signatureLine3}</div><div class="sub-label">(Printed Name &amp; Signature)</div></div>
   </div>` : ''}
   <div class="footer-note">This report is system-generated from LabCoop Banking System</div>
+  </div>
 </body>
 </html>`;
 }

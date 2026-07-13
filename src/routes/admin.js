@@ -3996,10 +3996,10 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
     }
   }
 
-  // ── Print prompt on new receipt (custom modal) ──
+  // ── Print prompt on NEW receipt only (not when viewing past receipts) ──
   (function() {
     var ol = document.getElementById('receiptOverlay');
-    if (ol && ol.classList.contains('show')) {
+    if (ol && ol.classList.contains('show') && document.querySelector('.toast')) {
       setTimeout(function() {
         document.getElementById('ppOverlay').classList.add('show');
       }, 400);

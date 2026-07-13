@@ -3685,7 +3685,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   .receipt-modal .rm-divider { border-top:2px dashed #e0e0e0; margin:6px 0; }
   .receipt-modal .rm-footer { text-align:center; padding:12px 20px; border-top:2px dashed #e0e0e0; display:flex; gap:8px; justify-content:center; }
   .receipt-modal .rm-void-banner { background:#fef2f2; color:#dc2626; text-align:center; padding:8px; font-weight:700; font-size:13px; border-bottom:2px solid #dc2626; }
-  @media print { body * { visibility:hidden !important; } .receipt-overlay { display:block !important; position:absolute !important; background:transparent !important; backdrop-filter:none !important; } .receipt-modal { box-shadow:none !important; border:2px solid #000 !important; } .receipt-overlay .rm-footer .btn-outline:first-child { display:none !important; } }
+  @media print { body * { visibility:hidden !important; } .receipt-overlay, .receipt-overlay * { visibility:visible !important; } .receipt-overlay { display:flex !important; position:fixed !important; background:transparent !important; backdrop-filter:none !important; } .receipt-modal { box-shadow:none !important; border:2px solid #000 !important; } .receipt-overlay .rm-footer .btn-outline:first-child { display:none !important; } }
   @keyframes modalIn { from { opacity:0; transform:scale(0.92) translateY(20px); } to { opacity:1; transform:scale(1) translateY(0); } }
 
   /* ── Void modal ── */
@@ -3734,7 +3734,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
         <button type="submit"><i class="fas fa-search"></i> Search</button>
       </form>
       <div class="teller-meta">
-        <label title="Auto-open print dialog after transaction"><input type="checkbox" id="autoPrintCheck"> <i class="fas fa-print"></i> Auto-print</label>
+        <span style="font-size:11px;color:var(--text-muted)"><i class="fas fa-print"></i> Receipt prompts to print</span>
         <label title="Hide sidebar for more screen space"><input type="checkbox" id="fullScreenCheck"> <i class="fas fa-expand"></i> Full screen</label>
         ${selectedAccount ? '<span class="customer-chip">' + (selectedAccount.profile_pic_url ? '<img src="' + h(selectedAccount.profile_pic_url) + '">' : '<span class="chip-avatar">' + h((selectedAccount.child_name || '?')[0].toUpperCase()) + '</span>') + h(selectedAccount.child_name) + ' (' + h(selectedAccount.member_id || '---') + ')</span>' : ''}
       </div>
@@ -3961,16 +3961,22 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
     });
   }
 
-  // ── Auto-print toggle ──
-  var apCheck = document.getElementById('autoPrintCheck');
-  if (apCheck) {
-    if (localStorage.getItem('tellerAutoPrint') === '1') apCheck.checked = true;
-    apCheck.addEventListener('change', function() { localStorage.setItem('tellerAutoPrint', this.checked ? '1' : '0'); });
+  // ── Print prompt on new receipt ──
+  (function() {
     var ol = document.getElementById('receiptOverlay');
-    if (ol && ol.classList.contains('show') && apCheck.checked) {
-      setTimeout(function() { window.print(); }, 500);
+    if (ol && ol.classList.contains('show')) {
+      // Clean ?receipt= from URL so Back doesn't re-trigger
+      if (window.history && window.history.replaceState) {
+        var clean = window.location.href.replace(/[?&]receipt=[^&]*/g, '').replace(/[?&]$/, '');
+        window.history.replaceState({}, document.title, clean);
+      }
+      setTimeout(function() {
+        if (confirm('Transaction successful!\n\nPrint receipt?')) {
+          window.print();
+        }
+      }, 400);
     }
-  }
+  })();
 
   // ── Void modal ──
   function openVoidModal(txId, type, amount) {

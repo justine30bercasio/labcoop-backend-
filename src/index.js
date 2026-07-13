@@ -303,6 +303,7 @@ app.use(helmet({
   },
   frameguard: { action: 'deny' },
   crossOriginResourcePolicy: { policy: 'cross-origin' },
+  referrerPolicy: { policy: 'same-origin' },
   strictTransportSecurity: process.env.NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
 }));
 app.set('trust proxy', 1);

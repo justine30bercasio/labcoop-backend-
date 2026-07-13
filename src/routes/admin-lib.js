@@ -227,14 +227,15 @@ body { font-family:var(--font); background:var(--bg); color:var(--text); display
 .sidebar-footer a:hover { background:var(--sidebar-hover); color:var(--sidebar-text-active); }
 .sidebar-footer a .icon { font-size:13px; width:22px; text-align:center; flex-shrink:0; }
 .sidebar-footer a .icon i { font-size:13px; vertical-align:middle; }
-.notif-wrap { position:relative; display:inline-flex; align-items:center; }
-.notif-wrap .notif-bell { width:38px; height:38px; border:none; border-radius:10px; background:var(--card); color:var(--text); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:18px; transition:all 0.15s; box-shadow:0 2px 8px rgba(0,0,0,0.08); border:1px solid var(--border); position:relative; }
-.notif-wrap .notif-bell:hover { background:#f0fdf4; color:var(--accent); box-shadow:0 3px 12px rgba(46,125,50,0.15); transform:translateY(-1px); }
-.notif-wrap .notif-bell:active { transform:translateY(0); }
+.notif-wrap { position:fixed; bottom:24px; right:24px; z-index:997; }
+.notif-wrap .notif-bell { width:52px; height:52px; border:none; border-radius:16px; background:linear-gradient(135deg,#2E7D32,#1B5E20); color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:22px; transition:all 0.2s; box-shadow:0 4px 16px rgba(46,125,50,0.4); position:relative; }
+.notif-wrap .notif-bell:hover { transform:translateY(-2px) scale(1.05); box-shadow:0 6px 24px rgba(46,125,50,0.5); }
+.notif-wrap .notif-bell:active { transform:translateY(0) scale(0.97); }
 .notif-badge { position:relative; display:inline-flex; align-items:center; line-height:1; }
-.notif-badge .notif-count { position:absolute; top:-8px; right:-8px; background:#ef4444; color:#fff; font-size:9px; font-weight:700; min-width:18px; height:18px; line-height:18px; text-align:center; border-radius:9px; padding:0 5px; box-shadow:0 2px 4px rgba(239,68,68,0.5); display:none; border:2px solid var(--card); }
+.notif-badge .notif-count { position:absolute; top:-6px; right:-8px; background:#ef4444; color:#fff; font-size:10px; font-weight:700; min-width:20px; height:20px; line-height:20px; text-align:center; border-radius:10px; padding:0 5px; box-shadow:0 2px 6px rgba(239,68,68,0.5); display:none; border:2px solid #1B5E20; }
 .notif-badge .notif-count.show { display:inline-block; }
-.notif-dropdown { position:absolute; top:44px; right:0; width:360px; max-height:440px; background:var(--card); border-radius:14px; box-shadow:0 8px 40px rgba(0,0,0,0.15); display:none; flex-direction:column; z-index:999; overflow:hidden; border:1px solid var(--border); }
+.notif-dropdown { position:absolute; bottom:60px; right:0; width:380px; max-height:460px; background:var(--card); border-radius:16px; box-shadow:0 8px 40px rgba(0,0,0,0.18); display:none; flex-direction:column; z-index:999; overflow:hidden; border:1px solid var(--border); }
+.notif-dropdown.show { display:flex; }
 .notif-dropdown.show { display:flex; }
 .notif-dropdown-header { padding:12px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
 .notif-dropdown-header h4 { font-size:13px; font-weight:700; color:var(--text); }
@@ -524,30 +525,29 @@ table.dataTable td.mono { font-family:var(--mono); font-size:12px; }
       <h2>${opts.headerTitle || title}</h2>
       ${subtitle ? `<div class="meta">${subtitle}</div>` : ''}
     </div>
-    <div class="header-actions">
-      <div class="notif-wrap">
-        <button class="notif-bell" id="notifBell" title="Notifications">
-          <span class="notif-badge"><i class="fas fa-bell"></i> <span class="notif-count" id="notifCount">0</span></span>
-        </button>
-        <div class="notif-dropdown" id="notifDropdown">
-          <div class="notif-dropdown-header">
-            <h4>Notifications</h4>
-            <span class="nd-count" id="notifDropdownCount">0 pending</span>
-          </div>
-          <div class="notif-dropdown-body" id="notifDropdownBody">
-            <div class="notif-dropdown-empty">
-              <div class="nde-icon">&#x2705;</div>
-              <div>All caught up!</div>
-            </div>
-          </div>
-          <div class="notif-dropdown-footer">
-            <a href="/admin/pending-approvals">View all pending approvals &rarr;</a>
-          </div>
-        </div>
-        <div class="notif-overlay" id="notifOverlay"></div>
+    <div class="header-actions">${headerActions || ''}</div>
+  </div>
+  <div class="notif-wrap">
+    <button class="notif-bell" id="notifBell" title="Notifications">
+      <span class="notif-badge"><i class="fas fa-bell"></i> <span class="notif-count" id="notifCount">0</span></span>
+    </button>
+    <div class="notif-dropdown" id="notifDropdown">
+      <div class="notif-dropdown-header">
+        <h4>Notifications</h4>
+        <span class="nd-count" id="notifDropdownCount">0 pending</span>
       </div>
-      ${headerActions || ''}
+      <div class="notif-dropdown-body" id="notifDropdownBody">
+        <div class="notif-dropdown-empty">
+          <div class="nde-icon">&#x2705;</div>
+          <div>All caught up!</div>
+        </div>
+      </div>
+      <div class="notif-dropdown-footer">
+        <a href="/admin/pending-approvals">View all pending approvals &rarr;</a>
+      </div>
     </div>
+    <div class="notif-overlay" id="notifOverlay"></div>
+  </div>
   </div>
 
   ${toastHtml}

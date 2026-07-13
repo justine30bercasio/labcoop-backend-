@@ -3535,118 +3535,189 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   const adminRole = ROLE_LEVELS[req.session.adminRole] ?? 0;
 
   const bankStyle = `<style>
-  .teller-bar { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 24px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
-  .teller-search { display:flex; gap:12px; }
-  .teller-search input { flex:1; padding:12px 16px; border:2px solid var(--border); border-radius:10px; font-size:15px; outline:none; background:var(--card); transition:border-color 0.2s; }
-  .teller-search input:focus { border-color:var(--accent); }
-  .search-results { margin:-8px 0 16px 0; }
-  .search-result-item { display:flex; align-items:center; gap:12px; padding:10px 16px; border-radius:8px; cursor:pointer; transition:background 0.15s; text-decoration:none; color:var(--text); }
-  .search-result-item:hover { background:var(--bg-alt); }
-  .search-result-item .sra { width:36px; height:36px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; flex-shrink:0; }
-  .search-result-item .sra-img { width:36px; height:36px; border-radius:50%; object-fit:cover; flex-shrink:0; }
+  /* ── Tell bar ── */
+  .teller-bar { background:linear-gradient(135deg,var(--card),#fafcff); border:1px solid var(--border); border-radius:14px; padding:18px 24px; margin-bottom:16px; box-shadow:0 2px 8px rgba(0,0,0,0.05); position:sticky; top:0; z-index:10; }
+  .teller-bar-inner { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .teller-search { display:flex; flex:1; min-width:280px; gap:8px; }
+  .teller-search input { flex:1; padding:11px 16px; border:2px solid var(--border); border-radius:10px; font-size:14px; outline:none; background:var(--card); transition:border-color 0.2s,box-shadow 0.2s; }
+  .teller-search input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(46,125,50,0.12); }
+  .teller-search button { padding:11px 22px; border:none; border-radius:10px; background:linear-gradient(135deg,var(--accent),#1B5E20); color:#fff; font-weight:600; font-size:13px; cursor:pointer; transition:transform 0.15s,box-shadow 0.2s; white-space:nowrap; }
+  .teller-search button:hover { transform:translateY(-1px); box-shadow:0 4px 12px rgba(46,125,50,0.3); }
+  .teller-search button:active { transform:translateY(0); }
+  .teller-meta { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:10px; }
+  .teller-meta label { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-muted); cursor:pointer; user-select:none; }
+  .teller-meta input[type="checkbox"] { width:15px; height:15px; cursor:pointer; accent-color:var(--accent); }
+  .shortcuts-bar { display:flex; align-items:center; gap:4px; flex-wrap:wrap; font-size:11px; color:var(--text-muted); }
+  .shortcuts-bar kbd { display:inline-block; padding:1px 5px; font-size:10px; font-family:var(--mono); background:var(--card); border:1px solid var(--border); border-radius:4px; box-shadow:0 1px 0 var(--border); line-height:1.5; }
+  .shortcuts-bar .sep { opacity:0.25; margin:0 3px; }
+  .customer-chip { display:inline-flex; align-items:center; gap:6px; padding:3px 12px 3px 8px; background:#e8f5e9; border-radius:20px; font-size:12px; font-weight:600; color:#166534; border:1px solid #a5d6a7; }
+  .customer-chip img { width:20px; height:20px; border-radius:50%; object-fit:cover; }
+  .customer-chip .chip-avatar { width:20px; height:20px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; }
+
+  /* ── Search results ── */
+  .search-results { margin:-4px 0 14px 0; background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; box-shadow:0 4px 16px rgba(0,0,0,0.06); }
+  .search-result-item { display:flex; align-items:center; gap:12px; padding:12px 16px; cursor:pointer; transition:background 0.12s; text-decoration:none; color:var(--text); border-bottom:1px solid #f1f5f9; }
+  .search-result-item:last-child { border-bottom:none; }
+  .search-result-item:hover { background:#f0fdf4; }
+  .search-result-item .sra { width:38px; height:38px; border-radius:50%; background:linear-gradient(135deg,var(--accent),#1B5E20); color:#fff; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:700; flex-shrink:0; }
+  .search-result-item .sra-img { width:38px; height:38px; border-radius:50%; object-fit:cover; flex-shrink:0; }
   .search-result-item .srn { font-weight:600; font-size:14px; }
   .search-result-item .srm { font-size:11px; color:var(--text-muted); font-family:var(--mono); }
-  .teller-grid { display:grid; grid-template-columns: 1fr 1fr; gap:20px; }
-  .teller-card { background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
-  .teller-card-header { padding:14px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; background:#fafbfc; }
-  .teller-card-header h3 { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); }
-  .teller-card-body { padding:20px; }
-  .customer-header { display:flex; align-items:center; gap:16px; margin-bottom:16px; padding-bottom:16px; border-bottom:2px solid var(--accent); }
-  .customer-avatar { width:48px; height:48px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:700; }
-  .customer-info h2 { font-size:20px; font-weight:700; margin:0; }
-  .customer-info .member { font-size:12px; color:var(--text-muted); font-family:var(--mono); }
-  .balance-grid { display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:20px; }
-  .balance-item { background:#f8fafc; border-radius:10px; padding:14px 16px; border:1px solid var(--border); }
-  .balance-item .blabel { font-size:10px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); font-weight:600; }
-  .balance-item .bvalue { font-size:22px; font-weight:800; margin-top:2px; font-family:var(--mono); }
-  .balance-item .bvalue.green { color:#16a34a; }
-  .balance-item .bvalue.gray { color:var(--text); }
-  .tx-tabs { display:flex; gap:4px; margin-bottom:0; background:#f1f5f9; border-radius:10px; padding:4px; }
-  .tx-tab { flex:1; text-align:center; padding:10px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; border:none; background:transparent; color:var(--text-muted); transition:all 0.2s; }
-  .tx-tab:hover { color:var(--text); }
-  .tx-tab.active { background:var(--card); color:var(--text); box-shadow:0 1px 3px rgba(0,0,0,0.1); }
-  .tx-panel { display:none; margin-top:16px; }
-  .tx-panel.active { display:block; }
-  .tx-panel .field { margin-bottom:12px; }
-  .tx-panel .field label { display:block; font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.3px; }
-  .tx-panel .field input, .tx-panel .field select { width:100%; padding:10px 14px; border:2px solid var(--border); border-radius:8px; font-size:14px; outline:none; transition:border-color 0.2s; box-sizing:border-box; background:var(--card); }
-  .tx-panel .field input:focus, .tx-panel .field select:focus { border-color:var(--accent); }
-  .tx-panel .field .hint { font-size:11px; color:var(--text-muted); margin-top:2px; }
-  .btn-action { color:#fff; border:none; padding:12px 24px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; width:100%; transition:background 0.2s; }
-  .btn-green { background:#16a34a; } .btn-green:hover { background:#15803d; }
-  .btn-orange { background:#ea580c; } .btn-orange:hover { background:#c2410c; }
-  .btn-blue { background:#2563eb; } .btn-blue:hover { background:#1d4ed8; }
-  .tx-table { width:100%; border-collapse:collapse; }
-  .tx-table th { text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); font-weight:600; padding:8px 12px; border-bottom:2px solid var(--border); }
-  .tx-table td { padding:10px 12px; font-size:13px; border-bottom:1px solid var(--border); }
-  .tx-table tr:last-child td { border-bottom:none; }
-  .tx-table .tx-amt { font-weight:700; font-family:var(--mono); text-align:right; }
-  .tx-table .tx-date { font-size:11px; color:var(--text-muted); font-family:var(--mono); white-space:nowrap; }
-  .tx-table .tx-desc { color:var(--text-muted); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .tx-type-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.3px; }
-  .tx-type-badge.deposit { background:#dcfce7; color:#166534; }
-  .tx-type-badge.withdrawal { background:#fee2e2; color:#991b1b; }
-  .tx-type-badge.loan_payment { background:#dbeafe; color:#1e40af; }
-  .tx-type-badge.loan_disbursement { background:#fef3c7; color:#92400e; }
-  .tx-type-badge.interest { background:#f3e8ff; color:#6b21a8; }
-  .tx-type-badge.allocation { background:#e0f2fe; color:#075985; }
-  .empty2 { text-align:center; padding:48px 20px; color:var(--text-muted); }
-  .empty2 .icon { font-size:48px; margin-bottom:12px; }
-  .empty2 h3 { font-size:18px; font-weight:600; color:var(--text); margin-bottom:4px; }
-  .empty2 p { font-size:13px; }
-  .rcpt-link { cursor:pointer; font-size:13px; color:var(--accent); text-decoration:none; opacity:0.6; transition:opacity 0.2s; }
-  .rcpt-link:hover { opacity:1; text-decoration:underline; }
-  .receipt-inline { background:#fff; border:1px solid #d0d0d0; border-radius:8px; margin-bottom:12px; font-family:'Courier New',monospace; font-size:12px; }
-  .receipt-inline .ri-header { text-align:center; padding:10px; border-bottom:1px dashed #ccc; }
-  .receipt-inline .ri-header strong { font-size:14px; }
-  .receipt-inline .ri-body { padding:10px 14px; }
-  .receipt-inline .ri-row { display:flex; justify-content:space-between; padding:3px 0; }
-  .receipt-inline .ri-label { color:#888; }
-  .receipt-inline .ri-value { font-weight:700; }
-  .receipt-inline .ri-credit { color:#16a34a; }
-  .receipt-inline .ri-debit { color:#dc2626; }
-  .receipt-inline .ri-divider { border-top:1px dashed #e0e0e0; margin:5px 0; }
-  .receipt-inline .ri-footer { text-align:center; padding:8px; border-top:1px dashed #ccc; font-size:10px; color:#999; }
-  .badge-pill { display:inline-block; padding:0 8px; border-radius:10px; font-size:10px; font-weight:600; line-height:20px; }
-  @media print { body * { visibility:hidden; } #rinline,#rinline * { visibility:visible; } #rinline { position:absolute; left:0; top:0; width:340px; margin:0; padding:24px; background:#fff; border:2px solid #000; } #rinline .ri-footer button:last-child { display:none; } }
-  @keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
-  /* ── Full-screen mode ── */
+
+  /* ── Main layout ── */
+  .teller-grid { display:grid; grid-template-columns: 400px 1fr; gap:20px; align-items:start; }
+  body.teller-fs .teller-grid { grid-template-columns: 420px 1fr; gap:24px; }
+
+  /* ── Left panel cards ── */
+  .tl-card { background:var(--card); border:1px solid var(--border); border-radius:14px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.04); }
+  .tl-card-body { padding:20px; }
+  .tl-section { margin-bottom:16px; }
+  .tl-section:last-child { margin-bottom:0; }
+
+  /* ── Customer hero ── */
+  .customer-hero { display:flex; align-items:center; gap:16px; padding-bottom:16px; border-bottom:2px solid var(--accent); margin-bottom:16px; }
+  .customer-hero-avatar { width:56px; height:56px; border-radius:50%; background:linear-gradient(135deg,var(--accent),#1B5E20); color:#fff; display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:700; flex-shrink:0; box-shadow:0 2px 8px rgba(46,125,50,0.2); }
+  .customer-hero-avatar img { width:100%; height:100%; border-radius:50%; object-fit:cover; }
+  .customer-hero-info h2 { font-size:20px; font-weight:700; margin:0; line-height:1.2; }
+  .customer-hero-info .member-tag { display:inline-block; margin-top:3px; padding:1px 8px; background:#f1f5f9; border-radius:4px; font-size:11px; color:var(--text-muted); font-family:var(--mono); }
+
+  /* ── Balance display ── */
+  .balance-primary { background:linear-gradient(135deg,#e8f5e9,#f0fdf4); border-radius:12px; padding:18px 20px; border:1px solid #a5d6a7; margin-bottom:10px; }
+  .balance-primary .bp-label { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.4px; color:#558b2f; }
+  .balance-primary .bp-value { font-size:30px; font-weight:800; font-family:var(--mono); color:#1B5E20; line-height:1.1; margin-top:2px; }
+  .balance-secondary { display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+  .balance-secondary .bs-item { background:#f8fafc; border-radius:8px; padding:10px 14px; border:1px solid var(--border); }
+  .balance-secondary .bs-item .bs-label { font-size:9px; text-transform:uppercase; letter-spacing:0.4px; color:var(--text-muted); font-weight:600; }
+  .balance-secondary .bs-item .bs-value { font-size:16px; font-weight:700; font-family:var(--mono); margin-top:1px; color:var(--text); }
+
+  /* ── Action tabs ── */
+  .action-tabs { display:flex; gap:6px; margin-bottom:14px; }
+  .action-tab { flex:1; text-align:center; padding:12px 8px; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer; border:none; background:#f1f5f9; color:var(--text-muted); transition:all 0.2s; display:flex; align-items:center; justify-content:center; gap:6px; }
+  .action-tab:hover { color:var(--text); background:#e2e8f0; }
+  .action-tab.active { background:var(--card); color:var(--text); box-shadow:0 2px 8px rgba(0,0,0,0.08); border:1px solid var(--border); }
+  .action-tab .tab-icon { font-size:16px; }
+
+  /* ── Action panels ── */
+  .action-panel { display:none; }
+  .action-panel.active { display:block; }
+  .action-panel .fgroup { margin-bottom:12px; }
+  .action-panel .fgroup label { display:block; font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.3px; }
+  .action-panel .fgroup input, .action-panel .fgroup select { width:100%; padding:11px 14px; border:2px solid var(--border); border-radius:8px; font-size:15px; outline:none; transition:border-color 0.2s,box-shadow 0.2s; box-sizing:border-box; background:var(--card); font-family:var(--mono); font-weight:600; }
+  .action-panel .fgroup input:focus, .action-panel .fgroup select:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(46,125,50,0.1); }
+  .action-panel .fgroup select { font-family:var(--font); font-weight:400; }
+
+  /* ── POS-style keypad ── */
+  .keypad { display:grid; grid-template-columns:repeat(4,1fr); gap:5px; margin-bottom:12px; }
+  .keypad-btn { padding:12px 4px; border:2px solid var(--border); border-radius:8px; background:var(--card); font-size:15px; font-weight:700; cursor:pointer; transition:all 0.12s; text-align:center; font-family:var(--mono); color:var(--text); }
+  .keypad-btn:hover { border-color:var(--accent); background:#f0fdf4; transform:scale(1.05); box-shadow:0 2px 6px rgba(46,125,50,0.15); }
+  .keypad-btn:active { transform:scale(0.93); }
+  .keypad-btn.selected { border-color:var(--accent); background:#e8f5e9; box-shadow:0 0 0 2px rgba(46,125,50,0.25); color:#1B5E20; }
+  .keypad-btn.kp-green { border-color:#a5d6a7; color:#1B5E20; }
+  .keypad-btn.kp-orange { border-color:#fed7aa; color:#9a3412; }
+  .keypad-btn.kp-blue { border-color:#bfdbfe; color:#1e40af; }
+  .keypad-btn.kp-action { grid-column:span 2; background:#f8fafc; font-size:13px; letter-spacing:0.3px; }
+
+  /* ── Process buttons ── */
+  .proc-btn { color:#fff; border:none; padding:14px 24px; border-radius:10px; font-size:15px; font-weight:700; cursor:pointer; width:100%; transition:all 0.2s; display:flex; align-items:center; justify-content:center; gap:8px; }
+  .proc-btn:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(0,0,0,0.15); }
+  .proc-btn:active { transform:translateY(0); }
+  .proc-green { background:linear-gradient(135deg,#16a34a,#15803d); }
+  .proc-green:hover { box-shadow:0 4px 14px rgba(22,163,74,0.35) !important; }
+  .proc-orange { background:linear-gradient(135deg,#ea580c,#c2410c); }
+  .proc-orange:hover { box-shadow:0 4px 14px rgba(234,88,12,0.35) !important; }
+  .proc-blue { background:linear-gradient(135deg,#2563eb,#1d4ed8); }
+  .proc-blue:hover { box-shadow:0 4px 14px rgba(37,99,235,0.35) !important; }
+
+  /* ── Right panel — activity ── */
+  .tr-card { background:var(--card); border:1px solid var(--border); border-radius:14px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.04); display:flex; flex-direction:column; min-height:500px; max-height:calc(100vh - 200px); }
+  .tr-header { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); background:#fafbfc; flex-shrink:0; }
+  .tr-header h3 { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); display:flex; align-items:center; gap:8px; }
+  .tr-header .tr-count { font-size:11px; color:var(--text-muted); background:#f1f5f9; padding:2px 10px; border-radius:10px; }
+  .tr-body { overflow-y:auto; flex:1; }
+  .tr-body::-webkit-scrollbar { width:4px; }
+  .tr-body::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+
+  /* ── Activity list ── */
+  .activity-table { width:100%; border-collapse:collapse; }
+  .activity-table th { text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); font-weight:600; padding:8px 14px; border-bottom:2px solid var(--border); background:#f8fafc; position:sticky; top:0; z-index:1; }
+  .activity-table td { padding:11px 14px; font-size:13px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
+  .activity-table tr:last-child td { border-bottom:none; }
+  .activity-table tr { transition:background 0.1s; }
+  .activity-table tr:hover td { background:#f8fdfa; }
+  .activity-table .tx-amt { font-weight:700; font-family:var(--mono); text-align:right; white-space:nowrap; }
+  .activity-table .tx-date { font-size:11px; color:var(--text-muted); font-family:var(--mono); white-space:nowrap; }
+  .activity-table .tx-ref { font-size:10px; color:var(--text-muted); font-family:var(--mono); display:block; margin-top:1px; }
+  .activity-table .tx-desc { color:var(--text-muted); max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  .tx-badge { display:inline-flex; align-items:center; gap:3px; padding:3px 9px; border-radius:6px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.3px; white-space:nowrap; }
+  .tx-badge.deposit, .tx-badge.interest, .tx-badge.interest_credit { background:#dcfce7; color:#166534; }
+  .tx-badge.withdrawal { background:#fee2e2; color:#991b1b; }
+  .tx-badge.loan_payment { background:#dbeafe; color:#1e40af; }
+  .tx-badge.loan_disbursement { background:#fef3c7; color:#92400e; }
+  .tx-badge.allocation { background:#e0f2fe; color:#075985; }
+  .tx-badge.fee { background:#f3e8ff; color:#6b21a8; }
+  .tx-badge.voided { background:#fce4ec; color:#b71c1c; }
+
+  .tr-action-btn { display:inline-flex; align-items:center; gap:3px; padding:4px 8px; border:none; border-radius:6px; font-size:10px; font-weight:600; cursor:pointer; transition:all 0.15s; text-decoration:none; }
+  .tr-action-btn.rcpt { background:#e8f5e9; color:var(--accent); }
+  .tr-action-btn.rcpt:hover { background:#c8e6c9; }
+  .tr-action-btn.void { background:#fce4ec; color:#dc2626; }
+  .tr-action-btn.void:hover { background:#f8b4b4; }
+
+  .empty-state { text-align:center; padding:60px 20px; color:var(--text-muted); }
+  .empty-state .es-icon { font-size:48px; margin-bottom:12px; opacity:0.4; }
+  .empty-state h3 { font-size:18px; font-weight:600; color:var(--text); margin-bottom:4px; }
+  .empty-state p { font-size:13px; }
+
+  /* ── Receipt modal overlay ── */
+  .receipt-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center; backdrop-filter:blur(3px); }
+  .receipt-overlay.show { display:flex; }
+  .receipt-modal { background:#fff; border-radius:16px; width:380px; max-width:94vw; max-height:90vh; overflow-y:auto; box-shadow:0 16px 48px rgba(0,0,0,0.25); font-family:'Courier New',monospace; font-size:13px; animation:modalIn 0.25s ease; }
+  .receipt-modal .rm-header { text-align:center; padding:16px 20px 10px; border-bottom:2px dashed #2E7D32; }
+  .receipt-modal .rm-header .rm-title { font-size:16px; font-weight:800; color:#1B5E20; letter-spacing:0.5px; }
+  .receipt-modal .rm-header .rm-sub { font-size:11px; color:#888; margin-top:2px; }
+  .receipt-modal .rm-body { padding:14px 20px; }
+  .receipt-modal .rm-row { display:flex; justify-content:space-between; padding:4px 0; }
+  .receipt-modal .rm-label { color:#888; }
+  .receipt-modal .rm-value { font-weight:700; color:#1e293b; }
+  .receipt-modal .rm-credit { color:#16a34a !important; }
+  .receipt-modal .rm-debit { color:#dc2626 !important; }
+  .receipt-modal .rm-divider { border-top:2px dashed #e0e0e0; margin:6px 0; }
+  .receipt-modal .rm-footer { text-align:center; padding:12px 20px; border-top:2px dashed #e0e0e0; display:flex; gap:8px; justify-content:center; }
+  .receipt-modal .rm-void-banner { background:#fef2f2; color:#dc2626; text-align:center; padding:8px; font-weight:700; font-size:13px; border-bottom:2px solid #dc2626; }
+  @media print { body * { visibility:hidden !important; } .receipt-overlay { display:block !important; position:absolute !important; background:transparent !important; backdrop-filter:none !important; } .receipt-modal { box-shadow:none !important; border:2px solid #000 !important; } .receipt-overlay .rm-footer .btn-outline:first-child { display:none !important; } }
+  @keyframes modalIn { from { opacity:0; transform:scale(0.92) translateY(20px); } to { opacity:1; transform:scale(1) translateY(0); } }
+
+  /* ── Void modal ── */
+  .void-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:999; align-items:center; justify-content:center; backdrop-filter:blur(3px); }
+  .void-overlay.show { display:flex; }
+  .void-modal { background:var(--card); border-radius:16px; padding:28px; max-width:480px; width:90%; box-shadow:0 16px 48px rgba(0,0,0,0.2); animation:modalIn 0.25s ease; }
+  .void-modal h3 { color:#dc2626; margin-bottom:14px; font-size:18px; display:flex; align-items:center; gap:8px; }
+
+  /* ── Full-screen adjustments ── */
   body.teller-fs .sidebar { transform:translateX(-100%); }
   body.teller-fs .hamburger { left:12px !important; }
   body.teller-fs .main { margin-left:0; }
-  /* ── Quick-amount buttons ── */
-  .qa-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-bottom:10px; }
-  .qa-btn { padding:10px 4px; border:2px solid var(--border); border-radius:8px; background:var(--card); font-size:13px; font-weight:700; cursor:pointer; transition:all 0.15s; text-align:center; font-family:var(--mono); }
-  .qa-btn:hover { border-color:var(--accent); background:#f0fdf4; transform:scale(1.04); }
-  .qa-btn:active { transform:scale(0.96); }
-  .qa-btn.selected { border-color:var(--accent); background:#e8f5e9; box-shadow:0 0 0 2px rgba(46,125,50,0.2); }
-  .qa-custom { grid-column:span 2; }
-  /* ── Shortcuts bar ── */
-  .shortcuts-bar { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; padding:8px 12px; background:#f8fafc; border-radius:8px; border:1px solid var(--border); font-size:11px; color:var(--text-muted); }
-  .shortcuts-bar kbd { display:inline-block; padding:1px 5px; font-size:10px; font-family:var(--mono); background:var(--card); border:1px solid var(--border); border-radius:4px; box-shadow:0 1px 0 var(--border); line-height:1.4; }
-  .shortcuts-bar .sep { opacity:0.3; margin:0 2px; }
-  /* ── Settings row ── */
-  .teller-settings { display:flex; align-items:center; gap:16px; margin-top:8px; flex-wrap:wrap; }
-  .teller-settings label { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-muted); cursor:pointer; }
-  .teller-settings input[type="checkbox"] { width:16px; height:16px; cursor:pointer; accent-color:var(--accent); }
-  .fs-toggle { background:transparent; border:1px solid var(--border); border-radius:6px; padding:4px 10px; font-size:11px; color:var(--text-muted); cursor:pointer; transition:all 0.15s; }
-  .fs-toggle:hover { border-color:var(--accent); color:var(--accent); background:#f0fdf4; }
-  /* ── Bigger teller grid in full-screen ── */
-  body.teller-fs .teller-grid { grid-template-columns: 380px 1fr; gap:24px; }
-  body.teller-fs .teller-card { border-radius:14px; }
-  body.teller-fs .bvalue { font-size:26px; }
-  body.teller-fs .balance-item { padding:18px 20px; }
-  body.teller-fs .customer-avatar { width:56px; height:56px; font-size:24px; }
-  body.teller-fs .customer-info h2 { font-size:24px; }
+  body.teller-fs .customer-hero-avatar { width:64px; height:64px; font-size:26px; }
+  body.teller-fs .customer-hero-info h2 { font-size:22px; }
+  body.teller-fs .balance-primary .bp-value { font-size:34px; }
+  body.teller-fs .tl-card { border-radius:16px; }
+  body.teller-fs .tr-card { border-radius:16px; min-height:550px; max-height:calc(100vh - 180px); }
+
+  .welcome-card { text-align:center; padding:60px 20px; color:var(--text-muted); background:var(--card); border-radius:14px; border:1px solid var(--border); box-shadow:0 2px 8px rgba(0,0,0,0.04); }
+  .welcome-card .wc-icon { font-size:56px; margin-bottom:14px; }
+  .welcome-card h3 { font-size:20px; font-weight:600; color:var(--text); margin-bottom:4px; }
+  .welcome-card p { font-size:14px; }
   </style>`;
 
   function receiptHtml(r) {
     if (!r) return '';
     var isCredit = r.type === 'deposit' || r.type === 'loan_disbursement' || r.type === 'interest' || r.type === 'interest_credit';
     var isVoided = r.voided_at ? true : false;
-    var voidBanner = isVoided ? '<div style="background:#fef2f2;color:#dc2626;text-align:center;padding:6px;font-weight:700;font-size:13px;border-bottom:2px solid #dc2626"><i class="fas fa-ban"></i> VOIDED — ' + (r.void_reason || '') + '</div>' : '';
-    var voidedByLine = isVoided ? '<div class="ri-row"><span class="ri-label">Voided By</span><span class="ri-value" style="color:#dc2626">' + (r.voided_by || '') + ' on ' + (r.voided_at || '').slice(0,10) + '</span></div><div class="ri-divider"></div>' : '';
-    return '<div class="receipt-inline" id="rinline">' + voidBanner + '<div class="ri-header"><strong>LABCOOP PASSBOOK</strong><br><span style="font-size:10px;color:#999">Official Transaction Receipt</span></div><div class="ri-body"><div class="ri-row"><span class="ri-label">TRN#</span><span class="ri-value">' + fmtRef(r, 'TXN-' + (r.transaction_id || '').slice(0,8).toUpperCase()) + '</span></div><div class="ri-row"><span class="ri-label">Date</span><span class="ri-value">' + (r.created_at || '').slice(0,19).replace('T',' ') + '</span></div><div class="ri-row"><span class="ri-label">Member</span><span class="ri-value">' + (r.child_name||'N/A') + ' (' + (r.member_id||'---') + ')</span></div><div class="ri-divider"></div><div class="ri-row"><span class="ri-label">Transaction</span><span class="ri-value" style="text-transform:uppercase">' + r.type.replace(/_/g,' ') + '</span></div><div class="ri-row"><span class="ri-label">Amount</span><span class="ri-value ' + (isCredit ? 'ri-credit' : 'ri-debit') + '">' + (isCredit ? '+' : '-') + ' \u20B1' + Number(r.amount).toFixed(2) + '</span></div><div class="ri-row"><span class="ri-label">Description</span><span class="ri-value">' + (r.description||'-') + '</span></div>' + voidedByLine + '<div class="ri-row"><span class="ri-label">Ext. Ref</span><span class="ri-value" style="font-size:11px">' + (r.reference_id ? (r.reference_type ? r.reference_type + ':' : '') + r.reference_id : '-') + '</span></div><div class="ri-divider"></div><div class="ri-row"><span class="ri-label">Balance Before</span><span class="ri-value">\u20B1' + Number(r.balance_before || 0).toFixed(2) + '</span></div><div class="ri-row"><span class="ri-label">Balance After</span><span class="ri-value">\u20B1' + Number(r.balance_after || 0).toFixed(2) + '</span></div></div><div class="ri-footer"><button data-action="print-receipt" class="btn btn-outline btn-xs">\uD83D\uDDA8 Print</button> &nbsp; <button data-action="close-receipt" class="btn btn-outline btn-xs">\u2716 Close</button></div></div>';
+    var extRef = r.reference_id ? (r.reference_type ? r.reference_type + ':' : '') + r.reference_id : '-';
+    var voidBanner = isVoided ? '<div class="rm-void-banner"><i class="fas fa-ban"></i> VOIDED — ' + (r.void_reason || '') + '</div>' : '';
+    var voidRow = isVoided ? '<div class="rm-divider"></div><div class="rm-row"><span class="rm-label">Voided By</span><span class="rm-value" style="color:#dc2626">' + (r.voided_by || '') + ' on ' + (r.voided_at || '').slice(0,10) + '</span></div>' : '';
+    return '<div class="receipt-overlay' + (r ? ' show' : '') + '" id="receiptOverlay"><div class="receipt-modal" id="rinline">' + voidBanner + '<div class="rm-header"><div class="rm-title">LABCOOP PASSBOOK</div><div class="rm-sub">Official Transaction Receipt</div></div><div class="rm-body"><div class="rm-row"><span class="rm-label">TRN#</span><span class="rm-value">' + fmtRef(r, 'TXN-' + (r.transaction_id || '').slice(0,8).toUpperCase()) + '</span></div><div class="rm-row"><span class="rm-label">Date</span><span class="rm-value">' + (r.created_at || '').slice(0,19).replace('T',' ') + '</span></div><div class="rm-row"><span class="rm-label">Member</span><span class="rm-value">' + (r.child_name||'N/A') + ' (' + (r.member_id||'---') + ')</span></div><div class="rm-divider"></div><div class="rm-row"><span class="rm-label">Transaction</span><span class="rm-value" style="text-transform:uppercase">' + r.type.replace(/_/g,' ') + '</span></div><div class="rm-row"><span class="rm-label">Amount</span><span class="rm-value ' + (isCredit ? 'rm-credit' : 'rm-debit') + '">' + (isCredit ? '+' : '-') + ' \u20B1' + Number(r.amount).toFixed(2) + '</span></div><div class="rm-row"><span class="rm-label">Description</span><span class="rm-value">' + (r.description||'-') + '</span></div>' + voidRow + '<div class="rm-divider"></div><div class="rm-row"><span class="rm-label">Balance Before</span><span class="rm-value">\u20B1' + Number(r.balance_before || 0).toFixed(2) + '</span></div><div class="rm-row"><span class="rm-label">Balance After</span><span class="rm-value">\u20B1' + Number(r.balance_after || 0).toFixed(2) + '</span></div><div class="rm-row"><span class="rm-label" style="font-size:11px">Ext. Ref</span><span class="rm-value" style="font-size:11px">' + extRef + '</span></div></div><div class="rm-footer"><button data-action="print-receipt" class="btn btn-sm" style="background:var(--accent);color:#fff;padding:8px 20px;border:none;border-radius:8px;font-weight:600;cursor:pointer"><i class="fas fa-print"></i> Print</button> <button data-action="close-receipt" class="btn btn-sm btn-outline" style="padding:8px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;cursor:pointer;font-weight:600"><i class="fas fa-times"></i> Close</button></div></div></div>';
   }
 
   function searchResultItem(a) {
@@ -3655,154 +3726,165 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   }
 
   const bankContent = bankStyle + `
-  <!-- Teller Top Bar -->
+  <!-- Top Bar -->
   <div class="teller-bar">
-    <form method="get" action="/admin/teller" class="teller-search">
-      <input type="text" name="q" id="tellerSearch" placeholder="&#x1F50D; Search member by name or ID..." value="${h(searchQ)}" autocomplete="off">
-      <button type="submit" style="padding:12px 24px;border:none;border-radius:10px;background:var(--accent);color:#fff;font-weight:600;cursor:pointer">Search</button>
-    </form>
-    <div class="teller-settings">
-      <label title="Auto-open print dialog after every transaction"><input type="checkbox" id="autoPrintCheck"> &#x1D5EE; Auto-print receipt</label>
-      <label title="Hide sidebar for more screen space"><input type="checkbox" id="fullScreenCheck"> &#x26F6; Full screen</label>
+    <div class="teller-bar-inner">
+      <form method="get" action="/admin/teller" class="teller-search">
+        <input type="text" name="q" id="tellerSearch" placeholder="&#x1F50D; Search member by name or ID..." value="${h(searchQ)}" autocomplete="off">
+        <button type="submit"><i class="fas fa-search"></i> Search</button>
+      </form>
+      <div class="teller-meta">
+        <label title="Auto-open print dialog after transaction"><input type="checkbox" id="autoPrintCheck"> <i class="fas fa-print"></i> Auto-print</label>
+        <label title="Hide sidebar for more screen space"><input type="checkbox" id="fullScreenCheck"> <i class="fas fa-expand"></i> Full screen</label>
+        ${selectedAccount ? '<span class="customer-chip">' + (selectedAccount.profile_pic_url ? '<img src="' + h(selectedAccount.profile_pic_url) + '">' : '<span class="chip-avatar">' + h((selectedAccount.child_name || '?')[0].toUpperCase()) + '</span>') + h(selectedAccount.child_name) + ' (' + h(selectedAccount.member_id || '---') + ')</span>' : ''}
+      </div>
     </div>
-    ${selectedAccount ? '<div style="margin-top:8px"><span class="badge-pill" style="background:#dcfce7;color:#166534">&#x2705; ' + h(selectedAccount.child_name) + ' (' + h(selectedAccount.member_id) + ')</span></div>' : ''}
-    <div class="shortcuts-bar"><kbd>F5</kbd> Search &nbsp;<span class="sep">|</span> <kbd>F8</kbd> Deposit <kbd>F9</kbd> Withdraw <kbd>F10</kbd> Loan Pay &nbsp;<span class="sep">|</span> <kbd>F11</kbd> Fullscreen <kbd>Esc</kbd> Close modal / Clear</div>
+    <div class="shortcuts-bar" style="margin-top:8px"><kbd>F5</kbd> Search <span class="sep">|</span> <kbd>F8</kbd> Deposit <kbd>F9</kbd> Withdraw <kbd>F10</kbd> Loan Pay <span class="sep">|</span> <kbd>F11</kbd> Fullscreen <kbd>Esc</kbd> Close</div>
   </div>
   ${searchQ && !selectedId && accounts.length > 0 ? '<div class="search-results">' + accounts.map(searchResultItem).join('') + '</div>' : ''}
-  ${searchQ && !selectedId && accounts.length === 0 ? '<div class="search-results" style="padding:16px;text-align:center;color:var(--text-muted)">No members found for "' + h(searchQ) + '"</div>' : ''}
+  ${searchQ && !selectedId && accounts.length === 0 ? '<div class="search-results" style="padding:20px;text-align:center;color:var(--text-muted)">No members found for "' + h(searchQ) + '"</div>' : ''}
 
   ${!selectedAccount ? `
-  <div class="teller-card">
-    <div class="empty2">
-      <div class="icon">&#x1F3E6;</div>
-      <h3>Welcome to Teller Counter</h3>
-      <p>Select a customer above to process deposits, withdrawals, and loan payments.</p>
-    </div>
+  <div class="welcome-card">
+    <div class="wc-icon">&#x1F3E6;</div>
+    <h3>Welcome to Teller Counter</h3>
+    <p>Search for a member above to process deposits, withdrawals, and loan payments.</p>
   </div>
   ` : `
   <div class="teller-grid">
 
     <!-- Left: Customer + Actions -->
-    <div class="teller-card">
-      <div class="teller-card-body">
-          <div class="customer-header">
-          <div class="customer-avatar">${selectedAccount.profile_pic_url ? '<img src="' + h(selectedAccount.profile_pic_url) + '" style="width:100%;height:100%;border-radius:50%;object-fit:cover" alt="">' : h((selectedAccount.child_name || '?')[0].toUpperCase())}</div>
-          <div class="customer-info">
+    <div class="tl-card">
+      <div class="tl-card-body">
+
+        <!-- Customer hero -->
+        <div class="customer-hero">
+          <div class="customer-hero-avatar">${selectedAccount.profile_pic_url ? '<img src="' + h(selectedAccount.profile_pic_url) + '">' : h((selectedAccount.child_name || '?')[0].toUpperCase())}</div>
+          <div class="customer-hero-info">
             <h2>${h(selectedAccount.child_name)}</h2>
-            <span class="member">ID: ${h(selectedAccount.member_id || '---')}</span>
+            <span class="member-tag"><i class="fas fa-id-badge"></i> ${h(selectedAccount.member_id || '---')}</span>
           </div>
         </div>
 
-        <div class="balance-grid">
-          <div class="balance-item">
-            <div class="blabel">Balance</div>
-            <div class="bvalue green">${fmt(selectedAccount.actual_balance)}</div>
+        <!-- Balance -->
+        <div class="tl-section">
+          <div class="balance-primary">
+            <div class="bp-label"><i class="fas fa-piggy-bank"></i> Actual Balance</div>
+            <div class="bp-value">${fmt(selectedAccount.actual_balance)}</div>
           </div>
-          <div class="balance-item">
-            <div class="blabel">Available</div>
-            <div class="bvalue gray">${fmt(selectedAccount.unallocated_balance)}</div>
+          <div class="balance-secondary">
+            <div class="bs-item"><div class="bs-label">Available</div><div class="bs-value">${fmt(selectedAccount.unallocated_balance)}</div></div>
+            <div class="bs-item"><div class="bs-label">Savings</div><div class="bs-value">${fmt(Number(selectedAccount.actual_balance) - Number(selectedAccount.unallocated_balance))}</div></div>
           </div>
         </div>
 
-        <div class="tx-tabs">
-          <button class="tx-tab active" data-tab="deposit" id="tab-deposit">&#x1F4B5; Deposit</button>
-          <button class="tx-tab" data-tab="withdraw" id="tab-withdraw">&#x1F4B8; Withdraw</button>
-          <button class="tx-tab" data-tab="loan" id="tab-loan">&#x1F3E6; Loan Pay</button>
+        <!-- Action tabs -->
+        <div class="action-tabs">
+          <button class="action-tab active" data-tab="deposit" id="tab-deposit"><span class="tab-icon">&#x1F4B5;</span> Deposit</button>
+          <button class="action-tab" data-tab="withdraw" id="tab-withdraw"><span class="tab-icon">&#x1F4B8;</span> Withdraw</button>
+          <button class="action-tab" data-tab="loan" id="tab-loan"><span class="tab-icon">&#x1F3E6;</span> Loan Pay</button>
         </div>
 
-        <div class="tx-panel active" id="panel-deposit">
+        <!-- Deposit Panel -->
+        <div class="action-panel active" id="panel-deposit">
           <form method="post" action="/admin/teller/deposit/${selectedAccount.account_id}?_csrf=${res.locals.csrfToken}">
             <input type="hidden" name="q" value="${h(searchQ)}">
-            <div class="field">
-              <label>Amount (&#x20B1;)</label>
+            <div class="fgroup">
+              <label><i class="fas fa-coins"></i> Amount (&#x20B1;)</label>
               <input type="number" name="amount" min="1" step="0.01" placeholder="0.00" required class="amt-input" id="depAmt">
-              <div class="qa-grid" data-target="depAmt">
-                <button type="button" class="qa-btn" data-val="50">50</button>
-                <button type="button" class="qa-btn" data-val="100">100</button>
-                <button type="button" class="qa-btn" data-val="200">200</button>
-                <button type="button" class="qa-btn" data-val="500">500</button>
-                <button type="button" class="qa-btn" data-val="1000">1,000</button>
-                <button type="button" class="qa-btn" data-val="2000">2,000</button>
-                <button type="button" class="qa-btn" data-val="5000">5,000</button>
-                <button type="button" class="qa-btn qa-custom" data-val="">Custom</button>
-              </div>
             </div>
-            <div class="field">
-              <label>Description</label>
+            <div class="keypad" data-target="depAmt">
+              <button type="button" class="keypad-btn kp-green" data-val="50">50</button>
+              <button type="button" class="keypad-btn kp-green" data-val="100">100</button>
+              <button type="button" class="keypad-btn kp-green" data-val="200">200</button>
+              <button type="button" class="keypad-btn kp-green" data-val="500">500</button>
+              <button type="button" class="keypad-btn kp-green" data-val="1000">1,000</button>
+              <button type="button" class="keypad-btn kp-green" data-val="2000">2,000</button>
+              <button type="button" class="keypad-btn kp-green" data-val="5000">5,000</button>
+              <button type="button" class="keypad-btn kp-action" data-val="">Custom</button>
+            </div>
+            <div class="fgroup">
+              <label><i class="fas fa-pen"></i> Description</label>
               <input type="text" name="description" placeholder="e.g. OTC deposit" value="Counter deposit">
             </div>
-            <button type="submit" class="btn-action btn-green">&#x2795; Process Deposit</button>
+            <button type="submit" class="proc-btn proc-green"><i class="fas fa-check-circle"></i> Process Deposit</button>
           </form>
         </div>
 
-        <div class="tx-panel" id="panel-withdraw">
+        <!-- Withdraw Panel -->
+        <div class="action-panel" id="panel-withdraw">
           <form method="post" action="/admin/teller/withdraw/${selectedAccount.account_id}?_csrf=${res.locals.csrfToken}">
             <input type="hidden" name="q" value="${h(searchQ)}">
-            <div class="field">
-              <label>Amount (&#x20B1;)</label>
+            <div class="fgroup">
+              <label><i class="fas fa-money-bill-wave"></i> Amount (&#x20B1;)</label>
               <input type="number" name="amount" min="1" step="0.01" placeholder="0.00" required class="amt-input" id="wdAmt">
-              <div class="qa-grid" data-target="wdAmt">
-                <button type="button" class="qa-btn" data-val="50">50</button>
-                <button type="button" class="qa-btn" data-val="100">100</button>
-                <button type="button" class="qa-btn" data-val="200">200</button>
-                <button type="button" class="qa-btn" data-val="500">500</button>
-                <button type="button" class="qa-btn" data-val="1000">1,000</button>
-                <button type="button" class="qa-btn" data-val="2000">2,000</button>
-                <button type="button" class="qa-btn" data-val="5000">5,000</button>
-                <button type="button" class="qa-btn qa-custom" data-val="">Custom</button>
-              </div>
             </div>
-            <div class="field">
-              <label>Description</label>
+            <div class="keypad" data-target="wdAmt">
+              <button type="button" class="keypad-btn kp-orange" data-val="50">50</button>
+              <button type="button" class="keypad-btn kp-orange" data-val="100">100</button>
+              <button type="button" class="keypad-btn kp-orange" data-val="200">200</button>
+              <button type="button" class="keypad-btn kp-orange" data-val="500">500</button>
+              <button type="button" class="keypad-btn kp-orange" data-val="1000">1,000</button>
+              <button type="button" class="keypad-btn kp-orange" data-val="2000">2,000</button>
+              <button type="button" class="keypad-btn kp-orange" data-val="5000">5,000</button>
+              <button type="button" class="keypad-btn kp-action" data-val="">Custom</button>
+            </div>
+            <div class="fgroup">
+              <label><i class="fas fa-pen"></i> Description</label>
               <input type="text" name="description" placeholder="e.g. Cash withdrawal" value="Counter withdrawal">
             </div>
-            <button type="submit" class="btn-action btn-orange">&#x1F4B8; Process Withdrawal</button>
+            <button type="submit" class="proc-btn proc-orange"><i class="fas fa-check-circle"></i> Process Withdrawal</button>
           </form>
         </div>
 
-        <div class="tx-panel" id="panel-loan">
+        <!-- Loan Pay Panel -->
+        <div class="action-panel" id="panel-loan">
           <form method="post" action="/admin/teller/loan-pay/${selectedAccount.account_id}?_csrf=${res.locals.csrfToken}">
             <input type="hidden" name="q" value="${h(searchQ)}">
-            <div class="field">
-              <label>Select Loan</label>
+            <div class="fgroup">
+              <label><i class="fas fa-hand-holding-dollar"></i> Select Loan</label>
               <select name="loan_id" required>
                 <option value="">-- Choose active loan --</option>
                 ${loanOptionsHtml}
               </select>
             </div>
-            <div class="field">
-              <label>Payment Amount (&#x20B1;)</label>
+            <div class="fgroup">
+              <label><i class="fas fa-coins"></i> Payment Amount (&#x20B1;)</label>
               <input type="number" name="amount" min="1" step="0.01" placeholder="0.00" required class="amt-input" id="loanAmt">
-              <div class="qa-grid" data-target="loanAmt">
-                <button type="button" class="qa-btn" data-val="50">50</button>
-                <button type="button" class="qa-btn" data-val="100">100</button>
-                <button type="button" class="qa-btn" data-val="200">200</button>
-                <button type="button" class="qa-btn" data-val="500">500</button>
-                <button type="button" class="qa-btn" data-val="1000">1,000</button>
-                <button type="button" class="qa-btn" data-val="2000">2,000</button>
-                <button type="button" class="qa-btn" data-val="5000">5,000</button>
-                <button type="button" class="qa-btn qa-custom" data-val="">Full balance</button>
-              </div>
             </div>
-            <button type="submit" class="btn-action btn-blue">&#x1F4B3; Process Payment</button>
+            <div class="keypad" data-target="loanAmt">
+              <button type="button" class="keypad-btn kp-blue" data-val="50">50</button>
+              <button type="button" class="keypad-btn kp-blue" data-val="100">100</button>
+              <button type="button" class="keypad-btn kp-blue" data-val="200">200</button>
+              <button type="button" class="keypad-btn kp-blue" data-val="500">500</button>
+              <button type="button" class="keypad-btn kp-blue" data-val="1000">1,000</button>
+              <button type="button" class="keypad-btn kp-blue" data-val="2000">2,000</button>
+              <button type="button" class="keypad-btn kp-blue" data-val="5000">5,000</button>
+              <button type="button" class="keypad-btn kp-action" data-val="">Full balance</button>
+            </div>
+            <button type="submit" class="proc-btn proc-blue"><i class="fas fa-check-circle"></i> Process Payment</button>
           </form>
         </div>
+
       </div>
     </div>
 
-    <!-- Right: Transaction History -->
-    <div class="teller-card">
-      <div class="teller-card-header">
-        <h3>&#x1F4CB; History</h3>
-        <span style="font-size:11px;color:var(--text-muted)">${recentTxs.length} entries</span>
+    <!-- Right: Activity -->
+    <div class="tr-card">
+      <div class="tr-header">
+        <h3><i class="fas fa-clock-rotate-left"></i> Activity</h3>
+        <span class="tr-count">${recentTxs.length}</span>
       </div>
-      <div class="teller-card-body" style="padding:0">
-        ${receipt ? receiptHtml(receipt) : ''}
-        ${recentTxs.length === 0 ? '<div style="text-align:center;padding:32px;color:var(--text-muted)">No transactions yet.</div>' : '<table class="tx-table"><tr><th>Type</th><th>Amount</th><th>Description</th><th>Date</th><th></th></tr>' + recentTxs.map(tx => {
-            var tc = ({deposit:'deposit',withdrawal:'withdrawal',loan_payment:'loan_payment',loan_disbursement:'loan_disbursement',interest:'interest',interest_credit:'interest',allocation:'allocation'})[tx.type] || 'deposit';
-            var sign = tx.type === 'deposit' || tx.type === 'loan_disbursement' || tx.type === 'interest' || tx.type === 'interest_credit' ? '+' : '-';
-            var col = tx.type === 'deposit' || tx.type === 'loan_disbursement' || tx.type === 'interest' || tx.type === 'interest_credit' ? '#16a34a' : '#dc2626';
-            return '<tr><td><span class="tx-type-badge ' + h(tc) + '">' + h(tx.type.replace(/_/g,' ')) + (tx.voided_at ? ' VOIDED' : '') + '</span></td><td class="tx-amt" style="color:' + h(col) + '">' + sign + fmt(tx.amount) + '</td><td class="tx-desc">' + h(tx.description||'-') + (tx.voided_at ? '<br><span style="font-size:10px;color:#dc2626">Voided by ' + h(tx.voided_by||'') + '</span>' : '') + '</td><td class="tx-date">' + h((tx.created_at||'').slice(0,16).replace('T',' ')) + '</td><td style="white-space:nowrap">' + (tx.voided_at ? '<span style="color:#dc2626;font-size:10px;font-weight:600"><i class="fas fa-ban"></i> VOIDED</span>' : '<a class="rcpt-link" href="?account=' + encodeURIComponent(selectedId) + '&receipt=' + encodeURIComponent(tx.transaction_id) + (searchQ ? '&q=' + encodeURIComponent(searchQ) : '') + '" title="View receipt"><i class="fas fa-receipt"></i></a>' + (adminRole >= 3 && ['deposit','withdrawal','loan_payment','interest','interest_credit','auto_save','fee','penalty'].includes(tx.type) ? ' <button class="btn btn-outline btn-xs" style="color:#dc2626;padding:2px 6px;font-size:10px" onclick="openVoidModal(\'' + h(tx.transaction_id) + '\',\'' + h(tx.type.replace(/_/g,' ')) + '\',\'' + Number(tx.amount).toFixed(2) + '\')"><i class="fas fa-ban"></i> Void</button>' : '')) + '</td></tr>';
+      <div class="tr-body">
+        
+        ${recentTxs.length === 0 ? '<div class="empty-state"><div class="es-icon"><i class="fas fa-inbox"></i></div><h3>No transactions yet</h3><p>Complete a transaction above to see it here.</p></div>' : '<table class="activity-table"><tr><th>Type</th><th style="text-align:right">Amount</th><th>Description</th><th>Date</th><th></th></tr>' + recentTxs.map(function(tx) {
+            var isCredit = tx.type === 'deposit' || tx.type === 'loan_disbursement' || tx.type === 'interest' || tx.type === 'interest_credit';
+            var tc = tx.voided_at ? 'voided' : ({deposit:'deposit',withdrawal:'withdrawal',loan_payment:'loan_payment',loan_disbursement:'loan_disbursement',interest:'interest',interest_credit:'interest',allocation:'allocation',fee:'fee'})[tx.type] || 'deposit';
+            var sign = isCredit ? '+' : '-';
+            var col = isCredit ? '#16a34a' : '#dc2626';
+            var voidLabel = tx.voided_at ? ' <span style="font-size:9px;color:#dc2626;display:block">Voided</span>' : '';
+            var refHtml = tx.trn_number ? '<span class="tx-ref">' + fmtRef(tx) + '</span>' : '';
+            return '<tr><td><span class="tx-badge ' + tc + '">' + (tx.voided_at ? '<i class="fas fa-ban"></i>' : '') + h(tx.type.replace(/_/g,' ')) + '</span>' + voidLabel + '</td><td class="tx-amt" style="color:' + col + '">' + sign + fmt(tx.amount) + refHtml + '</td><td class="tx-desc">' + h(tx.description||'-') + '</td><td class="tx-date">' + h((tx.created_at||'').slice(0,16).replace('T',' ')) + '</td><td style="white-space:nowrap">' + (tx.voided_at ? '' : '<button class="tr-action-btn rcpt" onclick="showReceipt(\'' + h(tx.transaction_id) + '\')" title="View receipt"><i class="fas fa-receipt"></i></button>' + (adminRole >= 3 && ['deposit','withdrawal','loan_payment','interest','interest_credit','auto_save','fee','penalty'].includes(tx.type) ? ' <button class="tr-action-btn void" onclick="openVoidModal(\'' + h(tx.transaction_id) + '\',\'' + h(tx.type.replace(/_/g,' ')) + '\',\'' + Number(tx.amount).toFixed(2) + '\')" title="Void"><i class="fas fa-ban"></i></button>' : '')) + '</td></tr>';
           }).join('') + '</table>'}
       </div>
     </div>
@@ -3810,48 +3892,46 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   </div>
   `}
 
-  <!-- Void Transaction Modal -->
-  <div id="voidModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:999;align-items:center;justify-content:center">
-    <div style="background:var(--card);border-radius:12px;padding:24px;max-width:480px;width:90%;border:2px solid #dc2626">
-      <h3 style="color:#dc2626;margin-bottom:12px"><i class="fas fa-ban"></i> Void Transaction</h3>
-      <div style="background:#fef2f2;padding:12px;border-radius:8px;margin-bottom:16px">
-        <div style="font-size:13px"><b>Transaction:</b> <span id="voidTxType"></span></div>
-        <div style="font-size:13px"><b>Amount:</b> &#x20B1; <span id="voidTxAmount"></span></div>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:4px">This will reverse the transaction, post reversing GL entries, and update the account balance.</div>
+  ${receipt ? receiptHtml(receipt) : '<div class="receipt-overlay" id="receiptOverlay"><div class="receipt-modal" id="rinline"><div class="rm-header"><div class="rm-title">LABCOOP PASSBOOK</div><div class="rm-sub">Official Transaction Receipt</div></div><div class="rm-body"><div class="rm-row"><span class="rm-label">TRN#</span><span class="rm-value">-</span></div><div class="rm-row"><span class="rm-label">Date</span><span class="rm-value">-</span></div><div class="rm-row"><span class="rm-label">Member</span><span class="rm-value">-</span></div><div class="rm-divider"></div><div class="rm-row"><span class="rm-label">Transaction</span><span class="rm-value">-</span></div><div class="rm-row"><span class="rm-label">Amount</span><span class="rm-value">-</span></div><div class="rm-row"><span class="rm-label">Description</span><span class="rm-value">-</span></div><div class="rm-divider"></div><div class="rm-row"><span class="rm-label">Balance Before</span><span class="rm-value">-</span></div><div class="rm-row"><span class="rm-label">Balance After</span><span class="rm-value">-</span></div></div><div class="rm-footer"><button data-action="print-receipt" class="btn btn-sm" style="background:var(--accent);color:#fff;padding:8px 20px;border:none;border-radius:8px;font-weight:600;cursor:pointer"><i class="fas fa-print"></i> Print</button><button data-action="close-receipt" class="btn btn-sm btn-outline" style="padding:8px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;cursor:pointer;font-weight:600"><i class="fas fa-times"></i> Close</button></div></div></div>'}
+
+  <!-- Void Modal -->
+  <div class="void-overlay" id="voidOverlay" onclick="if(event.target===this)closeVoidModal()">
+    <div class="void-modal">
+      <h3><i class="fas fa-ban"></i> Void Transaction</h3>
+      <div style="background:#fef2f2;padding:14px;border-radius:10px;margin-bottom:16px">
+        <div style="font-size:14px"><b>Transaction:</b> <span id="voidTxType"></span></div>
+        <div style="font-size:14px"><b>Amount:</b> &#x20B1; <span id="voidTxAmount"></span></div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:6px">This will reverse the transaction, post reversing GL entries, and restore the account balance.</div>
       </div>
       <form method="post" action="/admin/teller/void/PLACEHOLDER" id="voidForm">
-        <div class="field" style="margin-bottom:12px">
-          <label style="font-weight:600;display:block;margin-bottom:4px">Reason for void <span style="color:#dc2626">*</span></label>
-          <textarea name="reason" id="voidReason" required minlength="5" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;min-height:60px" placeholder="Explain why this transaction is being voided (min 5 characters)"></textarea>
+        <div style="margin-bottom:14px">
+          <label style="font-weight:600;display:block;margin-bottom:4px;font-size:13px">Reason for void <span style="color:#dc2626">*</span></label>
+          <textarea name="reason" id="voidReason" required minlength="5" style="width:100%;padding:10px;border:2px solid var(--border);border-radius:8px;min-height:70px;font-size:14px;outline:none" placeholder="Explain why this transaction is being voided (min 5 characters)"></textarea>
         </div>
-        <div class="field" style="margin-bottom:16px">
-          <label style="font-weight:600;display:block;margin-bottom:4px">Your password <span style="color:#dc2626">*</span></label>
-          <input type="password" name="password" id="voidPassword" required style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px" placeholder="Enter your admin password to authorize">
+        <div style="margin-bottom:18px">
+          <label style="font-weight:600;display:block;margin-bottom:4px;font-size:13px">Your password <span style="color:#dc2626">*</span></label>
+          <input type="password" name="password" id="voidPassword" required style="width:100%;padding:10px;border:2px solid var(--border);border-radius:8px;font-size:14px;outline:none" placeholder="Enter your admin password to authorize">
         </div>
         <div style="display:flex;gap:8px">
-          <button type="submit" class="btn btn-danger" style="flex:1"><i class="fas fa-ban"></i> Confirm Void</button>
-          <button type="button" class="btn btn-cancel" onclick="closeVoidModal()">Cancel</button>
+          <button type="submit" class="btn btn-danger" style="flex:1;padding:12px;font-size:14px;font-weight:700"><i class="fas fa-ban"></i> Confirm Void</button>
+          <button type="button" class="btn btn-cancel" onclick="closeVoidModal()" style="padding:12px 24px;font-size:14px;border:1px solid var(--border);border-radius:8px;background:transparent;cursor:pointer;font-weight:600">Cancel</button>
         </div>
       </form>
     </div>
   </div>
 
   <script>
-  // ── Quick-amount buttons ──
-  document.querySelectorAll('.qa-grid').forEach(function(grid) {
+  // ── Keypad buttons ──
+  document.querySelectorAll('.keypad').forEach(function(grid) {
     var targetId = grid.getAttribute('data-target');
     var input = document.getElementById(targetId);
     if (!input) return;
-    grid.querySelectorAll('.qa-btn').forEach(function(btn) {
+    grid.querySelectorAll('.keypad-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var val = this.getAttribute('data-val');
-        if (val === '') {
-          input.value = '';
-          input.focus();
-        } else {
-          input.value = val;
-        }
-        grid.querySelectorAll('.qa-btn').forEach(function(b) { b.classList.remove('selected'); });
+        if (val === '') { input.value = ''; input.focus(); }
+        else { input.value = val; }
+        grid.querySelectorAll('.keypad-btn').forEach(function(b) { b.classList.remove('selected'); });
         if (val !== '') this.classList.add('selected');
         input.dispatchEvent(new Event('input', { bubbles: true }));
       });
@@ -3860,26 +3940,21 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
 
   // ── Tab switching ──
   function switchTab(tab) {
-    document.querySelectorAll('.tx-tab').forEach(function(t) { t.classList.remove('active'); });
-    document.querySelectorAll('.tx-panel').forEach(function(p) { p.classList.remove('active'); });
+    document.querySelectorAll('.action-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.action-panel').forEach(function(p) { p.classList.remove('active'); });
     var tabBtn = document.getElementById('tab-' + tab);
     var panel = document.getElementById('panel-' + tab);
     if (tabBtn) tabBtn.classList.add('active');
     if (panel) panel.classList.add('active');
   }
-  document.querySelectorAll('.tx-tab').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      switchTab(this.getAttribute('data-tab'));
-    });
+  document.querySelectorAll('.action-tab').forEach(function(btn) {
+    btn.addEventListener('click', function() { switchTab(this.getAttribute('data-tab')); });
   });
 
   // ── Full-screen toggle ──
   var fsCheck = document.getElementById('fullScreenCheck');
   if (fsCheck) {
-    if (localStorage.getItem('tellerFullScreen') === '1') {
-      fsCheck.checked = true;
-      document.body.classList.add('teller-fs');
-    }
+    if (localStorage.getItem('tellerFullScreen') === '1') { fsCheck.checked = true; document.body.classList.add('teller-fs'); }
     fsCheck.addEventListener('change', function() {
       document.body.classList.toggle('teller-fs', this.checked);
       localStorage.setItem('tellerFullScreen', this.checked ? '1' : '0');
@@ -3889,19 +3964,11 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   // ── Auto-print toggle ──
   var apCheck = document.getElementById('autoPrintCheck');
   if (apCheck) {
-    if (localStorage.getItem('tellerAutoPrint') === '1') {
-      apCheck.checked = true;
-    }
-    apCheck.addEventListener('change', function() {
-      localStorage.setItem('tellerAutoPrint', this.checked ? '1' : '0');
-    });
-    // Auto-print if receipt visible and auto-print enabled
-    var receiptEl = document.getElementById('rinline');
-    if (receiptEl && apCheck.checked) {
-      setTimeout(function() {
-        var printBtn = receiptEl.querySelector('[data-action="print-receipt"]');
-        if (printBtn) printBtn.click();
-      }, 500);
+    if (localStorage.getItem('tellerAutoPrint') === '1') apCheck.checked = true;
+    apCheck.addEventListener('change', function() { localStorage.setItem('tellerAutoPrint', this.checked ? '1' : '0'); });
+    var ol = document.getElementById('receiptOverlay');
+    if (ol && ol.classList.contains('show') && apCheck.checked) {
+      setTimeout(function() { window.print(); }, 500);
     }
   }
 
@@ -3912,76 +3979,49 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
     document.getElementById('voidForm').action = '/admin/teller/void/' + txId;
     document.getElementById('voidReason').value = '';
     document.getElementById('voidPassword').value = '';
-    document.getElementById('voidModal').style.display = 'flex';
+    document.getElementById('voidOverlay').classList.add('show');
     setTimeout(function() { document.getElementById('voidReason').focus(); }, 100);
   }
-  function closeVoidModal() {
-    document.getElementById('voidModal').style.display = 'none';
-  }
-  var voidModal = document.getElementById('voidModal');
-  if (voidModal) {
-    voidModal.addEventListener('click', function(e) {
-      if (e.target === this) closeVoidModal();
-    });
-  }
+  function closeVoidModal() { document.getElementById('voidOverlay').classList.remove('show'); }
+  var voidOvr = document.getElementById('voidOverlay');
+  if (voidOvr) voidOvr.addEventListener('click', function(e) { if (e.target === this) closeVoidModal(); });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      if (voidOvr && voidOvr.classList.contains('show')) { closeVoidModal(); e.preventDefault(); return; }
+      if (receiptOvr && receiptOvr.classList.contains('show')) { closeReceipt(); e.preventDefault(); return; }
+    }
+  });
 
-  // ── Receipt action buttons (delegated click) ──
+  // ── Receipt modal ──
+  var receiptOvr = document.getElementById('receiptOverlay');
+  function showReceipt(txId) {
+    window.location.href = '?account=${encodeURIComponent(selectedId)}&receipt=' + txId + (${JSON.stringify(searchQ)} ? '&q=' + encodeURIComponent(${JSON.stringify(searchQ)}) : '');
+  }
+  function closeReceipt() { if (receiptOvr) receiptOvr.classList.remove('show'); }
+  if (receiptOvr) receiptOvr.addEventListener('click', function(e) { if (e.target === this) closeReceipt(); });
+
+  // ── Receipt action buttons ──
   document.addEventListener('click', function(e) {
     var btn = e.target.closest('[data-action]');
     if (!btn) return;
     var action = btn.getAttribute('data-action');
-    if (action === 'print-receipt') {
-      window.print();
-    } else if (action === 'close-receipt') {
-      var receipt = document.getElementById('rinline');
-      if (receipt) receipt.style.display = 'none';
-    }
+    if (action === 'print-receipt') { window.print(); }
+    else if (action === 'close-receipt') { closeReceipt(); }
   });
 
   // ── Keyboard shortcuts ──
   document.addEventListener('keydown', function(e) {
-    // Don't intercept when typing in inputs/textareas (except Escape)
     var tag = e.target.tagName;
     var isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-
-    if (e.key === 'Escape') {
-      if (voidModal && voidModal.style.display === 'flex') {
-        closeVoidModal();
-        e.preventDefault();
-        return;
-      }
-      if (isInput) { e.target.blur(); e.preventDefault(); return; }
-    }
-
-    // F-keys: only intercept specific ones, and only when not in an input field (except F5 for search)
-    if (['F5','F8','F9','F10','F11'].indexOf(e.key) !== -1) {
-      if (isInput && e.key !== 'F5') return;
-      e.preventDefault();
-
-      switch (e.key) {
-        case 'F5':
-          var searchField = document.getElementById('tellerSearch');
-          if (searchField) { searchField.focus(); searchField.select(); }
-          break;
-        case 'F8':
-          switchTab('deposit');
-          var dAmt = document.getElementById('depAmt');
-          if (dAmt) setTimeout(function() { dAmt.focus(); }, 100);
-          break;
-        case 'F9':
-          switchTab('withdraw');
-          var wAmt = document.getElementById('wdAmt');
-          if (wAmt) setTimeout(function() { wAmt.focus(); }, 100);
-          break;
-        case 'F10':
-          switchTab('loan');
-          var lAmt = document.getElementById('loanAmt');
-          if (lAmt) setTimeout(function() { lAmt.focus(); }, 100);
-          break;
-        case 'F11':
-          if (fsCheck) { fsCheck.checked = !fsCheck.checked; fsCheck.dispatchEvent(new Event('change')); }
-          break;
-      }
+    if (['F5','F8','F9','F10','F11'].indexOf(e.key) === -1) return;
+    if (isInput && e.key !== 'F5') return;
+    e.preventDefault();
+    switch (e.key) {
+      case 'F5': var sf = document.getElementById('tellerSearch'); if (sf) { sf.focus(); sf.select(); } break;
+      case 'F8': switchTab('deposit'); var da = document.getElementById('depAmt'); if (da) setTimeout(function() { da.focus(); }, 100); break;
+      case 'F9': switchTab('withdraw'); var wa = document.getElementById('wdAmt'); if (wa) setTimeout(function() { wa.focus(); }, 100); break;
+      case 'F10': switchTab('loan'); var la = document.getElementById('loanAmt'); if (la) setTimeout(function() { la.focus(); }, 100); break;
+      case 'F11': if (fsCheck) { fsCheck.checked = !fsCheck.checked; fsCheck.dispatchEvent(new Event('change')); } break;
     }
   });
   </script>

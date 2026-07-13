@@ -144,7 +144,15 @@ class _SupportPageState extends State<SupportPage> {
     // Send via socket (instant) + HTTP fallback
     SocketService.sendMessage(widget.accountId, text);
     await BankingApiService.sendMessage(widget.accountId, text, senderName: widget.childName);
-    if (mounted) setState(() => _sending = false);
+    // Refresh from server to catch any missed messages
+    final fresh = await BankingApiService.getMessages(widget.accountId);
+    if (mounted) {
+      setState(() {
+        _messages = fresh.cast<Map<String, dynamic>>();
+        _sending = false;
+      });
+      _scrollDown();
+    }
   }
 
   Widget _readReceipt(int? adminRead, String senderType) {

@@ -227,21 +227,21 @@ body { font-family:var(--font); background:var(--bg); color:var(--text); display
 .sidebar-footer a:hover { background:var(--sidebar-hover); color:var(--sidebar-text-active); }
 .sidebar-footer a .icon { font-size:13px; width:22px; text-align:center; flex-shrink:0; }
 .sidebar-footer a .icon i { font-size:13px; vertical-align:middle; }
-.notif-wrap { position:relative; }
-.notif-wrap .notif-bell { display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:var(--radius-sm); color:var(--sidebar-text); text-decoration:none; font-size:12px; transition:all var(--transition); white-space:nowrap; cursor:pointer; }
-.notif-wrap .notif-bell:hover { background:var(--sidebar-hover); color:var(--sidebar-text-active); }
-.notif-wrap .notif-bell .icon { font-size:13px; width:22px; text-align:center; flex-shrink:0; }
-.notif-wrap .notif-bell .icon i { font-size:13px; vertical-align:middle; }
-.notif-badge { position:relative; display:inline-flex; align-items:center; }
-.notif-badge .notif-count { position:absolute; top:-6px; right:-10px; background:#ef4444; color:#fff; font-size:9px; font-weight:700; min-width:18px; height:18px; line-height:18px; text-align:center; border-radius:9px; padding:0 5px; box-shadow:0 2px 4px rgba(239,68,68,0.5); display:none; border:2px solid #0d2818; }
+.notif-wrap { position:relative; display:inline-flex; align-items:center; }
+.notif-wrap .notif-bell { width:38px; height:38px; border:none; border-radius:10px; background:var(--card); color:var(--text); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:18px; transition:all 0.15s; box-shadow:0 2px 8px rgba(0,0,0,0.08); border:1px solid var(--border); position:relative; }
+.notif-wrap .notif-bell:hover { background:#f0fdf4; color:var(--accent); box-shadow:0 3px 12px rgba(46,125,50,0.15); transform:translateY(-1px); }
+.notif-wrap .notif-bell:active { transform:translateY(0); }
+.notif-badge { position:relative; display:inline-flex; align-items:center; line-height:1; }
+.notif-badge .notif-count { position:absolute; top:-8px; right:-8px; background:#ef4444; color:#fff; font-size:9px; font-weight:700; min-width:18px; height:18px; line-height:18px; text-align:center; border-radius:9px; padding:0 5px; box-shadow:0 2px 4px rgba(239,68,68,0.5); display:none; border:2px solid var(--card); }
 .notif-badge .notif-count.show { display:inline-block; }
-.notif-dropdown { position:fixed; bottom:56px; left:8px; width:340px; max-height:420px; background:#fff; border-radius:14px; box-shadow:0 8px 40px rgba(0,0,0,0.2); display:none; flex-direction:column; z-index:999; overflow:hidden; border:1px solid #e2e8f0; }
+.notif-dropdown { position:absolute; top:44px; right:0; width:360px; max-height:440px; background:var(--card); border-radius:14px; box-shadow:0 8px 40px rgba(0,0,0,0.15); display:none; flex-direction:column; z-index:999; overflow:hidden; border:1px solid var(--border); }
 .notif-dropdown.show { display:flex; }
-.notif-dropdown-header { padding:12px 16px; border-bottom:1px solid #f1f5f9; display:flex; align-items:center; justify-content:space-between; }
-.notif-dropdown-header h4 { font-size:13px; font-weight:700; color:#1e293b; }
-.notif-dropdown-header .nd-count { font-size:11px; color:#64748b; }
+.notif-dropdown-header { padding:12px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+.notif-dropdown-header h4 { font-size:13px; font-weight:700; color:var(--text); }
+.notif-dropdown-header .nd-count { font-size:11px; color:var(--text-muted); }
 .notif-dropdown-body { overflow-y:auto; flex:1; padding:4px 0; }
-.notif-item { display:flex; align-items:flex-start; gap:10px; padding:10px 16px; cursor:pointer; transition:background 0.12s; border-bottom:1px solid #f8fafc; text-decoration:none; color:inherit; }
+.notif-item { display:flex; align-items:flex-start; gap:10px; padding:10px 16px; cursor:pointer; transition:background 0.12s; border-bottom:1px solid var(--border); text-decoration:none; color:inherit; }
+.notif-item:last-child { border-bottom:none; }
 .notif-item:hover { background:#f0fdf4; }
 .notif-item .ni-icon { width:28px; height:28px; border-radius:7px; display:flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0; margin-top:2px; }
 .notif-item .ni-icon.kyc { background:#e8f5e9; color:#2E7D32; }
@@ -251,14 +251,14 @@ body { font-family:var(--font); background:var(--bg); color:var(--text); display
 .notif-item .ni-icon.consent { background:#f3e5f5; color:#7c3aed; }
 .notif-item .ni-icon.deletion { background:#fef2f2; color:#b91c1c; }
 .notif-item .ni-info { flex:1; min-width:0; }
-.notif-item .ni-label { font-size:12px; font-weight:600; color:#1e293b; }
-.notif-item .ni-desc { font-size:11px; color:#64748b; margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.notif-item .ni-time { font-size:10px; color:#94a3b8; margin-top:2px; }
-.notif-dropdown-empty { padding:32px 16px; text-align:center; color:#94a3b8; font-size:13px; }
-.notif-dropdown-empty .nde-icon { font-size:32px; margin-bottom:8px; opacity:0.4; }
-.notif-dropdown-footer { padding:8px 16px; border-top:1px solid #f1f5f9; text-align:center; }
-.notif-dropdown-footer a { font-size:12px; color:#2E7D32; text-decoration:none; font-weight:600; display:block; padding:6px; border-radius:6px; }
-.notif-dropdown-footer a:hover { background:#f0fdf4; }
+.notif-item .ni-label { font-size:12px; font-weight:600; color:var(--text); }
+.notif-item .ni-desc { font-size:11px; color:var(--text-muted); margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.notif-item .ni-time { font-size:10px; color:var(--text-muted); margin-top:2px; opacity:0.7; }
+.notif-dropdown-empty { padding:32px 16px; text-align:center; color:var(--text-muted); font-size:13px; }
+.notif-dropdown-empty .nde-icon { font-size:32px; margin-bottom:8px; opacity:0.3; }
+.notif-dropdown-footer { padding:8px 16px; border-top:1px solid var(--border); text-align:center; }
+.notif-dropdown-footer a { font-size:12px; color:var(--accent); text-decoration:none; font-weight:600; display:block; padding:6px; border-radius:6px; }
+.notif-dropdown-footer a:hover { background:#f0fdf4; color:var(--accent-hover); }
 .notif-overlay { position:fixed; top:0; left:0; right:0; bottom:0; z-index:998; display:none; }
 .notif-overlay.show { display:block; }
 
@@ -272,6 +272,8 @@ body { font-family:var(--font); background:var(--bg); color:var(--text); display
 .toast.success { background:#e8f5e9; color:#1B5E20; border:1px solid #a5d6a7; }
 .toast.error { background:#fce4ec; color:#b71c1c; border:1px solid #ef9a9a; }
 @keyframes slideIn { from{transform:translateX(100%);opacity:0} to{transform:translateX(0);opacity:1} }
+@keyframes notifPulse { 0%{transform:scale(1)} 50%{transform:scale(1.15)} 100%{transform:scale(1)} }
+.notif-bell.has-new .notif-count { animation:notifPulse 0.4s ease 2; }
 
 .btn { display:inline-flex; align-items:center; gap:6px; padding:8px 18px; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; text-decoration:none; transition:all var(--transition); white-space:nowrap; position:relative; overflow:hidden; }
 .btn::after { content:''; position:absolute; inset:0; background:rgba(255,255,255,0.2); transform:scale(0); border-radius:50%; opacity:0; transition:transform 0.5s, opacity 0.3s; }
@@ -511,28 +513,6 @@ table.dataTable td.mono { font-family:var(--mono); font-size:12px; }
     ${sidebarNav}
   </div>
   <div class="sidebar-footer">
-    <div class="notif-wrap">
-      <div class="notif-bell" id="notifBell">
-        <span class="icon notif-badge"><i class="fas fa-bell"></i> <span class="notif-count" id="notifCount">0</span></span>
-        <span>Notifications</span>
-      </div>
-      <div class="notif-dropdown" id="notifDropdown">
-        <div class="notif-dropdown-header">
-          <h4>Notifications</h4>
-          <span class="nd-count" id="notifDropdownCount">0 pending</span>
-        </div>
-        <div class="notif-dropdown-body" id="notifDropdownBody">
-          <div class="notif-dropdown-empty">
-            <div class="nde-icon">&#x2705;</div>
-            <div>All caught up!</div>
-          </div>
-        </div>
-        <div class="notif-dropdown-footer">
-          <a href="/admin/pending-approvals">View all pending approvals &rarr;</a>
-        </div>
-      </div>
-      <div class="notif-overlay" id="notifOverlay"></div>
-    </div>
     <a href="#" data-action="toggle-theme"><span class="icon"><i class="fas fa-moon"></i></span> <span>Dark Mode</span></a>
     <a href="/admin/logout"><span class="icon"><i class="fas fa-right-from-bracket"></i></span> <span>Sign Out</span></a>
   </div>
@@ -544,7 +524,30 @@ table.dataTable td.mono { font-family:var(--mono); font-size:12px; }
       <h2>${opts.headerTitle || title}</h2>
       ${subtitle ? `<div class="meta">${subtitle}</div>` : ''}
     </div>
-    <div class="header-actions">${headerActions || ''}</div>
+    <div class="header-actions">
+      <div class="notif-wrap">
+        <button class="notif-bell" id="notifBell" title="Notifications">
+          <span class="notif-badge"><i class="fas fa-bell"></i> <span class="notif-count" id="notifCount">0</span></span>
+        </button>
+        <div class="notif-dropdown" id="notifDropdown">
+          <div class="notif-dropdown-header">
+            <h4>Notifications</h4>
+            <span class="nd-count" id="notifDropdownCount">0 pending</span>
+          </div>
+          <div class="notif-dropdown-body" id="notifDropdownBody">
+            <div class="notif-dropdown-empty">
+              <div class="nde-icon">&#x2705;</div>
+              <div>All caught up!</div>
+            </div>
+          </div>
+          <div class="notif-dropdown-footer">
+            <a href="/admin/pending-approvals">View all pending approvals &rarr;</a>
+          </div>
+        </div>
+        <div class="notif-overlay" id="notifOverlay"></div>
+      </div>
+      ${headerActions || ''}
+    </div>
   </div>
 
   ${toastHtml}
@@ -635,10 +638,17 @@ function toggleTheme(e){
     return (ts || '').slice(0,10);
   }
 
+  var lastTotal = -1;
   function fetchNotifications(){
     fetch('/admin/pending-items')
       .then(function(r){ return r.json(); })
       .then(function(data){
+        // Pulse bell if new items appeared
+        if (lastTotal >= 0 && data.total > lastTotal) {
+          bell.classList.add('has-new');
+          setTimeout(function(){ bell.classList.remove('has-new'); }, 800);
+        }
+        lastTotal = data.total;
         // Update badge
         if (data.total > 0) {
           badge.textContent = data.total > 99 ? '99+' : data.total;

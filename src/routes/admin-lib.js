@@ -52,7 +52,7 @@ function layout(title, active, content, opts = {}) {
       { minRole: 2, icon: '<i class="fas fa-user"></i>', label: 'Member Ledger', href: '/admin/reports/member-ledger', key: 'member-ledger' },
       { minRole: 2, icon: '<i class="fas fa-clock"></i>', label: 'Loan Aging', href: '/admin/reports/loan-aging', key: 'loan-aging' },
       { minRole: 2, icon: '<i class="fas fa-chart-pie"></i>', label: 'Loan Portfolio', href: '/admin/reports/loan-portfolio', key: 'loan-portfolio' },
-      { minRole: 1, icon: '<i class="fas fa-file-lines"></i>', label: 'Audit Reports', href: '/admin/audit', key: 'audit' },
+      { minRole: 3, icon: '<i class="fas fa-file-lines"></i>', label: 'Audit Reports', href: '/admin/audit', key: 'audit' },
     ]},
     { minRole: 1, icon: '<i class="fas fa-landmark"></i>', label: 'Bank Reports', key: 'bank-reports', style: 'border-top:1px solid rgba(255,255,255,0.06);padding-top:2px;margin-top:2px', children: [
       { minRole: 2, icon: '<i class="fas fa-building-columns"></i>', label: 'Bank Statement', href: '/admin/reports/bank/statement', key: 'bank-statement' },
@@ -90,7 +90,7 @@ function layout(title, active, content, opts = {}) {
     ]},
     { minRole: 1, icon: '<i class="fas fa-clipboard-list"></i>', label: 'Administration', key: 'admin-group', children: [
       { minRole: 4, icon: '<i class="fas fa-user-shield"></i>', label: 'Admin Users', href: '/admin/users', key: 'users' },
-      { minRole: 1, icon: '<i class="fas fa-clipboard-list"></i>', label: 'Audit Log', href: '/admin/audit-log', key: 'audit-log' },
+      { minRole: 3, icon: '<i class="fas fa-clipboard-list"></i>', label: 'Audit Log', href: '/admin/audit-log', key: 'audit-log' },
       { minRole: 3, icon: '<i class="fas fa-list"></i>', label: 'Enhanced Audit', href: '/admin/enhanced-audit', key: 'enhanced-audit' },
       { minRole: 1, icon: '<i class="fas fa-file-pen"></i>', label: 'Printable Forms', href: '/admin/forms', key: 'forms' },
       { minRole: 3, icon: '<i class="fas fa-calendar-day"></i>', label: 'Holidays', href: '/admin/holidays', key: 'holidays' },

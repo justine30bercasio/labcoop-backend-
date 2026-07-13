@@ -4390,7 +4390,7 @@ router.post('/teller/void/:txId', requireRole(3), asyncHandler(async (req, res) 
 
 // ── Audit Reports ──
 
-router.get('/audit', requireRole(1), asyncHandler(async (req, res) => {
+router.get('/audit', requireRole(3), asyncHandler(async (req, res) => {
 
   const q = req.query;
   const fromDate = q.from || '';
@@ -4491,7 +4491,7 @@ router.get('/audit', requireRole(1), asyncHandler(async (req, res) => {
 
 // ── Audit CSV Export ──
 
-router.get('/audit/csv', requireRole(1), asyncHandler(async (req, res) => {
+router.get('/audit/csv', requireRole(3), asyncHandler(async (req, res) => {
 
   const q = req.query;
   let where = [];
@@ -6693,7 +6693,7 @@ router.get('/gl/journal', requireRole(1), asyncHandler(async (req, res) => {
 
 // ── Audit Log ──
 
-router.get('/audit-log', requireRole(1), asyncHandler(async (req, res) => {
+router.get('/audit-log', requireRole(3), asyncHandler(async (req, res) => {
   const { getLogs } = require('../services/audit');
   const limit = Number(req.query.limit) || 100;
   const offset = Number(req.query.offset) || 0;

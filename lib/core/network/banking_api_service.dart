@@ -678,6 +678,13 @@ return null;
     } on DioException { /* ignore */ }
   }
 
+  static Future<Map<String, dynamic>> checkAdminTyping(String accountId) async {
+    try {
+      final resp = await _dio.get('/api/messages/admin-typing/$accountId');
+      return resp.data is Map ? resp.data as Map<String, dynamic> : {'isTyping': false};
+    } on DioException { return {'isTyping': false}; }
+  }
+
   // ── Parent Messages ──
   static Future<Map<String, dynamic>?> parentSendMessage(String accountId, String content) async {
     try {

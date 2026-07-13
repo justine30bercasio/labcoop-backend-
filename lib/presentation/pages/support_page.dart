@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/network/banking_api_service.dart';
+import '../../core/network/socket_service.dart';
 
 class SupportPage extends StatefulWidget {
   final String accountId;
@@ -17,27 +18,69 @@ class _SupportPageState extends State<SupportPage> {
   List<Map<String, dynamic>> _messages = [];
   bool _loading = true;
   bool _sending = false;
-  bool _childTyping = false;
+  bool _adminTyping = false;
   Timer? _typingTimer;
-  Timer? _pollTimer;
   bool _userIsTyping = false;
-  int _lastTypingSent = 0;
 
   @override
   void initState() {
     super.initState();
+    _initSocket();
     _load();
-    // Auto-poll for new messages every 5s
-    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _pollNew());
+  }
+
+  Future<void> _initSocket() async {
+    await SocketService.init();
+    if (!SocketService.isConnected) {
+      // Retry after delay
+      await Future.delayed(const Duration(seconds: 2));
+      await SocketService.init();
+    }
+    SocketService.joinAccount(widget.accountId);
+    SocketService.markRead(widget.accountId);
+
+    SocketService.onNewMessage(_onNewMessage);
+    SocketService.onTypingStatus(_onTypingStatus);
+  }
+
+  void _onNewMessage(dynamic data) {
+    if (!mounted) return;
+    final msg = data as Map<String, dynamic>;
+    if (msg['account_id'] != widget.accountId) return;
+    // Update read status on existing messages
+    if (msg['sender_type'] == 'admin') {
+      for (var i = 0; i < _messages.length; i++) {
+        if (_messages[i]['message_id'] == msg['message_id']) {
+          _messages[i] = msg;
+          if (mounted) setState(() {});
+          return;
+        }
+      }
+    }
+    // Dedup via message_id
+    for (final m in _messages) {
+      if (m['message_id'] == msg['message_id']) return;
+    }
+    setState(() => _messages.add(msg));
+    _scrollDown();
+  }
+
+  void _onTypingStatus(dynamic data) {
+    if (!mounted) return;
+    final d = data as Map<String, dynamic>;
+    if (d['accountId'] == widget.accountId && d['sender'] == 'admin') {
+      setState(() => _adminTyping = d['isTyping'] == true);
+    }
   }
 
   @override
   void dispose() {
+    SocketService.offNewMessage();
+    SocketService.offTypingStatus();
+    SocketService.sendTyping(widget.accountId, false);
     _controller.dispose();
     _scrollController.dispose();
-    _pollTimer?.cancel();
     _typingTimer?.cancel();
-    _sendTyping(false);
     super.dispose();
   }
 
@@ -48,37 +91,6 @@ class _SupportPageState extends State<SupportPage> {
         _messages = msgs.cast<Map<String, dynamic>>();
         _loading = false;
       });
-      _scrollDown();
-    }
-  }
-
-  Future<void> _pollNew() async {
-    final msgs = await BankingApiService.getMessages(widget.accountId);
-    if (!mounted) return;
-    final newList = msgs.cast<Map<String, dynamic>>();
-    var changed = false;
-    // Update existing messages with latest read status
-    for (var i = 0; i < _messages.length; i++) {
-      final old = _messages[i];
-      final found = newList.where((m) => m['message_id'] == old['message_id']).firstOrNull;
-      if (found != null) {
-        final oldRead = old['admin_read'];
-        final newRead = found['admin_read'];
-        if (oldRead != newRead) {
-          _messages[i] = found;
-          changed = true;
-        }
-      }
-    }
-    // Add new messages
-    for (final m in newList) {
-      if (!_messages.any((e) => e['message_id'] == m['message_id'])) {
-        _messages.add(m);
-        changed = true;
-      }
-    }
-    if (changed) {
-      setState(() {});
       _scrollDown();
     }
   }
@@ -98,24 +110,17 @@ class _SupportPageState extends State<SupportPage> {
   void _onTyping(String val) {
     if (val.isNotEmpty && !_userIsTyping) {
       _userIsTyping = true;
-      _sendTyping(true);
+      SocketService.sendTyping(widget.accountId, true);
       _typingTimer?.cancel();
-      _typingTimer = Timer(const Duration(seconds: 3), () {
-        _sendTyping(false);
+      _typingTimer = Timer(const Duration(seconds: 4), () {
+        SocketService.sendTyping(widget.accountId, false);
         _userIsTyping = false;
       });
     } else if (val.isEmpty && _userIsTyping) {
-      _sendTyping(false);
+      SocketService.sendTyping(widget.accountId, false);
       _userIsTyping = false;
       _typingTimer?.cancel();
     }
-  }
-
-  Future<void> _sendTyping(bool isTyping) async {
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastTypingSent < 2000) return;
-    _lastTypingSent = now;
-    await BankingApiService.sendTyping(widget.accountId, isTyping);
   }
 
   Future<void> _send() async {
@@ -123,28 +128,23 @@ class _SupportPageState extends State<SupportPage> {
     if (text.isEmpty) return;
     setState(() => _sending = true);
     _controller.clear();
-    _sendTyping(false);
+    SocketService.sendTyping(widget.accountId, false);
     _userIsTyping = false;
     _typingTimer?.cancel();
-    setState(() {
-      _messages.add({
-        'sender_type': 'child',
-        'sender_name': widget.childName,
-        'content': text,
-        'created_at': DateTime.now().toIso8601String(),
-        'admin_read': 0,
-      });
-    });
+    // Optimistically add message locally
+    final tempMsg = <String, dynamic>{
+      'sender_type': 'child',
+      'sender_name': widget.childName,
+      'content': text,
+      'created_at': DateTime.now().toIso8601String(),
+      'admin_read': 0,
+    };
+    setState(() => _messages.add(tempMsg));
     _scrollDown();
+    // Send via socket (instant) + HTTP fallback
+    SocketService.sendMessage(widget.accountId, text);
     await BankingApiService.sendMessage(widget.accountId, text, senderName: widget.childName);
-    final msgs = await BankingApiService.getMessages(widget.accountId);
-    if (mounted) {
-      setState(() {
-        _messages = msgs.cast<Map<String, dynamic>>();
-        _sending = false;
-      });
-      _scrollDown();
-    }
+    if (mounted) setState(() => _sending = false);
   }
 
   Widget _readReceipt(int? adminRead, String senderType) {
@@ -279,8 +279,8 @@ class _SupportPageState extends State<SupportPage> {
                         },
                       ),
           ),
-          // Typing indicator
-          if (_childTyping)
+          // Admin typing indicator
+          if (_adminTyping)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               color: Colors.grey.shade50,
@@ -292,7 +292,6 @@ class _SupportPageState extends State<SupportPage> {
                 ],
               ),
             ),
-          // Input
           Container(
             padding: const EdgeInsets.fromLTRB(12, 8, 8, 12),
             decoration: BoxDecoration(
@@ -357,7 +356,7 @@ class _SupportPageState extends State<SupportPage> {
             left: i * 10.0,
             top: 0,
             child: AnimatedOpacity(
-              opacity: _childTyping ? 1.0 : 0.0,
+              opacity: _adminTyping ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 300),
               child: Container(
                 width: 6,

@@ -7711,4 +7711,53 @@ router.get('/pending-counts', requireRole(1), asyncHandler(async (req, res) => {
   res.json(counts);
 }));
 
+// ── Pending items detailed endpoint (for notification dropdown) ──
+router.get('/pending-items', requireRole(1), asyncHandler(async (req, res) => {
+  const sql = (s, p) => store.query(s, p || []).then(r => r.rows);
+  const now = new Date().toISOString();
+  const items = [];
+
+  // KYC pending
+  const kycRows = await sql("SELECT account_id, child_name, member_id, kyc_submitted_at FROM accounts WHERE kyc_status = 'pending' ORDER BY kyc_submitted_at DESC LIMIT 20");
+  kycRows.forEach(function(r) {
+    items.push({ id: r.account_id, type: 'kyc', label: 'KYC Submitted', desc: r.child_name + ' (' + (r.member_id || '') + ')', time: r.kyc_submitted_at || now, url: '/admin/kyc' });
+  });
+
+  // Withdrawal requests pending
+  const wdRows = await sql("SELECT w.request_id, w.amount, w.created_at, a.child_name, a.member_id FROM withdrawal_requests w LEFT JOIN accounts a ON w.account_id = a.account_id WHERE w.status = 'pending' ORDER BY w.created_at DESC LIMIT 20");
+  wdRows.forEach(function(r) {
+    items.push({ id: r.request_id, type: 'withdrawal', label: 'Withdrawal Request', desc: r.child_name + ' - \u20B1' + Number(r.amount).toFixed(2), time: r.created_at || now, url: '/admin/withdrawal-requests' });
+  });
+
+  // Loans pending
+  const loanRows = await sql("SELECT l.loan_id, l.principal, l.created_at, a.child_name, a.member_id FROM loans l LEFT JOIN accounts a ON l.account_id = a.account_id WHERE l.status = 'pending' ORDER BY l.created_at DESC LIMIT 20");
+  loanRows.forEach(function(r) {
+    items.push({ id: r.loan_id, type: 'loan', label: 'Loan Application', desc: r.child_name + ' - \u20B1' + Number(r.principal).toFixed(2), time: r.created_at || now, url: '/admin/loans' });
+  });
+
+  // Online deposits pending
+  const depRows = await sql("SELECT d.deposit_id, d.amount, d.created_at, a.child_name, a.member_id FROM online_deposits d LEFT JOIN accounts a ON d.account_id = a.account_id WHERE d.status = 'pending' ORDER BY d.created_at DESC LIMIT 20");
+  depRows.forEach(function(r) {
+    items.push({ id: r.deposit_id, type: 'online_deposit', label: 'Online Deposit', desc: r.child_name + ' - \u20B1' + Number(r.amount).toFixed(2), time: r.created_at || now, url: '/admin/pending-approvals' });
+  });
+
+  // Parental consent pending
+  const consentRows = await sql("SELECT c.consent_id, c.created_at, a.child_name, a.member_id FROM parental_consent c LEFT JOIN accounts a ON c.account_id = a.account_id WHERE c.status = 'pending' ORDER BY c.created_at DESC LIMIT 20");
+  consentRows.forEach(function(r) {
+    items.push({ id: r.consent_id, type: 'consent', label: 'Parental Consent', desc: r.child_name + ' (' + (r.member_id || '') + ')', time: r.created_at || now, url: '/admin/pending-approvals' });
+  });
+
+  // Account deletion pending
+  const delRows = await sql("SELECT d.request_id, d.created_at, a.child_name, a.member_id FROM account_deletion_requests d LEFT JOIN accounts a ON d.account_id = a.account_id WHERE d.status = 'pending' ORDER BY d.created_at DESC LIMIT 20");
+  delRows.forEach(function(r) {
+    items.push({ id: r.request_id, type: 'deletion', label: 'Account Deletion', desc: r.child_name + ' (' + (r.member_id || '') + ')', time: r.created_at || now, url: '/admin/pending-approvals' });
+  });
+
+  // Sort by time descending (newest first), cap at 50
+  items.sort(function(a, b) { return b.time.localeCompare(a.time); });
+  if (items.length > 50) items.length = 50;
+
+  res.json({ total: items.length, items: items });
+}));
+
 module.exports = router;

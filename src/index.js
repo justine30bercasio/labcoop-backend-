@@ -251,6 +251,7 @@ const crypto = require('crypto');
   await ensureSavingsProduct();
   startServer();
 })();
+const messagesRouter = require('./routes/messages');
 const { startScheduler } = require('./services/scheduler');
 const { authMiddleware, requireOwnership } = require('./middleware/auth');
 
@@ -520,6 +521,7 @@ apiRouter.use(authMiddleware, requireOwnership, bankingFeaturesRouter);
 apiRouter.use('/leaderboard', authMiddleware, leaderboardRouter);
 apiRouter.use('/settings', authMiddleware, requireOwnership, settingsRouter);
 apiRouter.use('/coins', authMiddleware, requireOwnership, coinsRouter);
+apiRouter.use('/messages', authMiddleware, messagesRouter);
 
 // Mount: public first (health/auth handled here), then authenticated routes
 app.use('/api', publicRouter);

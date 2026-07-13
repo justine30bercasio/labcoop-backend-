@@ -7687,17 +7687,181 @@ router.post('/parents/reject/:parentId', requireRole(3,4), asyncHandler(async (r
   res.redirect('/admin/parents?filter=pending&success=Parent+rejected');
 }));
 
+// ── Admin Messages ──
+router.get('/messages', requireRole(1), asyncHandler(async (req, res) => {
+  const sql = (s, p) => store.query(s, p || []).then(r => r.rows);
+  const conversations = await sql(`
+    SELECT m.account_id, a.child_name, a.member_id,
+      (SELECT content FROM support_messages WHERE account_id = m.account_id ORDER BY created_at DESC LIMIT 1) as last_message,
+      (SELECT created_at FROM support_messages WHERE account_id = m.account_id ORDER BY created_at DESC LIMIT 1) as last_time,
+      (SELECT COUNT(*) FROM support_messages WHERE account_id = m.account_id AND admin_read = 0 AND sender_type != 'admin') as unread
+    FROM (SELECT DISTINCT account_id FROM support_messages) m
+    LEFT JOIN accounts a ON m.account_id = a.account_id
+    ORDER BY last_time DESC
+  `);
+  const totalUnread = conversations.reduce((s, c) => s + Number(c.unread), 0);
+
+  const content = `
+  <style>
+  .msg-list { display:flex; flex-direction:column; gap:2px; }
+  .msg-conv { display:flex; align-items:center; gap:14px; padding:14px 18px; border-radius:10px; cursor:pointer; transition:background 0.12s; text-decoration:none; color:inherit; }
+  .msg-conv:hover { background:#f0fdf4; }
+  .msg-conv .mc-avatar { width:40px; height:40px; border-radius:50%; background:linear-gradient(135deg,var(--accent),#1B5E20); color:#fff; display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:700; flex-shrink:0; }
+  .msg-conv .mc-info { flex:1; min-width:0; }
+  .msg-conv .mc-name { font-size:14px; font-weight:600; color:var(--text); }
+  .msg-conv .mc-preview { font-size:12px; color:var(--text-muted); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .msg-conv .mc-time { font-size:11px; color:var(--text-muted); white-space:nowrap; }
+  .msg-conv .mc-badge { background:#ef4444; color:#fff; font-size:10px; font-weight:700; min-width:20px; height:20px; line-height:20px; text-align:center; border-radius:10px; padding:0 5px; margin-left:8px; }
+  .msg-empty { text-align:center; padding:60px 20px; color:var(--text-muted); }
+  .msg-empty .me-icon { font-size:48px; margin-bottom:12px; opacity:0.3; }
+  </style>
+  <div class="card">
+    <div class="card-header">
+      <h3><i class="fas fa-comments"></i> Messages</h3>
+      <span class="count">${conversations.length} conversations ${totalUnread > 0 ? '· ' + totalUnread + ' unread' : ''}</span>
+    </div>
+    <div class="card-body" style="padding:8px">
+      ${conversations.length === 0 ?
+        '<div class="msg-empty"><div class="me-icon">&#x1F4E8;</div><div>No messages yet. When a child or parent sends a message, it will appear here.</div></div>' :
+        '<div class="msg-list">' + conversations.map(function(c) {
+          const initial = (c.child_name || '?')[0].toUpperCase();
+          const time = c.last_time ? (c.last_time.slice(0,16).replace('T',' ')) : '';
+          const unread = Number(c.unread);
+          return '<a href="/admin/messages/' + c.account_id + '" class="msg-conv"><div class="mc-avatar">' + initial + '</div><div class="mc-info"><div class="mc-name">' + h(c.child_name || 'Unknown') + ' <span style="font-size:11px;color:var(--text-muted);font-family:var(--mono)">' + (c.member_id || '') + '</span></div><div class="mc-preview">' + h(c.last_message || '') + '</div></div><div class="mc-time">' + (unread ? '<span class="mc-badge">' + unread + '</span>' : '') + time + '</div></a>';
+        }).join('') + '</div>'
+      }
+    </div>
+  </div>`;
+
+  res.type('html').send(layout('Messages', 'messages', content, { subtitle: totalUnread > 0 ? totalUnread + ' unread' : 'Support inquiries' }));
+}));
+
+router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res) => {
+  const sql = (s, p) => store.query(s, p || []).then(r => r.rows);
+  const [account, msgs] = await Promise.all([
+    sql('SELECT * FROM accounts WHERE account_id = $1', [req.params.accountId]).then(r => r[0]),
+    sql('SELECT * FROM support_messages WHERE account_id = $1 ORDER BY created_at ASC', [req.params.accountId]),
+  ]);
+
+  if (!account) return res.redirect('/admin/messages?error=Account+not+found');
+
+  // Mark unread as read
+  await store.query("UPDATE support_messages SET admin_read = 1 WHERE account_id = $1 AND sender_type != 'admin'", [req.params.accountId]);
+
+  const csrf = res.locals.csrfToken || '';
+  const content = `
+  <style>
+  .msg-thread { max-width:700px; margin:0 auto; }
+  .msg-bubble { display:flex; gap:12px; margin-bottom:14px; }
+  .msg-bubble.incoming { flex-direction:row; }
+  .msg-bubble.outgoing { flex-direction:row-reverse; }
+  .msg-bubble .mb-avatar { width:32px; height:32px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; }
+  .msg-bubble.incoming .mb-avatar { background:var(--accent); color:#fff; }
+  .msg-bubble.outgoing .mb-avatar { background:#6366f1; color:#fff; }
+  .msg-bubble .mb-content { max-width:75%; padding:10px 14px; border-radius:12px; font-size:13px; line-height:1.5; }
+  .msg-bubble.incoming .mb-content { background:#f1f5f9; color:var(--text); border-bottom-left-radius:4px; }
+  .msg-bubble.outgoing .mb-content { background:var(--accent); color:#fff; border-bottom-right-radius:4px; }
+  .msg-bubble .mb-meta { font-size:10px; color:var(--text-muted); margin-top:4px; opacity:0.7; }
+  .msg-bubble.outgoing .mb-meta { color:rgba(255,255,255,0.7); }
+  .msg-reply-box { margin-top:20px; background:var(--card); border:1px solid var(--border); border-radius:14px; overflow:hidden; }
+  .msg-reply-box textarea { width:100%; padding:14px; border:none; outline:none; font-size:13px; font-family:inherit; resize:vertical; min-height:70px; background:transparent; color:var(--text); }
+  .msg-reply-box .mr-actions { display:flex; align-items:center; justify-content:space-between; padding:8px 14px 12px; border-top:1px solid var(--border); }
+  </style>
+  <div style="margin-bottom:14px">
+    <a href="/admin/messages" class="btn btn-outline btn-sm">&larr; Back to Messages</a>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <h3><i class="fas fa-user"></i> ${h(account.child_name || 'Unknown')} <span class="mono" style="font-size:12px;color:var(--text-muted)">${h(account.member_id || '')}</span></h3>
+    </div>
+    <div class="card-body msg-thread" id="msgThread">
+      ${msgs.length === 0 ? '<div style="text-align:center;padding:40px;color:var(--text-muted)">No messages yet</div>' :
+        msgs.map(function(m) {
+          const isAdmin = m.sender_type === 'admin';
+          const initial = isAdmin ? 'A' : (m.sender_name ? m.sender_name[0].toUpperCase() : '?');
+          return '<div class="msg-bubble ' + (isAdmin ? 'outgoing' : 'incoming') + '"><div class="mb-avatar">' + initial + '</div><div class="mb-content"><div>' + h(m.content) + '</div><div class="mb-meta">' + h(m.sender_name || m.sender_type) + ' · ' + (m.created_at ? m.created_at.slice(0,19).replace('T',' ') : '') + '</div></div></div>';
+        }).join('')
+      }
+      <div id="replyTarget"></div>
+    </div>
+  </div>
+
+  <div class="msg-reply-box">
+    <textarea id="replyContent" placeholder="Type your reply..." rows="2"></textarea>
+    <div class="mr-actions">
+      <span style="font-size:11px;color:var(--text-muted)">Press Enter to send</span>
+      <button class="btn btn-primary btn-sm" onclick="sendReply()"><i class="fas fa-paper-plane"></i> Send</button>
+    </div>
+  </div>
+
+  <script>
+  function sendReply(){
+    var content = document.getElementById('replyContent');
+    if (!content.value.trim()) return;
+    fetch('/admin/messages/reply', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'X-CSRF-Token':'${csrf}' },
+      body: JSON.stringify({ accountId: '${req.params.accountId}', content: content.value.trim() })
+    }).then(function(r){ return r.json(); }).then(function(data){
+      if (data.message === 'Sent') {
+        // Add message to thread
+        var target = document.getElementById('replyTarget');
+        var d = new Date();
+        var ts = d.toISOString().slice(0,19).replace('T',' ');
+        var html = '<div class="msg-bubble outgoing"><div class="mb-avatar">A</div><div class="mb-content"><div>' + content.value.trim() + '</div><div class="mb-meta">Admin · ' + ts + '</div></div></div>';
+        target.insertAdjacentHTML('beforebegin', html);
+        content.value = '';
+        target.scrollIntoView({ behavior:'smooth' });
+      }
+    }).catch(function(){});
+  }
+  document.getElementById('replyContent').addEventListener('keydown', function(e){
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); }
+  });
+  </script>`;
+
+  res.type('html').send(layout('Messages', 'messages', content));
+}));
+
+router.post('/messages/reply', requireRole(1), asyncHandler(async (req, res) => {
+  const { accountId, content } = req.body;
+  if (!content || !content.trim()) return res.status(400).json({ message: 'Content is required' });
+  if (!accountId) return res.status(400).json({ message: 'Account ID is required' });
+
+  const msgId = require('uuid').v4();
+  const adminName = req.session.adminName || 'Admin';
+  const child = await store.query('SELECT child_name FROM accounts WHERE account_id = $1', [accountId]);
+
+  await store.query(
+    `INSERT INTO support_messages (message_id, account_id, child_name, sender_type, sender_name, content, admin_read, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [msgId, accountId, child.rows[0]?.child_name || '', 'admin', adminName, content.trim(), 1, new Date().toISOString()]
+  );
+
+  // Try to send FCM push to the child
+  try {
+    const notifs = require('../services/notifications');
+    const fcmTokens = await store.query("SELECT fcm_token FROM fcm_tokens WHERE account_id = $1", [accountId]);
+    for (const t of fcmTokens.rows) {
+      await notifs.sendPush(t.fcm_token, { title: 'New Reply', body: 'Admin replied to your message', data: { type: 'admin_reply', accountId } }).catch(() => {});
+    }
+  } catch (_) {}
+
+  res.json({ message: 'Sent', messageId: msgId });
+}));
+
 // ── Pending counts JSON endpoint (for admin notification bell) ──
 router.get('/pending-counts', requireRole(1), asyncHandler(async (req, res) => {
   const sql = (s, p) => store.query(s, p || []).then(r => r.rows);
   const one = (s, p) => store.query(s, p || []).then(r => r.rows[0]);
-  const [kyc, withdrawals, loans, onlineDeposits, consents, deletions] = await Promise.all([
+  const [kyc, withdrawals, loans, onlineDeposits, consents, deletions, unreadMsgs] = await Promise.all([
     sql("SELECT COUNT(*) as c FROM accounts WHERE kyc_status = 'pending'"),
     sql("SELECT COUNT(*) as c FROM withdrawal_requests WHERE status = 'pending'"),
     sql("SELECT COUNT(*) as c FROM loans WHERE status = 'pending'"),
     sql("SELECT COUNT(*) as c FROM online_deposits WHERE status = 'pending'"),
     sql("SELECT COUNT(*) as c FROM parental_consent WHERE status = 'pending'"),
     sql("SELECT COUNT(*) as c FROM account_deletion_requests WHERE status = 'pending'"),
+    sql("SELECT COUNT(*) as c FROM support_messages WHERE admin_read = 0 AND sender_type != 'admin'"),
   ]);
   const counts = {
     kyc: Number(kyc[0]?.c || 0),
@@ -7706,8 +7870,9 @@ router.get('/pending-counts', requireRole(1), asyncHandler(async (req, res) => {
     onlineDeposits: Number(onlineDeposits[0]?.c || 0),
     consents: Number(consents[0]?.c || 0),
     deletions: Number(deletions[0]?.c || 0),
+    messages: Number(unreadMsgs[0]?.c || 0),
   };
-  counts.total = counts.kyc + counts.withdrawals + counts.loans + counts.onlineDeposits + counts.consents + counts.deletions;
+  counts.total = counts.kyc + counts.withdrawals + counts.loans + counts.onlineDeposits + counts.consents + counts.deletions + counts.messages;
   res.json(counts);
 }));
 
@@ -7753,11 +7918,38 @@ router.get('/pending-items', requireRole(1), asyncHandler(async (req, res) => {
     items.push({ id: r.request_id, type: 'deletion', label: 'Account Deletion', desc: r.child_name + ' (' + (r.member_id || '') + ')', time: r.created_at || now, url: '/admin/pending-approvals' });
   });
 
+  // Unread messages
+  const msgRows = await sql("SELECT m.message_id, m.account_id, m.child_name, m.sender_type, m.sender_name, m.content, m.created_at FROM support_messages m WHERE m.admin_read = 0 AND m.sender_type != 'admin' ORDER BY m.created_at DESC LIMIT 20");
+  msgRows.forEach(function(r) {
+    items.push({ id: r.message_id, type: 'message', label: r.sender_type === 'parent' ? 'Parent Message' : 'Message from ' + (r.child_name || 'Child'), desc: r.content, time: r.created_at || now, url: '/admin/messages/' + r.account_id });
+  });
+
   // Sort by time descending (newest first), cap at 50
   items.sort(function(a, b) { return b.time.localeCompare(a.time); });
   if (items.length > 50) items.length = 50;
 
   res.json({ total: items.length, items: items });
+}));
+
+// ── Unread message threads for messenger dropdown ──
+router.get('/unread-message-threads', requireRole(1), asyncHandler(async (req, res) => {
+  const sql = (s, p) => store.query(s, p || []).then(r => r.rows);
+  const threads = await sql(`
+    SELECT
+      m.account_id,
+      a.child_name,
+      a.member_id,
+      (SELECT content FROM support_messages WHERE account_id = m.account_id AND sender_type != 'admin' ORDER BY created_at DESC LIMIT 1) as last_message,
+      (SELECT created_at FROM support_messages WHERE account_id = m.account_id AND sender_type != 'admin' ORDER BY created_at DESC LIMIT 1) as last_time,
+      (SELECT COUNT(*) FROM support_messages WHERE account_id = m.account_id AND admin_read = 0 AND sender_type != 'admin') as unread
+    FROM support_messages m
+    LEFT JOIN accounts a ON m.account_id = a.account_id
+    WHERE m.admin_read = 0 AND m.sender_type != 'admin'
+    GROUP BY m.account_id, a.child_name, a.member_id
+    ORDER BY MAX(m.created_at) DESC
+    LIMIT 20
+  `);
+  res.json({ threads: threads, total: threads.length });
 }));
 
 module.exports = router;

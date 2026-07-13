@@ -524,6 +524,16 @@ class PgStore {
         created_at TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_coin_tx_account ON coin_transactions(account_id);
+      CREATE TABLE IF NOT EXISTS support_messages (
+        message_id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL,
+        child_name TEXT DEFAULT '',
+        sender_type TEXT NOT NULL DEFAULT 'child' CHECK(sender_type IN ('child','parent','admin')),
+        sender_name TEXT DEFAULT '',
+        content TEXT NOT NULL,
+        admin_read INTEGER DEFAULT 0,
+        created_at TEXT
+      );
     `;
     await this.pool.query(schema);
     // Migrations for existing tables
@@ -573,6 +583,7 @@ class PgStore {
     await this.pool.query("ALTER TABLE parents ADD COLUMN IF NOT EXISTS postal_code TEXT DEFAULT ''").catch(() => {});
     await this.pool.query("ALTER TABLE checks ADD COLUMN IF NOT EXISTS checkbook_id TEXT").catch(() => {});
     await this.pool.query("ALTER TABLE checks ADD COLUMN IF NOT EXISTS stop_payment INTEGER DEFAULT 0").catch(() => {});
+    await this.pool.query("ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS child_name TEXT DEFAULT ''").catch(() => {});
     await this._seedGlAccounts();
 
     // --- Performance Indexes ---

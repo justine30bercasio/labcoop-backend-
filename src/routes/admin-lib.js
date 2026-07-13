@@ -13,6 +13,7 @@ function layout(title, active, content, opts = {}) {
 
    const menuGroups = [
     { minRole: 1, icon: '<i class="fas fa-chart-pie"></i>', label: 'Dashboard', key: 'dashboard', href: '/admin' },
+    { minRole: 1, icon: '<i class="fas fa-comments"></i>', label: 'Messages', key: 'messages', href: '/admin/messages' },
     { minRole: 1, icon: '<i class="fas fa-users"></i>', label: 'Members', key: 'members', children: [
       { minRole: 1, icon: '<i class="fas fa-user"></i>', label: 'Accounts', href: '/admin/accounts', key: 'accounts' },
       { minRole: 1, icon: '<i class="fas fa-passport"></i>', label: 'KYC', href: '/admin/kyc', key: 'kyc' },
@@ -227,15 +228,18 @@ body { font-family:var(--font); background:var(--bg); color:var(--text); display
 .sidebar-footer a:hover { background:var(--sidebar-hover); color:var(--sidebar-text-active); }
 .sidebar-footer a .icon { font-size:13px; width:22px; text-align:center; flex-shrink:0; }
 .sidebar-footer a .icon i { font-size:13px; vertical-align:middle; }
-.notif-wrap { position:fixed; bottom:24px; right:24px; z-index:997; }
-.notif-wrap .notif-bell { width:52px; height:52px; border:none; border-radius:16px; background:linear-gradient(135deg,#2E7D32,#1B5E20); color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:22px; transition:all 0.2s; box-shadow:0 4px 16px rgba(46,125,50,0.4); position:relative; }
-.notif-wrap .notif-bell:hover { transform:translateY(-2px) scale(1.05); box-shadow:0 6px 24px rgba(46,125,50,0.5); }
-.notif-wrap .notif-bell:active { transform:translateY(0) scale(0.97); }
+.notif-wrap { position:fixed; bottom:24px; right:24px; z-index:997; display:flex; flex-direction:column-reverse; gap:10px; align-items:flex-end; }
+.notif-wrap .notif-fab { width:52px; height:52px; border:none; border-radius:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:22px; transition:all 0.2s; position:relative; }
+.notif-wrap .notif-fab.notif-bell { background:linear-gradient(135deg,#2E7D32,#1B5E20); color:#fff; box-shadow:0 4px 16px rgba(46,125,50,0.4); }
+.notif-wrap .notif-fab.notif-bell:hover { transform:translateY(-2px) scale(1.05); box-shadow:0 6px 24px rgba(46,125,50,0.5); }
+.notif-wrap .notif-fab.notif-bell:active { transform:translateY(0) scale(0.97); }
+.notif-wrap .notif-fab.msg-fab { background:linear-gradient(135deg,#0284c7,#0369a1); color:#fff; box-shadow:0 4px 16px rgba(2,132,199,0.4); }
+.notif-wrap .notif-fab.msg-fab:hover { transform:translateY(-2px) scale(1.05); box-shadow:0 6px 24px rgba(2,132,199,0.5); }
+.notif-wrap .notif-fab.msg-fab:active { transform:translateY(0) scale(0.97); }
 .notif-badge { position:relative; display:inline-flex; align-items:center; line-height:1; }
 .notif-badge .notif-count { position:absolute; top:-6px; right:-8px; background:#ef4444; color:#fff; font-size:10px; font-weight:700; min-width:20px; height:20px; line-height:20px; text-align:center; border-radius:10px; padding:0 5px; box-shadow:0 2px 6px rgba(239,68,68,0.5); display:none; border:2px solid #1B5E20; }
 .notif-badge .notif-count.show { display:inline-block; }
 .notif-dropdown { position:absolute; bottom:60px; right:0; width:380px; max-height:460px; background:var(--card); border-radius:16px; box-shadow:0 8px 40px rgba(0,0,0,0.18); display:none; flex-direction:column; z-index:999; overflow:hidden; border:1px solid var(--border); }
-.notif-dropdown.show { display:flex; }
 .notif-dropdown.show { display:flex; }
 .notif-dropdown-header { padding:12px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
 .notif-dropdown-header h4 { font-size:13px; font-weight:700; color:var(--text); }
@@ -251,6 +255,7 @@ body { font-family:var(--font); background:var(--bg); color:var(--text); display
 .notif-item .ni-icon.online_deposit { background:#e3f2fd; color:#2563eb; }
 .notif-item .ni-icon.consent { background:#f3e5f5; color:#7c3aed; }
 .notif-item .ni-icon.deletion { background:#fef2f2; color:#b91c1c; }
+.notif-item .ni-icon.message { background:#e0f2fe; color:#0369a1; }
 .notif-item .ni-info { flex:1; min-width:0; }
 .notif-item .ni-label { font-size:12px; font-weight:600; color:var(--text); }
 .notif-item .ni-desc { font-size:11px; color:var(--text-muted); margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -262,6 +267,25 @@ body { font-family:var(--font); background:var(--bg); color:var(--text); display
 .notif-dropdown-footer a:hover { background:#f0fdf4; color:var(--accent-hover); }
 .notif-overlay { position:fixed; top:0; left:0; right:0; bottom:0; z-index:998; display:none; }
 .notif-overlay.show { display:block; }
+
+/* messenger fab */
+.msg-fab.has-new .notif-count { animation:notifPulse 0.4s ease 2; }
+.msg-dropdown { position:absolute; bottom:124px; right:0; width:380px; max-height:460px; background:var(--card); border-radius:16px; box-shadow:0 8px 40px rgba(0,0,0,0.18); display:none; flex-direction:column; z-index:999; overflow:hidden; border:1px solid var(--border); }
+.msg-dropdown.show { display:flex; }
+.msg-item { display:flex; align-items:flex-start; gap:10px; padding:10px 16px; cursor:pointer; transition:background 0.12s; border-bottom:1px solid var(--border); text-decoration:none; color:inherit; }
+.msg-item:last-child { border-bottom:none; }
+.msg-item:hover { background:#f0f9ff; }
+.msg-item .mi-avatar { width:32px; height:32px; border-radius:50%; background:linear-gradient(135deg,#0284c7,#0369a1); color:#fff; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; flex-shrink:0; margin-top:2px; }
+.msg-item .mi-info { flex:1; min-width:0; }
+.msg-item .mi-name { font-size:12px; font-weight:700; color:var(--text); display:flex; align-items:center; gap:6px; }
+.msg-item .mi-name .mi-badge { background:#0284c7; color:#fff; font-size:9px; font-weight:700; min-width:18px; height:18px; line-height:18px; text-align:center; border-radius:9px; padding:0 5px; }
+.msg-item .mi-preview { font-size:11px; color:var(--text-muted); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.msg-item .mi-time { font-size:10px; color:var(--text-muted); margin-top:2px; opacity:0.7; }
+.msg-dropdown-empty { padding:32px 16px; text-align:center; color:var(--text-muted); font-size:13px; }
+.msg-dropdown-empty .mde-icon { font-size:32px; margin-bottom:8px; opacity:0.3; }
+.msg-dropdown-footer { padding:8px 16px; border-top:1px solid var(--border); text-align:center; }
+.msg-dropdown-footer a { font-size:12px; color:#0284c7; text-decoration:none; font-weight:600; display:block; padding:6px; border-radius:6px; }
+.msg-dropdown-footer a:hover { background:#f0f9ff; }
 
 .main { margin-left:240px; flex:1; padding:24px 28px; max-width:100%; transition:margin-left var(--transition); }
 .page-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:12px; }
@@ -528,7 +552,29 @@ table.dataTable td.mono { font-family:var(--mono); font-size:12px; }
     <div class="header-actions">${headerActions || ''}</div>
   </div>
   <div class="notif-wrap">
-    <button class="notif-bell" id="notifBell" title="Notifications">
+    <!-- Messenger FAB (above bell) -->
+    <button class="notif-fab msg-fab" id="msgFab" title="Messages">
+      <span class="notif-badge"><i class="fas fa-comment"></i> <span class="notif-count" id="msgCount">0</span></span>
+    </button>
+    <div class="msg-dropdown" id="msgDropdown">
+      <div class="notif-dropdown-header">
+        <h4>Messages</h4>
+        <span class="nd-count" id="msgDropdownCount">0 unread</span>
+      </div>
+      <div class="notif-dropdown-body" id="msgDropdownBody">
+        <div class="msg-dropdown-empty">
+          <div class="mde-icon">&#x1f4ac;</div>
+          <div>No messages yet</div>
+        </div>
+      </div>
+      <div class="msg-dropdown-footer">
+        <a href="/admin/messages">View all messages &rarr;</a>
+      </div>
+    </div>
+    <div class="notif-overlay" id="msgOverlay"></div>
+
+    <!-- Notification Bell -->
+    <button class="notif-fab notif-bell" id="notifBell" title="Notifications">
       <span class="notif-badge"><i class="fas fa-bell"></i> <span class="notif-count" id="notifCount">0</span></span>
     </button>
     <div class="notif-dropdown" id="notifDropdown">
@@ -616,10 +662,17 @@ function toggleTheme(e){
     e.stopPropagation();
     dd.classList.toggle('show');
     overlay.classList.toggle('show');
+    // Close messenger if open
+    var msgDd = document.getElementById('msgDropdown');
+    var msgOverlay = document.getElementById('msgOverlay');
+    if (msgDd && msgDd.classList.contains('show')) {
+      msgDd.classList.remove('show');
+      if (msgOverlay) msgOverlay.classList.remove('show');
+    }
   });
 
   function notifIcon(type){
-    var icons = { kyc:'fa-id-card', withdrawal:'fa-money-bill-wave', loan:'fa-sack-dollar', online_deposit:'fa-credit-card', consent:'fa-file-signature', deletion:'fa-user-slash' };
+    var icons = { kyc:'fa-id-card', withdrawal:'fa-money-bill-wave', loan:'fa-sack-dollar', online_deposit:'fa-credit-card', consent:'fa-file-signature', deletion:'fa-user-slash', message:'fa-comment' };
     return icons[type] || 'fa-bell';
   }
 
@@ -682,6 +735,117 @@ function toggleTheme(e){
   overlay.addEventListener('click', function(){
     dd.classList.remove('show');
     overlay.classList.remove('show');
+  });
+})();
+
+// ── Messenger FAB dropdown ──
+(function(){
+  var mFab = document.getElementById('msgFab');
+  var mDd = document.getElementById('msgDropdown');
+  var mOverlay = document.getElementById('msgOverlay');
+  var mBadge = document.getElementById('msgCount');
+  var mBody = document.getElementById('msgDropdownBody');
+  var mCountLabel = document.getElementById('msgDropdownCount');
+  if (!mFab || !mDd || !mOverlay) return;
+
+  mFab.addEventListener('click', function(e){
+    e.stopPropagation();
+    // Close notifications if open
+    var notifDd = document.getElementById('notifDropdown');
+    var notifOverlay = document.getElementById('notifOverlay');
+    if (notifDd && notifDd.classList.contains('show')) {
+      notifDd.classList.remove('show');
+      if (notifOverlay) notifOverlay.classList.remove('show');
+    }
+    mDd.classList.toggle('show');
+    mOverlay.classList.toggle('show');
+  });
+
+  function timeAgo(ts){
+    if (!ts) return '';
+    var diff = Date.now() - new Date(ts).getTime();
+    var sec = Math.floor(diff / 1000);
+    if (sec < 60) return 'just now';
+    var min = Math.floor(sec / 60);
+    if (min < 60) return min + 'm ago';
+    var hr = Math.floor(min / 60);
+    if (hr < 24) return hr + 'h ago';
+    var d = Math.floor(hr / 24);
+    if (d < 7) return d + 'd ago';
+    return (ts || '').slice(0,10);
+  }
+
+  var lastMsgTotal = -1;
+  function fetchMessageThreads(){
+    fetch('/admin/unread-message-threads')
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        var total = data.total || 0;
+        if (lastMsgTotal >= 0 && total > lastMsgTotal) {
+          mFab.classList.add('has-new');
+          setTimeout(function(){ mFab.classList.remove('has-new'); }, 800);
+        }
+        lastMsgTotal = total;
+        if (total > 0) {
+          mBadge.textContent = total > 99 ? '99+' : total;
+          mBadge.classList.add('show');
+        } else {
+          mBadge.classList.remove('show');
+        }
+        mCountLabel.textContent = total + ' unread';
+
+        if (data.threads && data.threads.length > 0) {
+          mBody.innerHTML = '';
+          data.threads.forEach(function(t){
+            var name = t.child_name || 'Unknown';
+            var initial = name.charAt(0).toUpperCase();
+            var preview = t.last_message || '';
+            if (preview.length > 60) preview = preview.slice(0,60) + '...';
+            var time = timeAgo(t.last_time);
+            var unread = Number(t.unread) || 0;
+            var el = document.createElement('a');
+            el.className = 'msg-item';
+            el.href = '/admin/messages/' + t.account_id;
+            var avatar = document.createElement('div');
+            avatar.className = 'mi-avatar';
+            avatar.textContent = initial;
+            var info = document.createElement('div');
+            info.className = 'mi-info';
+            var nameRow = document.createElement('div');
+            nameRow.className = 'mi-name';
+            nameRow.textContent = name;
+            if (unread > 0) {
+              var badge = document.createElement('span');
+              badge.className = 'mi-badge';
+              badge.textContent = String(unread);
+              nameRow.appendChild(badge);
+            }
+            var prevEl = document.createElement('div');
+            prevEl.className = 'mi-preview';
+            prevEl.textContent = preview;
+            var timeEl = document.createElement('div');
+            timeEl.className = 'mi-time';
+            timeEl.textContent = time;
+            info.appendChild(nameRow);
+            info.appendChild(prevEl);
+            info.appendChild(timeEl);
+            el.appendChild(avatar);
+            el.appendChild(info);
+            mBody.appendChild(el);
+          });
+        } else {
+          mBody.innerHTML = '<div class="msg-dropdown-empty"><div class="mde-icon">&#x1f4ac;</div><div>No messages yet</div></div>';
+        }
+      })
+      .catch(function(){});
+  }
+
+  fetchMessageThreads();
+  setInterval(fetchMessageThreads, 10000);
+
+  mOverlay.addEventListener('click', function(){
+    mDd.classList.remove('show');
+    mOverlay.classList.remove('show');
   });
 })();
 </script>

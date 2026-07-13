@@ -606,6 +606,45 @@ router.post('/notifications/read-all', parentAuth, asyncHandler(async (req, res)
   res.json({ ok: true });
 }));
 
+// ── Parent Messages ──
+router.post('/messages/send', parentAuth, asyncHandler(async (req, res) => {
+  const { accountId, content } = req.body;
+  if (!content || !content.trim()) return res.status(400).json({ message: 'Content is required' });
+  if (!accountId) return res.status(400).json({ message: 'Account ID is required' });
+
+  const msgId = require('uuid').v4();
+  const child = await require('../db').store.query('SELECT child_name FROM accounts WHERE account_id = $1', [accountId]);
+  const parentName = req.parentName || 'Parent';
+
+  await require('../db').store.query(
+    `INSERT INTO support_messages (message_id, account_id, child_name, sender_type, sender_name, content, admin_read, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [msgId, accountId, child.rows[0]?.child_name || '', 'parent', parentName, content.trim(), 0, new Date().toISOString()]
+  );
+
+  res.json({ message: 'Sent', messageId: msgId });
+}));
+
+router.get('/messages/:accountId', parentAuth, asyncHandler(async (req, res) => {
+  const msgs = await require('../db').store.query(
+    `SELECT * FROM support_messages WHERE account_id = $1 ORDER BY created_at ASC`,
+    [req.params.accountId]
+  );
+  await require('../db').store.query(
+    `UPDATE support_messages SET admin_read = 1 WHERE account_id = $1 AND sender_type = 'admin'`,
+    [req.params.accountId]
+  );
+  res.json(msgs.rows);
+}));
+
+router.get('/messages/:accountId/unread', parentAuth, asyncHandler(async (req, res) => {
+  const result = await require('../db').store.query(
+    `SELECT COUNT(*) as c FROM support_messages WHERE account_id = $1 AND sender_type = 'admin' AND admin_read = 0`,
+    [req.params.accountId]
+  );
+  res.json({ unread: Number(result.rows[0]?.c || 0) });
+}));
+
 // ── Parent FCM Token Registration ──
 router.post('/register-fcm-token', parentAuth, asyncHandler(async (req, res) => {
   const { fcmToken, devicePlatform } = req.body;

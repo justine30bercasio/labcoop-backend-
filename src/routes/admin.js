@@ -7836,8 +7836,8 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
   document.getElementById('replyContent').addEventListener('keydown', function(e){
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); }
   });
-  // Refresh messenger FAB badge after loading thread
-  if (window.refreshMessengerBadge) window.refreshMessengerBadge();
+  // Refresh messenger FAB badge after marking messages as read
+  setTimeout(function(){ window.refreshMessengerBadge(); }, 500);
   // Poll read receipts on admin messages every 4s
   setInterval(function(){
     fetch('/admin/messages/' + accountId + '/read-status')

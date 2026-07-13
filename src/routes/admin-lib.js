@@ -648,6 +648,9 @@ function toggleTheme(e){
   else{ html.setAttribute('data-theme','dark'); localStorage.setItem('labcoop-theme','dark'); }
 }
 
+// Placeholder for messenger badge refresh (overridden below after DOM ready)
+window.refreshMessengerBadge = function(){};
+
 // ── Notification bell dropdown ──
 (function(){
   var bell = document.getElementById('notifBell');

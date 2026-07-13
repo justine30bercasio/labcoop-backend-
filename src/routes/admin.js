@@ -3971,7 +3971,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
         window.history.replaceState({}, document.title, clean);
       }
       setTimeout(function() {
-        if (confirm('Transaction successful!\n\nPrint receipt?')) {
+        if (confirm('Transaction successful!\\n\\nPrint receipt?')) {
           window.print();
         }
       }, 400);

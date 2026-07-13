@@ -7687,4 +7687,28 @@ router.post('/parents/reject/:parentId', requireRole(3,4), asyncHandler(async (r
   res.redirect('/admin/parents?filter=pending&success=Parent+rejected');
 }));
 
+// ── Pending counts JSON endpoint (for admin notification bell) ──
+router.get('/pending-counts', requireRole(1), asyncHandler(async (req, res) => {
+  const sql = (s, p) => store.query(s, p || []).then(r => r.rows);
+  const one = (s, p) => store.query(s, p || []).then(r => r.rows[0]);
+  const [kyc, withdrawals, loans, onlineDeposits, consents, deletions] = await Promise.all([
+    sql("SELECT COUNT(*) as c FROM accounts WHERE kyc_status = 'pending'"),
+    sql("SELECT COUNT(*) as c FROM withdrawal_requests WHERE status = 'pending'"),
+    sql("SELECT COUNT(*) as c FROM loans WHERE status = 'pending'"),
+    sql("SELECT COUNT(*) as c FROM online_deposits WHERE status = 'pending'"),
+    sql("SELECT COUNT(*) as c FROM parental_consent WHERE status = 'pending'"),
+    sql("SELECT COUNT(*) as c FROM account_deletion_requests WHERE status = 'pending'"),
+  ]);
+  const counts = {
+    kyc: Number(kyc[0]?.c || 0),
+    withdrawals: Number(withdrawals[0]?.c || 0),
+    loans: Number(loans[0]?.c || 0),
+    onlineDeposits: Number(onlineDeposits[0]?.c || 0),
+    consents: Number(consents[0]?.c || 0),
+    deletions: Number(deletions[0]?.c || 0),
+  };
+  counts.total = counts.kyc + counts.withdrawals + counts.loans + counts.onlineDeposits + counts.consents + counts.deletions;
+  res.json(counts);
+}));
+
 module.exports = router;

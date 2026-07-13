@@ -227,6 +227,9 @@ body { font-family:var(--font); background:var(--bg); color:var(--text); display
 .sidebar-footer a:hover { background:var(--sidebar-hover); color:var(--sidebar-text-active); }
 .sidebar-footer a .icon { font-size:13px; width:22px; text-align:center; flex-shrink:0; }
 .sidebar-footer a .icon i { font-size:13px; vertical-align:middle; }
+.notif-badge { position:relative; }
+.notif-badge .notif-count { position:absolute; top:-2px; right:-6px; background:#ef4444; color:#fff; font-size:9px; font-weight:700; min-width:16px; height:16px; line-height:16px; text-align:center; border-radius:8px; padding:0 4px; box-shadow:0 1px 3px rgba(239,68,68,0.4); display:none; }
+.notif-badge .notif-count.show { display:inline-block; }
 
 .main { margin-left:240px; flex:1; padding:24px 28px; max-width:100%; transition:margin-left var(--transition); }
 .page-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:12px; }
@@ -477,6 +480,7 @@ table.dataTable td.mono { font-family:var(--mono); font-size:12px; }
     ${sidebarNav}
   </div>
   <div class="sidebar-footer">
+    <a href="/admin/pending-approvals" class="notif-badge"><span class="icon"><i class="fas fa-bell"></i></span> <span>Notifications</span> <span class="notif-count" id="notifCount">0</span></a>
     <a href="#" data-action="toggle-theme"><span class="icon"><i class="fas fa-moon"></i></span> <span>Dark Mode</span></a>
     <a href="/admin/logout"><span class="icon"><i class="fas fa-right-from-bracket"></i></span> <span>Sign Out</span></a>
   </div>
@@ -543,6 +547,27 @@ function toggleTheme(e){
   if(isDark){ html.removeAttribute('data-theme'); localStorage.setItem('labcoop-theme','light'); }
   else{ html.setAttribute('data-theme','dark'); localStorage.setItem('labcoop-theme','dark'); }
 }
+
+// ── Pending counts poller ──
+(function(){
+  var badge = document.getElementById('notifCount');
+  if (!badge) return;
+  function fetchCounts(){
+    fetch('/admin/pending-counts')
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if (data.total > 0) {
+          badge.textContent = data.total > 99 ? '99+' : data.total;
+          badge.classList.add('show');
+        } else {
+          badge.classList.remove('show');
+        }
+      })
+      .catch(function(){});
+  }
+  fetchCounts();
+  setInterval(fetchCounts, 30000);
+})();
 </script>
 <div id="confirm-modal" class="confirm-overlay" role="dialog" aria-modal="true" style="display:none">
   <div class="confirm-modal">

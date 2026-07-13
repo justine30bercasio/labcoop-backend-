@@ -14,8 +14,8 @@ const { store, isPostgres } = require('./db');
 async function ensureDb() {
   if (isPostgres) return; // skip seed on PG — user will create accounts via admin
   try {
-    const existing = await store.getAccount('00000000-0000-0000-0000-000000000001');
-    if (existing) {
+    const count = await store.query('SELECT COUNT(*) as c FROM accounts');
+    if (parseInt(count.rows[0]?.c || '0', 10) > 0) {
       console.log('Seed data already exists.');
       return;
     }
@@ -24,22 +24,24 @@ async function ensureDb() {
     const seedPass2 = crypto.randomBytes(4).toString('hex');
     console.log(`[SEED] Account Juan (000001) created. Temporary password: ${seedPass1} — CHANGE ON FIRST LOGIN`);
     console.log(`[SEED] Account Maria (000002) created. Temporary password: ${seedPass2} — CHANGE ON FIRST LOGIN`);
-    await store.createAccount({
+    const juan = await store.createAccount({
       child_name: 'Juan', member_id: '000001', password: bcrypt.hashSync(seedPass1, 10),
       password_changed: 0, actual_balance: 1500, unallocated_balance: 200, current_xp: 45,
       parent_phone: '09171234567',
     });
-    await store.createAccount({
+    const maria = await store.createAccount({
       child_name: 'Maria', member_id: '000002', password: bcrypt.hashSync(seedPass2, 10),
       password_changed: 0, actual_balance: 2500, unallocated_balance: 500, current_xp: 120,
       parent_phone: '09179876543',
     });
+    const juanId = juan?.account_id || juan?.id || '00000000-0000-0000-0000-000000000001';
+    const mariaId = maria?.account_id || maria?.id || '00000000-0000-0000-0000-000000000002';
 
-    await store.createGoal({ account_id: '00000000-0000-0000-0000-000000000001', title: 'New School Shoes', target_amount: 1000, current_allocated: 650, category_icon: 'shoes' });
-    await store.createGoal({ account_id: '00000000-0000-0000-0000-000000000001', title: 'Bicycle', target_amount: 3000, current_allocated: 450, category_icon: 'bike' });
-    await store.createGoal({ account_id: '00000000-0000-0000-0000-000000000001', title: 'Video Game', target_amount: 500, current_allocated: 200, category_icon: 'game' });
-    await store.createGoal({ account_id: '00000000-0000-0000-0000-000000000002', title: 'Art Set', target_amount: 800, current_allocated: 600, category_icon: 'toy' });
-    await store.createGoal({ account_id: '00000000-0000-0000-0000-000000000002', title: 'Birthday Gift for Mama', target_amount: 2000, current_allocated: 1400, category_icon: 'savings' });
+    await store.createGoal({ account_id: juanId, title: 'New School Shoes', target_amount: 1000, current_allocated: 650, category_icon: 'shoes' });
+    await store.createGoal({ account_id: juanId, title: 'Bicycle', target_amount: 3000, current_allocated: 450, category_icon: 'bike' });
+    await store.createGoal({ account_id: juanId, title: 'Video Game', target_amount: 500, current_allocated: 200, category_icon: 'game' });
+    await store.createGoal({ account_id: mariaId, title: 'Art Set', target_amount: 800, current_allocated: 600, category_icon: 'toy' });
+    await store.createGoal({ account_id: mariaId, title: 'Birthday Gift for Mama', target_amount: 2000, current_allocated: 1400, category_icon: 'savings' });
 
     const shopItems = [
       ['av_cat', 'Kitty', 'avatar', 0, '\u{1F431}', 'Common', '#2E7D32', '#2E7D32', ''],
@@ -201,7 +203,7 @@ async function ensureAdmin() {
   try {
     const result = await store.query('SELECT COUNT(*) as c FROM admin_users');
     if (parseInt(result.rows[0]?.c || '0', 10) === 0) {
-      const adminPass = crypto.randomBytes(6).toString('hex'); // 12-char random hex
+      const adminPass = process.env.NODE_ENV === 'production' ? crypto.randomBytes(6).toString('hex') : 'admin123';
     console.log(`[SEED] Admin account created. Username: admin / Temporary password: ${adminPass} — CHANGE IMMEDIATELY AFTER LOGIN`);
     const hash = bcrypt.hashSync(adminPass, 10);
       await store.query(
@@ -576,8 +578,16 @@ app.use('/api/webhooks', webhookRouter);
 const { router: legalRouter } = require('./routes/legal');
 app.use('/legal', legalRouter);
 
-app.get('/org-template.png', (req, res) => {
+app.get('/orgthempalte.png', (req, res) => {
   const filePath = path.resolve(__dirname, 'public/org-template.png');
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).type('text').send('Not found');
+  }
+  res.set('Cache-Control', 'public, max-age=86400');
+  res.sendFile(filePath);
+});
+app.get('/orglogo.jpg', (req, res) => {
+  const filePath = path.resolve(__dirname, 'public/orglogo.jpg');
   if (!fs.existsSync(filePath)) {
     return res.status(404).type('text').send('Not found');
   }

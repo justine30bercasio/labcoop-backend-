@@ -916,11 +916,13 @@ function registerParentFcmToken(parentId, fcmToken, devicePlatform) {
   return { token_id, parent_id: parentId, fcm_token: fcmToken, device_platform: devicePlatform || '' };
 }
 
-function query(sql, params) {
+async function query(sql, params) {
   const db = getDb();
   const adaptedSql = sql.replace(/\$(\d+)/g, '?');
   const stmt = db.prepare(adaptedSql);
-  const rows = stmt.all(...(params || []));
+  const isRead = /^\s*SELECT/i.test(adaptedSql);
+  const rows = isRead ? stmt.all(...(params || [])) : [];
+  if (!isRead) stmt.run(...(params || []));
   return { rows };
 }
 

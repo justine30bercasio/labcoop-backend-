@@ -3,7 +3,8 @@ const path = require('path');
 
 const ROLE_LEVELS = { super_admin: 4, manager: 3, teller: 2, auditor: 1 };
 let currentRoleLevel = 4; // default: show all
-const ORG_TEMPLATE_URL = '/org-template.png';
+const ORG_TEMPLATE_URL = '/orgthempalte.png';
+const ORG_LOGO_URL = '/orglogo.jpg';
 
 function setRoleLevel(level) { currentRoleLevel = level; }
 
@@ -55,7 +56,7 @@ function layout(title, active, content, opts = {}) {
     ]},
     { minRole: 1, icon: '<i class="fas fa-landmark"></i>', label: 'Bank Reports', key: 'bank-reports', style: 'border-top:1px solid rgba(255,255,255,0.06);padding-top:2px;margin-top:2px', children: [
       { minRole: 2, icon: '<i class="fas fa-building-columns"></i>', label: 'Bank Statement', href: '/admin/reports/bank/statement', key: 'bank-statement' },
-      { minRole: 2, icon: '<i class="fas fa-certificate"></i>', label: 'Certificate of Deposit', href: '/admin/reports/bank/certificate', key: 'bank-certificate' },
+
       { minRole: 3, icon: '<i class="fas fa-cash-register"></i>', label: 'Daily Cash Position', href: '/admin/reports/bank/cash-position', key: 'bank-cash-position' },
     ]},
     { minRole: 1, icon: '<i class="fas fa-scale-balanced"></i>', label: 'Accounting', key: 'accounting', children: [
@@ -306,11 +307,11 @@ form.inline { display:inline; }
 .field input, .field select, .field textarea { width:100%; padding:9px 12px; border:2px solid var(--border); border-radius:8px; font-size:14px; outline:none; font-family:var(--font); transition:border var(--transition); }
 .field input:focus, .field select:focus, .field textarea:focus { border-color:var(--accent); }
 
-.stats-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:14px; margin-bottom:24px; }
-.stat-card { background:var(--card); border-radius:var(--radius); padding:16px 18px; box-shadow:var(--shadow); border:1px solid var(--border); transition:transform var(--transition), box-shadow var(--transition); cursor:default; }
+.stats-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px; margin-bottom:24px; }
+.stat-card { background:var(--card); border-radius:var(--radius); padding:16px 18px; box-shadow:var(--shadow); border:1px solid var(--border); transition:transform var(--transition), box-shadow var(--transition); cursor:default; min-width:0; }
 .stat-card:hover { transform:translateY(-2px); box-shadow:var(--shadow-lg); }
 .stat-card .stat-icon { font-size:20px; margin-bottom:6px; }
-.stat-card .stat-value { font-size:24px; font-weight:700; letter-spacing:-0.5px; }
+.stat-card .stat-value { font-size:clamp(14px,2.2vw,24px); font-weight:700; letter-spacing:-0.5px; overflow-wrap:break-word; word-break:break-word; line-height:1.3; }
 .stat-card .stat-label { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px; }
 .stat-card .stat-sub { font-size:11px; color:var(--text-muted); margin-top:4px; }
 .stat-card .stat-bar { margin-top:8px; height:3px; background:#e2e8f0; border-radius:2px; overflow:hidden; }
@@ -750,13 +751,22 @@ function h(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
 }
 
+function fmt(v) {
+  return '₱' + Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtTrn(v) {
+  const n = Number(v || 0);
+  return (n >= 0 ? '+' : '') + '₱' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function printLayout(title, content, opts = {}) {
   const {
     subtitle = '',
     dateRange = '',
-    companyName = 'LabCoop',
-    companyAddress = '123 Rizal Street, Barangay Poblacion',
-    companyTin = '123-456-789-000',
+    companyName = 'AYSIDEK Lab Coop',
+    companyAddress = '50 20 de Julio corner Bonifacio Sts, 4336',
+    companyTin = '',
     asOf = '',
     orientation = 'portrait',
     signatureLine1 = 'Prepared by:',
@@ -767,9 +777,11 @@ function printLayout(title, content, opts = {}) {
     showSignatures = true,
     showDisclaimer = true,
     templateOverlay = false,
-    templateTop = '44mm',
-    templateBottom = '1in',
+    templateTop = '1.6in',
+    templateBottom = '24mm',
   } = opts;
+
+  const genDate = new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -778,105 +790,174 @@ function printLayout(title, content, opts = {}) {
 <style>
   @page {
     size: ${orientation === 'landscape' ? 'A4 landscape' : 'A4 portrait'};
-    margin: ${templateOverlay ? '0' : '20mm 15mm 25mm 15mm'};
-    ${showPageNumbers ? "@bottom-center { content: 'Page ' counter(page) ' of ' counter(pages); font-size: 9px; color: #666; }" : ''}
+    margin: ${templateOverlay ? '0' : '22mm 18mm 32mm 18mm'};
+    ${showPageNumbers ? "@bottom-center { content: 'Page ' counter(page) ' of ' counter(pages); font-size: 8pt; color: #888; font-family: Georgia, 'Times New Roman', serif; }" : ''}
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    position: relative;
-    font-family: 'Courier New', Courier, 'Lucida Sans Typewriter', monospace;
-    font-size: 10pt;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 9pt;
     line-height: 1.5;
-    color: #000;
+    color: #1a1a1a;
     background: #fff;
   }
-  .template-sheet {
-    position: relative;
-    min-height: 297mm;
-    background: none;
-    overflow: visible;
-    page-break-inside: auto;
-  }
-  .template-sheet::before {
+  /* ── WATERMARK: org logo centered at 10% opacity ── */
+  body::before {
     content: '';
     position: fixed;
     inset: 0;
-    background: url('${ORG_TEMPLATE_URL}') center top / 100% 100% no-repeat;
-    opacity: 1;
+    background: url('${ORG_LOGO_URL}') center center / contain no-repeat;
+    opacity: 0.10;
     pointer-events: none;
+    z-index: 0;
   }
-  .template-content {
+  .report-sheet, .template-content,
+  table, .print-info-grid, .print-summary-strip, .print-cert-wrap,
+  .signature-area, .disclaimer-text, .footer-note, .print-signature-block {
     position: relative;
-    padding: ${templateTop} 15mm ${templateBottom} 15mm;
-    overflow: visible;
+    z-index: 1;
   }
+  .mono, .num {
+    font-family: 'Courier New', 'Lucida Console', monospace !important;
+    font-variant-numeric: tabular-nums;
+  }
+  .template-sheet { position: relative; min-height: 297mm; background: none; overflow: visible; page-break-inside: auto; }
+  .template-bg { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.25; pointer-events: none; z-index: 0; }
+  .template-content { position: relative; padding: ${templateTop} 18mm ${templateBottom} 18mm; overflow: visible; }
   .template-content > * { position: relative; z-index: 1; }
-  .report-sheet {
-    position: relative;
-    min-height: 0;
-    background: none;
-    padding: 0;
-    overflow: visible;
-  }
+  .report-sheet { position: relative; min-height: 0; background: none; padding: 0; overflow: visible; }
   .report-sheet > * { position: relative; z-index: 1; }
-  .report-title { text-align: center; margin: 4mm 0 3mm 0; }
-  .report-title h2 { font-size: 12pt; font-weight: 700; text-decoration: underline; margin-bottom: 1mm; }
-  .report-title .subtitle { font-size: 9pt; color: #444; }
-  .report-title .date-range { font-size: 8pt; color: #555; margin-top: 1mm; }
-  .report-meta { text-align: right; font-size: 7pt; color: #666; margin-bottom: 2mm; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 3mm; font-size: 8.5pt; }
-  table { page-break-inside: auto; break-inside: auto; }
-  thead th { background: #e0e0e0; font-weight: 700; text-align: left; padding: 2mm 1.5mm; border: 1px solid #000; font-size: 8pt; text-transform: uppercase; }
-  thead th.num { text-align: right; }
-  tbody td { padding: 1.5mm 1.5mm; border: 1px solid #999; vertical-align: top; }
-  tr { break-inside: avoid; page-break-inside: avoid; }
-  tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  tbody tr:nth-child(even) { background: #f5f5f5; }
-  tbody tr.total-row { font-weight: 700; background: #e8e8e8; border-top: 2px solid #000; }
-  tbody tr.subtotal-row { font-weight: 600; background: #f0f0f0; border-top: 1px solid #666; }
-  .mono { font-family: 'Courier New', monospace; }
-  .section-title { font-weight: 700; font-size: 9pt; margin: 3mm 0 1mm 0; padding: 1mm 0; border-bottom: 1px solid #666; }
-  .disclaimer-text { font-size: 7pt; color: #666; text-align: center; margin-top: 4mm; padding-top: 2mm; border-top: 1px solid #ccc; }
+
+  /* ── COMPANY HEADER ── */
+  .print-header-row { display:flex; align-items:center; gap:4mm; margin-bottom:1mm; }
+  .print-header-logo { flex-shrink:0; width:16mm; height:16mm; }
+  .print-header-logo img { width:100%; height:100%; object-fit:contain; }
+  .print-header-info { flex:1; }
+  .print-header-info .bank-name { font-size:15pt; font-weight:800; color:#000; letter-spacing:1.5px; }
+  .print-header-info .bank-sub { font-size:8pt; color:#666; margin-top:0.3mm; }
+  .print-company-header { border-bottom:1px solid #d0dcd0; margin-bottom:3mm; padding-bottom:2mm; }
+  .print-company-header .report-title { font-size:11pt; font-weight:700; color:#1a4a1a; letter-spacing:1px; }
+  .print-company-header .report-subtitle { font-size:8pt; color:#888; }
+
+  /* ── REPORT META ── */
+  .report-meta-bar { display: flex; justify-content: space-between; font-size: 7pt; color: #888; margin-bottom: 2.5mm; padding: 0.8mm 0; border-bottom: 1px solid #e0e8e0; }
+
+  /* ── TITLE ── */
+  .report-title { text-align: center; margin: 2mm 0 3mm 0; }
+  .report-title h2 { font-size: 12pt; font-weight: 700; color: #1a4a1a; margin-bottom: 0.5mm; letter-spacing: 0.5px; }
+  .report-title .subtitle { font-size: 8pt; color: #666; font-style: italic; }
+  .report-title .date-range { font-size: 7.5pt; color: #888; margin-top: 0.5mm; }
+
+  /* ── TABLES ── */
+  table { width: 100%; border-collapse: collapse; margin-bottom: 3mm; font-size: 8pt; page-break-inside: auto; break-inside: auto; }
+  thead { display: table-header-group; }
+  tfoot { display: table-footer-group; }
+  thead th {
+    background: #1a4a1a; color: #fff; font-weight: 700; text-align: left;
+    padding: 1.8mm 1.5mm; font-size: 7pt; letter-spacing: 0.4px;
+    border: 1px solid #2d5a27;
+  }
+  thead th.num, thead th.right { text-align: right; }
+  tbody td { padding: 1mm 1.5mm; border: 1px solid #ccc; vertical-align: top; font-size: 7.5pt; }
+  tr { break-inside: auto; page-break-inside: auto; }
+  tbody td.num, tbody td.right { text-align: right; font-family: 'Courier New', monospace; font-variant-numeric: tabular-nums; }
+  tbody tr:nth-child(even) { background: #f8faf8; }
+  tbody tr.total-row { font-weight: 700; background: #eaf3ea; border-top: 2px solid #1a4a1a; }
+  tbody tr.total-row td { border-top: 2px solid #1a4a1a; color: #1a4a1a; }
+  tbody tr.subtotal-row { font-weight: 600; background: #f2f6f2; border-top: 1px solid #888; }
+  .credit { color: #16a34a; font-weight: 700; }
+  .debit { color: #dc2626; font-weight: 700; }
+
+  /* ── SUMMARY STRIP ── */
+  .print-summary-strip { display: flex; gap: 2mm; margin-bottom: 2.5mm; }
+  .print-summary-item { flex: 1; padding: 1.2mm 1.5mm; border: 1px solid #d0dcd0; text-align: center; font-size: 6.5pt; line-height: 1.25; }
+  .print-summary-item .val { font-size: 9pt; font-weight: 700; font-family: 'Courier New', monospace; margin-top: 0.3mm; }
+  .print-summary-item .val.blue { color: #2563eb; }
+  .print-summary-item .val.green { color: #16a34a; }
+  .print-summary-item .val.red { color: #dc2626; }
+  .print-summary-item .val.gold { color: #1a4a1a; }
+
+  /* ── MEMBER INFO GRID ── */
+  .print-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1mm 2mm; margin-bottom: 2.5mm; }
+  .print-info-item { border: 1px solid #d0dcd0; padding: 0.8mm 1.5mm; font-size: 7pt; }
+  .print-info-item .label { font-size: 6pt; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.3px; }
+
+  /* ── SECTIONS ── */
+  .section-title { font-weight: 700; font-size: 8.5pt; color: #1a4a1a; margin: 3mm 0 1.5mm 0; padding: 0.8mm 0; border-bottom: 1.5px solid #6b8e23; }
+  .disclaimer-text { font-size: 6.5pt; color: #999; text-align: center; margin-top: 3mm; padding-top: 1.5mm; border-top: 1px solid #e0e8e0; line-height: 1.4; }
+
+  /* ── SIGNATURES ── */
   .signature-area { margin-top: 6mm; display: flex; justify-content: space-between; }
   .signature-block { text-align: center; flex: 1; }
-  .signature-block .line { border-top: 1px solid #000; width: 80%; margin: 20mm auto 1mm auto; }
-  .signature-block .label { font-size: 8pt; font-weight: 600; }
-  .signature-block .sub-label { font-size: 7pt; color: #555; }
+  .signature-block .line { border-top: 1px solid #000; width: 70%; margin: 16mm auto 1.5mm auto; }
+  .signature-block .label { font-size: 7.5pt; font-weight: 700; color: #1a1a1a; }
+  .signature-block .sub-label { font-size: 6pt; color: #999; }
+
+  /* ── CERTIFICATE STYLES ── */
+  .print-cert-wrap { max-width: 600px; margin: 0 auto; }
+  .print-cert-header { text-align: center; padding: 3mm; border-bottom: 2px solid #6b8e23; margin-bottom: 3mm; }
+  .print-cert-header h1 { font-size: 14pt; font-weight: 800; color: #1a4a1a; letter-spacing: 1.5px; }
+  .print-cert-header .cert-sub { font-size: 7.5pt; color: #888; margin-top: 0.5mm; }
+  .print-cert-amount { text-align: center; padding: 3mm 2.5mm; border: 2px dashed #6b8e23; margin: 2.5mm 0; background: #f6faf6; }
+  .print-cert-amount .label { font-size: 6.5pt; text-transform: uppercase; letter-spacing: 1.2px; color: #6b8e23; font-weight: 700; }
+  .print-cert-amount .figure { font-size: 18pt; font-weight: 800; color: #1a4a1a; font-family: 'Courier New', monospace; margin: 1.5mm 0; }
+  .print-cert-amount .words { font-size: 8pt; color: #6b8e23; font-style: italic; }
+
+  /* ── MISC ── */
+  .print-signature-block { display: flex; justify-content: space-between; margin-top: 4mm; }
+  .print-signature-block > div { text-align: center; flex: 1; }
+  .print-signature-block .sig-line { border-top: 1px solid #000; width: 75%; margin: 14mm auto 1mm auto; }
+  .print-signature-block .sig-label { font-size: 7.5pt; font-weight: 600; color: #333; }
   .status-badge { display: none; }
-  @media print {
-    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    form[method="get"], .btn, button, input, select, canvas,
-    .stats-grid:not(.stats-grid-print), .card-header .count,
-    a[href*="export"], a[href*="print"], a[href*="reset"],
-    a[target="_blank"], .badge-count { display: none !important; }
-  }
-  .stats-grid-print { display: flex; gap: 3mm; margin-bottom: 3mm; }
-  .stats-grid-print > div { flex: 1; border: 1px solid #999; padding: 2mm; text-align: center; font-size: 8pt; }
-  .stats-grid-print .val { font-size: 11pt; font-weight: 700; }
+  .no-print { display: none; }
+  .footer-note { text-align: center; font-size: 6pt; color: #aaa; margin-top: 1.5mm; border-top: 1px solid #e8eee8; padding-top: 1mm; }
   .indent { padding-left: 5mm !important; }
   .double-indent { padding-left: 10mm !important; }
-  .no-print { display: none; }
-  .footer-note { text-align: center; font-size: 7pt; color: #888; margin-top: 2mm; }
+  .print-divider { border: none; border-top: 1px solid #6b8e23; margin: 2.5mm 0; }
+
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    form, .btn, button, input, select, canvas,
+    .sidebar, .page-header, .dataTables_wrapper .dataTables_filter,
+    .dataTables_wrapper .dataTables_length, .dataTables_wrapper .dataTables_paginate,
+    a[href*="export"], a[href*="print"], a[href*="reset"],
+    a[target="_blank"], .badge-count, .card-tools, .no-print { display: none !important; }
+  }
 </style>
 </head>
 <body>
-  ${templateOverlay ? '<div class="template-sheet"><div class="template-content"><div class="report-sheet">' : '<div class="report-sheet">'}
-  <div class="report-title">
-    <h2>${title}</h2>
+  ${templateOverlay ? '<div class="template-sheet"><img class="template-bg" src="' + ORG_TEMPLATE_URL + '" alt=""><div class="template-content"><div class="report-sheet">' : '<div class="report-sheet">'}
+  ${!templateOverlay ? `
+  <div class="print-company-header">
+    <div class="print-header-row">
+      <div class="print-header-logo"><img src="${ORG_LOGO_URL}" alt="Logo"></div>
+      <div class="print-header-info">
+        <div class="bank-name">${h(companyName)}</div>
+        <div class="bank-sub">${companyAddress}</div>
+      </div>
+    </div>
+    <div class="report-title">${h(title)}</div>
+    ${subtitle ? `<div class="report-subtitle">${subtitle}</div>` : ''}
+  </div>
+  <div class="report-meta-bar">
+    <span>${asOf ? 'As of ' + asOf : dateRange ? 'Period: ' + dateRange : ''}</span>
+    <span>Generated: ${genDate} &mdash; PH Time</span>
+  </div>` : `<div class="report-title">
+    <h2>${h(title)}</h2>
     ${subtitle ? `<div class="subtitle">${subtitle}</div>` : ''}
     ${asOf ? `<div class="date-range">As of ${asOf}</div>` : ''}
     ${dateRange ? `<div class="date-range">${dateRange}</div>` : ''}
   </div>
-  <div class="report-meta">Generated: ${new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+  <div class="report-meta">Generated: ${genDate}</div>`}
   ${content}
   ${showDisclaimer ? `<div class="disclaimer-text">${disclaimer}</div>` : ''}
   ${showSignatures ? `
   <div class="signature-area">
-    <div class="signature-block"><div class="line"></div><div class="label">${signatureLine1}</div><div class="sub-label">(Printed Name &amp; Signature)</div></div>
-    <div class="signature-block"><div class="line"></div><div class="label">${signatureLine2}</div><div class="sub-label">(Printed Name &amp; Signature)</div></div>
-    <div class="signature-block"><div class="line"></div><div class="label">${signatureLine3}</div><div class="sub-label">(Printed Name &amp; Signature)</div></div>
+    <div class="signature-block"><div class="line"></div><div class="label">${h(signatureLine1)}</div><div class="sub-label">(Printed Name &amp; Signature)</div></div>
+    <div class="signature-block"><div class="line"></div><div class="label">${h(signatureLine2)}</div><div class="sub-label">(Printed Name &amp; Signature)</div></div>
+    <div class="signature-block"><div class="line"></div><div class="label">${h(signatureLine3)}</div><div class="sub-label">(Printed Name &amp; Signature)</div></div>
   </div>` : ''}
-  <div class="footer-note">This report is system-generated from LabCoop Banking System</div>
+  <div class="footer-note">This report is system-generated from AYSIDEK Lab Coop</div>
   ${templateOverlay ? '</div></div></div>' : '</div>'}
 </body>
 </html>`;
@@ -927,4 +1008,4 @@ function reportStats(items) {
   return `<div class="stats-grid-print">${items.map(i => `<div><div class="val">${i.value}</div><div>${i.label}</div></div>`).join('')}</div>`;
 }
 
-module.exports = { layout, printLayout, h, reportTable, reportSection, reportStats, setRoleLevel, ROLE_LEVELS, ORG_TEMPLATE_URL };
+module.exports = { layout, printLayout, h, fmt, fmtTrn, reportTable, reportSection, reportStats, setRoleLevel, ROLE_LEVELS, ORG_TEMPLATE_URL, ORG_LOGO_URL };

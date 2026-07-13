@@ -8,13 +8,13 @@ const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 const { store, isPostgres } = require('../db');
 const { asyncHandler } = require('../async-handler');
-const { layout, printLayout, h, reportTable, reportSection, reportStats } = require('./admin-lib');
+const { layout, printLayout, h, fmt, fmtTrn, reportTable, reportSection, reportStats } = require('./admin-lib');
 const notifs = require('../services/notifications');
 
 const _p = (...p) => p.length === 1 && Array.isArray(p[0]) ? p[0] : p;
 const sql = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows);
 const one = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows[0]);
-const fmt = v => '₱' + Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 // Sanitize values for use in HTTP Content-Disposition headers — strip CRLF to prevent HTTP response splitting
 const safeHeader = v => String(v || '').replace(/[\r\n]/g, '').trim();
 // Sanitize values for CSV export — prevent formula injection
@@ -22,7 +22,7 @@ const safeCsv = v => {
   const s = String(v || '');
   return /^[=+\-@]/.test(s) ? "'" + s : s;
 };
-const fmtTrn = (tx, fallback) => {
+const fmtRef = (tx, fallback) => {
   if (tx && tx.trn_number) {
     const y = new Date(tx.created_at || Date.now()).getFullYear();
     return 'TXN-' + y + '-' + String(tx.trn_number).padStart(6, '0');
@@ -289,23 +289,23 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
     <span class="ib-icon"><i class="fas fa-chart-line"></i></span>
     <div class="ib-text">
       <strong>System Summary</strong> &mdash;
-      ${accounts.length} member${accounts.length !== 1 ? 's' : ''} &middot; &#x20B1;${totalBalance.toFixed(2)} total savings
-      &middot; Avg &#x20B1;${(totalBalance / accounts.length).toFixed(0)}/member
+      ${accounts.length} member${accounts.length !== 1 ? 's' : ''} &middot; ${fmt(totalBalance)} total savings
+      &middot; Avg ${fmt(totalBalance / accounts.length)}/member
       &middot; ${transactions.length} transactions
       &middot; <span class="${depositTrend === 'up' ? 'trend-up' : depositTrend === 'down' ? 'trend-down' : 'trend-flat'}"><i class="fas fa-arrow-${depositTrend === 'up' ? 'up' : depositTrend === 'down' ? 'down' : 'right'}"></i> ${depositTrendPct}% deposit trend</span>
     </div>
-    <div class="ib-stat">${netFlow >= 0 ? '+' : ''}&#x20B1;${netFlow.toFixed(0)}<small>Net Cash Flow</small></div>
+    <div class="ib-stat">${netFlow >= 0 ? '+' : ''}${fmt(netFlow)}<small>Net Cash Flow</small></div>
   </div>` : ''}
 
   <!-- Stats Row with FA icons -->
   <div class="stats-grid">
     <div class="stat-card"><div class="stat-icon"><i class="fas fa-users" style="color:var(--blue)"></i></div><div class="stat-value">${accounts.length}</div><div class="stat-label">Total Members</div><div class="stat-sub">${accounts.filter(a => Number(a.actual_balance) > 0).length} active savers</div></div>
-    <div class="stat-card" style="border-left:3px solid var(--accent)"><div class="stat-icon"><i class="fas fa-piggy-bank" style="color:var(--accent)"></i></div><div class="stat-value">&#x20B1;${totalBalance.toFixed(0)}</div><div class="stat-label">Total Deposits</div><div class="stat-sub">&#x20B1;${(totalBalance / (accounts.length || 1)).toFixed(0)} avg/member</div></div>
+    <div class="stat-card" style="border-left:3px solid var(--accent)"><div class="stat-icon"><i class="fas fa-piggy-bank" style="color:var(--accent)"></i></div><div class="stat-value">${fmt(totalBalance)}</div><div class="stat-label">Total Deposits</div><div class="stat-sub">${fmt(totalBalance / (accounts.length || 1))} avg/member</div></div>
     <div class="stat-card"><div class="stat-icon"><i class="fas fa-arrows-spin" style="color:var(--purple)"></i></div><div class="stat-value">${transactions.length}</div><div class="stat-label">Transactions</div><div class="stat-sub">${dayCounts[6] || 0} today</div></div>
     <div class="stat-card"><div class="stat-icon"><i class="fas fa-bullseye" style="color:var(--amber)"></i></div><div class="stat-value">${goals.length}</div><div class="stat-label">Goal Jars</div><div class="stat-sub">${completedGoals} completed (${goals.length > 0 ? (completedGoals / goals.length * 100).toFixed(0) : 0}%)</div></div>
     <div class="stat-card"><div class="stat-icon"><i class="fas fa-medal" style="color:var(--purple)"></i></div><div class="stat-value">${unlockedBadges}<span style="font-size:13px;color:var(--text-muted)">/${totalBadges}</span></div><div class="stat-label">Badges Unlocked</div><div class="stat-bar"><div class="stat-bar-fill" style="width:${totalBadges > 0 ? (unlockedBadges/totalBadges*100).toFixed(0) : 0}%;background:var(--purple)"></div></div></div>
     <div class="stat-card"><div class="stat-icon"><i class="fas fa-star" style="color:var(--amber)"></i></div><div class="stat-value">${totalXp.toLocaleString()}</div><div class="stat-label">Total XP Earned</div><div class="stat-sub">${accounts.length > 0 ? (totalXp / accounts.length).toFixed(0) : 0} avg/member</div></div>
-    <div class="stat-card"><div class="stat-icon"><i class="fas fa-sack-dollar" style="color:var(--teal)"></i></div><div class="stat-value">${Number(loanStats.total_loans || 0)}</div><div class="stat-label">Loan Portfolio</div><div class="stat-sub">&#x20B1;${Number(loanStats.outstanding || 0).toFixed(0)} outstanding</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-sack-dollar" style="color:var(--teal)"></i></div><div class="stat-value">${Number(loanStats.total_loans || 0)}</div><div class="stat-label">Loan Portfolio</div><div class="stat-sub">${fmt(loanStats.outstanding || 0)} outstanding</div></div>
     <div class="stat-card"><div class="stat-icon"><i class="fas fa-boxes-stacked" style="color:var(--pink)"></i></div><div class="stat-value">${activeLoanProducts + shopItemsCount}</div><div class="stat-label">Active Products</div><div class="stat-sub">${activeLoanProducts} loan &middot; ${shopItemsCount} shop</div></div>
   </div>
 
@@ -313,7 +313,7 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
   <div class="section-title"><i class="fas fa-chart-simple"></i> Analytics</div>
   <div class="dash-grid">
     <div class="chart-card">
-      <div class="chart-title">Daily Transaction Volume <span class="chart-badge">&#x20B1;${(dayDeposits.reduce((s,v) => s+v, 0) + dayWithdrawals.reduce((s,v) => s+v, 0)).toFixed(0)}</span></div>
+      <div class="chart-title">Daily Transaction Volume <span class="chart-badge">${fmt(dayDeposits.reduce((s,v) => s+v, 0) + dayWithdrawals.reduce((s,v) => s+v, 0))}</span></div>
       <div class="chart-container"><canvas id="dailyVolumeChart"></canvas></div>
     </div>
     <div class="chart-card">
@@ -325,7 +325,7 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:11px">
             <span style="width:10px;height:10px;border-radius:2px;background:${pieColors[i]};flex-shrink:0"></span>
             <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.child_name}</span>
-            <span style="font-weight:600">&#x20B1;${Number(a.actual_balance).toFixed(0)}</span>
+            <span style="font-weight:600">${fmt(a.actual_balance)}</span>
             <span style="color:var(--text-muted)">(${(Number(a.actual_balance) / balanceTotal * 100).toFixed(1)}%)</span>
           </div>`).join('')}
         </div>
@@ -339,11 +339,11 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
       <div class="chart-container-sm"><canvas id="xpChart"></canvas></div>
     </div>
     <div class="chart-card">
-      <div class="chart-title">Cash Flow <span class="chart-badge">${netFlow >= 0 ? '+' : ''}&#x20B1;${netFlow.toFixed(0)}</span></div>
+      <div class="chart-title">Cash Flow <span class="chart-badge">${netFlow >= 0 ? '+' : ''}${fmt(netFlow)}</span></div>
       <div style="display:flex;gap:16px;align-items:center;padding:8px 0">
-        <div style="text-align:center;flex:1"><div style="font-size:24px;font-weight:700;color:#16a34a">&#x20B1;${cashIn.toFixed(0)}</div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Cash In</div></div>
+        <div style="text-align:center;flex:1"><div style="font-size:24px;font-weight:700;color:#16a34a">${fmt(cashIn)}</div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Cash In</div></div>
         <div style="width:40px;height:40px;border-radius:50%;background:${netFlow >= 0 ? '#e8f5e9' : '#fce4ec'};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0"><i class="fas fa-arrow-${netFlow >= 0 ? 'up' : 'down'}" style="color:${netFlow >= 0 ? '#16a34a' : '#dc2626'}"></i></div>
-        <div style="text-align:center;flex:1"><div style="font-size:24px;font-weight:700;color:#dc2626">&#x20B1;${cashOut.toFixed(0)}</div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Cash Out</div></div>
+        <div style="text-align:center;flex:1"><div style="font-size:24px;font-weight:700;color:#dc2626">${fmt(cashOut)}</div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Cash Out</div></div>
       </div>
       <div style="height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;display:flex">
         <div style="width:${cashIn + cashOut > 0 ? (cashIn / (cashIn + cashOut) * 100).toFixed(1) : 50}%;height:100%;background:var(--accent);border-radius:3px 0 0 3px"></div>
@@ -394,7 +394,7 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
         const goalCount = goals.filter(g => g.account_id === a.account_id).length;
         return `<tr>
         <td><b>${a.child_name}</b></td>
-      <td>&#x20B1;${Number(a.actual_balance).toFixed(2)}</td>
+      <td>${fmt(a.actual_balance)}</td>
         <td class="num">${a.current_xp}</td>
         <td class="num">${goalCount}</td>
       </tr>`;}).join('')}
@@ -411,7 +411,7 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
         return `<tr>
         <td>${t.child_name || '-'}</td>
         <td><span class="badge ${badgeCls}">${t.type.replace(/_/g,' ')}</span></td>
-        <td class="num" style="color:${isInflow ? 'var(--accent)' : 'var(--red)'}">${isInflow ? '+' : '-'}&#x20B1;${Number(t.amount).toFixed(2)}</td>
+        <td class="num" style="color:${isInflow ? 'var(--accent)' : 'var(--red)'}">${isInflow ? '+' : '-'}${fmt(t.amount)}</td>
         <td class="mono" style="font-size:10px">${dateStr}</td>
       </tr>`;}).join('')}
       </table>`}
@@ -953,7 +953,7 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
   </style>
   <div class="stats-grid">
     <div class="stat-card"><div class="stat-icon">&#x1F464;</div><div class="stat-value">${accounts.length}</div><div class="stat-label">Total Accounts</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x20B1;</div><div class="stat-value">${accounts.reduce((s,a)=>s+Number(a.actual_balance),0).toFixed(0)}</div><div class="stat-label">Combined Balance</div></div>
+    <div class="stat-card"><div class="stat-icon">₱</div><div class="stat-value">${fmt(accounts.reduce((s,a)=>s+Number(a.actual_balance),0))}</div><div class="stat-label">Combined Balance</div></div>
   </div>
 
   <div class="card" style="overflow:visible">
@@ -971,7 +971,7 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
       return `<tr>
       <td><a href="/admin/member/${a.account_id}" class="name-link">${a.child_name}</a></td>
       <td class="mono">${a.member_id || '-'}</td>
-      <td>&#x20B1;${Number(a.actual_balance).toFixed(2)}</td>
+      <td>${fmt(a.actual_balance)}</td>
       <td><span class="badge ${statusBadge}">${statusLabel}</span></td>
       <td><span class="badge ${a.password_changed ? 'badge-green' : 'badge-red'}">${a.password_changed ? 'Changed' : 'Default'}</span></td>
       <td><details class="action-menu">
@@ -1020,7 +1020,7 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
         <input type="number" id="ainitialSavings" name="savings_deposit" min="0" value="${initialSavings || '100'}" step="0.01" required oninput="calcTotal()"></div>
     </div>
     <p style="font-size:12px;color:var(--text-muted);margin:4px 0 8px">
-      <i class="fas fa-info-circle"></i> Total Payment: <b id="totalDisplay">&#x20B1;${(parseFloat(membershipFee||100) + parseFloat(insuranceFee||50) + parseFloat(initialSavings||100)).toFixed(2)}</b>
+      <i class="fas fa-info-circle"></i> Total Payment: <b id="totalDisplay">${fmt(parseFloat(membershipFee||100) + parseFloat(insuranceFee||50) + parseFloat(initialSavings||100))}</b>
       &nbsp;|&nbsp; Membership fee (income) + Insurance fee (income) + Initial savings (liability)
       <br>Savings account number is auto-generated as SAVC-BRANCH-MMDDYY-SEQ.
     </p>
@@ -1115,7 +1115,6 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
   const statusLabel = statusNum === 1 ? 'Active' : statusNum === 0 ? 'Inactive' : 'Closed';
   const statusBadge = statusNum === 1 ? 'badge-green' : statusNum === 0 ? 'badge-gray' : 'badge-red';
 
-  const fmt = (v) => '&#x20B1;' + Number(v).toFixed(2);
   const dateFmt = (d) => d ? String(d).slice(0, 10) : '-';
   const initial = (account.child_name || '?')[0].toUpperCase();
 
@@ -1726,7 +1725,7 @@ router.get('/goals', requireRole(1), asyncHandler(async (req, res) => {
   <div class="stats-grid">
     <div class="stat-card"><div class="stat-icon">&#x1F3AF;</div><div class="stat-value" data-count="${filtered.length}">0</div><div class="stat-label">Goals Shown</div></div>
     <div class="stat-card"><div class="stat-icon">&#x2705;</div><div class="stat-value" data-count="${completedCount}">0</div><div class="stat-label">Completed</div><div class="stat-bar"><div class="stat-bar-fill" style="width:${filtered.length > 0 ? (completedCount/filtered.length*100).toFixed(0) : 0}%;background:var(--accent)"></div></div></div>
-    <div class="stat-card"><div class="stat-icon">&#x20B1;</div><div class="stat-value">${Number(totalAllocated).toFixed(0)}</div><div class="stat-label">Allocated</div><div class="stat-sub">of &#x20B1;${Number(totalTarget).toFixed(0)} target</div></div>
+    <div class="stat-card"><div class="stat-icon">₱</div><div class="stat-value">${fmt(totalAllocated)}</div><div class="stat-label">Allocated</div><div class="stat-sub">of ${fmt(totalTarget)} target</div></div>
   </div>
 
   <div class="card">
@@ -1754,8 +1753,8 @@ router.get('/goals', requireRole(1), asyncHandler(async (req, res) => {
       return `<tr>
       <td><b>${g.child_name || '-'}</b></td>
       <td>${g.title}</td>
-      <td class="num">&#x20B1;${Number(g.target_amount).toFixed(2)}</td>
-      <td class="num">&#x20B1;${Number(g.current_allocated).toFixed(2)}</td>
+      <td class="num">${fmt(g.target_amount)}</td>
+      <td class="num">${fmt(g.current_allocated)}</td>
       <td><span class="bar"><span class="bar-track"><span class="bar-fill ${g.is_completed ? 'green' : 'blue'}" style="width:${pct}%"></span></span>${pct.toFixed(0)}%</span></td>
       <td style="font-size:18px;text-align:center">${g.category_icon}</td>
       <td><span class="badge ${g.is_completed ? 'badge-green' : 'badge-blue'}">${g.is_completed ? 'Done' : 'Active'}</span></td>
@@ -2108,7 +2107,7 @@ router.get('/loans', requireRole(1), asyncHandler(async (req, res) => {
     <div class="stat-card"><div class="stat-icon">&#x1F4B0;</div><div class="stat-value">${loans.length}</div><div class="stat-label">Total Loans</div></div>
     <div class="stat-card"><div class="stat-icon">&#x23F3;</div><div class="stat-value">${pendingCount}</div><div class="stat-label">Pending</div></div>
     <div class="stat-card"><div class="stat-icon">&#x1F4B3;</div><div class="stat-value">${activeCount}</div><div class="stat-label">Active</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x20B1;</div><div class="stat-value">${loans.reduce((s, l) => s + Number(l.remaining_balance), 0).toFixed(0)}</div><div class="stat-label">Outstanding</div></div>
+    <div class="stat-card"><div class="stat-icon">₱</div><div class="stat-value">${fmt(loans.reduce((s, l) => s + Number(l.remaining_balance), 0))}</div><div class="stat-label">Outstanding</div></div>
   </div>
 
   <div class="card">
@@ -2142,12 +2141,12 @@ router.get('/loans', requireRole(1), asyncHandler(async (req, res) => {
       const statusLabels = { pending: 'Pending', approved: 'Approved', active: 'Active', paid: 'Paid', rejected: 'Rejected', defaulted: 'Defaulted' };
       return `<tr>
         <td><b>${l.child_name || 'Unknown'}</b><br><span class="mono" style="font-size:11px;color:var(--text-muted)">${l.member_id || ''}</span></td>
-        <td class="num">&#x20B1;${Number(l.principal).toFixed(2)}</td>
+        <td class="num">${fmt(l.principal)}</td>
         <td class="num">${(Number(l.interest_rate) * 100).toFixed(1)}% ${l.interest_type === 'flat' ? 'F' : 'D'}</td>
         <td class="num">${l.term_months}mo</td>
-        <td class="num">&#x20B1;${Number(l.monthly_amortization).toFixed(2)}</td>
-        <td class="num">&#x20B1;${Number(l.amount_paid).toFixed(2)}</td>
-        <td class="num">&#x20B1;${Number(l.remaining_balance).toFixed(2)}</td>
+        <td class="num">${fmt(l.monthly_amortization)}</td>
+        <td class="num">${fmt(l.amount_paid)}</td>
+        <td class="num">${fmt(l.remaining_balance)}</td>
         <td><span class="badge ${statusColors[l.status] || 'badge-gray'}">${statusLabels[l.status] || l.status}</span></td>
         <td class="mono">${(l.created_at || '').slice(0, 10)}</td>
         <td><div class="actions-cell">
@@ -2159,7 +2158,7 @@ router.get('/loans', requireRole(1), asyncHandler(async (req, res) => {
               <button type="submit" class="btn btn-danger btn-xs">&#x274C; Reject</button>
             </form>
           ` : l.status === 'approved' ? `
-            <form method="post" action="/admin/loans/disburse/${l.loan_id}" style="display:inline" data-confirm="Disburse &#x20B1;${Number(l.principal).toFixed(2)} to ${l.child_name}?">
+            <form method="post" action="/admin/loans/disburse/${l.loan_id}" style="display:inline" data-confirm="Disburse ${fmt(l.principal)} to ${l.child_name}?">
               <button type="submit" class="btn btn-amber btn-xs">&#x1F4B5; Disburse</button>
             </form>
           ` : '<span style="font-size:11px;color:var(--text-muted)">—</span>'}
@@ -2179,8 +2178,8 @@ router.get('/loans', requireRole(1), asyncHandler(async (req, res) => {
         <td><b>${p.name}</b></td>
         <td>${(Number(p.interest_rate) * 100).toFixed(1)}%</td>
         <td><span class="badge badge-blue">${p.interest_type === 'flat' ? 'Flat' : 'Diminishing'}</span></td>
-        <td class="num">&#x20B1;${Number(p.min_amount).toFixed(0)}</td>
-        <td class="num">&#x20B1;${Number(p.max_amount).toFixed(0)}</td>
+        <td class="num">${fmt(p.min_amount)}</td>
+        <td class="num">${fmt(p.max_amount)}</td>
         <td class="num">${p.min_term}mo</td>
         <td class="num">${p.max_term}mo</td>
         <td><span class="badge ${p.is_active ? 'badge-green' : 'badge-gray'}">${p.is_active ? 'Active' : 'Inactive'}</span></td>
@@ -2342,7 +2341,7 @@ router.get('/transactions', requireRole(1), asyncHandler(async (req, res) => {
     ${transactions.map(t => `<tr>
       <td><b>${t.child_name || '-'}</b></td>
       <td><span class="badge ${t.type === 'deposit' ? 'badge-green' : t.type === 'allocation' ? 'badge-purple' : t.type === 'withdrawal' ? 'badge-red' : t.type === 'purchase' ? 'badge-amber' : t.type === 'reward' ? 'badge-blue' : 'badge-gray'}">${t.type}</span></td>
-      <td class="num">&#x20B1;${Number(t.amount).toFixed(2)}</td>
+      <td class="num">${fmt(t.amount)}</td>
       <td>${t.description || '-'}</td>
       <td class="mono">${(t.created_at || '').slice(0, 19).replace('T', ' ')}</td>
     </tr>`).join('')}
@@ -2896,8 +2895,8 @@ router.get('/loan-products', requireRole(1), asyncHandler(async (req, res) => {
       <td><b>${p.name}</b><br><span style="font-size:11px;color:var(--text-muted)">${p.description || ''}</span></td>
       <td class="num">${(Number(p.interest_rate) * 100).toFixed(1)}%</td>
       <td><span class="badge badge-blue">${p.interest_type === 'flat' ? 'Flat' : 'Diminishing'}</span></td>
-      <td class="num">&#x20B1;${Number(p.min_amount).toFixed(0)}</td>
-      <td class="num">&#x20B1;${Number(p.max_amount).toFixed(0)}</td>
+      <td class="num">${fmt(p.min_amount)}</td>
+      <td class="num">${fmt(p.max_amount)}</td>
       <td class="num">${p.min_term}mo</td>
       <td class="num">${p.max_term}mo</td>
       <td><span class="badge ${p.is_active ? 'badge-green' : 'badge-gray'}">${p.is_active ? 'Active' : 'Inactive'}</span></td>
@@ -3056,8 +3055,8 @@ router.get('/savings-products', requireRole(1), asyncHandler(async (req, res) =>
       <td><b>${p.name}</b><br><span style="font-size:11px;color:var(--text-muted)">${p.description || ''}</span></td>
       <td class="num">${(Number(p.interest_rate) * 100).toFixed(1)}%</td>
       <td><span class="badge badge-purple">${p.interest_frequency}</span></td>
-      <td class="num">&#x20B1;${Number(p.min_balance).toFixed(0)}</td>
-      <td class="num">${p.withdrawal_limit !== null ? '&#x20B1;' + Number(p.withdrawal_limit).toFixed(0) : '<span style="color:var(--text-muted)">No limit</span>'}</td>
+      <td class="num">${fmt(p.min_balance)}</td>
+      <td class="num">${p.withdrawal_limit !== null ? fmt(p.withdrawal_limit) : '<span style="color:var(--text-muted)">No limit</span>'}</td>
       <td><span class="badge ${p.is_active ? 'badge-green' : 'badge-gray'}">${p.is_active ? 'Active' : 'Inactive'}</span></td>
       <td><div class="actions-cell">
         <a href="#edit-${p.product_id}" class="btn btn-secondary btn-xs">&#x270F;</a>
@@ -3194,7 +3193,7 @@ router.get('/withdrawal-requests', requireRole(1), asyncHandler(async (req, res)
   <div class="stats-grid">
     <div class="stat-card"><div class="stat-icon">&#x1F4B8;</div><div class="stat-value">${requests.length}</div><div class="stat-label">Total Requests</div></div>
     <div class="stat-card"><div class="stat-icon">&#x23F3;</div><div class="stat-value">${pendingCount}</div><div class="stat-label">Pending</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x20B1;</div><div class="stat-value">${requests.filter(r => r.status === 'pending').reduce((s, r) => s + Number(r.amount), 0).toFixed(0)}</div><div class="stat-label">Pending Amount</div></div>
+    <div class="stat-card"><div class="stat-icon">₱</div><div class="stat-value">${fmt(requests.filter(r => r.status === 'pending').reduce((s, r) => s + Number(r.amount), 0))}</div><div class="stat-label">Pending Amount</div></div>
   </div>
 
   <div class="card">
@@ -3222,24 +3221,24 @@ router.get('/withdrawal-requests', requireRole(1), asyncHandler(async (req, res)
     <tr>
       <td><b>${r.child_name || 'Unknown'}</b></td>
       <td class="mono">${r.member_id || '-'}</td>
-      <td class="num">&#x20B1;${Number(r.amount).toFixed(2)}</td>
+      <td class="num">${fmt(r.amount)}</td>
       <td>${r.reason || '-'}</td>
       <td><span class="badge ${statusColors[r.status] || 'badge-gray'}">${statusLabels[r.status] || r.status}</span></td>
       <td class="mono">${(r.created_at || '').slice(0, 10)}</td>
       <td><div class="actions-cell">
         ${r.status === 'pending' ? `
-          <form method="post" action="/admin/withdrawal-requests/approve/${r.request_id}" style="display:inline" data-confirm="Approve withdrawal of &#x20B1;${Number(r.amount).toFixed(2)}?">
+          <form method="post" action="/admin/withdrawal-requests/approve/${r.request_id}" style="display:inline" data-confirm="Approve withdrawal of ${fmt(r.amount)}?">
             <button type="submit" class="btn btn-primary btn-xs">&#x2705; Approve</button>
           </form>
           <form method="post" action="/admin/withdrawal-requests/reject/${r.request_id}" style="display:inline" data-confirm="Reject this request?">
             <button type="submit" class="btn btn-danger btn-xs">&#x274C; Reject</button>
           </form>
         ` : r.status === 'approved' ? `
-          <form method="post" action="/admin/withdrawal-requests/pay/${r.request_id}" style="display:inline" data-confirm="Process payment of &#x20B1;${Number(r.amount).toFixed(2)} to ${r.child_name}? This will deduct from their balance.">
+          <form method="post" action="/admin/withdrawal-requests/pay/${r.request_id}" style="display:inline" data-confirm="Process payment of ${fmt(r.amount)} to ${r.child_name}? This will deduct from their balance.">
             <button type="submit" class="btn btn-amber btn-xs">&#x1F4B5; Pay Out</button>
           </form>
         ` : r.status === 'parent_approved' ? `
-          <form method="post" action="/admin/withdrawal-requests/approve/${r.request_id}" style="display:inline" data-confirm="Approve withdrawal of &#x20B1;${Number(r.amount).toFixed(2)}?">
+          <form method="post" action="/admin/withdrawal-requests/approve/${r.request_id}" style="display:inline" data-confirm="Approve withdrawal of ${fmt(r.amount)}?">
             <button type="submit" class="btn btn-primary btn-xs">&#x2705; Approve</button>
           </form>
           <form method="post" action="/admin/withdrawal-requests/reject/${r.request_id}" style="display:inline" data-confirm="Reject this request?">
@@ -3607,7 +3606,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
     var isVoided = r.voided_at ? true : false;
     var voidBanner = isVoided ? '<div style="background:#fef2f2;color:#dc2626;text-align:center;padding:6px;font-weight:700;font-size:13px;border-bottom:2px solid #dc2626"><i class="fas fa-ban"></i> VOIDED — ' + (r.void_reason || '') + '</div>' : '';
     var voidedByLine = isVoided ? '<div class="ri-row"><span class="ri-label">Voided By</span><span class="ri-value" style="color:#dc2626">' + (r.voided_by || '') + ' on ' + (r.voided_at || '').slice(0,10) + '</span></div><div class="ri-divider"></div>' : '';
-    return '<div class="receipt-inline" id="rinline">' + voidBanner + '<div class="ri-header"><strong>LABCOOP PASSBOOK</strong><br><span style="font-size:10px;color:#999">Official Transaction Receipt</span></div><div class="ri-body"><div class="ri-row"><span class="ri-label">TRN#</span><span class="ri-value">' + fmtTrn(r, 'TXN-' + (r.transaction_id || '').slice(0,8).toUpperCase()) + '</span></div><div class="ri-row"><span class="ri-label">Date</span><span class="ri-value">' + (r.created_at || '').slice(0,19).replace('T',' ') + '</span></div><div class="ri-row"><span class="ri-label">Member</span><span class="ri-value">' + (r.child_name||'N/A') + ' (' + (r.member_id||'---') + ')</span></div><div class="ri-divider"></div><div class="ri-row"><span class="ri-label">Transaction</span><span class="ri-value" style="text-transform:uppercase">' + r.type.replace(/_/g,' ') + '</span></div><div class="ri-row"><span class="ri-label">Amount</span><span class="ri-value ' + (isCredit ? 'ri-credit' : 'ri-debit') + '">' + (isCredit ? '+' : '-') + ' \u20B1' + Number(r.amount).toFixed(2) + '</span></div><div class="ri-row"><span class="ri-label">Description</span><span class="ri-value">' + (r.description||'-') + '</span></div>' + voidedByLine + '<div class="ri-row"><span class="ri-label">Ext. Ref</span><span class="ri-value" style="font-size:11px">' + (r.reference_id ? (r.reference_type ? r.reference_type + ':' : '') + r.reference_id : '-') + '</span></div><div class="ri-divider"></div><div class="ri-row"><span class="ri-label">Balance Before</span><span class="ri-value">\u20B1' + Number(r.balance_before || 0).toFixed(2) + '</span></div><div class="ri-row"><span class="ri-label">Balance After</span><span class="ri-value">\u20B1' + Number(r.balance_after || 0).toFixed(2) + '</span></div></div><div class="ri-footer"><button data-action="print-receipt" class="btn btn-outline btn-xs">\uD83D\uDDA8 Print</button> &nbsp; <button data-action="close-receipt" class="btn btn-outline btn-xs">\u2716 Close</button></div></div>';
+    return '<div class="receipt-inline" id="rinline">' + voidBanner + '<div class="ri-header"><strong>LABCOOP PASSBOOK</strong><br><span style="font-size:10px;color:#999">Official Transaction Receipt</span></div><div class="ri-body"><div class="ri-row"><span class="ri-label">TRN#</span><span class="ri-value">' + fmtRef(r, 'TXN-' + (r.transaction_id || '').slice(0,8).toUpperCase()) + '</span></div><div class="ri-row"><span class="ri-label">Date</span><span class="ri-value">' + (r.created_at || '').slice(0,19).replace('T',' ') + '</span></div><div class="ri-row"><span class="ri-label">Member</span><span class="ri-value">' + (r.child_name||'N/A') + ' (' + (r.member_id||'---') + ')</span></div><div class="ri-divider"></div><div class="ri-row"><span class="ri-label">Transaction</span><span class="ri-value" style="text-transform:uppercase">' + r.type.replace(/_/g,' ') + '</span></div><div class="ri-row"><span class="ri-label">Amount</span><span class="ri-value ' + (isCredit ? 'ri-credit' : 'ri-debit') + '">' + (isCredit ? '+' : '-') + ' \u20B1' + Number(r.amount).toFixed(2) + '</span></div><div class="ri-row"><span class="ri-label">Description</span><span class="ri-value">' + (r.description||'-') + '</span></div>' + voidedByLine + '<div class="ri-row"><span class="ri-label">Ext. Ref</span><span class="ri-value" style="font-size:11px">' + (r.reference_id ? (r.reference_type ? r.reference_type + ':' : '') + r.reference_id : '-') + '</span></div><div class="ri-divider"></div><div class="ri-row"><span class="ri-label">Balance Before</span><span class="ri-value">\u20B1' + Number(r.balance_before || 0).toFixed(2) + '</span></div><div class="ri-row"><span class="ri-label">Balance After</span><span class="ri-value">\u20B1' + Number(r.balance_after || 0).toFixed(2) + '</span></div></div><div class="ri-footer"><button data-action="print-receipt" class="btn btn-outline btn-xs">\uD83D\uDDA8 Print</button> &nbsp; <button data-action="close-receipt" class="btn btn-outline btn-xs">\u2716 Close</button></div></div>';
   }
 
   function searchResultItem(a) {
@@ -3652,11 +3651,11 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
         <div class="balance-grid">
           <div class="balance-item">
             <div class="blabel">Balance</div>
-            <div class="bvalue green">&#x20B1;${Number(selectedAccount.actual_balance).toFixed(2)}</div>
+            <div class="bvalue green">${fmt(selectedAccount.actual_balance)}</div>
           </div>
           <div class="balance-item">
             <div class="blabel">Available</div>
-            <div class="bvalue gray">&#x20B1;${Number(selectedAccount.unallocated_balance).toFixed(2)}</div>
+            <div class="bvalue gray">${fmt(selectedAccount.unallocated_balance)}</div>
           </div>
         </div>
 
@@ -3728,7 +3727,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
             var tc = ({deposit:'deposit',withdrawal:'withdrawal',loan_payment:'loan_payment',loan_disbursement:'loan_disbursement',interest:'interest',interest_credit:'interest',allocation:'allocation'})[tx.type] || 'deposit';
             var sign = tx.type === 'deposit' || tx.type === 'loan_disbursement' || tx.type === 'interest' || tx.type === 'interest_credit' ? '+' : '-';
             var col = tx.type === 'deposit' || tx.type === 'loan_disbursement' || tx.type === 'interest' || tx.type === 'interest_credit' ? '#16a34a' : '#dc2626';
-            return '<tr><td><span class="tx-type-badge ' + h(tc) + '">' + h(tx.type.replace(/_/g,' ')) + (tx.voided_at ? ' VOIDED' : '') + '</span></td><td class="tx-amt" style="color:' + h(col) + '">' + sign + '&#x20B1;' + Number(tx.amount).toFixed(2) + '</td><td class="tx-desc">' + h(tx.description||'-') + (tx.voided_at ? '<br><span style="font-size:10px;color:#dc2626">Voided by ' + h(tx.voided_by||'') + '</span>' : '') + '</td><td class="tx-date">' + h((tx.created_at||'').slice(0,16).replace('T',' ')) + '</td><td style="white-space:nowrap">' + (tx.voided_at ? '<span style="color:#dc2626;font-size:10px;font-weight:600"><i class="fas fa-ban"></i> VOIDED</span>' : '<a class="rcpt-link" href="?account=' + encodeURIComponent(selectedId) + '&receipt=' + encodeURIComponent(tx.transaction_id) + (searchQ ? '&q=' + encodeURIComponent(searchQ) : '') + '" title="View receipt"><i class="fas fa-receipt"></i></a>' + (adminRole >= 3 && ['deposit','withdrawal','loan_payment','interest','interest_credit','auto_save','fee','penalty'].includes(tx.type) ? ' <button class="btn btn-outline btn-xs" style="color:#dc2626;padding:2px 6px;font-size:10px" onclick="openVoidModal(\'' + h(tx.transaction_id) + '\',\'' + h(tx.type.replace(/_/g,' ')) + '\',\'' + Number(tx.amount).toFixed(2) + '\')"><i class="fas fa-ban"></i> Void</button>' : '')) + '</td></tr>';
+            return '<tr><td><span class="tx-type-badge ' + h(tc) + '">' + h(tx.type.replace(/_/g,' ')) + (tx.voided_at ? ' VOIDED' : '') + '</span></td><td class="tx-amt" style="color:' + h(col) + '">' + sign + fmt(tx.amount) + '</td><td class="tx-desc">' + h(tx.description||'-') + (tx.voided_at ? '<br><span style="font-size:10px;color:#dc2626">Voided by ' + h(tx.voided_by||'') + '</span>' : '') + '</td><td class="tx-date">' + h((tx.created_at||'').slice(0,16).replace('T',' ')) + '</td><td style="white-space:nowrap">' + (tx.voided_at ? '<span style="color:#dc2626;font-size:10px;font-weight:600"><i class="fas fa-ban"></i> VOIDED</span>' : '<a class="rcpt-link" href="?account=' + encodeURIComponent(selectedId) + '&receipt=' + encodeURIComponent(tx.transaction_id) + (searchQ ? '&q=' + encodeURIComponent(searchQ) : '') + '" title="View receipt"><i class="fas fa-receipt"></i></a>' + (adminRole >= 3 && ['deposit','withdrawal','loan_payment','interest','interest_credit','auto_save','fee','penalty'].includes(tx.type) ? ' <button class="btn btn-outline btn-xs" style="color:#dc2626;padding:2px 6px;font-size:10px" onclick="openVoidModal(\'' + h(tx.transaction_id) + '\',\'' + h(tx.type.replace(/_/g,' ')) + '\',\'' + Number(tx.amount).toFixed(2) + '\')"><i class="fas fa-ban"></i> Void</button>' : '')) + '</td></tr>';
           }).join('') + '</table>'}
       </div>
     </div>
@@ -4143,13 +4142,13 @@ router.get('/audit', requireRole(1), asyncHandler(async (req, res) => {
   const content = `
   <div class="stats-grid">
     <div class="stat-card"><div class="stat-icon">&#x1F4CA;</div><div class="stat-value">${stats.total||0}</div><div class="stat-label">Total Transactions</div></div>
-    <div class="stat-card"><div class="stat-icon" style="color:#16a34a">&#x2B06;</div><div class="stat-value" style="color:#16a34a">&#x20B1;${Number(stats.credits||0).toFixed(2)}</div><div class="stat-label">Total Credits (In)</div></div>
-    <div class="stat-card"><div class="stat-icon" style="color:#dc2626">&#x2B07;</div><div class="stat-value" style="color:#dc2626">&#x20B1;${Number(stats.debits||0).toFixed(2)}</div><div class="stat-label">Total Debits (Out)</div></div>
-    <div class="stat-card"><div class="stat-icon" style="color:#2563eb">&#x1F4B0;</div><div class="stat-value" style="color:#2563eb">&#x20B1;${Number((stats.credits||0)-(stats.debits||0)).toFixed(2)}</div><div class="stat-label">Net Cash Flow</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F4B5;</div><div class="stat-value">&#x20B1;${Number(stats.total_deposits||0).toFixed(2)}</div><div class="stat-label">Deposits</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F4B8;</div><div class="stat-value">&#x20B1;${Number(stats.total_withdrawals||0).toFixed(2)}</div><div class="stat-label">Withdrawals</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F3E6;</div><div class="stat-value">&#x20B1;${Number(stats.total_loans||0).toFixed(2)}</div><div class="stat-label">Loans Disbursed</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F4B3;</div><div class="stat-value">&#x20B1;${Number(stats.total_loan_payments||0).toFixed(2)}</div><div class="stat-label">Loan Payments</div></div>
+    <div class="stat-card"><div class="stat-icon" style="color:#16a34a">&#x2B06;</div><div class="stat-value" style="color:#16a34a">${fmt(stats.credits||0)}</div><div class="stat-label">Total Credits (In)</div></div>
+    <div class="stat-card"><div class="stat-icon" style="color:#dc2626">&#x2B07;</div><div class="stat-value" style="color:#dc2626">${fmt(stats.debits||0)}</div><div class="stat-label">Total Debits (Out)</div></div>
+    <div class="stat-card"><div class="stat-icon" style="color:#2563eb">&#x1F4B0;</div><div class="stat-value" style="color:#2563eb">${fmt((stats.credits||0)-(stats.debits||0))}</div><div class="stat-label">Net Cash Flow</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4B5;</div><div class="stat-value">${fmt(stats.total_deposits||0)}</div><div class="stat-label">Deposits</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4B8;</div><div class="stat-value">${fmt(stats.total_withdrawals||0)}</div><div class="stat-label">Withdrawals</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F3E6;</div><div class="stat-value">${fmt(stats.total_loans||0)}</div><div class="stat-label">Loans Disbursed</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4B3;</div><div class="stat-value">${fmt(stats.total_loan_payments||0)}</div><div class="stat-label">Loan Payments</div></div>
   </div>
 
   <div class="card">
@@ -4184,9 +4183,9 @@ router.get('/audit', requireRole(1), asyncHandler(async (req, res) => {
       ${txns.length === 0 ? '<div style="text-align:center;padding:48px;color:var(--text-muted)">No transactions found for the selected filters.</div>' : '<table><tr><th>Receipt #</th><th>Date &amp; Time</th><th>Member</th><th>ID</th><th>Type</th><th>Amount</th><th>Balance Delta</th><th>Description</th><th>Ref</th></tr>' + txns.map(t => {
         const sign = (t.type==='deposit'||t.type==='loan_disbursement'||t.type==='interest_credit'||t.type==='interest'||t.type==='interest_income'||t.type==='td_maturity'||t.type==='reward') ? '+' : '-';
         const col = (t.type==='deposit'||t.type==='loan_disbursement'||t.type==='interest_credit'||t.type==='interest'||t.type==='interest_income'||t.type==='td_maturity'||t.type==='reward') ? '#16a34a' : '#dc2626';
-        const delta = t.balance_before != null ? '<span style="color:' + col + '">' + sign + '&#x20B1;' + Number(t.amount).toFixed(2) + '</span>' : '-';
+        const delta = t.balance_before != null ? '<span style="color:' + col + '">' + sign + fmt(t.amount) + '</span>' : '-';
         const bg = ({deposit:'badge-green',withdrawal:'badge-red',loan_disbursement:'badge-amber',loan_payment:'badge-blue',interest_credit:'badge-purple',interest:'badge-purple',allocation:'badge-gray'})[t.type] || 'badge-gray';
-        return '<tr><td class="mono"><a href="/admin/teller?account=' + t.account_id + '&receipt=' + t.transaction_id + '" style="color:var(--accent);text-decoration:none">' + (t.transaction_id||'').slice(0,8).toUpperCase() + '</a></td><td class="mono" style="font-size:11px">' + (t.created_at||'').slice(0,19).replace('T',' ') + '</td><td>' + (t.child_name||'') + '</td><td class="mono" style="font-size:11px;color:var(--text-muted)">' + (t.member_id||'-') + '</td><td><span class="badge ' + bg + '">' + t.type.replace(/_/g,' ') + '</span></td><td class="num mono" style="color:' + col + '">' + sign + '&#x20B1;' + Number(t.amount).toFixed(2) + '</td><td class="num mono">' + delta + '</td><td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted)">' + (t.description||'-') + '</td><td class="mono" style="font-size:11px;color:var(--text-muted)">' + (t.reference_id ? (t.reference_type||'') + ':' + (t.reference_id||'').slice(0,8) : '-') + '</td></tr>';
+        return '<tr><td class="mono"><a href="/admin/teller?account=' + t.account_id + '&receipt=' + t.transaction_id + '" style="color:var(--accent);text-decoration:none">' + (t.transaction_id||'').slice(0,8).toUpperCase() + '</a></td><td class="mono" style="font-size:11px">' + (t.created_at||'').slice(0,19).replace('T',' ') + '</td><td>' + (t.child_name||'') + '</td><td class="mono" style="font-size:11px;color:var(--text-muted)">' + (t.member_id||'-') + '</td><td><span class="badge ' + bg + '">' + t.type.replace(/_/g,' ') + '</span></td><td class="num mono" style="color:' + col + '">' + sign + fmt(t.amount) + '</td><td class="num mono">' + delta + '</td><td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted)">' + (t.description||'-') + '</td><td class="mono" style="font-size:11px;color:var(--text-muted)">' + (t.reference_id ? (t.reference_type||'') + ':' + (t.reference_id||'').slice(0,8) : '-') + '</td></tr>';
       }).join('') + '</table>'}
     </div>
   </div>`;
@@ -4218,7 +4217,7 @@ router.get('/audit/csv', requireRole(1), asyncHandler(async (req, res) => {
 
   let csv = 'TRN#,Date & Time,Member Name,Member ID,Type,Amount,Balance Before,Balance After,Description,Ext. Ref\n';
   csv += rows.map(r => {
-    const trn = fmtTrn(r, r.transaction_id);
+    const trn = fmtRef(r, r.transaction_id);
     return [
       trn,
       r.created_at,
@@ -4416,7 +4415,7 @@ router.get('/reports/daily-collection', requireRole(2), asyncHandler(async (req,
       <tr>
         <td class="mono" style="font-size:11px">${(r.created_at||'').slice(11,19)}</td>
         <td><b>${r.child_name || 'Unknown'}</b><br><span style="font-size:11px;color:var(--text-muted)">${r.member_id || ''}</span></td>
-        <td class="mono" style="font-size:11px;font-weight:600">${fmtTrn(r)}</td>
+        <td class="mono" style="font-size:11px;font-weight:600">${fmtRef(r)}</td>
         <td><span class="badge ${r.type === 'deposit' ? 'badge-green' : r.type === 'loan_payment' ? 'badge-blue' : r.type === 'interest_income' ? 'badge-yellow' : 'badge-red'}">${r.type.replace(/_/g,' ')}</span></td>
         <td class="mono" style="font-weight:600">${fmt(r.amount)}</td>
         <td class="mono" style="font-size:10px;color:var(--text-muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.reference_id || '-'}</td>
@@ -4452,7 +4451,7 @@ router.get('/reports/daily-collection', requireRole(2), asyncHandler(async (req,
   if (req.query.export === 'csv') {
     let csv = 'TRN#,Time,Member,Type,Amount,Ext. Ref,Description\n';
     rows.forEach(r => {
-      csv += `"${fmtTrn(r)}","${r.created_at}","${r.child_name||''}",${r.type},${r.amount},"${r.reference_id||''}","${(r.description||'').replace(/"/g,'""')}"\n`;
+      csv += `"${fmtRef(r)}","${r.created_at}","${r.child_name||''}",${r.type},${r.amount},"${r.reference_id||''}","${(r.description||'').replace(/"/g,'""')}"\n`;
     });
     csv += `"TOTAL","","",,${summary.total},"",""\n`;
     res.setHeader('Content-Type', 'text/csv');
@@ -4640,7 +4639,7 @@ router.get('/reports/member-ledger', requireRole(2), asyncHandler(async (req, re
         const isCredit = ['deposit','interest_income','loan_disbursement','interest_credit','interest','td_maturity','reward'].includes(r.type);
         return '<tr>' +
           '<td class="mono" style="font-size:11px">' + (r.created_at||'').slice(0,19).replace('T',' ') + '</td>' +
-          '<td class="mono" style="font-size:11px;font-weight:600">' + fmtTrn(r) + '</td>' +
+          '<td class="mono" style="font-size:11px;font-weight:600">' + fmtRef(r) + '</td>' +
           '<td><span class="badge ' + (isCredit ? 'badge-green' : 'badge-red') + '">' + r.type.replace(/_/g,' ') + '</span></td>' +
           '<td style="font-size:12px">' + (r.description || '') + '</td>' +
           '<td class="mono" style="font-weight:600;color:' + (isCredit ? '#16a34a' : '#dc2626') + '">' + (isCredit ? '+' : '-') + fmt(amt) + '</td>' +
@@ -4660,7 +4659,7 @@ router.get('/reports/member-ledger', requireRole(2), asyncHandler(async (req, re
     let csv = 'TRN#,Date,Type,Description,Amount,Ext. Ref\n';
     searchResults.rows.forEach(r => {
       const isCredit = ['deposit','interest_income','loan_disbursement','interest_credit','interest','td_maturity','reward'].includes(r.type);
-      csv += `"${fmtTrn(r)}","${r.created_at}",${r.type},"${(r.description||'').replace(/"/g,'""')}",${isCredit ? '' : '-'}${r.amount},"${r.reference_id||''}"\n`;
+      csv += `"${fmtRef(r)}","${r.created_at}",${r.type},"${(r.description||'').replace(/"/g,'""')}",${isCredit ? '' : '-'}${r.amount},"${r.reference_id||''}"\n`;
     });
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="member_ledger_' + safeHeader(q||'export') + '.csv"');
@@ -4877,7 +4876,7 @@ router.get('/eod', requireRole(1), asyncHandler(async (req, res) => {
         ${txs.slice(0, 50).map(t => {
           const isCredit = ['deposit','interest_income','interest_credit','interest','td_maturity','reward'].includes(t.type);
           return '<tr>' +
-            '<td class="mono" style="font-size:11px;font-weight:600">' + fmtTrn(t) + '</td>' +
+            '<td class="mono" style="font-size:11px;font-weight:600">' + fmtRef(t) + '</td>' +
             '<td class="mono" style="font-size:11px">' + (t.created_at||'').slice(11,19) + '</td>' +
             '<td style="font-size:12px">' + (t.child_name||'') + '</td>' +
             '<td><span class="badge ' + (isCredit ? 'badge-green' : 'badge-red') + '" style="font-size:10px">' + t.type.replace(/_/g,' ') + '</span></td>' +
@@ -5224,7 +5223,7 @@ router.get('/statements', requireRole(1), asyncHandler(async (req, res) => {
         runningBalance += isCredit ? amt : -amt;
         return '<tr>' +
           '<td class="mono" style="font-size:11px">' + (t.created_at||'').slice(0,10) + '</td>' +
-          '<td class="mono" style="font-size:11px;font-weight:600">' + fmtTrn(t) + '</td>' +
+          '<td class="mono" style="font-size:11px;font-weight:600">' + fmtRef(t) + '</td>' +
           '<td style="font-size:12px">' + (t.description||t.type.replace(/_/g,' ')) + '</td>' +
           '<td class="mono" style="color:#dc2626">' + (!isCredit ? fmt(amt) : '') + '</td>' +
           '<td class="mono" style="color:#16a34a">' + (isCredit ? fmt(amt) : '') + '</td>' +
@@ -5911,9 +5910,9 @@ function bsSection(title, items, total, color) {
           const isContra = r.is_contra == 1 || r.is_contra === '1';
           const label = isContra ? '(Less) ' + r.name : r.name;
           const amt = r.balance < 0 ? '(' + Math.abs(r.balance).toFixed(2) + ')' : Math.abs(r.balance).toFixed(2);
-          return `<tr><td>${label}</td><td class="num mono" style="color:${color};font-weight:600">&#x20B1;${amt}</td></tr>`;
+          return `<tr><td>${label}</td><td class="num mono" style="color:${color};font-weight:600">₱${amt}</td></tr>`;
         }).join('')}
-        <tr style="font-weight:700;background:var(--bg2)"><td>TOTAL ${title.toUpperCase()}</td><td class="num mono" style="color:${color}">&#x20B1;${Math.abs(total).toFixed(2)}</td></tr>
+        <tr style="font-weight:700;background:var(--bg2)"><td>TOTAL ${title.toUpperCase()}</td><td class="num mono" style="color:${color}">${fmt(Math.abs(total))}</td></tr>
       </table></div>
     </div>`;
 }
@@ -5950,8 +5949,8 @@ router.get('/gl/trial-balance', requireRole(1), asyncHandler(async (req, res) =>
   </form>
   <div class="stats-grid" style="margin-bottom:16px">
     <div class="stat-card"><div class="stat-icon">&#x2696;</div><div class="stat-value">${result.rows.length}</div><div class="stat-label">GL Accounts</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F4B5;</div><div class="stat-value">&#x20B1;${totalD.toFixed(2)}</div><div class="stat-label">Total Debits</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F4B8;</div><div class="stat-value">&#x20B1;${totalC.toFixed(2)}</div><div class="stat-label">Total Credits</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4B5;</div><div class="stat-value">${fmt(totalD)}</div><div class="stat-label">Total Debits</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4B8;</div><div class="stat-value">${fmt(totalC)}</div><div class="stat-label">Total Credits</div></div>
     <div class="stat-card"><div class="stat-icon">&#x2705;</div><div class="stat-value" style="color:${balanced ? '#16a34a' : '#dc2626'}">${balanced ? 'Balanced' : 'Unbalanced'}</div><div class="stat-label">Debits = Credits</div></div>
   </div>
   <div class="card">
@@ -5963,14 +5962,14 @@ router.get('/gl/trial-balance', requireRole(1), asyncHandler(async (req, res) =>
         <td class="mono">${r.code}</td><td>${r.name}</td>
         <td><span class="badge ${r.type === 'asset' || r.type === 'expense' ? 'badge-red' : r.type === 'liability' || r.type === 'equity' ? 'badge-blue' : 'badge-green'}">${r.type}</span></td>
         <td><span class="badge badge-gray" style="font-size:10px">${r.category || '-'}</span></td>
-        <td class="num mono">${r.debit ? '&#x20B1;' + r.debit.toFixed(2) : '-'}</td>
-        <td class="num mono">${r.credit ? '&#x20B1;' + r.credit.toFixed(2) : '-'}</td>
-        <td class="num mono" style="color:${r.balance >= 0 ? '#16a34a' : '#dc2626'};font-weight:600">&#x20B1;${Math.abs(r.balance).toFixed(2)} ${(() => { const _c = r.is_contra == 1 || r.is_contra == '1'; const _d = (r.type === 'asset' || r.type === 'expense') !== _c; return _d ? (r.balance >= 0 ? 'DR' : 'CR') : (r.balance >= 0 ? 'CR' : 'DR'); })()}</td>
+        <td class="num mono">${r.debit ? fmt(r.debit) : '-'}</td>
+        <td class="num mono">${r.credit ? fmt(r.credit) : '-'}</td>
+        <td class="num mono" style="color:${r.balance >= 0 ? '#16a34a' : '#dc2626'};font-weight:600">${fmt(Math.abs(r.balance))} ${(() => { const _c = r.is_contra == 1 || r.is_contra == '1'; const _d = (r.type === 'asset' || r.type === 'expense') !== _c; return _d ? (r.balance >= 0 ? 'DR' : 'CR') : (r.balance >= 0 ? 'CR' : 'DR'); })()}</td>
       </tr>`).join('')}
       <tr style="font-weight:700;background:var(--bg2)"><td colspan="4">TOTAL</td>
-        <td class="num mono">&#x20B1;${totalD.toFixed(2)}</td>
-        <td class="num mono">&#x20B1;${totalC.toFixed(2)}</td>
-        <td class="num mono" style="color:${balanced ? '#16a34a' : '#dc2626'}">${balanced ? '&#x2705;' : '&#x26A0; Diff: &#x20B1;' + Math.abs(totalD - totalC).toFixed(2)}</td>
+        <td class="num mono">${fmt(totalD)}</td>
+        <td class="num mono">${fmt(totalC)}</td>
+        <td class="num mono" style="color:${balanced ? '#16a34a' : '#dc2626'}">${balanced ? '&#x2705;' : '&#x26A0; Diff: ' + fmt(Math.abs(totalD - totalC))}</td>
       </tr>
     </table></div>
   </div>`;
@@ -6027,10 +6026,10 @@ router.get('/gl/balance-sheet', requireRole(1), asyncHandler(async (req, res) =>
       </div>
     </form>
     <div class="stats-grid">
-      <div class="stat-card" style="border-left:3px solid var(--accent)"><div class="stat-icon">&#x1F4B0;</div><div class="stat-value" style="color:#16a34a">&#x20B1;${result.totalAssets.toFixed(2)}</div><div class="stat-label">Total Assets ${date ? '| Prior: &#x20B1;' + priorAssets.toFixed(2) : ''}</div></div>
-      <div class="stat-card"><div class="stat-icon">&#x1F4B3;</div><div class="stat-value" style="color:#dc2626">&#x20B1;${result.totalLiabilities.toFixed(2)}</div><div class="stat-label">Total Liabilities ${date ? '| Prior: &#x20B1;' + priorLiabilities.toFixed(2) : ''}</div></div>
-      <div class="stat-card"><div class="stat-icon">&#x1F511;</div><div class="stat-value" style="color:#2563eb">&#x20B1;${result.totalEquity.toFixed(2)}</div><div class="stat-label">Total Equity ${date ? '| Prior: &#x20B1;' + priorEquity.toFixed(2) : ''}</div></div>
-      <div class="stat-card"><div class="stat-icon">&#x2696;</div><div class="stat-value" style="color:${diff === 0 ? '#16a34a' : '#dc2626'}">${diff === 0 ? '&#x2705; A = L + E' : '&#x26A0; Off by &#x20B1;' + diff.toFixed(2)}</div><div class="stat-label">Accounting Equation</div></div>
+      <div class="stat-card" style="border-left:3px solid var(--accent)"><div class="stat-icon">&#x1F4B0;</div><div class="stat-value" style="color:#16a34a">${fmt(result.totalAssets)}</div><div class="stat-label">Total Assets ${date ? '| Prior: ' + fmt(priorAssets) : ''}</div></div>
+      <div class="stat-card"><div class="stat-icon">&#x1F4B3;</div><div class="stat-value" style="color:#dc2626">${fmt(result.totalLiabilities)}</div><div class="stat-label">Total Liabilities ${date ? '| Prior: ' + fmt(priorLiabilities) : ''}</div></div>
+      <div class="stat-card"><div class="stat-icon">&#x1F511;</div><div class="stat-value" style="color:#2563eb">${fmt(result.totalEquity)}</div><div class="stat-label">Total Equity ${date ? '| Prior: ' + fmt(priorEquity) : ''}</div></div>
+      <div class="stat-card"><div class="stat-icon">&#x2696;</div><div class="stat-value" style="color:${diff === 0 ? '#16a34a' : '#dc2626'}">${diff === 0 ? '&#x2705; A = L + E' : '&#x26A0; Off by ' + fmt(diff)}</div><div class="stat-label">Accounting Equation</div></div>
     </div>
     ${result.currentAssets.length ? bsSection('Current Assets', result.currentAssets, result.totalCurrentAssets, '#16a34a') : ''}
     ${result.nonCurrentAssets.length ? bsSection('Non-Current Assets', result.nonCurrentAssets, result.totalNonCurrentAssets, '#22c55e') : ''}
@@ -6131,8 +6130,8 @@ router.get('/gl/profit-and-loss', requireRole(1), asyncHandler(async (req, res) 
       <div class="card-body" style="padding:0">
       <table>
         <tr><th>Account</th><th class="num">Amount</th></tr>
-        ${items.map(r => `<tr><td>${r.name}</td><td class="num mono" style="color:${color};font-weight:600">&#x20B1;${r.amount.toFixed(2)}</td></tr>`).join('')}
-        <tr style="font-weight:700;background:var(--bg2)"><td>TOTAL ${title.toUpperCase()}</td><td class="num mono" style="color:${color}">&#x20B1;${total.toFixed(2)}</td></tr>
+        ${items.map(r => `<tr><td>${r.name}</td><td class="num mono" style="color:${color};font-weight:600">${fmt(r.amount)}</td></tr>`).join('')}
+        <tr style="font-weight:700;background:var(--bg2)"><td>TOTAL ${title.toUpperCase()}</td><td class="num mono" style="color:${color}">${fmt(total)}</td></tr>
       </table></div>
     </div>`;
   const content = `
@@ -6149,16 +6148,16 @@ router.get('/gl/profit-and-loss', requireRole(1), asyncHandler(async (req, res) 
       </div>
     </form>
     <div class="stats-grid">
-      <div class="stat-card" style="border-left:3px solid #16a34a"><div class="stat-icon">&#x1F4B5;</div><div class="stat-value" style="color:#16a34a">&#x20B1;${result.totalIncome.toFixed(2)}</div><div class="stat-label">Total Income ${priorIncome ? '| Prior: &#x20B1;' + priorIncome.toFixed(2) : ''}</div></div>
-      <div class="stat-card"><div class="stat-icon">&#x1F4B8;</div><div class="stat-value" style="color:#dc2626">&#x20B1;${result.totalExpense.toFixed(2)}</div><div class="stat-label">Total Expenses ${priorExpense ? '| Prior: &#x20B1;' + priorExpense.toFixed(2) : ''}</div></div>
-      <div class="stat-card"><div class="stat-icon">&#x1F3C6;</div><div class="stat-value" style="color:${result.netProfit >= 0 ? '#16a34a' : '#dc2626'}">${result.netProfit >= 0 ? '+' : ''}&#x20B1;${result.netProfit.toFixed(2)}</div><div class="stat-label">Net ${result.netProfit >= 0 ? 'Profit' : 'Loss'} ${priorNet ? '| Prior: &#x20B1;' + priorNet.toFixed(2) : ''}</div></div>
+      <div class="stat-card" style="border-left:3px solid #16a34a"><div class="stat-icon">&#x1F4B5;</div><div class="stat-value" style="color:#16a34a">${fmt(result.totalIncome)}</div><div class="stat-label">Total Income ${priorIncome ? '| Prior: ' + fmt(priorIncome) : ''}</div></div>
+      <div class="stat-card"><div class="stat-icon">&#x1F4B8;</div><div class="stat-value" style="color:#dc2626">${fmt(result.totalExpense)}</div><div class="stat-label">Total Expenses ${priorExpense ? '| Prior: ' + fmt(priorExpense) : ''}</div></div>
+      <div class="stat-card"><div class="stat-icon">&#x1F3C6;</div><div class="stat-value" style="color:${result.netProfit >= 0 ? '#16a34a' : '#dc2626'}">${result.netProfit >= 0 ? '+' : ''}${fmt(result.netProfit)}</div><div class="stat-label">Net ${result.netProfit >= 0 ? 'Profit' : 'Loss'} ${priorNet ? '| Prior: ' + fmt(priorNet) : ''}</div></div>
     </div>
     ${debugHtml}
     ${result.operatingIncome.length ? pnlSection('Operating Income', result.operatingIncome, result.totalOperatingIncome, '#16a34a') : ''}
     ${result.otherIncome.length ? pnlSection('Other Income', result.otherIncome, result.totalOtherIncome, '#22c55e') : ''}
     <div class="card">
       <div class="card-body-padded" style="display:flex;justify-content:space-between;font-size:15px;font-weight:600;background:var(--bg2)">
-        <span>Gross Income (Total Income)</span><span style="color:#16a34a">&#x20B1;${result.totalIncome.toFixed(2)}</span>
+        <span>Gross Income (Total Income)</span><span style="color:#16a34a">${fmt(result.totalIncome)}</span>
       </div>
     </div>
     ${result.operatingExpense.length ? pnlSection('Operating Expenses', result.operatingExpense, result.totalOperatingExpense, '#dc2626') : ''}
@@ -6166,7 +6165,7 @@ router.get('/gl/profit-and-loss', requireRole(1), asyncHandler(async (req, res) 
     <div class="card" style="border:2px solid ${result.netProfit >= 0 ? '#16a34a' : '#dc2626'}">
       <div class="card-body-padded" style="display:flex;justify-content:space-between;font-size:18px;font-weight:700">
         <span>NET ${result.netProfit >= 0 ? 'PROFIT' : 'LOSS'}</span>
-        <span style="color:${result.netProfit >= 0 ? '#16a34a' : '#dc2626'}">${result.netProfit >= 0 ? '+' : ''}&#x20B1;${result.netProfit.toFixed(2)}</span>
+        <span style="color:${result.netProfit >= 0 ? '#16a34a' : '#dc2626'}">${result.netProfit >= 0 ? '+' : ''}${fmt(result.netProfit)}</span>
       </div>
     </div>
     <div class="card">
@@ -6267,9 +6266,9 @@ router.get('/gl/ledger', requireRole(1), asyncHandler(async (req, res) => {
             <td class="mono" style="font-size:10px;color:var(--text-muted)">${(e.transaction_id||'').slice(0,8)}</td>
             <td class="mono" style="font-size:10px;color:var(--text-muted)">${e.reference_number || '-'}</td>
             <td>${e.description || '-'}</td>
-            <td class="num mono" style="color:#16a34a">${d ? '&#x20B1;' + d.toFixed(2) : '-'}</td>
-            <td class="num mono" style="color:#dc2626">${c ? '&#x20B1;' + c.toFixed(2) : '-'}</td>
-            <td class="num mono" style="font-weight:600;color:${entryBalance >= 0 ? '#16a34a' : '#dc2626'}">${entryBalance >= 0 ? '' : '-'}&#x20B1;${Math.abs(entryBalance).toFixed(2)}</td>
+            <td class="num mono" style="color:#16a34a">${d ? fmt(d) : '-'}</td>
+            <td class="num mono" style="color:#dc2626">${c ? fmt(c) : '-'}</td>
+            <td class="num mono" style="font-weight:600;color:${entryBalance >= 0 ? '#16a34a' : '#dc2626'}">${entryBalance >= 0 ? '' : '-'}${fmt(Math.abs(entryBalance))}</td>
           </tr>`;
         }).join('')}
     </table></div>
@@ -6369,15 +6368,15 @@ router.get('/gl/journal', requireRole(1), asyncHandler(async (req, res) => {
         ${folioEntries.map(e => `<tr>
           <td class="mono">${e.account_code}</td>
           <td>${e.account_name}</td>
-          <td class="num mono" style="color:#16a34a">${Number(e.debit) ? '&#x20B1;' + Number(e.debit).toFixed(2) : '-'}</td>
-          <td class="num mono" style="color:#dc2626">${Number(e.credit) ? '&#x20B1;' + Number(e.credit).toFixed(2) : '-'}</td>
+          <td class="num mono" style="color:#16a34a">${Number(e.debit) ? fmt(e.debit) : '-'}</td>
+          <td class="num mono" style="color:#dc2626">${Number(e.credit) ? fmt(e.credit) : '-'}</td>
           <td class="mono" style="font-size:11px;color:var(--text-muted)">${e.reference_number || '-'}</td>
           <td>${e.description || '-'}</td>
         </tr>`).join('')}
         <tr style="font-weight:700;background:var(--bg2)">
           <td colspan="2">TOTAL</td>
-          <td class="num mono" style="color:#16a34a">&#x20B1;${dTotal.toFixed(2)}</td>
-          <td class="num mono" style="color:#dc2626">&#x20B1;${cTotal.toFixed(2)}</td>
+          <td class="num mono" style="color:#16a34a">${fmt(dTotal)}</td>
+          <td class="num mono" style="color:#dc2626">${fmt(cTotal)}</td>
           <td colspan="2"></td>
         </tr>
       </table></div>

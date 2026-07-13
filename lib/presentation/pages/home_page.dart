@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/design_system.dart';
+import '../../core/network/banking_api_service.dart';
 import '../../core/services/inactivity_timer.dart';
 import '../blocs/savings_bloc.dart';
 import '../blocs/savings_event.dart';
@@ -16,6 +18,7 @@ import 'transfer_page.dart';
 import 'play_page.dart';
 import 'banking_page.dart';
 import 'login_page.dart';
+import 'support_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -28,12 +31,33 @@ class _HomePageState extends State<HomePage> {
   int _currentIndex = 0;
   String _accountId = '';
   bool _loading = true;
+  int _unreadMessages = 0;
+  Timer? _msgPollTimer;
   InactivityTimer? _inactivityTimer;
 
   @override
   void initState() {
     super.initState();
     _loadSession();
+  }
+
+  void _startMsgPolling() {
+    _msgPollTimer?.cancel();
+    _fetchUnreadMsgs();
+    _msgPollTimer = Timer.periodic(const Duration(seconds: 12), (_) => _fetchUnreadMsgs());
+  }
+
+  Future<void> _fetchUnreadMsgs() async {
+    if (_accountId.isEmpty) return;
+    final count = await BankingApiService.getMessageUnreadCount(_accountId);
+    if (mounted) setState(() => _unreadMessages = count);
+  }
+
+  @override
+  void dispose() {
+    _msgPollTimer?.cancel();
+    _inactivityTimer?.dispose();
+    super.dispose();
   }
 
   void _onSessionExpired() {
@@ -50,12 +74,6 @@ class _HomePageState extends State<HomePage> {
         duration: Duration(seconds: 4),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _inactivityTimer?.dispose();
-    super.dispose();
   }
 
   Future<void> _loadSession() async {
@@ -78,6 +96,7 @@ class _HomePageState extends State<HomePage> {
     });
 
     _inactivityTimer = InactivityTimer(_onSessionExpired);
+    _startMsgPolling();
     if (!mounted) return;
     context.read<SavingsBloc>().add(LoadSavings(accountId));
   }
@@ -94,6 +113,7 @@ class _HomePageState extends State<HomePage> {
     return BlocBuilder<SavingsBloc, SavingsState>(
       builder: (context, state) {
         final accountId = _accountId;
+        final childName = state is SavingsLoaded ? state.account.childName : '';
 
         final pages = [
           DashboardPage(accountId: accountId),
@@ -112,31 +132,33 @@ class _HomePageState extends State<HomePage> {
           const ProfilePage(),
         ];
 
-        return Scaffold(
-          backgroundColor: Colors.white,
-          body: SafeArea(
-            top: false,
-            bottom: false,
-            child: Column(
-              children: [
-                Expanded(
-                  child: AnimatedSwitcher(
-                    duration: AnimDurations.normal,
-                    switchInCurve: Curves.easeInOutCubic,
-                    switchOutCurve: Curves.easeInOutCubic,
-                    child: KeyedSubtree(
-                      key: ValueKey(_currentIndex),
-                      child: IndexedStack(
-                        index: _currentIndex,
-                        children: pages,
+        return Stack(
+          children: [
+            Scaffold(
+              backgroundColor: Colors.white,
+              body: SafeArea(
+                top: false,
+                bottom: false,
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: AnimatedSwitcher(
+                        duration: AnimDurations.normal,
+                        switchInCurve: Curves.easeInOutCubic,
+                        switchOutCurve: Curves.easeInOutCubic,
+                        child: KeyedSubtree(
+                          key: ValueKey(_currentIndex),
+                          child: IndexedStack(
+                            index: _currentIndex,
+                            children: pages,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-          bottomNavigationBar: Container(
+              ),
+              bottomNavigationBar: Container(
             decoration: BoxDecoration(
               boxShadow: [
                 BoxShadow(
@@ -190,10 +212,76 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           drawer: _buildDrawer(state),
-        );
-      },
+        ),
+
+        // Floating chat bubble
+        Positioned(
+          right: 16,
+          bottom: MediaQuery.of(context).padding.bottom + 80,
+          child: AnimatedScale(
+            scale: _unreadMessages > 0 ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutBack,
+            child: GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  PageTransition.slideUp(SupportPage(
+                    accountId: _accountId,
+                    childName: childName,
+                  )),
+                ).then((_) => _fetchUnreadMsgs());
+              },
+              child: Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF0284c7), Color(0xFF0369a1)],
+                  ),
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF0284c7).withValues(alpha: 0.4),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    const Center(child: Icon(Icons.chat_bubble_outline, color: Colors.white, size: 24)),
+                    if (_unreadMessages > 0)
+                      Positioned(
+                        top: -4,
+                        right: -4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFef4444),
+                            borderRadius: BorderRadius.all(Radius.circular(10)),
+                          ),
+                          constraints: const BoxConstraints(minWidth: 20, minHeight: 16),
+                          child: Text(
+                            _unreadMessages > 99 ? '99+' : '$_unreadMessages',
+                            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
-  }
+  },
+);
+
+}
 
   Widget _buildDrawer(SavingsState state) {
     return Drawer(

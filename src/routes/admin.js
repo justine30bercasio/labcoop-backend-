@@ -7836,6 +7836,26 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
   document.getElementById('replyContent').addEventListener('keydown', function(e){
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); }
   });
+  // Refresh messenger FAB badge after loading thread
+  if (window.refreshMessengerBadge) window.refreshMessengerBadge();
+  // Poll read receipts on admin messages every 4s
+  setInterval(function(){
+    fetch('/admin/messages/' + accountId + '/read-status')
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if (data.statuses && data.statuses.length > 0) {
+          data.statuses.forEach(function(s){
+            var el = document.querySelector('[data-msg-id="' + s.message_id + '"] .mb-read');
+            if (el && Number(s.child_read) === 1) {
+              el.innerHTML = '&#x2713; Read';
+              el.style.opacity = '1';
+              el.style.fontStyle = 'italic';
+            }
+          });
+        }
+      })
+      .catch(function(){});
+  }, 4000);
   // Poll typing indicator every 3s
   setInterval(function(){
     fetch('/api/v1/messages/typing/' + accountId)
@@ -7927,6 +7947,15 @@ router.get('/messages/:accountId/poll', requireRole(1), asyncHandler(async (req,
     [req.params.accountId, since]
   );
   res.json({ messages: msgs.rows });
+}));
+
+// ── Read-status poll (child_read updates for admin messages) ──
+router.get('/messages/:accountId/read-status', requireRole(1), asyncHandler(async (req, res) => {
+  const rows = await store.query(
+    "SELECT message_id, child_read FROM support_messages WHERE account_id = $1 AND sender_type = 'admin' ORDER BY created_at ASC",
+    [req.params.accountId]
+  );
+  res.json({ statuses: rows.rows });
 }));
 
 // ── Pending counts JSON endpoint (for admin notification bell) ──

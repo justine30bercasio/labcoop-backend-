@@ -842,6 +842,8 @@ function toggleTheme(e){
 
   fetchMessageThreads();
   setInterval(fetchMessageThreads, 10000);
+  // Expose so other pages can trigger refresh
+  window.refreshMessengerBadge = function(){ mBadge.textContent = '0'; mBadge.classList.remove('show'); mCountLabel.textContent = '0 unread'; lastMsgTotal = -1; fetchMessageThreads(); };
 
   mOverlay.addEventListener('click', function(){
     mDd.classList.remove('show');

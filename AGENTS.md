@@ -252,3 +252,13 @@ Flutter app data disappeared on logout/refresh because:
 - **Debug endpoint**: `GET /debug-smtp` reports SendGrid config status.
 - **APK built** (94.2MB) — `flutter analyze` 0 errors.
 - Backend `main` pushed: `f998377` (7 commits). Flutter `master` uncommitted (banking_api_service.dart changes).
+
+=====
+### Session 2026-07-11 — Aiven PG → Local SQLite import fix, clean local dev db
+- **Problem**: `_import.js` used `SELECT *` from PG but `accounts` table in PG has extra columns (`profile_pic_url`, etc.) not in SQLite migration. `INSERT OR IGNORE` threw `SQLITE_ERROR: no column named profile_pic_url`, silently caught by try-catch. Result: 0 accounts imported from PG, then `ensureDb()` saw `COUNT(*) = 0` and seeded 12 Juan/Maria accounts.
+- **Fix**: `_import.js` now intersects PG columns with SQLite columns using `information_schema.columns` + `PRAGMA table_info('table')` → only inserts common columns. 1 account (JUSTINE S. BERCASIO, ₱105,922,823, member `000001`) + 13 transactions + 25 GL accounts + 26 GL entries imported cleanly.
+- **Local admin password**: Set `admin123` for dev (already works via seed logic).
+- **Local account password**: Manually set to `password123` (bcrypt hash) for API testing.
+- **Server verified**: `npm run dev` starts without re-seeding, 13 transactions returned via `/api/accounts/:id/transactions`, account balance confirmed.
+- **`labcoop_local.db`** kept as reference copy of clean import (delete and re-run `node _import.js` to refresh from production).
+- Flutter and backend branches unpushed.

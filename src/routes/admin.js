@@ -3610,6 +3610,34 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   .badge-pill { display:inline-block; padding:0 8px; border-radius:10px; font-size:10px; font-weight:600; line-height:20px; }
   @media print { body * { visibility:hidden; } #rinline,#rinline * { visibility:visible; } #rinline { position:absolute; left:0; top:0; width:340px; margin:0; padding:24px; background:#fff; border:2px solid #000; } #rinline .ri-footer button:last-child { display:none; } }
   @keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+  /* ── Full-screen mode ── */
+  body.teller-fs .sidebar { transform:translateX(-100%); }
+  body.teller-fs .hamburger { left:12px !important; }
+  body.teller-fs .main { margin-left:0; }
+  /* ── Quick-amount buttons ── */
+  .qa-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-bottom:10px; }
+  .qa-btn { padding:10px 4px; border:2px solid var(--border); border-radius:8px; background:var(--card); font-size:13px; font-weight:700; cursor:pointer; transition:all 0.15s; text-align:center; font-family:var(--mono); }
+  .qa-btn:hover { border-color:var(--accent); background:#f0fdf4; transform:scale(1.04); }
+  .qa-btn:active { transform:scale(0.96); }
+  .qa-btn.selected { border-color:var(--accent); background:#e8f5e9; box-shadow:0 0 0 2px rgba(46,125,50,0.2); }
+  .qa-custom { grid-column:span 2; }
+  /* ── Shortcuts bar ── */
+  .shortcuts-bar { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; padding:8px 12px; background:#f8fafc; border-radius:8px; border:1px solid var(--border); font-size:11px; color:var(--text-muted); }
+  .shortcuts-bar kbd { display:inline-block; padding:1px 5px; font-size:10px; font-family:var(--mono); background:var(--card); border:1px solid var(--border); border-radius:4px; box-shadow:0 1px 0 var(--border); line-height:1.4; }
+  .shortcuts-bar .sep { opacity:0.3; margin:0 2px; }
+  /* ── Settings row ── */
+  .teller-settings { display:flex; align-items:center; gap:16px; margin-top:8px; flex-wrap:wrap; }
+  .teller-settings label { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-muted); cursor:pointer; }
+  .teller-settings input[type="checkbox"] { width:16px; height:16px; cursor:pointer; accent-color:var(--accent); }
+  .fs-toggle { background:transparent; border:1px solid var(--border); border-radius:6px; padding:4px 10px; font-size:11px; color:var(--text-muted); cursor:pointer; transition:all 0.15s; }
+  .fs-toggle:hover { border-color:var(--accent); color:var(--accent); background:#f0fdf4; }
+  /* ── Bigger teller grid in full-screen ── */
+  body.teller-fs .teller-grid { grid-template-columns: 380px 1fr; gap:24px; }
+  body.teller-fs .teller-card { border-radius:14px; }
+  body.teller-fs .bvalue { font-size:26px; }
+  body.teller-fs .balance-item { padding:18px 20px; }
+  body.teller-fs .customer-avatar { width:56px; height:56px; font-size:24px; }
+  body.teller-fs .customer-info h2 { font-size:24px; }
   </style>`;
 
   function receiptHtml(r) {
@@ -3630,10 +3658,15 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   <!-- Teller Top Bar -->
   <div class="teller-bar">
     <form method="get" action="/admin/teller" class="teller-search">
-      <input type="text" name="q" placeholder="&#x1F50D; Search member by name or ID..." value="${h(searchQ)}" autocomplete="off">
+      <input type="text" name="q" id="tellerSearch" placeholder="&#x1F50D; Search member by name or ID..." value="${h(searchQ)}" autocomplete="off">
       <button type="submit" style="padding:12px 24px;border:none;border-radius:10px;background:var(--accent);color:#fff;font-weight:600;cursor:pointer">Search</button>
     </form>
+    <div class="teller-settings">
+      <label title="Auto-open print dialog after every transaction"><input type="checkbox" id="autoPrintCheck"> &#x1D5EE; Auto-print receipt</label>
+      <label title="Hide sidebar for more screen space"><input type="checkbox" id="fullScreenCheck"> &#x26F6; Full screen</label>
+    </div>
     ${selectedAccount ? '<div style="margin-top:8px"><span class="badge-pill" style="background:#dcfce7;color:#166534">&#x2705; ' + h(selectedAccount.child_name) + ' (' + h(selectedAccount.member_id) + ')</span></div>' : ''}
+    <div class="shortcuts-bar"><kbd>F5</kbd> Search &nbsp;<span class="sep">|</span> <kbd>F8</kbd> Deposit <kbd>F9</kbd> Withdraw <kbd>F10</kbd> Loan Pay &nbsp;<span class="sep">|</span> <kbd>F11</kbd> Fullscreen <kbd>Esc</kbd> Close modal / Clear</div>
   </div>
   ${searchQ && !selectedId && accounts.length > 0 ? '<div class="search-results">' + accounts.map(searchResultItem).join('') + '</div>' : ''}
   ${searchQ && !selectedId && accounts.length === 0 ? '<div class="search-results" style="padding:16px;text-align:center;color:var(--text-muted)">No members found for "' + h(searchQ) + '"</div>' : ''}
@@ -3682,7 +3715,17 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
             <input type="hidden" name="q" value="${h(searchQ)}">
             <div class="field">
               <label>Amount (&#x20B1;)</label>
-              <input type="number" name="amount" min="1" step="0.01" placeholder="0.00" required>
+              <input type="number" name="amount" min="1" step="0.01" placeholder="0.00" required class="amt-input" id="depAmt">
+              <div class="qa-grid" data-target="depAmt">
+                <button type="button" class="qa-btn" data-val="50">50</button>
+                <button type="button" class="qa-btn" data-val="100">100</button>
+                <button type="button" class="qa-btn" data-val="200">200</button>
+                <button type="button" class="qa-btn" data-val="500">500</button>
+                <button type="button" class="qa-btn" data-val="1000">1,000</button>
+                <button type="button" class="qa-btn" data-val="2000">2,000</button>
+                <button type="button" class="qa-btn" data-val="5000">5,000</button>
+                <button type="button" class="qa-btn qa-custom" data-val="">Custom</button>
+              </div>
             </div>
             <div class="field">
               <label>Description</label>
@@ -3697,7 +3740,17 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
             <input type="hidden" name="q" value="${h(searchQ)}">
             <div class="field">
               <label>Amount (&#x20B1;)</label>
-              <input type="number" name="amount" min="1" step="0.01" placeholder="0.00" required>
+              <input type="number" name="amount" min="1" step="0.01" placeholder="0.00" required class="amt-input" id="wdAmt">
+              <div class="qa-grid" data-target="wdAmt">
+                <button type="button" class="qa-btn" data-val="50">50</button>
+                <button type="button" class="qa-btn" data-val="100">100</button>
+                <button type="button" class="qa-btn" data-val="200">200</button>
+                <button type="button" class="qa-btn" data-val="500">500</button>
+                <button type="button" class="qa-btn" data-val="1000">1,000</button>
+                <button type="button" class="qa-btn" data-val="2000">2,000</button>
+                <button type="button" class="qa-btn" data-val="5000">5,000</button>
+                <button type="button" class="qa-btn qa-custom" data-val="">Custom</button>
+              </div>
             </div>
             <div class="field">
               <label>Description</label>
@@ -3719,7 +3772,17 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
             </div>
             <div class="field">
               <label>Payment Amount (&#x20B1;)</label>
-              <input type="number" name="amount" min="1" step="0.01" placeholder="0.00" required>
+              <input type="number" name="amount" min="1" step="0.01" placeholder="0.00" required class="amt-input" id="loanAmt">
+              <div class="qa-grid" data-target="loanAmt">
+                <button type="button" class="qa-btn" data-val="50">50</button>
+                <button type="button" class="qa-btn" data-val="100">100</button>
+                <button type="button" class="qa-btn" data-val="200">200</button>
+                <button type="button" class="qa-btn" data-val="500">500</button>
+                <button type="button" class="qa-btn" data-val="1000">1,000</button>
+                <button type="button" class="qa-btn" data-val="2000">2,000</button>
+                <button type="button" class="qa-btn" data-val="5000">5,000</button>
+                <button type="button" class="qa-btn qa-custom" data-val="">Full balance</button>
+              </div>
             </div>
             <button type="submit" class="btn-action btn-blue">&#x1F4B3; Process Payment</button>
           </form>
@@ -3774,6 +3837,75 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   </div>
 
   <script>
+  // ── Quick-amount buttons ──
+  document.querySelectorAll('.qa-grid').forEach(function(grid) {
+    var targetId = grid.getAttribute('data-target');
+    var input = document.getElementById(targetId);
+    if (!input) return;
+    grid.querySelectorAll('.qa-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var val = this.getAttribute('data-val');
+        if (val === '') {
+          input.value = '';
+          input.focus();
+        } else {
+          input.value = val;
+        }
+        grid.querySelectorAll('.qa-btn').forEach(function(b) { b.classList.remove('selected'); });
+        if (val !== '') this.classList.add('selected');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    });
+  });
+
+  // ── Tab switching ──
+  function switchTab(tab) {
+    document.querySelectorAll('.tx-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.tx-panel').forEach(function(p) { p.classList.remove('active'); });
+    var tabBtn = document.getElementById('tab-' + tab);
+    var panel = document.getElementById('panel-' + tab);
+    if (tabBtn) tabBtn.classList.add('active');
+    if (panel) panel.classList.add('active');
+  }
+  document.querySelectorAll('.tx-tab').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      switchTab(this.getAttribute('data-tab'));
+    });
+  });
+
+  // ── Full-screen toggle ──
+  var fsCheck = document.getElementById('fullScreenCheck');
+  if (fsCheck) {
+    if (localStorage.getItem('tellerFullScreen') === '1') {
+      fsCheck.checked = true;
+      document.body.classList.add('teller-fs');
+    }
+    fsCheck.addEventListener('change', function() {
+      document.body.classList.toggle('teller-fs', this.checked);
+      localStorage.setItem('tellerFullScreen', this.checked ? '1' : '0');
+    });
+  }
+
+  // ── Auto-print toggle ──
+  var apCheck = document.getElementById('autoPrintCheck');
+  if (apCheck) {
+    if (localStorage.getItem('tellerAutoPrint') === '1') {
+      apCheck.checked = true;
+    }
+    apCheck.addEventListener('change', function() {
+      localStorage.setItem('tellerAutoPrint', this.checked ? '1' : '0');
+    });
+    // Auto-print if receipt visible and auto-print enabled
+    var receiptEl = document.getElementById('rinline');
+    if (receiptEl && apCheck.checked) {
+      setTimeout(function() {
+        var printBtn = receiptEl.querySelector('[data-action="print-receipt"]');
+        if (printBtn) printBtn.click();
+      }, 500);
+    }
+  }
+
+  // ── Void modal ──
   function openVoidModal(txId, type, amount) {
     document.getElementById('voidTxType').textContent = type;
     document.getElementById('voidTxAmount').textContent = amount;
@@ -3781,12 +3913,76 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
     document.getElementById('voidReason').value = '';
     document.getElementById('voidPassword').value = '';
     document.getElementById('voidModal').style.display = 'flex';
+    setTimeout(function() { document.getElementById('voidReason').focus(); }, 100);
   }
   function closeVoidModal() {
     document.getElementById('voidModal').style.display = 'none';
   }
-  document.getElementById('voidModal').addEventListener('click', function(e) {
-    if (e.target === this) closeVoidModal();
+  var voidModal = document.getElementById('voidModal');
+  if (voidModal) {
+    voidModal.addEventListener('click', function(e) {
+      if (e.target === this) closeVoidModal();
+    });
+  }
+
+  // ── Receipt action buttons (delegated click) ──
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    var action = btn.getAttribute('data-action');
+    if (action === 'print-receipt') {
+      window.print();
+    } else if (action === 'close-receipt') {
+      var receipt = document.getElementById('rinline');
+      if (receipt) receipt.style.display = 'none';
+    }
+  });
+
+  // ── Keyboard shortcuts ──
+  document.addEventListener('keydown', function(e) {
+    // Don't intercept when typing in inputs/textareas (except Escape)
+    var tag = e.target.tagName;
+    var isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+
+    if (e.key === 'Escape') {
+      if (voidModal && voidModal.style.display === 'flex') {
+        closeVoidModal();
+        e.preventDefault();
+        return;
+      }
+      if (isInput) { e.target.blur(); e.preventDefault(); return; }
+    }
+
+    // F-keys: only intercept specific ones, and only when not in an input field (except F5 for search)
+    if (['F5','F8','F9','F10','F11'].indexOf(e.key) !== -1) {
+      if (isInput && e.key !== 'F5') return;
+      e.preventDefault();
+
+      switch (e.key) {
+        case 'F5':
+          var searchField = document.getElementById('tellerSearch');
+          if (searchField) { searchField.focus(); searchField.select(); }
+          break;
+        case 'F8':
+          switchTab('deposit');
+          var dAmt = document.getElementById('depAmt');
+          if (dAmt) setTimeout(function() { dAmt.focus(); }, 100);
+          break;
+        case 'F9':
+          switchTab('withdraw');
+          var wAmt = document.getElementById('wdAmt');
+          if (wAmt) setTimeout(function() { wAmt.focus(); }, 100);
+          break;
+        case 'F10':
+          switchTab('loan');
+          var lAmt = document.getElementById('loanAmt');
+          if (lAmt) setTimeout(function() { lAmt.focus(); }, 100);
+          break;
+        case 'F11':
+          if (fsCheck) { fsCheck.checked = !fsCheck.checked; fsCheck.dispatchEvent(new Event('change')); }
+          break;
+      }
+    }
   });
   </script>
   `;

@@ -56,8 +56,29 @@ class _SupportPageState extends State<SupportPage> {
     final msgs = await BankingApiService.getMessages(widget.accountId);
     if (!mounted) return;
     final newList = msgs.cast<Map<String, dynamic>>();
-    if (newList.length > _messages.length) {
-      setState(() => _messages = newList);
+    var changed = false;
+    // Update existing messages with latest read status
+    for (var i = 0; i < _messages.length; i++) {
+      final old = _messages[i];
+      final found = newList.where((m) => m['message_id'] == old['message_id']).firstOrNull;
+      if (found != null) {
+        final oldRead = old['admin_read'];
+        final newRead = found['admin_read'];
+        if (oldRead != newRead) {
+          _messages[i] = found;
+          changed = true;
+        }
+      }
+    }
+    // Add new messages
+    for (final m in newList) {
+      if (!_messages.any((e) => e['message_id'] == m['message_id'])) {
+        _messages.add(m);
+        changed = true;
+      }
+    }
+    if (changed) {
+      setState(() {});
       _scrollDown();
     }
   }

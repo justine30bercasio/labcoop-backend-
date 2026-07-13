@@ -7793,7 +7793,7 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
           } else {
             receipt = Number(m.admin_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Sent</span>';
           }
-          return '<div class="msg-bubble ' + (isAdmin ? 'outgoing' : 'incoming') + '"><div class="mb-avatar">' + initial + '</div><div class="mb-content"><div>' + h(m.content) + '</div><div class="mb-meta">' + h(m.sender_name || m.sender_type) + ' · ' + (m.created_at ? m.created_at.slice(0,19).replace('T',' ') : '') + receipt + '</div></div></div>';
+          return '<div class="msg-bubble ' + (isAdmin ? 'outgoing' : 'incoming') + '" data-msg-id="' + h(m.message_id || '') + '"><div class="mb-avatar">' + initial + '</div><div class="mb-content"><div>' + h(m.content) + '</div><div class="mb-meta">' + h(m.sender_name || m.sender_type) + ' · ' + (m.created_at ? m.created_at.slice(0,19).replace('T',' ') : '') + receipt + '</div></div></div>';
         }).join('')
       }
       <div id="typingIndicator" class="mb-typing" style="display:none">
@@ -7853,14 +7853,22 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
       })
       .catch(function(){});
   }, 3000);
-  // Poll for new messages every 5s
+  // Poll for new messages every 5s (track seen IDs to avoid duplicates)
+  var seenIds = {};
+  var lastPoll = new Date().toISOString();
+  document.querySelectorAll('#msgThread .msg-bubble').forEach(function(el){
+    var id = el.getAttribute('data-msg-id');
+    if (id) seenIds[id] = true;
+  });
   setInterval(function(){
-    fetch('/admin/messages/' + accountId + '/poll')
+    fetch('/admin/messages/' + accountId + '/poll?since=' + encodeURIComponent(lastPoll))
       .then(function(r){ return r.json(); })
       .then(function(data){
         if (data.messages && data.messages.length > 0) {
           var target = document.getElementById('replyTarget');
           data.messages.forEach(function(m){
+            if (seenIds[m.message_id]) return;
+            seenIds[m.message_id] = true;
             var isAdmin = m.sender_type === 'admin';
             if (!isAdmin) {
               var initial = m.sender_name ? m.sender_name[0].toUpperCase() : '?';
@@ -7869,12 +7877,13 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
               content.textContent = m.content || '';
               var sender = m.sender_name || m.sender_type || '';
               var ts = m.created_at ? m.created_at.slice(0,19).replace('T',' ') : '';
-              var html = '<div class="msg-bubble incoming"><div class="mb-avatar">' + initial + '</div><div class="mb-content"><div>' + content.innerHTML + '</div><div class="mb-meta">' + sender.replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#x27;'}[c]}) + ' · ' + ts + receipt + '</div></div></div>';
+              var html = '<div class="msg-bubble incoming" data-msg-id="' + m.message_id + '"><div class="mb-avatar">' + initial + '</div><div class="mb-content"><div>' + content.innerHTML + '</div><div class="mb-meta">' + sender.replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#x27;'}[c]}) + ' · ' + ts + receipt + '</div></div></div>';
               target.insertAdjacentHTML('beforebegin', html);
             }
           });
           target.scrollIntoView({ behavior:'smooth' });
         }
+        lastPoll = new Date().toISOString();
       })
       .catch(function(){});
   }, 5000);
@@ -7912,9 +7921,10 @@ router.post('/messages/reply', requireRole(1), asyncHandler(async (req, res) => 
 
 // ── Poll for new messages from child (for admin thread view) ──
 router.get('/messages/:accountId/poll', requireRole(1), asyncHandler(async (req, res) => {
+  const since = req.query.since || '1970-01-01T00:00:00.000Z';
   const msgs = await store.query(
-    "SELECT * FROM support_messages WHERE account_id = $1 AND sender_type != 'admin' AND created_at > (SELECT COALESCE(MAX(created_at), '1970-01-01') FROM support_messages WHERE account_id = $1 AND sender_type = 'admin') ORDER BY created_at ASC",
-    [req.params.accountId]
+    "SELECT * FROM support_messages WHERE account_id = $1 AND sender_type != 'admin' AND created_at > $2 ORDER BY created_at ASC",
+    [req.params.accountId, since]
   );
   res.json({ messages: msgs.rows });
 }));

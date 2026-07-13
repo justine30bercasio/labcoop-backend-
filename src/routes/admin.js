@@ -3988,7 +3988,12 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
     document.getElementById('voidOverlay').classList.add('show');
     setTimeout(function() { document.getElementById('voidReason').focus(); }, 100);
   }
-  function closeVoidModal() { document.getElementById('voidOverlay').classList.remove('show'); }
+  function closeVoidModal() {
+    var vo = document.getElementById('voidOverlay');
+    if (!vo) return;
+    vo.classList.remove('show');
+    vo.style.display = 'none';
+  }
   var voidOvr = document.getElementById('voidOverlay');
   if (voidOvr) voidOvr.addEventListener('click', function(e) { if (e.target === this) closeVoidModal(); });
   document.addEventListener('keydown', function(e) {
@@ -4003,7 +4008,11 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   function showReceipt(txId) {
     window.location.href = '?account=${encodeURIComponent(selectedId)}&receipt=' + txId + (${JSON.stringify(searchQ)} ? '&q=' + encodeURIComponent(${JSON.stringify(searchQ)}) : '');
   }
-  function closeReceipt() { if (receiptOvr) receiptOvr.classList.remove('show'); }
+  function closeReceipt() {
+    if (!receiptOvr) return;
+    receiptOvr.classList.remove('show');
+    receiptOvr.style.display = 'none';
+  }
   if (receiptOvr) receiptOvr.addEventListener('click', function(e) { if (e.target === this) closeReceipt(); });
 
   // ── Receipt action buttons ──

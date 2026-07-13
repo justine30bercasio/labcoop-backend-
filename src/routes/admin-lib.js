@@ -97,7 +97,7 @@ function layout(title, active, content, opts = {}) {
       { minRole: 3, icon: '<i class="fas fa-percent"></i>', label: 'Taxes', href: '/admin/taxes', key: 'taxes' },
       { minRole: 1, icon: '<i class="fas fa-bell"></i>', label: 'Notifications', href: '/admin/notifications-log', key: 'notifications-log' },
       { minRole: 3, icon: '<i class="fas fa-globe"></i>', label: 'Multi-Currency', href: '/admin/currencies', key: 'currencies' },
-      { minRole: 3, icon: '<i class="fas fa-check-double"></i>', label: 'Pending Approvals', href: '/admin/pending-approvals', key: 'pending-approvals' },
+      { minRole: 2, icon: '<i class="fas fa-check-double"></i>', label: 'Pending Approvals', href: '/admin/pending-approvals', key: 'pending-approvals' },
       { minRole: 3, icon: '<i class="fas fa-family"></i>', label: 'Parent Management', href: '/admin/parents', key: 'parents' },
       { minRole: 3, icon: '<i class="fas fa-database"></i>', label: 'Backup & Restore', href: '/admin/backup', key: 'backup' },
       { minRole: 3, icon: '<i class="fas fa-gear"></i>', label: 'Settings', href: '/admin/settings', key: 'settings' },
@@ -566,7 +566,7 @@ function toggleTheme(e){
       .catch(function(){});
   }
   fetchCounts();
-  setInterval(fetchCounts, 30000);
+  setInterval(fetchCounts, 10000);
 })();
 </script>
 <div id="confirm-modal" class="confirm-overlay" role="dialog" aria-modal="true" style="display:none">

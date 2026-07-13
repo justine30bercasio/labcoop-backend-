@@ -7232,7 +7232,7 @@ router.post('/board/delete/:id', requireRole(3), asyncHandler(async (req, res) =
 }));
 
 // ── Pending Approvals (test page) ──
-router.get('/pending-approvals', requireRole(3,4), asyncHandler(async (req, res) => {
+router.get('/pending-approvals', requireRole(2), asyncHandler(async (req, res) => {
   const [consents, withdrawals, deletions] = await Promise.all([
     store.query(`
       SELECT c.*, a.child_name, a.member_id

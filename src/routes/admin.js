@@ -3704,6 +3704,20 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   body.teller-fs .tl-card { border-radius:16px; }
   body.teller-fs .tr-card { border-radius:16px; min-height:550px; max-height:calc(100vh - 180px); }
 
+  .pp-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.4); z-index:1001; align-items:center; justify-content:center; backdrop-filter:blur(2px); }
+  .pp-overlay.show { display:flex; }
+  .pp-modal { background:var(--card); border-radius:16px; padding:32px; max-width:400px; width:90%; box-shadow:0 16px 48px rgba(0,0,0,0.2); animation:modalIn 0.2s ease; text-align:center; }
+  .pp-modal .pp-icon { font-size:48px; margin-bottom:12px; }
+  .pp-modal h3 { font-size:18px; font-weight:700; margin-bottom:4px; }
+  .pp-modal p { font-size:14px; color:var(--text-muted); margin-bottom:20px; }
+  .pp-modal .pp-actions { display:flex; gap:10px; justify-content:center; }
+  .pp-modal .pp-actions button { padding:12px 28px; border:none; border-radius:10px; font-size:14px; font-weight:700; cursor:pointer; transition:all 0.15s; min-width:120px; }
+  .pp-modal .pp-actions button:hover { transform:translateY(-1px); }
+  .pp-modal .pp-print { background:linear-gradient(135deg,var(--accent),#1B5E20); color:#fff; }
+  .pp-modal .pp-print:hover { box-shadow:0 4px 14px rgba(46,125,50,0.3); }
+  .pp-modal .pp-skip { background:#f1f5f9; color:var(--text-muted); }
+  .pp-modal .pp-skip:hover { background:#e2e8f0; color:var(--text); }
+
   .welcome-card { text-align:center; padding:60px 20px; color:var(--text-muted); background:var(--card); border-radius:14px; border:1px solid var(--border); box-shadow:0 2px 8px rgba(0,0,0,0.04); }
   .welcome-card .wc-icon { font-size:56px; margin-bottom:14px; }
   .welcome-card h3 { font-size:20px; font-weight:600; color:var(--text); margin-bottom:4px; }
@@ -3894,6 +3908,19 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
 
   ${receipt ? receiptHtml(receipt) : '<div class="receipt-overlay" id="receiptOverlay"><div class="receipt-modal" id="rinline"><div class="rm-header"><div class="rm-title">LABCOOP PASSBOOK</div><div class="rm-sub">Official Transaction Receipt</div></div><div class="rm-body"><div class="rm-row"><span class="rm-label">TRN#</span><span class="rm-value">-</span></div><div class="rm-row"><span class="rm-label">Date</span><span class="rm-value">-</span></div><div class="rm-row"><span class="rm-label">Member</span><span class="rm-value">-</span></div><div class="rm-divider"></div><div class="rm-row"><span class="rm-label">Transaction</span><span class="rm-value">-</span></div><div class="rm-row"><span class="rm-label">Amount</span><span class="rm-value">-</span></div><div class="rm-row"><span class="rm-label">Description</span><span class="rm-value">-</span></div><div class="rm-divider"></div><div class="rm-row"><span class="rm-label">Balance Before</span><span class="rm-value">-</span></div><div class="rm-row"><span class="rm-label">Balance After</span><span class="rm-value">-</span></div></div><div class="rm-footer"><button data-action="print-receipt" class="btn btn-sm" style="background:var(--accent);color:#fff;padding:8px 20px;border:none;border-radius:8px;font-weight:600;cursor:pointer"><i class="fas fa-print"></i> Print</button><button data-action="close-receipt" class="btn btn-sm btn-outline" style="padding:8px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;cursor:pointer;font-weight:600"><i class="fas fa-times"></i> Close</button></div></div></div>'}
 
+  <!-- Print Prompt Modal -->
+  <div class="pp-overlay" id="ppOverlay" onclick="if(event.target===this)closePrintPrompt()">
+    <div class="pp-modal">
+      <div class="pp-icon">&#x2705;</div>
+      <h3>Transaction Successful!</h3>
+      <p>Would you like to print the receipt?</p>
+      <div class="pp-actions">
+        <button class="pp-skip" onclick="closePrintPrompt()">Skip</button>
+        <button class="pp-print" onclick="doPrint()"><i class="fas fa-print"></i> Print</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Void Modal -->
   <div class="void-overlay" id="voidOverlay" onclick="if(event.target===this)closeVoidModal()">
     <div class="void-modal">
@@ -3969,17 +3996,20 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
     }
   }
 
-  // ── Print prompt on new receipt ──
+  // ── Print prompt on new receipt (custom modal) ──
   (function() {
     var ol = document.getElementById('receiptOverlay');
     if (ol && ol.classList.contains('show')) {
       setTimeout(function() {
-        if (confirm('Transaction successful!\\n\\nPrint receipt?')) {
-          window.print();
-        }
+        document.getElementById('ppOverlay').classList.add('show');
       }, 400);
     }
   })();
+  function closePrintPrompt() { document.getElementById('ppOverlay').classList.remove('show'); }
+  function doPrint() {
+    closePrintPrompt();
+    setTimeout(function() { window.print(); }, 200);
+  }
 
   // ── Void modal ──
   function openVoidModal(txId, type, amount) {

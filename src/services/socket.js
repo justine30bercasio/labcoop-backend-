@@ -76,13 +76,14 @@ function initSocket(httpServer, sessionMiddleware) {
       if (!content) return;
       if (!store?.query) return;
       try {
+        const createdAt = new Date().toISOString();
         const result = await store.query(
           `INSERT INTO support_messages (account_id, sender_type, sender_name, content, admin_read, child_read, created_at)
-           VALUES ($1, 'child', $2, $3, 0, 1, datetime('now')) RETURNING message_id, created_at`,
-          [accountId, senderName || 'Child', content]
+           VALUES ($1, 'child', $2, $3, 0, 1, $4) RETURNING message_id`,
+          [accountId, senderName || 'Child', content, createdAt]
         );
         const msg = result.rows[0];
-        io.to('admin').emit('new_message', {
+        const payload = {
           message_id: msg.message_id,
           account_id: accountId,
           sender_type: 'child',
@@ -90,8 +91,10 @@ function initSocket(httpServer, sessionMiddleware) {
           content,
           admin_read: 0,
           child_read: 1,
-          created_at: msg.created_at,
-        });
+          created_at: createdAt,
+        };
+        io.to('admin').emit('new_message', payload);
+        io.to('account:' + accountId).emit('new_message', payload);
       } catch (_) {}
     });
 

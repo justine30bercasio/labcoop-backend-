@@ -7829,9 +7829,15 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
     }, 500);
   }
 
-  // New child message via socket → append to thread
+  // New child message via socket → append to thread (dedup by message_id)
+  var seenMsgIds = {};
+  document.querySelectorAll('#msgThread .msg-bubble[data-msg-id]').forEach(function(el){
+    seenMsgIds[el.getAttribute('data-msg-id')] = true;
+  });
   function appendMessage(msg){
-    if (msg.sender_type === 'admin') return; // we already optimistically rendered it
+    if (msg.sender_type === 'admin') return;
+    if (msg.message_id && seenMsgIds[msg.message_id]) return;
+    if (msg.message_id) seenMsgIds[msg.message_id] = true;
     var target = document.getElementById('replyTarget');
     if (!target) return;
     var initial = (msg.sender_name || '?')[0].toUpperCase();

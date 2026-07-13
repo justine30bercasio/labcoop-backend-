@@ -3961,15 +3961,18 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
     });
   }
 
+  // ── Clean URL params so refresh doesn't re-show toasts/receipt ──
+  if (window.history && window.history.replaceState) {
+    var clean = window.location.href.replace(/[?&](deposited|withdrawn|loanpaid|voided|error|receipt)=[^&]*/g, '').replace(/[?&]$/, '');
+    if (clean !== window.location.href) {
+      window.history.replaceState({}, document.title, clean);
+    }
+  }
+
   // ── Print prompt on new receipt ──
   (function() {
     var ol = document.getElementById('receiptOverlay');
     if (ol && ol.classList.contains('show')) {
-      // Clean ?receipt= from URL so Back doesn't re-trigger
-      if (window.history && window.history.replaceState) {
-        var clean = window.location.href.replace(/[?&]receipt=[^&]*/g, '').replace(/[?&]$/, '');
-        window.history.replaceState({}, document.title, clean);
-      }
       setTimeout(function() {
         if (confirm('Transaction successful!\\n\\nPrint receipt?')) {
           window.print();

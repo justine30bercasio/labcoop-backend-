@@ -1,4 +1,5 @@
 const { Server } = require('socket.io');
+const { store } = require('../db');
 
 let io = null;
 
@@ -52,43 +53,20 @@ function initSocket(httpServer, sessionMiddleware) {
       }
     });
 
-    // ── Admin sends reply ──
-    socket.on('admin_message', async (data) => {
+    // ── Admin sends reply (just relay — HTTP POST does the DB save + socket emit) ──
+    socket.on('admin_message', (data) => {
       if (role !== 'admin') return;
       const { accountId, content } = data;
       if (!accountId || !content) return;
-      const store = require('../routes/admin-lib').getStore?.();
-      const db = store?.query ? store : null;
-      if (!db) return;
-      try {
-        const result = await db.query(
-          `INSERT INTO support_messages (account_id, sender_type, sender_name, content, admin_read, child_read, created_at)
-           VALUES ($1, 'admin', 'Admin', $2, 1, 0, datetime('now')) RETURNING message_id, created_at`,
-          [accountId, content]
-        );
-        const msg = result.rows[0];
-        io.to('account:' + accountId).emit('new_message', {
-          message_id: msg.message_id,
-          account_id: accountId,
-          sender_type: 'admin',
-          sender_name: 'Admin',
-          content,
-          admin_read: 1,
-          child_read: 0,
-          created_at: msg.created_at,
-        });
-        // Also notify admin room so badge updates
-        io.to('admin').emit('new_message', {
-          message_id: msg.message_id,
-          account_id: accountId,
-          sender_type: 'admin',
-          sender_name: 'Admin',
-          content,
-          admin_read: 1,
-          child_read: 0,
-          created_at: msg.created_at,
-        });
-      } catch (_) {}
+      io.to('account:' + accountId).emit('new_message', {
+        account_id: accountId,
+        sender_type: 'admin',
+        sender_name: 'Admin',
+        content,
+        admin_read: 1,
+        child_read: 0,
+        created_at: new Date().toISOString(),
+      });
     });
 
     // ── Child sends message ──
@@ -96,27 +74,15 @@ function initSocket(httpServer, sessionMiddleware) {
       if (role !== 'child') return;
       const { content, senderName } = data;
       if (!content) return;
-      const store = require('../routes/admin-lib').getStore?.();
-      const db = store?.query ? store : null;
-      if (!db) return;
+      if (!store?.query) return;
       try {
-        const result = await db.query(
+        const result = await store.query(
           `INSERT INTO support_messages (account_id, sender_type, sender_name, content, admin_read, child_read, created_at)
            VALUES ($1, 'child', $2, $3, 0, 1, datetime('now')) RETURNING message_id, created_at`,
           [accountId, senderName || 'Child', content]
         );
         const msg = result.rows[0];
         io.to('admin').emit('new_message', {
-          message_id: msg.message_id,
-          account_id: accountId,
-          sender_type: 'child',
-          sender_name: senderName || 'Child',
-          content,
-          admin_read: 0,
-          child_read: 1,
-          created_at: msg.created_at,
-        });
-        io.to('account:' + accountId).emit('new_message', {
           message_id: msg.message_id,
           account_id: accountId,
           sender_type: 'child',
@@ -143,11 +109,9 @@ function initSocket(httpServer, sessionMiddleware) {
     socket.on('mark_read', async (data) => {
       const { accountId } = data;
       if (role !== 'child') return;
-      const store = require('../routes/admin-lib').getStore?.();
-      const db = store?.query ? store : null;
-      if (!db) return;
+      if (!store?.query) return;
       try {
-        await db.query(
+        await store.query(
           `UPDATE support_messages SET child_read = 1 WHERE account_id = $1 AND sender_type = 'admin' AND child_read = 0`,
           [accountId]
         );

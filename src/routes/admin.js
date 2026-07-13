@@ -7861,11 +7861,7 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
     var html = '<div class="msg-bubble outgoing"><div class="mb-avatar">A</div><div class="mb-content"><div>' + text + '</div><div class="mb-meta">Admin · ' + ts + '</div></div></div>';
     target.insertAdjacentHTML('beforebegin', html);
     target.scrollIntoView({ behavior:'smooth' });
-    // Emit via socket for instant delivery (faster than HTTP round-trip)
-    if (sock && sock.connected) {
-      sock.emit('admin_message', { accountId: accountId, content: text });
-    }
-    // Also POST for persistence + FCM push (fire-and-forget)
+    // POST for persistence + socket emit + FCM push (fire-and-forget)
     fetch('/admin/messages/reply', {
       method: 'POST',
       headers: { 'Content-Type':'application/json', 'X-CSRF-Token':'${csrf}' },
@@ -7913,6 +7909,24 @@ router.post('/messages/reply', requireRole(1), asyncHandler(async (req, res) => 
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
     [msgId, accountId, child.rows[0]?.child_name || '', 'admin', adminName, content.trim(), 1, new Date().toISOString()]
   );
+
+  // Emit socket event for real-time delivery to child
+  try {
+    const { getIO } = require('../services/socket');
+    const io = getIO();
+    if (io) {
+      io.to('account:' + accountId).emit('new_message', {
+        message_id: msgId,
+        account_id: accountId,
+        sender_type: 'admin',
+        sender_name: adminName,
+        content: content.trim(),
+        admin_read: 1,
+        child_read: 0,
+        created_at: new Date().toISOString(),
+      });
+    }
+  } catch (_) {}
 
   // Try to send FCM push to the child
   try {

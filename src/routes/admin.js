@@ -7918,12 +7918,6 @@ router.get('/pending-items', requireRole(1), asyncHandler(async (req, res) => {
     items.push({ id: r.request_id, type: 'deletion', label: 'Account Deletion', desc: r.child_name + ' (' + (r.member_id || '') + ')', time: r.created_at || now, url: '/admin/pending-approvals' });
   });
 
-  // Unread messages
-  const msgRows = await sql("SELECT m.message_id, m.account_id, m.child_name, m.sender_type, m.sender_name, m.content, m.created_at FROM support_messages m WHERE m.admin_read = 0 AND m.sender_type != 'admin' ORDER BY m.created_at DESC LIMIT 20");
-  msgRows.forEach(function(r) {
-    items.push({ id: r.message_id, type: 'message', label: r.sender_type === 'parent' ? 'Parent Message' : 'Message from ' + (r.child_name || 'Child'), desc: r.content, time: r.created_at || now, url: '/admin/messages/' + r.account_id });
-  });
-
   // Sort by time descending (newest first), cap at 50
   items.sort(function(a, b) { return b.time.localeCompare(a.time); });
   if (items.length > 50) items.length = 50;

@@ -604,7 +604,7 @@ for (const sub of ['shop', 'board', 'profiles', 'kyc', 'registration']) {
 
 // ── Public uploads: shop images (avatars/borders) and board photos — no auth needed ──
 // Return 404 for missing files instead of falling through to auth-gated /uploads (which returns 401)
-for (const dir of ['shop', 'board', 'parents']) {
+for (const dir of ['shop', 'board']) {
   app.use(`/uploads/${dir}`, express.static(path.join(__dirname, 'uploads', dir), {
     dotfiles: 'deny',
     index: false,
@@ -711,7 +711,7 @@ try {
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err.message, err.stack?.split('\n')[1] || '');
   if (process.env.NODE_ENV === 'production') {
-    res.status(500).json({ message: 'Internal server error', _debug: err.message });
+    res.status(500).json({ message: 'Internal server error' });
   } else {
     res.status(500).json({ message: 'Internal server error', error: err.message, type: err.type });
   }

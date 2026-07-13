@@ -21,7 +21,7 @@ function authMiddleware(req, res, next) {
 }
 
 function requireOwnership(req, res, next) {
-  const requestedId = req.params.accountId || req.query.account_id;
+  const requestedId = req.params.accountId || req.query.account_id || req.body.account_id;
   if (requestedId && req.accountId !== requestedId) {
     return res.status(403).json({ message: 'Forbidden: you can only access your own account' });
   }

@@ -631,6 +631,12 @@ ${uploadModals}
 const shopUpload = require('multer')({
   dest: require('path').join(__dirname, '..', 'uploads', 'shop'),
   limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+    const ext = require('path').extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext)) return cb(null, true);
+    cb(new Error('Only image files (jpg, png, gif, webp) are allowed'));
+  }
 });
 
 router.post('/shop/create', requireRole(2), shopUpload.single('image'), asyncHandler(async (req, res) => {
@@ -1665,6 +1671,12 @@ if (!fs.existsSync(profilesDir)) fs.mkdirSync(profilesDir, { recursive: true });
 const profileUpload = require('multer')({
   dest: profilesDir,
   limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+    const ext = require('path').extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext)) return cb(null, true);
+    cb(new Error('Only image files (jpg, png, gif, webp) are allowed'));
+  }
 });
 
 router.post('/accounts/upload-photo/:id', requireRole(2), profileUpload.single('photo'), asyncHandler(async (req, res) => {
@@ -6503,6 +6515,10 @@ router.get('/users', requireRole(4), asyncHandler(async (req, res) => {
 router.post('/users/create', requireRole(4), asyncHandler(async (req, res) => {
   const { username, display_name, email, password, role } = req.body;
   if (!username || !password) return res.redirect('/admin/users?error=Username+and+password+required');
+  if (password && password.length < 8) return res.redirect('/admin/users?error=Password+must+be+at+least+8+characters');
+  if (password && !/[A-Z]/.test(password)) return res.redirect('/admin/users?error=Password+must+contain+an+uppercase+letter');
+  if (password && !/[a-z]/.test(password)) return res.redirect('/admin/users?error=Password+must+contain+a+lowercase+letter');
+  if (password && !/[0-9]/.test(password)) return res.redirect('/admin/users?error=Password+must+contain+a+digit');
   const existing = await one('SELECT * FROM admin_users WHERE username = $1', [username]);
   if (existing) return res.redirect('/admin/users?error=Username+already+exists');
   const hash = bcrypt.hashSync(password, 10);
@@ -6557,6 +6573,10 @@ router.post('/users/update/:id', requireRole(4), asyncHandler(async (req, res) =
   const dup = await one('SELECT * FROM admin_users WHERE username = $1 AND admin_id != $2', [username, req.params.id]);
   if (dup) return res.redirect(`/admin/users/edit/${req.params.id}?error=Username+already+taken`);
   if (password) {
+    if (password.length < 8) return res.redirect(`/admin/users/edit/${req.params.id}?error=Password+must+be+at+least+8+characters`);
+    if (!/[A-Z]/.test(password)) return res.redirect(`/admin/users/edit/${req.params.id}?error=Password+must+contain+an+uppercase+letter`);
+    if (!/[a-z]/.test(password)) return res.redirect(`/admin/users/edit/${req.params.id}?error=Password+must+contain+a+lowercase+letter`);
+    if (!/[0-9]/.test(password)) return res.redirect(`/admin/users/edit/${req.params.id}?error=Password+must+contain+a+digit`);
     const hash = bcrypt.hashSync(password, 10);
     await store.query('UPDATE admin_users SET username=$1, display_name=$2, email=$3, role=$4, password_hash=$5 WHERE admin_id=$6',
       [username, display_name || username, email || '', role || 'teller', hash, req.params.id]);
@@ -6569,7 +6589,16 @@ router.post('/users/update/:id', requireRole(4), asyncHandler(async (req, res) =
 
 // ── Board of Directors Management (Advanced UI) ──
 
-const _boardUpload = multer({ dest: path.join(__dirname, '..', 'uploads', 'board') });
+const _boardUpload = multer({
+  dest: path.join(__dirname, '..', 'uploads', 'board'),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext)) return cb(null, true);
+    cb(new Error('Only image files (jpg, png, gif, webp) are allowed'));
+  }
+});
 
 router.get('/board', requireRole(2), asyncHandler(async (req, res) => {
   const members = await sql('SELECT * FROM board_members ORDER BY sort_order ASC, created_at ASC');

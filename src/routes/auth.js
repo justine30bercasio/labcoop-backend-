@@ -503,9 +503,10 @@ router.post('/forgot-pin-send-otp', asyncHandler(async (req, res) => {
   } else {
     account = await store.getAccountByName(childName.trim());
   }
-  if (!account) return res.status(404).json({ message: 'Account not found' });
+  if (!account || !account.parent_email) {
+    return res.json({ message: 'If this account exists and has a parent email on file, an OTP has been sent.' });
+  }
   const parentEmail = account.parent_email;
-  if (!parentEmail) return res.status(400).json({ message: 'No parent email on file. Contact an admin.' });
   // Rate limit
   const now = Date.now();
   const key = 'child_forgot_' + account.account_id;

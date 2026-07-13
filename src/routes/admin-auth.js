@@ -191,7 +191,9 @@ router.get('/login', (req, res) => {
   res.type('html').send(loginPage(error));
 });
 
-router.post('/login', async (req, res) => {
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5, message: { message: 'Too many login attempts, try again in 15 minutes' }, standardHeaders: true, legacyHeaders: false });
+
+router.post('/login', loginLimiter, async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.type('html').send(loginPage('Please enter both username and password.'));

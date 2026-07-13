@@ -273,7 +273,7 @@ router.post('/forgot-pin', asyncHandler(async (req, res) => {
   // Check parent exists
   const result = await store.query('SELECT parent_id, email, display_name, status FROM parents WHERE email = $1', [normalEmail]);
   if (result.rows.length === 0) {
-    return res.status(404).json({ message: 'No parent found with that email' });
+    return res.status(200).json({ message: 'If your email is registered, an OTP has been sent' });
   }
   const parent = result.rows[0];
   if (parent.status !== 'approved') {

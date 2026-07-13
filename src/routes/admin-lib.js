@@ -779,6 +779,7 @@ function printLayout(title, content, opts = {}) {
     templateOverlay = false,
     templateTop = '1.6in',
     templateBottom = '24mm',
+    pageMargin = '22mm 18mm 32mm 18mm',
   } = opts;
 
   const genDate = new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -790,7 +791,7 @@ function printLayout(title, content, opts = {}) {
 <style>
   @page {
     size: ${orientation === 'landscape' ? 'A4 landscape' : 'A4 portrait'};
-    margin: ${templateOverlay ? '0' : '22mm 18mm 32mm 18mm'};
+    margin: ${templateOverlay ? '0' : pageMargin};
     ${showPageNumbers ? "@bottom-center { content: 'Page ' counter(page) ' of ' counter(pages); font-size: 8pt; color: #888; font-family: Georgia, 'Times New Roman', serif; }" : ''}
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }

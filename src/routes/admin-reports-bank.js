@@ -417,6 +417,26 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
     }).join('');
 
     const printContent = `
+    <style>
+      .print-info-grid { margin-bottom:1.5mm !important; gap:0.5mm 1.5mm !important; }
+      .print-info-item { padding:0.4mm 1mm !important; font-size:6.5pt !important; }
+      .print-summary-strip { margin-bottom:1.5mm !important; gap:1mm !important; }
+      .print-summary-item { padding:0.6mm 1mm !important; font-size:5.5pt !important; }
+      .print-summary-item .val { font-size:7.5pt !important; }
+      table { margin-bottom:1.5mm !important; }
+      thead th { padding:0.8mm 1mm !important; font-size:6pt !important; }
+      tbody td { padding:0.4mm 1mm !important; font-size:6.5pt !important; }
+      .print-company-header { margin-bottom:1.5mm !important; padding-bottom:1mm !important; }
+      .print-company-header .report-title { font-size:9pt !important; }
+      .print-header-logo { width:12mm !important; height:12mm !important; }
+      .print-header-info .bank-name { font-size:12pt !important; }
+      .print-header-info .bank-sub { font-size:7pt !important; }
+      .report-meta-bar { font-size:6pt !important; margin-bottom:1.5mm !important; padding:0.3mm 0 !important; }
+      .print-signature-block { margin-top:2mm !important; }
+      .print-signature-block .sig-line { margin-top:8mm !important; }
+      .print-signature-block .sig-label { font-size:6.5pt !important; }
+      .disclaimer-text { font-size:5.5pt !important; margin-top:1.5mm !important; padding-top:0.8mm !important; }
+    </style>
     <div class="print-info-grid">
       <div class="print-info-item"><span class="label">Account Holder</span><br>${h(account.child_name)}</div>
       <div class="print-info-item"><span class="label">Period</span><br>${fromDate} to ${toDate}</div>
@@ -464,6 +484,7 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
     return res.type('html').send(printLayout('Statement of Account', printContent, {
       subtitle: 'Official Bank Statement',
       dateRange: fromDate + ' to ' + toDate,
+      pageMargin: '12mm 12mm 18mm 12mm',
       showSignatures: false,
       showDisclaimer: true,
       disclaimer: 'This statement is a computer-generated document and does not require a physical signature. For inquiries, contact AYSIDEK Lab Coop at (+63) 949-860-2193 or email aysideklabcoop@gmail.com'

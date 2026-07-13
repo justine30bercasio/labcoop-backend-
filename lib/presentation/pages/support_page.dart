@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/network/banking_api_service.dart';
 
@@ -16,17 +17,27 @@ class _SupportPageState extends State<SupportPage> {
   List<Map<String, dynamic>> _messages = [];
   bool _loading = true;
   bool _sending = false;
+  bool _childTyping = false;
+  Timer? _typingTimer;
+  Timer? _pollTimer;
+  bool _userIsTyping = false;
+  int _lastTypingSent = 0;
 
   @override
   void initState() {
     super.initState();
     _load();
+    // Auto-poll for new messages every 5s
+    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _pollNew());
   }
 
   @override
   void dispose() {
     _controller.dispose();
     _scrollController.dispose();
+    _pollTimer?.cancel();
+    _typingTimer?.cancel();
+    _sendTyping(false);
     super.dispose();
   }
 
@@ -37,6 +48,16 @@ class _SupportPageState extends State<SupportPage> {
         _messages = msgs.cast<Map<String, dynamic>>();
         _loading = false;
       });
+      _scrollDown();
+    }
+  }
+
+  Future<void> _pollNew() async {
+    final msgs = await BankingApiService.getMessages(widget.accountId);
+    if (!mounted) return;
+    final newList = msgs.cast<Map<String, dynamic>>();
+    if (newList.length > _messages.length) {
+      setState(() => _messages = newList);
       _scrollDown();
     }
   }
@@ -53,23 +74,48 @@ class _SupportPageState extends State<SupportPage> {
     });
   }
 
+  void _onTyping(String val) {
+    if (val.isNotEmpty && !_userIsTyping) {
+      _userIsTyping = true;
+      _sendTyping(true);
+      _typingTimer?.cancel();
+      _typingTimer = Timer(const Duration(seconds: 3), () {
+        _sendTyping(false);
+        _userIsTyping = false;
+      });
+    } else if (val.isEmpty && _userIsTyping) {
+      _sendTyping(false);
+      _userIsTyping = false;
+      _typingTimer?.cancel();
+    }
+  }
+
+  Future<void> _sendTyping(bool isTyping) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastTypingSent < 2000) return;
+    _lastTypingSent = now;
+    await BankingApiService.sendTyping(widget.accountId, isTyping);
+  }
+
   Future<void> _send() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
     setState(() => _sending = true);
     _controller.clear();
-    // Optimistic add
+    _sendTyping(false);
+    _userIsTyping = false;
+    _typingTimer?.cancel();
     setState(() {
       _messages.add({
         'sender_type': 'child',
         'sender_name': widget.childName,
         'content': text,
         'created_at': DateTime.now().toIso8601String(),
+        'admin_read': 0,
       });
     });
     _scrollDown();
     await BankingApiService.sendMessage(widget.accountId, text, senderName: widget.childName);
-    // Reload to get real server data & admin reply
     final msgs = await BankingApiService.getMessages(widget.accountId);
     if (mounted) {
       setState(() {
@@ -78,6 +124,26 @@ class _SupportPageState extends State<SupportPage> {
       });
       _scrollDown();
     }
+  }
+
+  Widget _readReceipt(int? adminRead, String senderType) {
+    if (senderType == 'admin') return const SizedBox.shrink();
+    final read = adminRead == 1;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          read ? Icons.check_circle : Icons.check_circle_outline,
+          size: 11,
+          color: read ? Colors.blue.shade300 : Colors.grey.shade400,
+        ),
+        const SizedBox(width: 2),
+        Text(
+          read ? 'Read' : 'Sent',
+          style: TextStyle(fontSize: 9, color: read ? Colors.blue.shade300 : Colors.grey.shade400),
+        ),
+      ],
+    );
   }
 
   @override
@@ -91,7 +157,6 @@ class _SupportPageState extends State<SupportPage> {
       ),
       body: Column(
         children: [
-          // Header banner
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -102,14 +167,13 @@ class _SupportPageState extends State<SupportPage> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Send a message to the admin team. We\'ll respond as soon as possible.',
+                    'Message the admin team. Replies appear in real-time.',
                     style: TextStyle(fontSize: 12, color: Colors.green.shade800, height: 1.4),
                   ),
                 ),
               ],
             ),
           ),
-          // Messages
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
@@ -137,6 +201,8 @@ class _SupportPageState extends State<SupportPage> {
                           final content = (m['content'] as String?) ?? '';
                           final time = (m['created_at'] as String?) ?? '';
                           final ts = time.length >= 16 ? time.substring(0, 16).replaceAll('T', ' ') : time;
+                          final adminRead = m['admin_read'] as int?;
+                          final childRead = m['child_read'] as int?;
                           return Align(
                             alignment: isAdmin ? Alignment.centerLeft : Alignment.centerRight,
                             child: Container(
@@ -166,9 +232,24 @@ class _SupportPageState extends State<SupportPage> {
                                     ),
                                   ),
                                   const SizedBox(height: 3),
-                                  Text(
-                                    '$name · $ts',
-                                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    mainAxisAlignment: isAdmin ? MainAxisAlignment.start : MainAxisAlignment.end,
+                                    children: [
+                                      if (isAdmin && childRead == 1)
+                                        Padding(
+                                          padding: const EdgeInsets.only(right: 4),
+                                          child: Icon(Icons.check_circle, size: 10, color: Colors.green.shade400),
+                                        ),
+                                      Text(
+                                        '$name · $ts',
+                                        style: TextStyle(fontSize: 9, color: Colors.grey.shade500),
+                                      ),
+                                      if (!isAdmin) ...[
+                                        const SizedBox(width: 4),
+                                        _readReceipt(adminRead, 'child'),
+                                      ],
+                                    ],
                                   ),
                                 ],
                               ),
@@ -177,6 +258,19 @@ class _SupportPageState extends State<SupportPage> {
                         },
                       ),
           ),
+          // Typing indicator
+          if (_childTyping)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              color: Colors.grey.shade50,
+              child: Row(
+                children: [
+                  _typingDots(),
+                  const SizedBox(width: 8),
+                  Text('Admin is typing...', style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                ],
+              ),
+            ),
           // Input
           Container(
             padding: const EdgeInsets.fromLTRB(12, 8, 8, 12),
@@ -194,6 +288,7 @@ class _SupportPageState extends State<SupportPage> {
                     maxLines: 3,
                     minLines: 1,
                     textCapitalization: TextCapitalization.sentences,
+                    onChanged: _onTyping,
                     decoration: InputDecoration(
                       hintText: 'Type your message...',
                       hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
@@ -227,6 +322,33 @@ class _SupportPageState extends State<SupportPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _typingDots() {
+    return SizedBox(
+      width: 28,
+      height: 10,
+      child: Stack(
+        children: List.generate(3, (i) {
+          return Positioned(
+            left: i * 10.0,
+            top: 0,
+            child: AnimatedOpacity(
+              opacity: _childTyping ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 300),
+              child: Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: Colors.green.shade400,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          );
+        }),
       ),
     );
   }

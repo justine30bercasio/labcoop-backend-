@@ -669,6 +669,15 @@ return null;
     } on DioException { return 0; }
   }
 
+  static Future<void> sendTyping(String accountId, bool isTyping) async {
+    try {
+      await _dio.post('/api/messages/typing', data: {
+        'accountId': accountId,
+        'isTyping': isTyping,
+      });
+    } on DioException { /* ignore */ }
+  }
+
   // ── Parent Messages ──
   static Future<Map<String, dynamic>?> parentSendMessage(String accountId, String content) async {
     try {

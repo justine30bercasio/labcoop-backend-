@@ -133,7 +133,8 @@ function getDb() {
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_coin_tx_account ON coin_transactions(account_id)"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS refresh_tokens (token_id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE, token_hash TEXT NOT NULL, expires_at TEXT NOT NULL, revoked INTEGER DEFAULT 0, created_at TEXT NOT NULL)"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS parent_notifications (notif_id TEXT PRIMARY KEY, parent_id TEXT NOT NULL, title TEXT NOT NULL, body TEXT DEFAULT '', type TEXT DEFAULT 'info', is_read INTEGER DEFAULT 0, created_at TEXT)"); } catch (_) {}
-    try { db.exec("CREATE TABLE IF NOT EXISTS support_messages (message_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, child_name TEXT DEFAULT '', sender_type TEXT NOT NULL DEFAULT 'child' CHECK(sender_type IN ('child','parent','admin')), sender_name TEXT DEFAULT '', content TEXT NOT NULL, admin_read INTEGER DEFAULT 0, created_at TEXT)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS support_messages (message_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, child_name TEXT DEFAULT '', sender_type TEXT NOT NULL DEFAULT 'child' CHECK(sender_type IN ('child','parent','admin')), sender_name TEXT DEFAULT '', content TEXT NOT NULL, admin_read INTEGER DEFAULT 0, child_read INTEGER DEFAULT 0, created_at TEXT)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS typing_status (account_id TEXT PRIMARY KEY, is_typing INTEGER DEFAULT 0, last_heartbeat TEXT)"); } catch (_) {}
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON refresh_tokens(token_hash)"); } catch (_) {}
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_account ON refresh_tokens(account_id)"); } catch (_) {}
     const accounts = [

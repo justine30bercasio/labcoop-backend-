@@ -16,9 +16,9 @@ router.post('/send', asyncHandler(async (req, res) => {
   const name = senderName || (child.rows[0]?.child_name || 'Child');
 
   await store.query(
-    `INSERT INTO support_messages (message_id, account_id, child_name, sender_type, sender_name, content, admin_read, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [msgId, accountId, child.rows[0]?.child_name || '', 'child', name, content.trim(), 0, new Date().toISOString()]
+    `INSERT INTO support_messages (message_id, account_id, child_name, sender_type, sender_name, content, admin_read, child_read, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [msgId, accountId, child.rows[0]?.child_name || '', 'child', name, content.trim(), 0, 0, new Date().toISOString()]
   );
 
   res.json({ message: 'Sent', messageId: msgId });
@@ -31,22 +31,47 @@ router.get('/:accountId', asyncHandler(async (req, res) => {
     [req.params.accountId]
   );
 
-  // Mark user's own messages as read by user
+  // Mark admin's messages as read by child
   await store.query(
-    `UPDATE support_messages SET admin_read = 1 WHERE account_id = $1 AND sender_type = 'admin'`,
+    `UPDATE support_messages SET child_read = 1 WHERE account_id = $1 AND sender_type = 'admin' AND child_read = 0`,
     [req.params.accountId]
   );
 
   res.json(msgs.rows);
 }));
 
-// ── Get unread count for an account (for badge on app) ──
+// ── Get unread count for an account (badge on app — admin replies child hasn't read) ──
 router.get('/:accountId/unread', asyncHandler(async (req, res) => {
   const result = await store.query(
-    `SELECT COUNT(*) as c FROM support_messages WHERE account_id = $1 AND sender_type = 'admin' AND admin_read = 0`,
+    `SELECT COUNT(*) as c FROM support_messages WHERE account_id = $1 AND sender_type = 'admin' AND child_read = 0`,
     [req.params.accountId]
   );
   res.json({ unread: Number(result.rows[0]?.c || 0) });
+}));
+
+// ── Child typing heartbeat ──
+router.post('/typing', asyncHandler(async (req, res) => {
+  const { accountId, isTyping } = req.body;
+  if (!accountId) return res.status(400).json({ message: 'Account ID is required' });
+  await store.query(
+    `INSERT INTO typing_status (account_id, is_typing, last_heartbeat) VALUES ($1, $2, $3)
+     ON CONFLICT (account_id) DO UPDATE SET is_typing = $2, last_heartbeat = $3`,
+    [accountId, isTyping ? 1 : 0, new Date().toISOString()]
+  );
+  res.json({ ok: true });
+}));
+
+// ── Admin checks if child is typing ──
+router.get('/typing/:accountId', asyncHandler(async (req, res) => {
+  const row = await store.query(
+    `SELECT is_typing, last_heartbeat FROM typing_status WHERE account_id = $1`,
+    [req.params.accountId]
+  );
+  const r = row.rows[0];
+  if (!r) return res.json({ isTyping: false });
+  // Expire after 5 seconds of no heartbeat
+  const expired = Date.now() - new Date(r.last_heartbeat).getTime() > 5000;
+  res.json({ isTyping: !expired && Number(r.is_typing) === 1 });
 }));
 
 module.exports = router;

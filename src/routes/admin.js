@@ -7761,8 +7761,15 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
   .msg-bubble .mb-content { max-width:75%; padding:10px 14px; border-radius:12px; font-size:13px; line-height:1.5; }
   .msg-bubble.incoming .mb-content { background:#f1f5f9; color:var(--text); border-bottom-left-radius:4px; }
   .msg-bubble.outgoing .mb-content { background:var(--accent); color:#fff; border-bottom-right-radius:4px; }
-  .msg-bubble .mb-meta { font-size:10px; color:var(--text-muted); margin-top:4px; opacity:0.7; }
+  .msg-bubble .mb-meta { font-size:10px; color:var(--text-muted); margin-top:4px; opacity:0.7; display:flex; align-items:center; gap:4px; }
   .msg-bubble.outgoing .mb-meta { color:rgba(255,255,255,0.7); }
+  .msg-bubble .mb-meta .mb-read { font-style:italic; }
+  .mb-typing { display:flex; align-items:center; gap:8px; padding:8px 0; font-size:12px; color:var(--text-muted); }
+  .mb-typing .typing-dots { display:flex; gap:3px; }
+  .mb-typing .typing-dots span { width:6px; height:6px; border-radius:50%; background:var(--accent); animation:typingBounce 1.2s ease infinite; }
+  .mb-typing .typing-dots span:nth-child(2) { animation-delay:0.2s; }
+  .mb-typing .typing-dots span:nth-child(3) { animation-delay:0.4s; }
+  @keyframes typingBounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-4px)} }
   .msg-reply-box { margin-top:20px; background:var(--card); border:1px solid var(--border); border-radius:14px; overflow:hidden; }
   .msg-reply-box textarea { width:100%; padding:14px; border:none; outline:none; font-size:13px; font-family:inherit; resize:vertical; min-height:70px; background:transparent; color:var(--text); }
   .msg-reply-box .mr-actions { display:flex; align-items:center; justify-content:space-between; padding:8px 14px 12px; border-top:1px solid var(--border); }
@@ -7779,9 +7786,20 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
         msgs.map(function(m) {
           const isAdmin = m.sender_type === 'admin';
           const initial = isAdmin ? 'A' : (m.sender_name ? m.sender_name[0].toUpperCase() : '?');
-          return '<div class="msg-bubble ' + (isAdmin ? 'outgoing' : 'incoming') + '"><div class="mb-avatar">' + initial + '</div><div class="mb-content"><div>' + h(m.content) + '</div><div class="mb-meta">' + h(m.sender_name || m.sender_type) + ' · ' + (m.created_at ? m.created_at.slice(0,19).replace('T',' ') : '') + '</div></div></div>';
+          // Read receipt: admin msgs show child_read status; child msgs show admin_read status
+          var receipt = '';
+          if (isAdmin) {
+            receipt = Number(m.child_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Delivered</span>';
+          } else {
+            receipt = Number(m.admin_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Sent</span>';
+          }
+          return '<div class="msg-bubble ' + (isAdmin ? 'outgoing' : 'incoming') + '"><div class="mb-avatar">' + initial + '</div><div class="mb-content"><div>' + h(m.content) + '</div><div class="mb-meta">' + h(m.sender_name || m.sender_type) + ' · ' + (m.created_at ? m.created_at.slice(0,19).replace('T',' ') : '') + receipt + '</div></div></div>';
         }).join('')
       }
+      <div id="typingIndicator" class="mb-typing" style="display:none">
+        <div class="typing-dots"><span></span><span></span><span></span></div>
+        typing...
+      </div>
       <div id="replyTarget"></div>
     </div>
   </div>
@@ -7789,22 +7807,22 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
   <div class="msg-reply-box">
     <textarea id="replyContent" placeholder="Type your reply..." rows="2"></textarea>
     <div class="mr-actions">
-      <span style="font-size:11px;color:var(--text-muted)">Press Enter to send</span>
+      <span id="typingStatus" style="font-size:11px;color:var(--text-muted)">Press Enter to send</span>
       <button class="btn btn-primary btn-sm" onclick="sendReply()"><i class="fas fa-paper-plane"></i> Send</button>
     </div>
   </div>
 
   <script>
+  var accountId = '${req.params.accountId}';
   function sendReply(){
     var content = document.getElementById('replyContent');
     if (!content.value.trim()) return;
     fetch('/admin/messages/reply', {
       method: 'POST',
       headers: { 'Content-Type':'application/json', 'X-CSRF-Token':'${csrf}' },
-      body: JSON.stringify({ accountId: '${req.params.accountId}', content: content.value.trim() })
+      body: JSON.stringify({ accountId: accountId, content: content.value.trim() })
     }).then(function(r){ return r.json(); }).then(function(data){
       if (data.message === 'Sent') {
-        // Add message to thread
         var target = document.getElementById('replyTarget');
         var d = new Date();
         var ts = d.toISOString().slice(0,19).replace('T',' ');
@@ -7818,6 +7836,48 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
   document.getElementById('replyContent').addEventListener('keydown', function(e){
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); }
   });
+  // Poll typing indicator every 3s
+  setInterval(function(){
+    fetch('/api/v1/messages/typing/' + accountId)
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        var ti = document.getElementById('typingIndicator');
+        var ts = document.getElementById('typingStatus');
+        if (data.isTyping) {
+          ti.style.display = 'flex';
+          ts.textContent = 'Child is typing...';
+        } else {
+          ti.style.display = 'none';
+          ts.textContent = 'Press Enter to send';
+        }
+      })
+      .catch(function(){});
+  }, 3000);
+  // Poll for new messages every 5s
+  setInterval(function(){
+    fetch('/admin/messages/' + accountId + '/poll')
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if (data.messages && data.messages.length > 0) {
+          var target = document.getElementById('replyTarget');
+          data.messages.forEach(function(m){
+            var isAdmin = m.sender_type === 'admin';
+            if (!isAdmin) {
+              var initial = m.sender_name ? m.sender_name[0].toUpperCase() : '?';
+              var receipt = Number(m.admin_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Sent</span>';
+              var content = document.createElement('div');
+              content.textContent = m.content || '';
+              var sender = m.sender_name || m.sender_type || '';
+              var ts = m.created_at ? m.created_at.slice(0,19).replace('T',' ') : '';
+              var html = '<div class="msg-bubble incoming"><div class="mb-avatar">' + initial + '</div><div class="mb-content"><div>' + content.innerHTML + '</div><div class="mb-meta">' + sender.replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#x27;'}[c]}) + ' · ' + ts + receipt + '</div></div></div>';
+              target.insertAdjacentHTML('beforebegin', html);
+            }
+          });
+          target.scrollIntoView({ behavior:'smooth' });
+        }
+      })
+      .catch(function(){});
+  }, 5000);
   </script>`;
 
   res.type('html').send(layout('Messages', 'messages', content));
@@ -7848,6 +7908,15 @@ router.post('/messages/reply', requireRole(1), asyncHandler(async (req, res) => 
   } catch (_) {}
 
   res.json({ message: 'Sent', messageId: msgId });
+}));
+
+// ── Poll for new messages from child (for admin thread view) ──
+router.get('/messages/:accountId/poll', requireRole(1), asyncHandler(async (req, res) => {
+  const msgs = await store.query(
+    "SELECT * FROM support_messages WHERE account_id = $1 AND sender_type != 'admin' AND created_at > (SELECT COALESCE(MAX(created_at), '1970-01-01') FROM support_messages WHERE account_id = $1 AND sender_type = 'admin') ORDER BY created_at ASC",
+    [req.params.accountId]
+  );
+  res.json({ messages: msgs.rows });
 }));
 
 // ── Pending counts JSON endpoint (for admin notification bell) ──

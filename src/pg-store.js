@@ -584,6 +584,8 @@ class PgStore {
     await this.pool.query("ALTER TABLE checks ADD COLUMN IF NOT EXISTS checkbook_id TEXT").catch(() => {});
     await this.pool.query("ALTER TABLE checks ADD COLUMN IF NOT EXISTS stop_payment INTEGER DEFAULT 0").catch(() => {});
     await this.pool.query("ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS child_name TEXT DEFAULT ''").catch(() => {});
+    await this.pool.query("ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS child_read INTEGER DEFAULT 0").catch(() => {});
+    await this.pool.query(`CREATE TABLE IF NOT EXISTS typing_status (account_id TEXT PRIMARY KEY, is_typing INTEGER DEFAULT 0, last_heartbeat TEXT)`).catch(() => {});
     await this._seedGlAccounts();
 
     // --- Performance Indexes ---

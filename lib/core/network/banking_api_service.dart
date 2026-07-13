@@ -639,4 +639,64 @@ return null;
       return true;
     } on DioException { return false; }
   }
+
+  // ── Support Messages ──
+  static Future<Map<String, dynamic>?> sendMessage(String accountId, String content, {String? senderName}) async {
+    try {
+      final resp = await _dio.post('/api/messages/send', data: {
+        'accountId': accountId,
+        'content': content,
+        'senderName': senderName ?? '',
+      });
+      return resp.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      return e.response?.data as Map<String, dynamic>?;
+    }
+  }
+
+  static Future<List<dynamic>> getMessages(String accountId) async {
+    try {
+      final resp = await _dio.get('/api/messages/$accountId');
+      return resp.data as List<dynamic>;
+    } on DioException { return []; }
+  }
+
+  static Future<int> getMessageUnreadCount(String accountId) async {
+    try {
+      final resp = await _dio.get('/api/messages/$accountId/unread');
+      final data = resp.data as Map<String, dynamic>;
+      return (data['unread'] as int?) ?? 0;
+    } on DioException { return 0; }
+  }
+
+  // ── Parent Messages ──
+  static Future<Map<String, dynamic>?> parentSendMessage(String accountId, String content) async {
+    try {
+      await _addParentAuthHeader();
+      final resp = await _parentDio.post('/api/parent/messages/send', data: {
+        'accountId': accountId,
+        'content': content,
+      });
+      return resp.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      return e.response?.data as Map<String, dynamic>?;
+    }
+  }
+
+  static Future<List<dynamic>> parentGetMessages(String accountId) async {
+    try {
+      await _addParentAuthHeader();
+      final resp = await _parentDio.get('/api/parent/messages/$accountId');
+      return resp.data as List<dynamic>;
+    } on DioException { return []; }
+  }
+
+  static Future<int> parentGetMessageUnreadCount(String accountId) async {
+    try {
+      await _addParentAuthHeader();
+      final resp = await _parentDio.get('/api/parent/messages/$accountId/unread');
+      final data = resp.data as Map<String, dynamic>;
+      return (data['unread'] as int?) ?? 0;
+    } on DioException { return 0; }
+  }
 }

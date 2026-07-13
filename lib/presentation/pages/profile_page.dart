@@ -22,6 +22,7 @@ import 'package:dio/dio.dart';
 import 'kyc_page.dart';
 import 'board_page.dart';
 import 'login_page.dart';
+import 'support_page.dart';
 import 'terms_page.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -425,6 +426,16 @@ class _ProfilePageState extends State<ProfilePage>
             'Personalize your experience', Colors.grey.shade600, () {
           Navigator.push(context, PageTransition.slideUp(const _SettingsPage()))
               .then((_) => _load());
+        }),
+        const SizedBox(height: 10),
+        _actionTile(Icons.support_agent_rounded, 'Contact Support',
+            'Send a message to admin', const Color(0xFF2E7D32), () {
+          if (state is SavingsLoaded) {
+            Navigator.push(context, PageTransition.slideUp(SupportPage(
+              accountId: state.account.accountId,
+              childName: state.account.childName,
+            )));
+          }
         }),
         const SizedBox(height: 10),
         _actionTile(Icons.logout_rounded, 'Logout',

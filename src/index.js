@@ -2,6 +2,7 @@ require('dotenv').config();
 const path = require('path');
 const fs = require('fs');
 const express = require('express');
+const http = require('http');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -10,6 +11,7 @@ const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcryptjs');
 
 const { store, isPostgres } = require('./db');
+const { initSocket } = require('./services/socket');
 
 async function ensureDb() {
   if (isPostgres) return; // skip seed on PG — user will create accounts via admin
@@ -298,7 +300,7 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", 'cdn.datatables.net', 'cdnjs.cloudflare.com'],
       imgSrc: ["'self'", 'data:', 'https://*'],
       fontSrc: ["'self'", 'cdnjs.cloudflare.com', 'data:'],
-      connectSrc: ["'self'", 'cdn.jsdelivr.net'],
+      connectSrc: ["'self'", 'cdn.jsdelivr.net', 'ws:', 'wss:'],
       formAction: ["'self'"],
     },
   },
@@ -321,14 +323,15 @@ if (isPostgres) {
   const pgSession = require('connect-pg-simple')(session);
   sessionStore = new pgSession({ pool: store.getPool(), tableName: 'session', createTableIfMissing: true });
 }
-app.use(session({
+const sessionConfig = {
   secret: SESSION_SECRET,
   store: sessionStore,
   resave: false,
   saveUninitialized: false,
-  // TODO: In production, ensure cookie.secure is true (HTTPS only). For Render, NODE_ENV should be 'production'.
   cookie: { secure: process.env.NODE_ENV === 'production', httpOnly: true, maxAge: 86400000, sameSite: 'strict' },
-}));
+};
+const sessionMiddleware = session(sessionConfig);
+app.use(sessionMiddleware);
 
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -726,7 +729,12 @@ app.use((err, req, res, next) => {
     if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
   }
 
-app.listen(PORT, () => {
+const server = http.createServer(app);
+
+// ── Socket.IO real-time messaging ──
+initSocket(server, sessionMiddleware);
+
+server.listen(PORT, () => {
   console.log(`LabCoop API server running on port ${PORT}`);
   if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON && !process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
     console.warn('WARN: FIREBASE_SERVICE_ACCOUNT_JSON (or FIREBASE_SERVICE_ACCOUNT_PATH) not set — push notifications disabled.');

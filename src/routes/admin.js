@@ -7814,99 +7814,86 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
 
   <script>
   var accountId = '${req.params.accountId}';
+
+  // ── Socket.IO setup ──
+  var sock = window.adminSocket;
+  if (sock && sock.connected) {
+    sock.emit('join_account', accountId);
+  } else {
+    // Wait for socket to connect
+    var waitForSocket = setInterval(function(){
+      if (window.adminSocket && window.adminSocket.connected) {
+        window.adminSocket.emit('join_account', accountId);
+        clearInterval(waitForSocket);
+      }
+    }, 500);
+  }
+
+  // New child message via socket → append to thread
+  function appendMessage(msg){
+    if (msg.sender_type === 'admin') return; // we already optimistically rendered it
+    var target = document.getElementById('replyTarget');
+    if (!target) return;
+    var initial = (msg.sender_name || '?')[0].toUpperCase();
+    var contentEl = document.createElement('div');
+    contentEl.textContent = msg.content || '';
+    var sender = msg.sender_name || msg.sender_type || '';
+    var ts = msg.created_at ? msg.created_at.slice(0,19).replace('T',' ') : '';
+    var receipt = Number(msg.admin_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Sent</span>';
+    var html = '<div class="msg-bubble incoming" data-msg-id="' + msg.message_id + '"><div class="mb-avatar">' + initial + '</div><div class="mb-content"><div>' + contentEl.innerHTML + '</div><div class="mb-meta">' + sender.replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#x27;'}[c]}) + ' · ' + ts + receipt + '</div></div></div>';
+    target.insertAdjacentHTML('beforebegin', html);
+    target.scrollIntoView({ behavior:'smooth' });
+  }
+  if (sock) sock.on('new_message', function(msg){
+    if (msg.account_id == accountId) appendMessage(msg);
+  });
+
+  // ── Send reply via HTTP (CSRF) then emit via socket ──
   function sendReply(){
     var content = document.getElementById('replyContent');
     if (!content.value.trim()) return;
+    var text = content.value.trim();
+    content.value = '';
+    // Optimistically show sent message
+    var target = document.getElementById('replyTarget');
+    var d = new Date();
+    var ts = d.toISOString().slice(0,19).replace('T',' ');
+    var html = '<div class="msg-bubble outgoing"><div class="mb-avatar">A</div><div class="mb-content"><div>' + text + '</div><div class="mb-meta">Admin · ' + ts + '</div></div></div>';
+    target.insertAdjacentHTML('beforebegin', html);
+    target.scrollIntoView({ behavior:'smooth' });
+    // Emit via socket for instant delivery (faster than HTTP round-trip)
+    if (sock && sock.connected) {
+      sock.emit('admin_message', { accountId: accountId, content: text });
+    }
+    // Also POST for persistence + FCM push (fire-and-forget)
     fetch('/admin/messages/reply', {
       method: 'POST',
       headers: { 'Content-Type':'application/json', 'X-CSRF-Token':'${csrf}' },
-      body: JSON.stringify({ accountId: accountId, content: content.value.trim() })
-    }).then(function(r){ return r.json(); }).then(function(data){
-      if (data.message === 'Sent') {
-        var target = document.getElementById('replyTarget');
-        var d = new Date();
-        var ts = d.toISOString().slice(0,19).replace('T',' ');
-        var html = '<div class="msg-bubble outgoing"><div class="mb-avatar">A</div><div class="mb-content"><div>' + content.value.trim() + '</div><div class="mb-meta">Admin · ' + ts + '</div></div></div>';
-        target.insertAdjacentHTML('beforebegin', html);
-        content.value = '';
-        target.scrollIntoView({ behavior:'smooth' });
-      }
+      body: JSON.stringify({ accountId: accountId, content: text })
     }).catch(function(){});
   }
   document.getElementById('replyContent').addEventListener('keydown', function(e){
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); }
   });
-  // Refresh messenger FAB badge after marking messages as read
-  setTimeout(function(){ window.refreshMessengerBadge(); }, 500);
-  // Poll read receipts on admin messages every 4s
-  setInterval(function(){
-    fetch('/admin/messages/' + accountId + '/read-status')
-      .then(function(r){ return r.json(); })
-      .then(function(data){
-        if (data.statuses && data.statuses.length > 0) {
-          data.statuses.forEach(function(s){
-            var el = document.querySelector('[data-msg-id="' + s.message_id + '"] .mb-read');
-            if (el && Number(s.child_read) === 1) {
-              el.innerHTML = '&#x2713; Read';
-              el.style.opacity = '1';
-              el.style.fontStyle = 'italic';
-            }
-          });
-        }
-      })
-      .catch(function(){});
-  }, 4000);
-  // Poll typing indicator every 3s
-  setInterval(function(){
-    fetch('/api/v1/messages/typing/' + accountId)
-      .then(function(r){ return r.json(); })
-      .then(function(data){
-        var ti = document.getElementById('typingIndicator');
-        var ts = document.getElementById('typingStatus');
-        if (data.isTyping) {
-          ti.style.display = 'flex';
-          ts.textContent = 'Child is typing...';
-        } else {
-          ti.style.display = 'none';
-          ts.textContent = 'Press Enter to send';
-        }
-      })
-      .catch(function(){});
-  }, 3000);
-  // Poll for new messages every 5s (track seen IDs to avoid duplicates)
-  var seenIds = {};
-  var lastPoll = new Date().toISOString();
-  document.querySelectorAll('#msgThread .msg-bubble').forEach(function(el){
-    var id = el.getAttribute('data-msg-id');
-    if (id) seenIds[id] = true;
+
+  // ── Admin typing via socket (no more HTTP based polling) ──
+  var adminTypingInt;
+  document.getElementById('replyContent').addEventListener('input', function(){
+    if (sock && sock.connected) sock.emit('typing', { accountId: accountId, isTyping: true });
+    if (!adminTypingInt) {
+      adminTypingInt = setInterval(function(){
+        if (sock && sock.connected) sock.emit('typing', { accountId: accountId, isTyping: true });
+      }, 3000);
+    }
   });
-  setInterval(function(){
-    fetch('/admin/messages/' + accountId + '/poll?since=' + encodeURIComponent(lastPoll))
-      .then(function(r){ return r.json(); })
-      .then(function(data){
-        if (data.messages && data.messages.length > 0) {
-          var target = document.getElementById('replyTarget');
-          data.messages.forEach(function(m){
-            if (seenIds[m.message_id]) return;
-            seenIds[m.message_id] = true;
-            var isAdmin = m.sender_type === 'admin';
-            if (!isAdmin) {
-              var initial = m.sender_name ? m.sender_name[0].toUpperCase() : '?';
-              var receipt = Number(m.admin_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Sent</span>';
-              var content = document.createElement('div');
-              content.textContent = m.content || '';
-              var sender = m.sender_name || m.sender_type || '';
-              var ts = m.created_at ? m.created_at.slice(0,19).replace('T',' ') : '';
-              var html = '<div class="msg-bubble incoming" data-msg-id="' + m.message_id + '"><div class="mb-avatar">' + initial + '</div><div class="mb-content"><div>' + content.innerHTML + '</div><div class="mb-meta">' + sender.replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#x27;'}[c]}) + ' · ' + ts + receipt + '</div></div></div>';
-              target.insertAdjacentHTML('beforebegin', html);
-            }
-          });
-          target.scrollIntoView({ behavior:'smooth' });
-        }
-        lastPoll = new Date().toISOString();
-      })
-      .catch(function(){});
-  }, 5000);
+  var origSend = sendReply;
+  sendReply = function(){
+    if (sock && sock.connected) sock.emit('typing', { accountId: accountId, isTyping: false });
+    if (adminTypingInt) { clearInterval(adminTypingInt); adminTypingInt = null; }
+    origSend();
+  };
+  // Refresh badge after marking messages as read
+  setTimeout(function(){ window.refreshMessengerBadge(); }, 500);
   </script>`;
 
   res.type('html').send(layout('Messages', 'messages', content));

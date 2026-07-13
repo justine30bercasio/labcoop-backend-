@@ -156,6 +156,7 @@ function layout(title, active, content, opts = {}) {
 <title>LabCoop — ${title}</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/socket.io@4.7.5/client-dist/socket.io.min.js"></script>
 <style>
 :root {
   --sidebar: #0d2818; --sidebar-hover: #143020; --sidebar-active: #1a5c2a;
@@ -852,6 +853,45 @@ window.refreshMessengerBadge = function(){};
     mDd.classList.remove('show');
     mOverlay.classList.remove('show');
   });
+})();
+
+// ── Socket.IO admin client ──
+(function(){
+  if (typeof io === 'undefined') return;
+  var sio = io('/', { transports: ['websocket', 'polling'] });
+  sio.on('connect', function(){ sio.emit('join_account', 'admin'); });
+  // New message → refresh badge & show toast notification
+  sio.on('new_message', function(msg){
+    if (window.refreshMessengerBadge) window.refreshMessengerBadge();
+    // Flash FAB if not in dropdown view
+    var fab = document.getElementById('msgFab');
+    if (fab) { fab.classList.add('has-new'); setTimeout(function(){ fab.classList.remove('has-new'); }, 2000); }
+  });
+  // Typing status from child (update thread view if open)
+  sio.on('typing_status', function(data){
+    if (data.sender === 'child') {
+      var ti = document.getElementById('typingIndicator');
+      var ts = document.getElementById('typingStatus');
+      if (ti && ts) {
+        ti.style.display = data.isTyping ? 'flex' : 'none';
+        ts.textContent = data.isTyping ? 'Child is typing...' : 'Press Enter to send';
+      }
+    }
+  });
+  // Read receipt (child read admin's message)
+  sio.on('read_receipt', function(data){
+    if (data.readBy === 'child' && data.accountId) {
+      document.querySelectorAll('[data-msg-id]').forEach(function(el){
+        var readBadge = el.querySelector('.mb-read');
+        if (readBadge) {
+          readBadge.innerHTML = '&#x2713; Read';
+          readBadge.style.opacity = '1';
+          readBadge.style.fontStyle = 'italic';
+        }
+      });
+    }
+  });
+  window.adminSocket = sio;
 })();
 </script>
 <div id="confirm-modal" class="confirm-overlay" role="dialog" aria-modal="true" style="display:none">

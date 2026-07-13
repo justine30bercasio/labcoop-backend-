@@ -61,6 +61,30 @@ router.post('/typing', asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// ── Admin typing heartbeat ──
+router.post('/admin-typing', asyncHandler(async (req, res) => {
+  const { accountId, isTyping } = req.body;
+  if (!accountId) return res.status(400).json({ message: 'Account ID is required' });
+  await store.query(
+    `INSERT INTO typing_status (account_id, is_typing, last_heartbeat) VALUES ($1, $2, $3)
+     ON CONFLICT (account_id) DO UPDATE SET is_typing = $2, last_heartbeat = $3`,
+    ['admin:' + accountId, isTyping ? 1 : 0, new Date().toISOString()]
+  );
+  res.json({ ok: true });
+}));
+
+// ── Flutter checks if admin is typing ──
+router.get('/admin-typing/:accountId', asyncHandler(async (req, res) => {
+  const row = await store.query(
+    `SELECT is_typing, last_heartbeat FROM typing_status WHERE account_id = $1`,
+    ['admin:' + req.params.accountId]
+  );
+  const r = row.rows[0];
+  if (!r) return res.json({ isTyping: false });
+  const expired = Date.now() - new Date(r.last_heartbeat).getTime() > 5000;
+  res.json({ isTyping: !expired && Number(r.is_typing) === 1 });
+}));
+
 // ── Admin checks if child is typing ──
 router.get('/typing/:accountId', asyncHandler(async (req, res) => {
   const row = await store.query(

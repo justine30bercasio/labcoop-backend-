@@ -548,7 +548,6 @@ table.dataTable td.mono { font-family:var(--mono); font-size:12px; }
     </div>
     <div class="notif-overlay" id="notifOverlay"></div>
   </div>
-  </div>
 
   ${toastHtml}
 

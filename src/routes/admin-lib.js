@@ -918,7 +918,7 @@ window.refreshMessengerBadge = function(){};
   });
   // Typing status
   sio.on('typingStatus', function(data){
-    if (data.sender === 'child') {
+    if (data.sender === 'child' && window._currentAccountId && data.accountId == window._currentAccountId) {
       var ti = document.getElementById('typingIndicator');
       var ts = document.getElementById('typingStatus');
       if (ti && ts) {

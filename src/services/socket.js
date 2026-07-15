@@ -104,8 +104,9 @@ function initSocket(httpServer, sessionMiddleware) {
     socket.on('typing', (data) => {
       const { room, isTyping } = data || {};
       if (!room) return;
+      const accountId = room.startsWith('chat_') ? room.slice(5) : null;
       // Relay to everyone in the room except sender
-      socket.to(room).emit('typingStatus', { room, isTyping, sender: role });
+      socket.to(room).emit('typingStatus', { room, accountId, isTyping, sender: role });
     });
 
     // ── Read receipt (child marks admin messages as read) ──

@@ -35,6 +35,7 @@ class _SupportPageState extends State<SupportPage> {
     SocketService.markRead('chat_${widget.accountId}');
     SocketService.onNewMessage(_onNewMessage);
     SocketService.onTypingStatus(_onTypingStatus);
+    SocketService.onReadReceipt(_onReadReceipt);
   }
 
   void _onNewMessage(dynamic data) {
@@ -67,10 +68,37 @@ class _SupportPageState extends State<SupportPage> {
     }
   }
 
+  void _onReadReceipt(dynamic data) {
+    if (!mounted) return;
+    final d = data as Map<String, dynamic>;
+    if (d['readBy'] == 'admin') {
+      // Admin read child's messages → update admin_read on all child messages
+      bool changed = false;
+      for (var i = 0; i < _messages.length; i++) {
+        if (_messages[i]['sender_type'] == 'child' && _messages[i]['admin_read'] != 1) {
+          _messages[i]['admin_read'] = 1;
+          changed = true;
+        }
+      }
+      if (changed && mounted) setState(() {});
+    } else if (d['readBy'] == 'child') {
+      // Child read admin's messages → update child_read on all admin messages
+      bool changed = false;
+      for (var i = 0; i < _messages.length; i++) {
+        if (_messages[i]['sender_type'] == 'admin' && _messages[i]['child_read'] != 1) {
+          _messages[i]['child_read'] = 1;
+          changed = true;
+        }
+      }
+      if (changed && mounted) setState(() {});
+    }
+  }
+
   @override
   void dispose() {
     SocketService.offNewMessage();
     SocketService.offTypingStatus();
+    SocketService.offReadReceipt();
     SocketService.sendTyping('chat_${widget.accountId}', false);
     _controller.dispose();
     _scrollController.dispose();

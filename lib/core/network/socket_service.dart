@@ -101,6 +101,14 @@ class SocketService {
     _socket?.off('typing_status');
   }
 
+  static void onReadReceipt(void Function(dynamic data) callback) {
+    _socket?.on('readReceipt', callback);
+  }
+
+  static void offReadReceipt() {
+    _socket?.off('readReceipt');
+  }
+
   static void dispose() {
     _socket?.disconnect();
     _socket?.dispose();

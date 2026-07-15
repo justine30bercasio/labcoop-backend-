@@ -19,8 +19,9 @@ class _SupportPageState extends State<SupportPage> {
   bool _loading = true;
   bool _sending = false;
   bool _adminTyping = false;
-  Timer? _typingTimer;
+  Timer? _typingHeartbeat;
   bool _userIsTyping = false;
+  Timer? _adminTypingTimer; // auto-hide after 5s of no typingStatus
 
   @override
   void initState() {
@@ -64,7 +65,17 @@ class _SupportPageState extends State<SupportPage> {
     if (!mounted) return;
     final d = data as Map<String, dynamic>;
     if (d['accountId'] == widget.accountId && d['sender'] == 'admin') {
-      setState(() => _adminTyping = d['isTyping'] == true);
+      setState(() {
+        _adminTyping = d['isTyping'] == true;
+        if (_adminTyping) {
+          _adminTypingTimer?.cancel();
+          _adminTypingTimer = Timer(const Duration(seconds: 5), () {
+            if (mounted) setState(() => _adminTyping = false);
+          });
+        } else {
+          _adminTypingTimer?.cancel();
+        }
+      });
     }
   }
 
@@ -102,7 +113,8 @@ class _SupportPageState extends State<SupportPage> {
     SocketService.sendTyping('chat_${widget.accountId}', false);
     _controller.dispose();
     _scrollController.dispose();
-    _typingTimer?.cancel();
+    _typingHeartbeat?.cancel();
+    _adminTypingTimer?.cancel();
     super.dispose();
   }
 
@@ -131,18 +143,22 @@ class _SupportPageState extends State<SupportPage> {
 
   void _onTyping(String val) {
     var room = 'chat_${widget.accountId}';
-    if (val.isNotEmpty && !_userIsTyping) {
-      _userIsTyping = true;
+    if (val.isNotEmpty) {
       SocketService.sendTyping(room, true);
-      _typingTimer?.cancel();
-      _typingTimer = Timer(const Duration(seconds: 4), () {
+      if (!_userIsTyping) {
+        _userIsTyping = true;
+        // Repeating heartbeat every 3s while typing
+        _typingHeartbeat?.cancel();
+        _typingHeartbeat = Timer.periodic(const Duration(seconds: 3), (_) {
+          SocketService.sendTyping(room, true);
+        });
+      }
+    } else {
+      if (_userIsTyping) {
         SocketService.sendTyping(room, false);
         _userIsTyping = false;
-      });
-    } else if (val.isEmpty && _userIsTyping) {
-      SocketService.sendTyping(room, false);
-      _userIsTyping = false;
-      _typingTimer?.cancel();
+        _typingHeartbeat?.cancel();
+      }
     }
   }
 
@@ -153,7 +169,7 @@ class _SupportPageState extends State<SupportPage> {
     _controller.clear();
     SocketService.sendTyping('chat_${widget.accountId}', false);
     _userIsTyping = false;
-    _typingTimer?.cancel();
+    _typingHeartbeat?.cancel();
 
     if (SocketService.isConnected) {
       SocketService.sendMessage(widget.accountId, text, senderName: widget.childName, childName: widget.childName);
@@ -373,29 +389,66 @@ class _SupportPageState extends State<SupportPage> {
   }
 
   Widget _typingDots() {
-    return SizedBox(
-      width: 28,
-      height: 10,
-      child: Stack(
-        children: List.generate(3, (i) {
-          return Positioned(
-            left: i * 10.0,
-            top: 0,
-            child: AnimatedOpacity(
-              opacity: _adminTyping ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 300),
-              child: Container(
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: Colors.green.shade400,
-                  shape: BoxShape.circle,
+    return const BouncingDots();
+  }
+}
+
+class BouncingDots extends StatefulWidget {
+  const BouncingDots({super.key});
+  @override
+  State<BouncingDots> createState() => _BouncingDotsState();
+}
+
+class _BouncingDotsState extends State<BouncingDots> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200));
+    _anim = Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+    _controller.repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _anim,
+      builder: (_, __) {
+        return SizedBox(
+          width: 28,
+          height: 12,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(3, (i) {
+              final delay = i * 0.15;
+              final t = (_anim.value + delay) % 1.0;
+              final offset = -4 * (t < 0.5 ? 2 * t : 2 * (1 - t));
+              return Padding(
+                padding: EdgeInsets.only(right: i < 2 ? 4 : 0),
+                child: Transform.translate(
+                  offset: Offset(0, offset),
+                  child: Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade400,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          );
-        }),
-      ),
+              );
+            }),
+          ),
+        );
+      },
     );
   }
 }

@@ -7820,38 +7820,34 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
   // ── HTML escaping ──
   function esc(s){ return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#x27;'}[c]}); }
 
-  // ── Rebuild entire thread from API ──
-  function rebuildThread(){
-    var thread = document.getElementById('msgThread');
-    fetch('/api/messages/' + accountId + '?_=' + Date.now())
-      .then(function(r){ return r.json(); })
-      .then(function(msgs){
-        var html = '';
-        for (var i = 0; i < msgs.length; i++) {
-          var m = msgs[i];
-          var isAdmin = m.sender_type === 'admin';
-          var initial = isAdmin ? 'A' : (m.sender_name ? esc(m.sender_name[0].toUpperCase()) : '?');
-          var receipt;
-          if (isAdmin) {
-            receipt = Number(m.child_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Delivered</span>';
-          } else {
-            receipt = Number(m.admin_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Sent</span>';
-          }
-          html += '<div class="msg-bubble ' + (isAdmin ? 'outgoing' : 'incoming') + '" data-msg-id="' + esc(m.message_id) + '"><div class="mb-avatar">' + initial + '</div><div class="mb-content"><div>' + esc(m.content) + '</div><div class="mb-meta">' + esc(m.sender_name || m.sender_type) + ' · ' + (m.created_at ? m.created_at.slice(0,19).replace('T',' ') : '') + receipt + '</div></div></div>';
-        }
-        if (thread) {
-          thread.innerHTML = html + '<div id="typingIndicator" class="mb-typing" style="display:none"><div class="typing-dots"><span></span><span></span><span></span></div>typing...</div><div id="replyTarget"></div>';
-          var rt = document.getElementById('replyTarget');
-          if (rt) rt.scrollIntoView({ behavior:'smooth' });
-        }
-      })
-      .catch(function(){});
+  // ── Append a single message to the thread (never removes existing) ──
+  var _knownIds = {};
+  document.querySelectorAll('#msgThread .msg-bubble[data-msg-id]').forEach(function(el){
+    _knownIds[el.getAttribute('data-msg-id')] = true;
+  });
+  function appendMsg(msg){
+    if (_knownIds[msg.message_id]) return;
+    _knownIds[msg.message_id] = true;
+    var target = document.getElementById('replyTarget');
+    if (!target) return;
+    var isAdmin = msg.sender_type === 'admin';
+    var initial = isAdmin ? 'A' : (msg.sender_name ? esc(msg.sender_name[0].toUpperCase()) : '?');
+    var receipt;
+    if (isAdmin) {
+      receipt = Number(msg.child_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Delivered</span>';
+    } else {
+      receipt = Number(msg.admin_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Sent</span>';
+    }
+    var html = '<div class="msg-bubble ' + (isAdmin ? 'outgoing' : 'incoming') + '" data-msg-id="' + esc(msg.message_id) + '"><div class="mb-avatar">' + initial + '</div><div class="mb-content"><div>' + esc(msg.content) + '</div><div class="mb-meta">' + esc(msg.sender_name || msg.sender_type) + ' · ' + (msg.created_at ? msg.created_at.slice(0,19).replace('T',' ') : '') + receipt + '</div></div></div>';
+    target.insertAdjacentHTML('beforebegin', html);
+    target.scrollIntoView({ behavior:'smooth' });
   }
 
   // ── Socket signal (called by global newMessage handler) ──
   window._onNewMsg = function(msg){
     if (msg.account_id != accountId) return;
-    rebuildThread();
+    if (msg.sender_type === 'admin') return; // own reply already shown via optimistic insert
+    appendMsg(msg);
   };
 
   // ── Join chat room when socket is ready ──

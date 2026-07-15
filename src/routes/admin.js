@@ -7906,12 +7906,19 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); }
   });
 
-  // ── Admin typing via socket ──
-  var adminTypingInt;
+  // ── Admin typing via socket (auto-stops after 3s idle) ──
+  var adminTypingInt, adminLastKeystroke;
   document.getElementById('replyContent').addEventListener('input', function(){
+    adminLastKeystroke = Date.now();
     if (window.adminSocket && window.adminSocket.connected) window.adminSocket.emit('typing', { room: room, isTyping: true });
     if (!adminTypingInt) {
       adminTypingInt = setInterval(function(){
+        if (Date.now() - adminLastKeystroke > 3000) {
+          // Idle for 3+ seconds — stop typing
+          if (window.adminSocket && window.adminSocket.connected) window.adminSocket.emit('typing', { room: room, isTyping: false });
+          clearInterval(adminTypingInt); adminTypingInt = null;
+          return;
+        }
         if (window.adminSocket && window.adminSocket.connected) window.adminSocket.emit('typing', { room: room, isTyping: true });
       }, 3000);
     }

@@ -902,29 +902,13 @@ window.refreshMessengerBadge = function(){};
   if (typeof io === 'undefined') return;
   var sio = io('/', { transports: ['websocket', 'polling'] });
   sio.on('connect', function(){ sio.emit('join_account', 'admin'); });
-  // New message → refresh badge, flash FAB, and append to open thread
-  var _globalSeenMsgIds = {};
+  // New message → refresh badge, flash FAB, trigger immediate poll for conversation page
   sio.on('new_message', function(msg){
     if (window.refreshMessengerBadge) window.refreshMessengerBadge();
     var fab = document.getElementById('msgFab');
     if (fab) { fab.classList.add('has-new'); setTimeout(function(){ fab.classList.remove('has-new'); }, 2000); }
-    // Direct thread append (no callback dependency)
-    if (window._currentAccountId && msg.account_id == window._currentAccountId) {
-      if (msg.message_id && _globalSeenMsgIds[msg.message_id]) return;
-      if (msg.message_id) _globalSeenMsgIds[msg.message_id] = true;
-      var target = document.getElementById('replyTarget');
-      if (target) {
-        var initial = (msg.sender_name || '?')[0].toUpperCase();
-        var contentEl = document.createElement('div');
-        contentEl.textContent = msg.content || '';
-        var sender = msg.sender_name || msg.sender_type || '';
-        var ts = msg.created_at ? msg.created_at.slice(0,19).replace('T',' ') : '';
-        var receipt = Number(msg.admin_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Sent</span>';
-        var html = '<div class="msg-bubble incoming" data-msg-id="' + msg.message_id + '"><div class="mb-avatar">' + initial + '</div><div class="mb-content"><div>' + contentEl.innerHTML + '</div><div class="mb-meta">' + sender.replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#x27;'}[c]}) + ' · ' + ts + receipt + '</div></div></div>';
-        target.insertAdjacentHTML('beforebegin', html);
-        target.scrollIntoView({ behavior:'smooth' });
-      }
-    }
+    // Signal conversation page to poll NOW instead of waiting for next interval
+    if (window._onNewMsg) window._onNewMsg(msg);
   });
   // Typing status from child (update thread view if open)
   sio.on('typing_status', function(data){

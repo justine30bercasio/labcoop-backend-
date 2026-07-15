@@ -7816,28 +7816,49 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
   var accountId = '${req.params.accountId}';
   window._currentAccountId = accountId;
 
-  // ── Real-time message appending (called by admin-lib.js global new_message handler) ──
-  var _seenMsgIds = {};
+  // ── Dedup by msg ID ──
+  var _knownIds = {};
   document.querySelectorAll('#msgThread .msg-bubble[data-msg-id]').forEach(function(el){
-    _seenMsgIds[el.getAttribute('data-msg-id')] = true;
+    _knownIds[el.getAttribute('data-msg-id')] = true;
   });
-  window._appendThreadMsg = function(msg){
+
+  // ── Append a single message to the thread ──
+  function appendIncoming(msg){
     if (msg.sender_type === 'admin') return;
-    if (msg.account_id != accountId) return;
-    if (msg.message_id && _seenMsgIds[msg.message_id]) return;
-    if (msg.message_id) _seenMsgIds[msg.message_id] = true;
+    if (msg.message_id && _knownIds[msg.message_id]) return;
+    if (msg.message_id) _knownIds[msg.message_id] = true;
     var target = document.getElementById('replyTarget');
     if (!target) return;
-    var initial = (msg.sender_name || '?')[0].toUpperCase();
-    var contentEl = document.createElement('div');
-    contentEl.textContent = msg.content || '';
-    var sender = msg.sender_name || msg.sender_type || '';
+    var sec = document.createElement('div');
+    sec.textContent = msg.content || '';
+    var sender = (msg.sender_name || msg.sender_type || '').replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#x27;'}[c]});
     var ts = msg.created_at ? msg.created_at.slice(0,19).replace('T',' ') : '';
     var receipt = Number(msg.admin_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Sent</span>';
-    var html = '<div class="msg-bubble incoming" data-msg-id="' + msg.message_id + '"><div class="mb-avatar">' + initial + '</div><div class="mb-content"><div>' + contentEl.innerHTML + '</div><div class="mb-meta">' + sender.replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#x27;'}[c]}) + ' · ' + ts + receipt + '</div></div></div>';
+    var html = '<div class="msg-bubble incoming" data-msg-id="' + msg.message_id + '"><div class="mb-avatar">' + ((msg.sender_name || '?')[0].toUpperCase()) + '</div><div class="mb-content"><div>' + sec.innerHTML + '</div><div class="mb-meta">' + sender + ' · ' + ts + receipt + '</div></div></div>';
     target.insertAdjacentHTML('beforebegin', html);
     target.scrollIntoView({ behavior:'smooth' });
+  }
+
+  // ── Socket signal: immediate poll ──
+  window._onNewMsg = function(msg){
+    if (msg.account_id != accountId) return;
+    appendIncoming(msg);
   };
+
+  // ── HTTP polling every 2 seconds (bulletproof real-time) ──
+  var _since = new Date().toISOString();
+  (function poll(){
+    fetch('/admin/messages/' + accountId + '/poll?since=' + encodeURIComponent(_since))
+      .then(function(r){ return r.json(); })
+      .then(function(arr){
+        for (var i = 0; i < arr.length; i++) {
+          appendIncoming(arr[i]);
+          if (arr[i].created_at > _since) _since = arr[i].created_at;
+        }
+      })
+      .catch(function(){})
+      .then(function(){ setTimeout(poll, 2000); });
+  })();
 
   // Join account room for typing indicator & read receipts
   function whenAdminSocket(cb){
@@ -7853,10 +7874,10 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
 
   // ── Send reply via HTTP (CSRF) then emit via socket ──
   function sendReply(){
-    var content = document.getElementById('replyContent');
-    if (!content.value.trim()) return;
-    var text = content.value.trim();
-    content.value = '';
+    var el = document.getElementById('replyContent');
+    if (!el.value.trim()) return;
+    var text = el.value.trim();
+    el.value = '';
     var target = document.getElementById('replyTarget');
     var d = new Date();
     var ts = d.toISOString().slice(0,19).replace('T',' ');

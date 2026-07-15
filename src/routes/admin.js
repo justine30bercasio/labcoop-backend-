@@ -7822,42 +7822,54 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
     _knownIds[el.getAttribute('data-msg-id')] = true;
   });
 
-  // ── Append a single message to the thread ──
-  function appendIncoming(msg){
-    if (msg.sender_type === 'admin') return;
-    if (msg.message_id && _knownIds[msg.message_id]) return;
-    if (msg.message_id) _knownIds[msg.message_id] = true;
-    var target = document.getElementById('replyTarget');
-    if (!target) return;
-    var sec = document.createElement('div');
-    sec.textContent = msg.content || '';
-    var sender = (msg.sender_name || msg.sender_type || '').replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#x27;'}[c]});
-    var ts = msg.created_at ? msg.created_at.slice(0,19).replace('T',' ') : '';
-    var receipt = Number(msg.admin_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Sent</span>';
-    var html = '<div class="msg-bubble incoming" data-msg-id="' + msg.message_id + '"><div class="mb-avatar">' + ((msg.sender_name || '?')[0].toUpperCase()) + '</div><div class="mb-content"><div>' + sec.innerHTML + '</div><div class="mb-meta">' + sender + ' · ' + ts + receipt + '</div></div></div>';
-    target.insertAdjacentHTML('beforebegin', html);
-    target.scrollIntoView({ behavior:'smooth' });
+  // ── Rebuild entire thread from server data ──
+  function esc(s){ return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#x27;'}[c]}); }
+  function rebuildThread(){
+    var thread = document.getElementById('msgThread');
+    fetch('/api/messages/' + accountId)
+      .then(function(r){ return r.json(); })
+      .then(function(msgs){
+        _knownIds = {};
+        var html = '';
+        for (var i = 0; i < msgs.length; i++) {
+          var m = msgs[i];
+          _knownIds[m.message_id] = true;
+          var isAdmin = m.sender_type === 'admin';
+          var initial = isAdmin ? 'A' : (m.sender_name ? esc(m.sender_name[0].toUpperCase()) : '?');
+          var receipt;
+          if (isAdmin) {
+            receipt = Number(m.child_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Delivered</span>';
+          } else {
+            receipt = Number(m.admin_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Sent</span>';
+          }
+          html += '<div class="msg-bubble ' + (isAdmin ? 'outgoing' : 'incoming') + '" data-msg-id="' + esc(m.message_id) + '"><div class="mb-avatar">' + initial + '</div><div class="mb-content"><div>' + esc(m.content) + '</div><div class="mb-meta">' + esc(m.sender_name || m.sender_type) + ' · ' + (m.created_at ? m.created_at.slice(0,19).replace('T',' ') : '') + receipt + '</div></div></div>';
+        }
+        if (thread) {
+          thread.innerHTML = html + '<div id="typingIndicator" class="mb-typing" style="display:none"><div class="typing-dots"><span></span><span></span><span></span></div>typing...</div><div id="replyTarget"></div>';
+          var rt = document.getElementById('replyTarget');
+          if (rt) rt.scrollIntoView({ behavior:'smooth' });
+        }
+        _lastCount = msgs.length;
+      })
+      .catch(function(){});
   }
 
-  // ── Socket signal: immediate poll ──
+  // ── Socket signal + poll trigger ──
   window._onNewMsg = function(msg){
     if (msg.account_id != accountId) return;
-    appendIncoming(msg);
+    rebuildThread();
   };
 
-  // ── HTTP polling every 2 seconds (bulletproof real-time) ──
-  var _since = new Date().toISOString();
+  // ── HTTP polling every 2 seconds ──
+  var _lastCount = document.querySelectorAll('#msgThread .msg-bubble').length;
   (function poll(){
-    fetch('/admin/messages/' + accountId + '/poll?since=' + encodeURIComponent(_since) + '&_=' + Date.now())
-      .then(function(r){
-        if (r.status !== 200) return [];
-        return r.json();
-      })
+    fetch('/api/messages/' + accountId + '?_=' + Date.now())
+      .then(function(r){ return r.json(); })
       .then(function(arr){
-        if (!arr || !arr.length) return;
-        for (var i = 0; i < arr.length; i++) {
-          appendIncoming(arr[i]);
-          if (arr[i].created_at > _since) _since = arr[i].created_at;
+        if (!arr) return;
+        if (arr.length !== _lastCount) {
+          _lastCount = arr.length;
+          rebuildThread();
         }
       })
       .catch(function(){})

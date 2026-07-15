@@ -430,6 +430,7 @@ table.dataTable td, table.dataTable th, table.dataTable tbody, table.dataTable t
 [data-theme="dark"] .action-dropdown a:hover, [data-theme="dark"] .action-dropdown button:hover { background:rgba(255,255,255,0.05); }
 [data-theme="dark"] .action-dropdown .text-red:hover { background:rgba(239,68,68,0.15); }
 [data-theme="dark"] .action-dropdown .text-green:hover { background:rgba(34,197,94,0.15); }
+[data-theme="dark"] .action-dropdown .text-amber { color:#fbbf24; }
 [data-theme="dark"] .action-dropdown .text-amber:hover { background:rgba(245,158,11,0.15); }
 
 /* ── Confirmation Modal ── */
@@ -443,6 +444,47 @@ table.dataTable td, table.dataTable th, table.dataTable tbody, table.dataTable t
 .confirm-actions .btn-cancel:hover { background:var(--border); }
 @keyframes cfade { from{opacity:0} to{opacity:1} }
 @keyframes cscale { from{opacity:0;transform:scale(0.92) translateY(8px)} to{opacity:1;transform:scale(1) translateY(0)} }
+
+/* ── Dark Mode Overrides for Page-Specific Hardcoded Colors ── */
+[data-theme="dark"] .insight-banner .ib-text,
+[data-theme="dark"] .insight-banner .ib-stat { color:#bbf7d0; }
+[data-theme="dark"] .balance-primary .bp-label { color:#86efac; }
+[data-theme="dark"] .balance-primary .bp-value { color:#bbf7d0; }
+[data-theme="dark"] .customer-chip { background:rgba(34,197,94,0.15); color:#86efac; border-color:rgba(34,197,94,0.3); }
+[data-theme="dark"] .keypad-btn.selected { background:rgba(46,125,50,0.25); border-color:var(--accent); color:#bbf7d0; }
+[data-theme="dark"] .keypad-btn.kp-green { border-color:rgba(34,197,94,0.3); color:#86efac; }
+[data-theme="dark"] .keypad-btn.kp-orange { border-color:rgba(251,191,36,0.3); color:#fbbf24; }
+[data-theme="dark"] .keypad-btn.kp-blue { border-color:rgba(59,130,246,0.3); color:#93c5fd; }
+[data-theme="dark"] .receipt-modal .rm-title { color:#bbf7d0; }
+[data-theme="dark"] .receipt-modal .rm-value { color:var(--text); }
+[data-theme="dark"] .receipt-modal .rm-sub,
+[data-theme="dark"] .receipt-modal .rm-label { color:var(--text-muted); }
+[data-theme="dark"] .receipt-modal .rm-header { border-bottom-color:var(--border); }
+[data-theme="dark"] .tx-badge.deposit,
+[data-theme="dark"] .tx-badge.interest,
+[data-theme="dark"] .tx-badge.interest_credit { background:rgba(34,197,94,0.15); color:#86efac; }
+[data-theme="dark"] .tx-badge.withdrawal { background:rgba(239,68,68,0.15); color:#fca5a5; }
+[data-theme="dark"] .tx-badge.loan_payment { background:rgba(59,130,246,0.15); color:#93c5fd; }
+[data-theme="dark"] .tx-badge.loan_disbursement { background:rgba(251,191,36,0.15); color:#fde68a; }
+[data-theme="dark"] .tx-badge.allocation { background:rgba(56,189,248,0.15); color:#7dd3fc; }
+[data-theme="dark"] .tx-badge.fee { background:rgba(168,85,247,0.15); color:#d8b4fe; }
+[data-theme="dark"] .tx-badge.voided { background:rgba(239,68,68,0.15); color:#fca5a5; }
+[data-theme="dark"] .tr-action-btn.void { background:rgba(239,68,68,0.15); color:#fca5a5; }
+[data-theme="dark"] .badge-pill { background:rgba(168,85,247,0.15); color:#d8b4fe; }
+[data-theme="dark"] .settings-grid .stat-card:nth-child(1) .stat-icon { background:rgba(14,165,233,0.15);color:#7dd3fc; }
+[data-theme="dark"] .settings-grid .stat-card:nth-child(2) .stat-icon { background:rgba(34,197,94,0.15);color:#86efac; }
+[data-theme="dark"] .settings-grid .stat-card:nth-child(3) .stat-icon { background:rgba(251,191,36,0.15);color:#fde68a; }
+[data-theme="dark"] .settings-grid .stat-card:nth-child(4) .stat-icon { background:rgba(168,85,247,0.15);color:#d8b4fe; }
+[data-theme="dark"] .db-tip { background:#1e1b0e; border-color:#5c4a1a; color:#fbbf24; }
+[data-theme="dark"] .pending-alert .pa-text { color:#fbbf24; }
+[data-theme="dark"] .notif-item:hover { background:rgba(255,255,255,0.05); }
+[data-theme="dark"] .msg-item:hover { background:rgba(2,132,199,0.1); }
+[data-theme="dark"] .notif-dropdown-footer a:hover,
+[data-theme="dark"] .msg-dropdown-footer a:hover { background:rgba(255,255,255,0.05); }
+[data-theme="dark"] .info-box { background:rgba(34,197,94,0.1) !important; color:#bbf7d0 !important; }
+[data-theme="dark"] .tr-action-btn.rcpt { background:rgba(46,125,50,0.2); color:var(--accent); }
+[data-theme="dark"] .toast.success { background:#14532d; color:#bbf7d0; border-color:#166534; }
+[data-theme="dark"] .toast.error { background:#450a0a; color:#fca5a5; border-color:#991b1b; }
 </style>
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.datatables.net/2.2.2/js/dataTables.js"></script>

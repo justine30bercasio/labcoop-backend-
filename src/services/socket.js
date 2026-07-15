@@ -15,10 +15,10 @@ function initSocket(httpServer, sessionMiddleware) {
 
   io.use((socket, next) => {
     const req = socket.request;
-    // Admin: check session
-    if (req.session?.userId) {
+    // Admin: check session (all admin routes use adminId)
+    if (req.session?.adminId) {
       socket.data.role = 'admin';
-      socket.data.userId = req.session.userId;
+      socket.data.userId = req.session.adminId;
       return next();
     }
     // Child: check JWT in auth handshake

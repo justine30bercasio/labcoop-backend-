@@ -6,7 +6,7 @@ import '../constants/app_constants.dart';
 class SocketService {
   static IO.Socket? _socket;
   static bool _initialized = false;
-  static String? _currentAccountId;
+  static String? _currentRoom;
 
   static IO.Socket? get socket => _socket;
   static bool get isConnected => _socket?.connected ?? false;
@@ -21,7 +21,6 @@ class SocketService {
     _socket?.onConnect((_) {
       if (!completer.isCompleted) completer.complete();
     });
-    // Socket may already be connecting; check again after listener
     if (isConnected && !completer.isCompleted) {
       timer.cancel();
       completer.complete();
@@ -45,53 +44,60 @@ class SocketService {
     _socket!.onDisconnect((_) {});
     _socket!.onError((err) {});
 
-    // Reconnect: re-join account room
+    // Reconnect: re-join room
     _socket!.io.on('reconnect', (_) {
-      if (_currentAccountId != null) {
-        _socket?.emit('join_account', _currentAccountId);
+      if (_currentRoom != null) {
+        _socket?.emit('joinRoom', _currentRoom);
       }
     });
   }
 
-  static Future<void> joinAccount(String accountId) async {
-    _currentAccountId = accountId;
+  static Future<void> joinRoom(String room) async {
+    _currentRoom = room;
     await onConnected;
-    _socket?.emit('join_account', accountId);
+    _socket?.emit('joinRoom', room);
   }
 
-  static void sendMessage(String accountId, String content, {String? senderName}) {
-    _socket?.emit('child_message', {
-      'accountId': accountId,
+  static void sendMessage(String accountId, String content, {String? senderName, String? childName}) {
+    _socket?.emit('sendMessage', {
+      'room': 'chat_$accountId',
       'content': content,
       'senderName': senderName,
+      'accountId': accountId,
+      'childName': childName ?? '',
     });
   }
 
-  static void sendTyping(String accountId, bool isTyping) {
+  static void sendTyping(String room, bool isTyping) {
     _socket?.emit('typing', {
-      'accountId': accountId,
+      'room': room,
       'isTyping': isTyping,
     });
   }
 
-  static Future<void> markRead(String accountId) async {
+  static Future<void> markRead(String room) async {
     await onConnected;
-    _socket?.emit('mark_read', {'accountId': accountId});
+    _socket?.emit('messageRead', {'room': room});
   }
 
   static void onNewMessage(void Function(dynamic data) callback) {
+    _socket?.on('newMessage', callback);
+    // Also listen on old event name for safety
     _socket?.on('new_message', callback);
   }
 
   static void offNewMessage() {
+    _socket?.off('newMessage');
     _socket?.off('new_message');
   }
 
   static void onTypingStatus(void Function(dynamic data) callback) {
+    _socket?.on('typingStatus', callback);
     _socket?.on('typing_status', callback);
   }
 
   static void offTypingStatus() {
+    _socket?.off('typingStatus');
     _socket?.off('typing_status');
   }
 
@@ -100,6 +106,6 @@ class SocketService {
     _socket?.dispose();
     _socket = null;
     _initialized = false;
-    _currentAccountId = null;
+    _currentRoom = null;
   }
 }

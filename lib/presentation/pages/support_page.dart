@@ -31,8 +31,8 @@ class _SupportPageState extends State<SupportPage> {
 
   Future<void> _initSocket() async {
     await SocketService.init();
-    SocketService.joinAccount(widget.accountId);
-    SocketService.markRead(widget.accountId);
+    SocketService.joinRoom('chat_${widget.accountId}');
+    SocketService.markRead('chat_${widget.accountId}');
     SocketService.onNewMessage(_onNewMessage);
     SocketService.onTypingStatus(_onTypingStatus);
   }
@@ -71,7 +71,7 @@ class _SupportPageState extends State<SupportPage> {
   void dispose() {
     SocketService.offNewMessage();
     SocketService.offTypingStatus();
-    SocketService.sendTyping(widget.accountId, false);
+    SocketService.sendTyping('chat_${widget.accountId}', false);
     _controller.dispose();
     _scrollController.dispose();
     _typingTimer?.cancel();
@@ -102,16 +102,17 @@ class _SupportPageState extends State<SupportPage> {
   }
 
   void _onTyping(String val) {
+    var room = 'chat_${widget.accountId}';
     if (val.isNotEmpty && !_userIsTyping) {
       _userIsTyping = true;
-      SocketService.sendTyping(widget.accountId, true);
+      SocketService.sendTyping(room, true);
       _typingTimer?.cancel();
       _typingTimer = Timer(const Duration(seconds: 4), () {
-        SocketService.sendTyping(widget.accountId, false);
+        SocketService.sendTyping(room, false);
         _userIsTyping = false;
       });
     } else if (val.isEmpty && _userIsTyping) {
-      SocketService.sendTyping(widget.accountId, false);
+      SocketService.sendTyping(room, false);
       _userIsTyping = false;
       _typingTimer?.cancel();
     }
@@ -122,13 +123,12 @@ class _SupportPageState extends State<SupportPage> {
     if (text.isEmpty) return;
     setState(() => _sending = true);
     _controller.clear();
-    SocketService.sendTyping(widget.accountId, false);
+    SocketService.sendTyping('chat_${widget.accountId}', false);
     _userIsTyping = false;
     _typingTimer?.cancel();
 
     if (SocketService.isConnected) {
-      // Socket path: emit + let socket event loopback add the message
-      SocketService.sendMessage(widget.accountId, text, senderName: widget.childName);
+      SocketService.sendMessage(widget.accountId, text, senderName: widget.childName, childName: widget.childName);
       await Future.delayed(const Duration(milliseconds: 300));
     } else {
       // Fallback: HTTP save + refresh

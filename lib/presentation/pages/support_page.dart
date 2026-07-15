@@ -45,6 +45,8 @@ class _SupportPageState extends State<SupportPage> {
     if (msg['account_id'] != widget.accountId) return;
     // Update read status on existing messages
     if (msg['sender_type'] == 'admin') {
+      // Child is viewing → mark as read so admin sees "Read" and badge clears
+      SocketService.markRead('chat_${widget.accountId}');
       for (var i = 0; i < _messages.length; i++) {
         if (_messages[i]['message_id'] == msg['message_id']) {
           _messages[i] = msg;

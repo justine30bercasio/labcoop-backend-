@@ -7856,7 +7856,24 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
   // ── Socket signal (called by global newMessage handler) ──
   window._onNewMsg = function(msg){
     if (msg.account_id != accountId) return;
-    if (msg.sender_type === 'admin') return; // own reply already shown via optimistic insert
+    if (msg.sender_type === 'admin') {
+      // Update optimistic bubble with server-confirmed msg-id and status
+      var opt = document.querySelector('.msg-bubble.outgoing.msg-optimistic');
+      if (opt) {
+        opt.classList.remove('msg-optimistic');
+        if (msg.message_id) opt.setAttribute('data-msg-id', msg.message_id);
+        var meta = opt.querySelector('.mb-meta');
+        if (meta) {
+          var receipt = Number(msg.child_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Delivered</span>';
+          // Replace the "Sending..." span
+          var oldReceipt = meta.querySelector('.mb-read');
+          if (oldReceipt) oldReceipt.outerHTML = receipt;
+          else meta.insertAdjacentHTML('beforeend', receipt);
+        }
+        _knownIds[msg.message_id] = true;
+      }
+      return;
+    }
     appendMsg(msg);
     // Notify server admin read this message (updates DB + emits readReceipt to child)
     if (window.adminSocket && window.adminSocket.connected) {
@@ -7885,11 +7902,11 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
     if (!el.value.trim()) return;
     var text = el.value.trim();
     el.value = '';
-    // Optimistic outgoing bubble
+    // Optimistic outgoing bubble with "Sending..." status
     var target = document.getElementById('replyTarget');
     var d = new Date();
     var ts = d.toISOString().slice(0,19).replace('T',' ');
-    var html = '<div class="msg-bubble outgoing"><div class="mb-avatar">A</div><div class="mb-content"><div>' + esc(text) + '</div><div class="mb-meta">Admin · ' + ts + '</div></div></div>';
+    var html = '<div class="msg-bubble outgoing msg-optimistic"><div class="mb-avatar">A</div><div class="mb-content"><div>' + esc(text) + '</div><div class="mb-meta">Admin · ' + ts + ' <span class="mb-read" style="opacity:0.5;font-style:italic">&#x2713; Sending...</span></div></div></div>';
     target.insertAdjacentHTML('beforebegin', html);
     target.scrollIntoView({ behavior:'smooth' });
     if (window.adminSocket && window.adminSocket.connected) {

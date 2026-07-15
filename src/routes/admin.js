@@ -7737,6 +7737,18 @@ router.get('/messages', requireRole(1), asyncHandler(async (req, res) => {
 }));
 
 router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res) => {
+  // Mark unread as read FIRST so rendered messages show correct status
+  await store.query("UPDATE support_messages SET admin_read = 1 WHERE account_id = $1 AND sender_type != 'admin'", [req.params.accountId]);
+
+  // Emit read receipt to chat room so child sees "Read" in real-time
+  try {
+    const { getIO } = require('../services/socket');
+    const io = getIO();
+    if (io) {
+      io.to('chat_' + req.params.accountId).emit('readReceipt', { room: 'chat_' + req.params.accountId, readBy: 'admin' });
+    }
+  } catch (_) {}
+
   const sql = (s, p) => store.query(s, p || []).then(r => r.rows);
   const [account, msgs] = await Promise.all([
     sql('SELECT * FROM accounts WHERE account_id = $1', [req.params.accountId]).then(r => r[0]),
@@ -7744,9 +7756,6 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
   ]);
 
   if (!account) return res.redirect('/admin/messages?error=Account+not+found');
-
-  // Mark unread as read
-  await store.query("UPDATE support_messages SET admin_read = 1 WHERE account_id = $1 AND sender_type != 'admin'", [req.params.accountId]);
 
   const csrf = res.locals.csrfToken || '';
   const content = `
@@ -7836,7 +7845,8 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
     if (isAdmin) {
       receipt = Number(msg.child_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Delivered</span>';
     } else {
-      receipt = Number(msg.admin_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Sent</span>';
+      // Admin is viewing the conversation — child messages are auto-read
+      receipt = ' <span class="mb-read">&#x2713; Read</span>';
     }
     var html = '<div class="msg-bubble ' + (isAdmin ? 'outgoing' : 'incoming') + '" data-msg-id="' + esc(msg.message_id) + '"><div class="mb-avatar">' + initial + '</div><div class="mb-content"><div>' + esc(msg.content) + '</div><div class="mb-meta">' + esc(msg.sender_name || msg.sender_type) + ' · ' + (msg.created_at ? msg.created_at.slice(0,19).replace('T',' ') : '') + receipt + '</div></div></div>';
     target.insertAdjacentHTML('beforebegin', html);
@@ -7848,6 +7858,10 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
     if (msg.account_id != accountId) return;
     if (msg.sender_type === 'admin') return; // own reply already shown via optimistic insert
     appendMsg(msg);
+    // Notify server admin read this message (updates DB + emits readReceipt to child)
+    if (window.adminSocket && window.adminSocket.connected) {
+      window.adminSocket.emit('adminRead', { room: room });
+    }
   };
 
   // ── Join chat room when socket is ready ──

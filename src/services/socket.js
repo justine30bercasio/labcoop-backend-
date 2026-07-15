@@ -109,6 +109,23 @@ function initSocket(httpServer, sessionMiddleware) {
       socket.to(room).emit('typingStatus', { room, accountId, isTyping, sender: role });
     });
 
+    // ── Read receipt: admin marks child messages as read ──
+    socket.on('adminRead', async (data) => {
+      const { room } = data || {};
+      if (!room) return;
+      if (role !== 'admin') return;
+      const accountId = room.startsWith('chat_') ? room.slice(5) : null;
+      if (!accountId) return;
+      if (!store?.query) return;
+      try {
+        await store.query(
+          "UPDATE support_messages SET admin_read = 1 WHERE account_id = $1 AND sender_type = 'child' AND admin_read = 0",
+          [accountId]
+        );
+        io.to(room).emit('readReceipt', { room, readBy: 'admin' });
+      } catch (_) {}
+    });
+
     // ── Read receipt (child marks admin messages as read) ──
     socket.on('messageRead', async (data) => {
       const { room } = data || {};

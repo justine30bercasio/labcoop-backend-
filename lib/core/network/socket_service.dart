@@ -59,10 +59,11 @@ class SocketService {
     _socket?.emit('join_account', accountId);
   }
 
-  static void sendMessage(String accountId, String content) {
+  static void sendMessage(String accountId, String content, {String? senderName}) {
     _socket?.emit('child_message', {
       'accountId': accountId,
       'content': content,
+      'senderName': senderName,
     });
   }
 

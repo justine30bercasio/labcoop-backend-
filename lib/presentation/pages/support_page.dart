@@ -125,26 +125,22 @@ class _SupportPageState extends State<SupportPage> {
     SocketService.sendTyping(widget.accountId, false);
     _userIsTyping = false;
     _typingTimer?.cancel();
-    // Optimistically add message locally
-    final tempMsg = <String, dynamic>{
-      'sender_type': 'child',
-      'sender_name': widget.childName,
-      'content': text,
-      'created_at': DateTime.now().toIso8601String(),
-      'admin_read': 0,
-    };
-    setState(() => _messages.add(tempMsg));
-    _scrollDown();
-    // Send via socket (instant) + HTTP fallback
-    SocketService.sendMessage(widget.accountId, text);
-    await BankingApiService.sendMessage(widget.accountId, text, senderName: widget.childName);
-    // Refresh from server to catch any missed messages
-    final fresh = await BankingApiService.getMessages(widget.accountId);
+
+    if (SocketService.isConnected) {
+      // Socket path: emit + let socket event loopback add the message
+      SocketService.sendMessage(widget.accountId, text, senderName: widget.childName);
+      await Future.delayed(const Duration(milliseconds: 300));
+    } else {
+      // Fallback: HTTP save + refresh
+      await BankingApiService.sendMessage(widget.accountId, text, senderName: widget.childName);
+      final fresh = await BankingApiService.getMessages(widget.accountId);
+      if (mounted) {
+        setState(() => _messages = fresh.cast<Map<String, dynamic>>());
+      }
+    }
+
     if (mounted) {
-      setState(() {
-        _messages = fresh.cast<Map<String, dynamic>>();
-        _sending = false;
-      });
+      setState(() => _sending = false);
       _scrollDown();
     }
   }

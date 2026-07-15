@@ -6,9 +6,29 @@ import '../constants/app_constants.dart';
 class SocketService {
   static IO.Socket? _socket;
   static bool _initialized = false;
+  static String? _currentAccountId;
 
   static IO.Socket? get socket => _socket;
   static bool get isConnected => _socket?.connected ?? false;
+
+  /// Resolves when socket handshake completes
+  static Future<void> get onConnected async {
+    if (isConnected) return;
+    final completer = Completer<void>();
+    final timer = Timer(const Duration(seconds: 8), () {
+      if (!completer.isCompleted) completer.complete();
+    });
+    _socket?.onConnect((_) {
+      if (!completer.isCompleted) completer.complete();
+    });
+    // Socket may already be connecting; check again after listener
+    if (isConnected && !completer.isCompleted) {
+      timer.cancel();
+      completer.complete();
+    }
+    await completer.future;
+    timer.cancel();
+  }
 
   static Future<void> init() async {
     if (_initialized) return;
@@ -24,9 +44,18 @@ class SocketService {
     _socket!.onConnect((_) {});
     _socket!.onDisconnect((_) {});
     _socket!.onError((err) {});
+
+    // Reconnect: re-join account room
+    _socket!.io.on('reconnect', (_) {
+      if (_currentAccountId != null) {
+        _socket?.emit('join_account', _currentAccountId);
+      }
+    });
   }
 
-  static void joinAccount(String accountId) {
+  static Future<void> joinAccount(String accountId) async {
+    _currentAccountId = accountId;
+    await onConnected;
     _socket?.emit('join_account', accountId);
   }
 
@@ -44,7 +73,8 @@ class SocketService {
     });
   }
 
-  static void markRead(String accountId) {
+  static Future<void> markRead(String accountId) async {
+    await onConnected;
     _socket?.emit('mark_read', {'accountId': accountId});
   }
 
@@ -69,5 +99,6 @@ class SocketService {
     _socket?.dispose();
     _socket = null;
     _initialized = false;
+    _currentAccountId = null;
   }
 }

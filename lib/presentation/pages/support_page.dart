@@ -31,14 +31,8 @@ class _SupportPageState extends State<SupportPage> {
 
   Future<void> _initSocket() async {
     await SocketService.init();
-    if (!SocketService.isConnected) {
-      // Retry after delay
-      await Future.delayed(const Duration(seconds: 2));
-      await SocketService.init();
-    }
     SocketService.joinAccount(widget.accountId);
     SocketService.markRead(widget.accountId);
-
     SocketService.onNewMessage(_onNewMessage);
     SocketService.onTypingStatus(_onTypingStatus);
   }

@@ -7823,7 +7823,7 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
   // ── Rebuild entire thread from API ──
   function rebuildThread(){
     var thread = document.getElementById('msgThread');
-    fetch('/api/messages/' + accountId)
+    fetch('/api/messages/' + accountId + '?_=' + Date.now())
       .then(function(r){ return r.json(); })
       .then(function(msgs){
         var html = '';
@@ -7869,7 +7869,7 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
     }
   });
 
-  // ── Send reply via socket ──
+  // ── Send reply via socket (primary) or HTTP (fallback) ──
   function sendReply(){
     var el = document.getElementById('replyContent');
     if (!el.value.trim()) return;
@@ -7882,20 +7882,15 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
     var html = '<div class="msg-bubble outgoing"><div class="mb-avatar">A</div><div class="mb-content"><div>' + esc(text) + '</div><div class="mb-meta">Admin · ' + ts + '</div></div></div>';
     target.insertAdjacentHTML('beforebegin', html);
     target.scrollIntoView({ behavior:'smooth' });
-    // Emit via socket
     if (window.adminSocket && window.adminSocket.connected) {
-      window.adminSocket.emit('sendMessage', {
-        room: room,
-        content: text,
-        senderName: 'Admin'
-      });
+      window.adminSocket.emit('sendMessage', { room: room, content: text, senderName: 'Admin' });
+    } else {
+      fetch('/admin/messages/reply', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json', 'X-CSRF-Token':'${csrf}' },
+        body: JSON.stringify({ accountId: accountId, content: text })
+      }).catch(function(){});
     }
-    // Also save via HTTP as fallback
-    fetch('/admin/messages/reply', {
-      method: 'POST',
-      headers: { 'Content-Type':'application/json', 'X-CSRF-Token':'${csrf}' },
-      body: JSON.stringify({ accountId: accountId, content: text })
-    }).catch(function(){});
   }
   document.getElementById('replyContent').addEventListener('keydown', function(e){
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); }
@@ -7933,17 +7928,17 @@ router.post('/messages/reply', requireRole(1), asyncHandler(async (req, res) => 
   const child = await store.query('SELECT child_name FROM accounts WHERE account_id = $1', [accountId]);
 
   await store.query(
-    `INSERT INTO support_messages (message_id, account_id, child_name, sender_type, sender_name, content, admin_read, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [msgId, accountId, child.rows[0]?.child_name || '', 'admin', adminName, content.trim(), 1, new Date().toISOString()]
+    `INSERT INTO support_messages (message_id, account_id, child_name, sender_type, sender_name, content, admin_read, child_read, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [msgId, accountId, child.rows[0]?.child_name || '', 'admin', adminName, content.trim(), 1, 0, new Date().toISOString()]
   );
 
-  // Emit socket event for real-time delivery to child
+  // Emit socket event for real-time delivery
   try {
     const { getIO } = require('../services/socket');
     const io = getIO();
     if (io) {
-      io.to('account:' + accountId).emit('new_message', {
+      io.to('chat_' + accountId).emit('newMessage', {
         message_id: msgId,
         account_id: accountId,
         sender_type: 'admin',

@@ -21,6 +21,34 @@ router.post('/send', asyncHandler(async (req, res) => {
     [msgId, accountId, child.rows[0]?.child_name || '', 'child', name, content.trim(), 0, 0, new Date().toISOString()]
   );
 
+  // Emit socket event for real-time delivery
+  try {
+    const { getIO } = require('../services/socket');
+    const io = getIO();
+    if (io) {
+      io.to('chat_' + accountId).emit('newMessage', {
+        message_id: msgId,
+        account_id: accountId,
+        sender_type: 'child',
+        sender_name: name,
+        content: content.trim(),
+        admin_read: 0,
+        child_read: 0,
+        created_at: new Date().toISOString(),
+      });
+      io.to('admin').emit('newMessage', {
+        message_id: msgId,
+        account_id: accountId,
+        sender_type: 'child',
+        sender_name: name,
+        content: content.trim(),
+        admin_read: 0,
+        child_read: 0,
+        created_at: new Date().toISOString(),
+      });
+    }
+  } catch (_) {}
+
   res.json({ message: 'Sent', messageId: msgId });
 }));
 

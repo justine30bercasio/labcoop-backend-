@@ -901,17 +901,23 @@ window.refreshMessengerBadge = function(){};
 (function(){
   if (typeof io === 'undefined') return;
   var sio = io('/', { transports: ['websocket', 'polling'] });
-  sio.on('connect', function(){ sio.emit('join_account', 'admin'); });
-  // New message → refresh badge, flash FAB, trigger immediate poll for conversation page
+  sio.on('connect', function(){ sio.emit('joinRoom', 'admin'); });
+  // New message → refresh badge, flash FAB, pass to conversation page
+  sio.on('newMessage', function(msg){
+    if (window.refreshMessengerBadge) window.refreshMessengerBadge();
+    var fab = document.getElementById('msgFab');
+    if (fab) { fab.classList.add('has-new'); setTimeout(function(){ fab.classList.remove('has-new'); }, 2000); }
+    if (window._onNewMsg) window._onNewMsg(msg);
+  });
+  // Keep old event name for backward compat with other pages
   sio.on('new_message', function(msg){
     if (window.refreshMessengerBadge) window.refreshMessengerBadge();
     var fab = document.getElementById('msgFab');
     if (fab) { fab.classList.add('has-new'); setTimeout(function(){ fab.classList.remove('has-new'); }, 2000); }
-    // Signal conversation page to poll NOW instead of waiting for next interval
     if (window._onNewMsg) window._onNewMsg(msg);
   });
-  // Typing status from child (update thread view if open)
-  sio.on('typing_status', function(data){
+  // Typing status
+  sio.on('typingStatus', function(data){
     if (data.sender === 'child') {
       var ti = document.getElementById('typingIndicator');
       var ts = document.getElementById('typingStatus');
@@ -921,9 +927,9 @@ window.refreshMessengerBadge = function(){};
       }
     }
   });
-  // Read receipt (child read admin's message)
-  sio.on('read_receipt', function(data){
-    if (data.readBy === 'child' && data.accountId) {
+  // Read receipt
+  sio.on('readReceipt', function(data){
+    if (data.readBy === 'child' && data.room) {
       document.querySelectorAll('[data-msg-id]').forEach(function(el){
         var readBadge = el.querySelector('.mb-read');
         if (readBadge) {

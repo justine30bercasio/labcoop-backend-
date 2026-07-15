@@ -19,6 +19,7 @@ function initSocket(httpServer, sessionMiddleware) {
     if (req.session?.adminId) {
       socket.data.role = 'admin';
       socket.data.userId = req.session.adminId;
+      socket.data.name = req.session.adminName || 'Admin';
       return next();
     }
     // Child: check JWT in auth handshake
@@ -37,89 +38,90 @@ function initSocket(httpServer, sessionMiddleware) {
 
   io.on('connection', (socket) => {
     const role = socket.data.role;
-    const accountId = socket.data.accountId;
 
-    // Join account room (child) or admin global room
-    if (role === 'child' && accountId) {
-      socket.join('account:' + accountId);
-    } else if (role === 'admin') {
+    // Admin joins global room for messenger badge
+    if (role === 'admin') {
       socket.join('admin');
     }
 
-    // ── Join specific account room (admin opens a conversation) ──
-    socket.on('join_account', (accId) => {
-      if (role === 'admin' && accId) {
-        socket.join('account:' + accId);
-      }
+    // ── Join a chat room ──
+    socket.on('joinRoom', (room) => {
+      if (!room || typeof room !== 'string') return;
+      socket.join(room);
     });
 
-    // ── Admin sends reply (just relay — HTTP POST does the DB save + socket emit) ──
-    socket.on('admin_message', (data) => {
-      if (role !== 'admin') return;
-      const { accountId, content } = data;
-      if (!accountId || !content) return;
-      io.to('account:' + accountId).emit('new_message', {
-        account_id: accountId,
-        sender_type: 'admin',
-        sender_name: 'Admin',
-        content,
-        admin_read: 1,
-        child_read: 0,
-        created_at: new Date().toISOString(),
-      });
+    // ── Leave a chat room ──
+    socket.on('leaveRoom', (room) => {
+      if (!room) return;
+      socket.leave(room);
     });
 
-    // ── Child sends message ──
-    socket.on('child_message', async (data) => {
-      if (role !== 'child') return;
-      const { content, senderName } = data;
-      if (!content) return;
+    // ── Send message (both admin and child) ──
+    socket.on('sendMessage', async (data) => {
+      const { room, content, senderName } = data || {};
+      if (!room || !content) return;
+      // Extract accountId from room name "chat_<accountId>"
+      const accountId = room.startsWith('chat_') ? room.slice(5) : null;
+      if (!accountId) return;
       if (!store?.query) return;
       try {
         const { v4: uuidv4 } = require('uuid');
         const messageId = uuidv4();
         const createdAt = new Date().toISOString();
+        const isAdmin = role === 'admin';
+
+        // Flutter sends accountId in the payload for child messages
+        const actualAccountId = isAdmin ? accountId : (data.accountId || socket.data.accountId || accountId);
+        const childName = data.childName || '';
+
         await store.query(
-          `INSERT INTO support_messages (message_id, account_id, sender_type, sender_name, content, admin_read, child_read, created_at)
-           VALUES ($1, $2, 'child', $3, $4, 0, 1, $5)`,
-          [messageId, accountId, senderName || 'Child', content, createdAt]
+          `INSERT INTO support_messages (message_id, account_id, child_name, sender_type, sender_name, content, admin_read, child_read, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [messageId, actualAccountId, childName, isAdmin ? 'admin' : 'child', senderName || (isAdmin ? 'Admin' : 'Child'), content, isAdmin ? 1 : 0, isAdmin ? 0 : 1, createdAt]
         );
+
         const payload = {
           message_id: messageId,
-          account_id: accountId,
-          sender_type: 'child',
-          sender_name: senderName || 'Child',
+          account_id: actualAccountId,
+          sender_type: isAdmin ? 'admin' : 'child',
+          sender_name: senderName || (isAdmin ? 'Admin' : 'Child'),
           content,
-          admin_read: 0,
-          child_read: 1,
+          admin_read: isAdmin ? 1 : 0,
+          child_read: isAdmin ? 0 : 1,
           created_at: createdAt,
         };
-        io.to('admin').emit('new_message', payload);
-        io.to('account:' + accountId).emit('new_message', payload);
+
+        // Broadcast to the entire room (including sender for echo)
+        io.to(room).emit('newMessage', payload);
+        // Also emit to admin room for badge updates
+        if (role === 'child') {
+          io.to('admin').emit('newMessage', payload);
+        }
       } catch (_) {}
     });
 
     // ── Typing indicator ──
     socket.on('typing', (data) => {
-      const { accountId, isTyping } = data;
-      if (role === 'child' && accountId) {
-        io.to('admin').emit('typing_status', { accountId, isTyping, sender: 'child' });
-      } else if (role === 'admin' && accountId) {
-        io.to('account:' + accountId).emit('typing_status', { accountId, isTyping, sender: 'admin' });
-      }
+      const { room, isTyping } = data || {};
+      if (!room) return;
+      // Relay to everyone in the room except sender
+      socket.to(room).emit('typingStatus', { room, isTyping, sender: role });
     });
 
-    // ── Read receipt (child reads admin message) ──
-    socket.on('mark_read', async (data) => {
-      const { accountId } = data;
+    // ── Read receipt (child marks admin messages as read) ──
+    socket.on('messageRead', async (data) => {
+      const { room } = data || {};
+      if (!room) return;
       if (role !== 'child') return;
       if (!store?.query) return;
+      const accountId = room.startsWith('chat_') ? room.slice(5) : null;
+      if (!accountId) return;
       try {
         await store.query(
-          `UPDATE support_messages SET child_read = 1 WHERE account_id = $1 AND sender_type = 'admin' AND child_read = 0`,
+          "UPDATE support_messages SET child_read = 1 WHERE account_id = $1 AND sender_type = 'admin' AND child_read = 0",
           [accountId]
         );
-        io.to('admin').emit('read_receipt', { accountId, readBy: 'child' });
+        io.to(room).emit('readReceipt', { room, readBy: 'child' });
       } catch (_) {}
     });
 

@@ -7814,26 +7814,21 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
 
   <script>
   var accountId = '${req.params.accountId}';
+  var room = 'chat_' + accountId;
   window._currentAccountId = accountId;
 
-  // ── Dedup by msg ID ──
-  var _knownIds = {};
-  document.querySelectorAll('#msgThread .msg-bubble[data-msg-id]').forEach(function(el){
-    _knownIds[el.getAttribute('data-msg-id')] = true;
-  });
-
-  // ── Rebuild entire thread from server data ──
+  // ── HTML escaping ──
   function esc(s){ return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#x27;'}[c]}); }
+
+  // ── Rebuild entire thread from API ──
   function rebuildThread(){
     var thread = document.getElementById('msgThread');
     fetch('/api/messages/' + accountId)
       .then(function(r){ return r.json(); })
       .then(function(msgs){
-        _knownIds = {};
         var html = '';
         for (var i = 0; i < msgs.length; i++) {
           var m = msgs[i];
-          _knownIds[m.message_id] = true;
           var isAdmin = m.sender_type === 'admin';
           var initial = isAdmin ? 'A' : (m.sender_name ? esc(m.sender_name[0].toUpperCase()) : '?');
           var receipt;
@@ -7849,57 +7844,53 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
           var rt = document.getElementById('replyTarget');
           if (rt) rt.scrollIntoView({ behavior:'smooth' });
         }
-        _lastCount = msgs.length;
       })
       .catch(function(){});
   }
 
-  // ── Socket signal + poll trigger ──
+  // ── Socket signal (called by global newMessage handler) ──
   window._onNewMsg = function(msg){
     if (msg.account_id != accountId) return;
     rebuildThread();
   };
 
-  // ── HTTP polling every 2 seconds ──
-  var _lastCount = document.querySelectorAll('#msgThread .msg-bubble').length;
-  (function poll(){
-    fetch('/api/messages/' + accountId + '?_=' + Date.now())
-      .then(function(r){ return r.json(); })
-      .then(function(arr){
-        if (!arr) return;
-        if (arr.length !== _lastCount) {
-          _lastCount = arr.length;
-          rebuildThread();
-        }
-      })
-      .catch(function(){})
-      .then(function(){ setTimeout(poll, 2000); });
-  })();
-
-  // Join account room for typing indicator & read receipts
-  function whenAdminSocket(cb){
+  // ── Join chat room when socket is ready ──
+  function waitForSocket(cb){
     if (window.adminSocket) { cb(window.adminSocket); return; }
-    var check = setInterval(function(){
-      if (window.adminSocket) { clearInterval(check); cb(window.adminSocket); }
+    var chk = setInterval(function(){
+      if (window.adminSocket) { clearInterval(chk); cb(window.adminSocket); }
     }, 200);
   }
-  whenAdminSocket(function(sock){
-    if (sock.connected) sock.emit('join_account', accountId);
-    else sock.on('connect', function(){ sock.emit('join_account', accountId); });
+  waitForSocket(function(sock){
+    if (sock.connected) {
+      sock.emit('joinRoom', room);
+    } else {
+      sock.on('connect', function(){ sock.emit('joinRoom', room); });
+    }
   });
 
-  // ── Send reply via HTTP (CSRF) then emit via socket ──
+  // ── Send reply via socket ──
   function sendReply(){
     var el = document.getElementById('replyContent');
     if (!el.value.trim()) return;
     var text = el.value.trim();
     el.value = '';
+    // Optimistic outgoing bubble
     var target = document.getElementById('replyTarget');
     var d = new Date();
     var ts = d.toISOString().slice(0,19).replace('T',' ');
-    var html = '<div class="msg-bubble outgoing"><div class="mb-avatar">A</div><div class="mb-content"><div>' + text + '</div><div class="mb-meta">Admin · ' + ts + '</div></div></div>';
+    var html = '<div class="msg-bubble outgoing"><div class="mb-avatar">A</div><div class="mb-content"><div>' + esc(text) + '</div><div class="mb-meta">Admin · ' + ts + '</div></div></div>';
     target.insertAdjacentHTML('beforebegin', html);
     target.scrollIntoView({ behavior:'smooth' });
+    // Emit via socket
+    if (window.adminSocket && window.adminSocket.connected) {
+      window.adminSocket.emit('sendMessage', {
+        room: room,
+        content: text,
+        senderName: 'Admin'
+      });
+    }
+    // Also save via HTTP as fallback
     fetch('/admin/messages/reply', {
       method: 'POST',
       headers: { 'Content-Type':'application/json', 'X-CSRF-Token':'${csrf}' },
@@ -7913,16 +7904,16 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
   // ── Admin typing via socket ──
   var adminTypingInt;
   document.getElementById('replyContent').addEventListener('input', function(){
-    if (window.adminSocket && window.adminSocket.connected) window.adminSocket.emit('typing', { accountId: accountId, isTyping: true });
+    if (window.adminSocket && window.adminSocket.connected) window.adminSocket.emit('typing', { room: room, isTyping: true });
     if (!adminTypingInt) {
       adminTypingInt = setInterval(function(){
-        if (window.adminSocket && window.adminSocket.connected) window.adminSocket.emit('typing', { accountId: accountId, isTyping: true });
+        if (window.adminSocket && window.adminSocket.connected) window.adminSocket.emit('typing', { room: room, isTyping: true });
       }, 3000);
     }
   });
   var origSend = sendReply;
   sendReply = function(){
-    if (window.adminSocket && window.adminSocket.connected) window.adminSocket.emit('typing', { accountId: accountId, isTyping: false });
+    if (window.adminSocket && window.adminSocket.connected) window.adminSocket.emit('typing', { room: room, isTyping: false });
     if (adminTypingInt) { clearInterval(adminTypingInt); adminTypingInt = null; }
     origSend();
   };

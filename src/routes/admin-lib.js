@@ -902,12 +902,13 @@ window.refreshMessengerBadge = function(){};
   if (typeof io === 'undefined') return;
   var sio = io('/', { transports: ['websocket', 'polling'] });
   sio.on('connect', function(){ sio.emit('join_account', 'admin'); });
-  // New message → refresh badge & show toast notification
+  // New message → refresh badge, flash FAB, and append to open thread
   sio.on('new_message', function(msg){
     if (window.refreshMessengerBadge) window.refreshMessengerBadge();
-    // Flash FAB if not in dropdown view
     var fab = document.getElementById('msgFab');
     if (fab) { fab.classList.add('has-new'); setTimeout(function(){ fab.classList.remove('has-new'); }, 2000); }
+    // If on a conversation page, append in real-time
+    if (window._appendThreadMsg) window._appendThreadMsg(msg);
   });
   // Typing status from child (update thread view if open)
   sio.on('typing_status', function(data){

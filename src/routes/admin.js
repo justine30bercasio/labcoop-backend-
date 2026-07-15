@@ -7815,15 +7815,16 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
   <script>
   var accountId = '${req.params.accountId}';
 
-  // ── Wait for adminSocket then join room + register listener ──
-  var seenMsgIds = {};
+  // ── Real-time message appending (called by admin-lib.js global new_message handler) ──
+  var _seenMsgIds = {};
   document.querySelectorAll('#msgThread .msg-bubble[data-msg-id]').forEach(function(el){
-    seenMsgIds[el.getAttribute('data-msg-id')] = true;
+    _seenMsgIds[el.getAttribute('data-msg-id')] = true;
   });
-  function appendMessage(msg){
+  window._appendThreadMsg = function(msg){
     if (msg.sender_type === 'admin') return;
-    if (msg.message_id && seenMsgIds[msg.message_id]) return;
-    if (msg.message_id) seenMsgIds[msg.message_id] = true;
+    if (msg.account_id != accountId) return;
+    if (msg.message_id && _seenMsgIds[msg.message_id]) return;
+    if (msg.message_id) _seenMsgIds[msg.message_id] = true;
     var target = document.getElementById('replyTarget');
     if (!target) return;
     var initial = (msg.sender_name || '?')[0].toUpperCase();
@@ -7835,7 +7836,9 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
     var html = '<div class="msg-bubble incoming" data-msg-id="' + msg.message_id + '"><div class="mb-avatar">' + initial + '</div><div class="mb-content"><div>' + contentEl.innerHTML + '</div><div class="mb-meta">' + sender.replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#x27;'}[c]}) + ' · ' + ts + receipt + '</div></div></div>';
     target.insertAdjacentHTML('beforebegin', html);
     target.scrollIntoView({ behavior:'smooth' });
-  }
+  };
+
+  // Join account room for typing indicator & read receipts
   function whenAdminSocket(cb){
     if (window.adminSocket) { cb(window.adminSocket); return; }
     var check = setInterval(function(){
@@ -7845,9 +7848,6 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
   whenAdminSocket(function(sock){
     if (sock.connected) sock.emit('join_account', accountId);
     else sock.on('connect', function(){ sock.emit('join_account', accountId); });
-    sock.on('new_message', function(msg){
-      if (msg.account_id == accountId) appendMessage(msg);
-    });
   });
 
   // ── Send reply via HTTP (CSRF) then emit via socket ──

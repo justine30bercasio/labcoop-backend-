@@ -76,15 +76,16 @@ function initSocket(httpServer, sessionMiddleware) {
       if (!content) return;
       if (!store?.query) return;
       try {
+        const { v4: uuidv4 } = require('uuid');
+        const messageId = uuidv4();
         const createdAt = new Date().toISOString();
-        const result = await store.query(
-          `INSERT INTO support_messages (account_id, sender_type, sender_name, content, admin_read, child_read, created_at)
-           VALUES ($1, 'child', $2, $3, 0, 1, $4) RETURNING message_id`,
-          [accountId, senderName || 'Child', content, createdAt]
+        await store.query(
+          `INSERT INTO support_messages (message_id, account_id, sender_type, sender_name, content, admin_read, child_read, created_at)
+           VALUES ($1, $2, 'child', $3, $4, 0, 1, $5)`,
+          [messageId, accountId, senderName || 'Child', content, createdAt]
         );
-        const msg = result.rows[0];
         const payload = {
-          message_id: msg.message_id,
+          message_id: messageId,
           account_id: accountId,
           sender_type: 'child',
           sender_name: senderName || 'Child',

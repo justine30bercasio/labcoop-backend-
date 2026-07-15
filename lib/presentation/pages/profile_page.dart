@@ -298,12 +298,12 @@ class _ProfilePageState extends State<ProfilePage>
         AnimatedCounter(
           value: value,
           prefix: prefix,
-          style: const TextStyle(
+          style: TextStyle(
               fontWeight: FontWeight.bold,
               fontSize: 18,
-              color: AppTheme.textDark),
+              color: Theme.of(context).colorScheme.onSurface),
         ),
-        Text(label, style: AppTextStyle.bodySmall),
+        Text(label, style: AppTextStyle.bodySmall(context)),
       ],
     );
   }
@@ -709,7 +709,7 @@ class _UnlockRow extends StatelessWidget {
                   style: const TextStyle(
                       fontWeight: FontWeight.bold, fontSize: 14)),
               Text(desc,
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                  style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
             ],
           ),
         ),
@@ -961,7 +961,7 @@ class _ShopPageState extends State<_ShopPage> with TickerProviderStateMixin {
                     backgroundColor:
                         owned ? Colors.grey.shade300 : AppTheme.accentAmber,
                     foregroundColor:
-                        owned ? Colors.grey.shade700 : AppTheme.textDark,
+                        owned ? Colors.grey.shade700 : Theme.of(context).colorScheme.onSurface,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8)),
                   ),
@@ -1072,7 +1072,7 @@ class _ShopPageState extends State<_ShopPage> with TickerProviderStateMixin {
                       backgroundColor:
                           owned ? Colors.grey.shade300 : AppTheme.accentAmber,
                       foregroundColor:
-                          owned ? Colors.grey.shade700 : AppTheme.textDark,
+                          owned ? Colors.grey.shade700 : Theme.of(context).colorScheme.onSurface,
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8)),
                     ),
@@ -1276,7 +1276,7 @@ class _LeaderboardPageState extends State<_LeaderboardPage> {
             style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.bold,
-                color: Colors.grey.shade600)),
+                color: Theme.of(context).colorScheme.onSurfaceVariant)),
       ),
     );
   }
@@ -1342,13 +1342,13 @@ class _LeaderboardPageState extends State<_LeaderboardPage> {
                                       style: TextStyle(
                                           fontSize: 16,
                                           fontWeight: FontWeight.w700,
-                                          color: Colors.grey.shade600)))))
+                                          color: Theme.of(context).colorScheme.onSurfaceVariant)))))
                       : Center(
                           child: Text(displayInitials,
                               style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w700,
-                                  color: Colors.grey.shade600))),
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant))),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -1702,7 +1702,7 @@ class _SettingsPageState extends State<_SettingsPage> {
               children: [
                 Text(
                   'Your Linking Code',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -1825,8 +1825,8 @@ class _SettingsPageState extends State<_SettingsPage> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor:
                       _nameSaved ? AppTheme.primaryGreen : AppTheme.accentAmber,
-                  foregroundColor:
-                      _nameSaved ? Colors.white : AppTheme.textDark,
+                    foregroundColor:
+                        _nameSaved ? Colors.white : Theme.of(context).colorScheme.onSurface,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16)),
                   textStyle: const TextStyle(
@@ -1848,9 +1848,9 @@ class _SettingsPageState extends State<_SettingsPage> {
                 ],
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Generate a temporary code for your parent to link their account. The code expires in 5 minutes.',
-                style: TextStyle(color: AppTheme.textDark, fontSize: 13),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13),
               ),
               const SizedBox(height: 12),
               _buildLinkParentSection(),
@@ -1869,9 +1869,9 @@ class _SettingsPageState extends State<_SettingsPage> {
                 ],
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Your 6-digit PIN is used to log in. Choose a new one you can remember.',
-                style: TextStyle(color: AppTheme.textDark, fontSize: 13),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13),
               ),
               const SizedBox(height: 16),
               _buildPinField(_pinOldController, 'Current PIN', _pinObscureOld, () {
@@ -2027,10 +2027,10 @@ class _SettingsPageState extends State<_SettingsPage> {
                 ],
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Request to permanently close your account and delete all '
                 'associated data. An admin will review your request.',
-                style: TextStyle(color: AppTheme.textDark, fontSize: 13),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13),
               ),
               const SizedBox(height: 12),
               if (_deletionRequest != null) ...[

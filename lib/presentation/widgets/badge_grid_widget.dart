@@ -10,12 +10,12 @@ class BadgeGridWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (badges.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(24),
+      return Padding(
+        padding: const EdgeInsets.all(24),
         child: Center(
           child: Text(
             'Start saving to earn badges!',
-            style: TextStyle(color: Colors.grey, fontSize: 16),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 16),
           ),
         ),
       );
@@ -76,7 +76,7 @@ class _BadgeItem extends StatelessWidget {
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: badge.isUnlocked ? AppTheme.textDark : Colors.grey,
+              color: badge.isUnlocked ? Theme.of(context).colorScheme.onSurface : Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
         ],

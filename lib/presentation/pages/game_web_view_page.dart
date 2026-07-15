@@ -233,14 +233,14 @@ class _GameWebViewPageState extends State<GameWebViewPage> {
                 ),
                 if (_loading)
                   Container(
-                    color: Colors.white,
-                    child: const Center(
+                    color: Theme.of(context).colorScheme.surface,
+                    child: Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          CircularProgressIndicator(color: AppTheme.primaryGreen),
-                          SizedBox(height: 16),
-                          Text('Loading...', style: TextStyle(color: Colors.grey)),
+                          const CircularProgressIndicator(color: AppTheme.primaryGreen),
+                          const SizedBox(height: 16),
+                          Text('Loading...', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                         ],
                       ),
                     ),
@@ -266,15 +266,15 @@ class _GameWebViewPageState extends State<GameWebViewPage> {
                   children: [
                     const Icon(Icons.warning_amber_rounded, size: 64, color: Colors.orange),
                     const SizedBox(height: 16),
-                    const Text(
+                    Text(
                       'Could not load game',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
+                    Text(
                       'The game URL could not be loaded.\nIt may require an internet connection\nor the URL might be incorrect.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 14, color: Colors.grey),
+                      style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
                     ),
                     const SizedBox(height: 24),
                     Row(

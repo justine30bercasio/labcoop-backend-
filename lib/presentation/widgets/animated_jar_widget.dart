@@ -74,7 +74,7 @@ class _AnimatedJarWidgetState extends State<AnimatedJarWidget>
                 fontWeight: FontWeight.bold,
                 color: widget.goal.isCompleted
                     ? AppTheme.primaryGreen
-                    : AppTheme.textDark,
+                    : Theme.of(context).colorScheme.onSurface,
               ),
             ),
           ],

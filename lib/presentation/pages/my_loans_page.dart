@@ -72,7 +72,7 @@ class _MyLoansPageState extends State<MyLoansPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(loan.purpose.isNotEmpty ? loan.purpose : 'Loan', style: AppTextStyle.heading3),
+                  Text(loan.purpose.isNotEmpty ? loan.purpose : 'Loan', style: AppTextStyle.heading3(context)),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
@@ -99,9 +99,9 @@ class _MyLoansPageState extends State<MyLoansPage> {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  Text('Monthly: PHP ${loan.monthlyAmortization.toStringAsFixed(2)}', style: AppTextStyle.bodySmall),
+                  Text('Monthly: PHP ${loan.monthlyAmortization.toStringAsFixed(2)}', style: AppTextStyle.bodySmall(context)),
                   const Spacer(),
-                  Text('${loan.termMonths} months', style: AppTextStyle.bodySmall),
+                  Text('${loan.termMonths} months', style: AppTextStyle.bodySmall(context)),
                 ],
               ),
               if (loan.status == LoanStatus.active || loan.status == LoanStatus.paid) ...[
@@ -116,7 +116,7 @@ class _MyLoansPageState extends State<MyLoansPage> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text('${(loan.progress * 100).toStringAsFixed(1)}% paid', style: AppTextStyle.bodySmall),
+                Text('${(loan.progress * 100).toStringAsFixed(1)}% paid', style: AppTextStyle.bodySmall(context)),
               ],
             ],
           ),

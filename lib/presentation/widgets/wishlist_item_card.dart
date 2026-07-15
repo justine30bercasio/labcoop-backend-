@@ -151,7 +151,7 @@ class _WishlistItemCardState extends State<WishlistItemCard>
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: isComplete ? AppTheme.textDark : Colors.black87,
+            color: isComplete ? Theme.of(context).colorScheme.onSurface : Theme.of(context).colorScheme.onSurface,
           ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,

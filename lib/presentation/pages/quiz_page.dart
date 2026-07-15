@@ -232,13 +232,13 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
         backgroundColor: AppTheme.xpPurple,
         foregroundColor: Colors.white,
       ),
-      body: const Center(
+      body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(color: AppTheme.xpPurple),
-            SizedBox(height: 16),
-            Text('Loading questions...', style: TextStyle(color: Colors.grey)),
+            const CircularProgressIndicator(color: AppTheme.xpPurple),
+            const SizedBox(height: 16),
+            Text('Loading questions...', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
           ],
         ),
       ),
@@ -301,11 +301,11 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
         child: Column(
           children: [
             const SizedBox(height: 32),
-            const Text('Choose Your Level',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.textDark)),
+            Text('Choose Your Level',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface)),
             const SizedBox(height: 8),
             Text('Test your financial knowledge!',
-                style: TextStyle(fontSize: 14, color: Colors.grey.shade600)),
+                style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.onSurfaceVariant)),
             const SizedBox(height: 24),
             Expanded(
               child: ListView.separated(
@@ -319,7 +319,7 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
                     child: Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: Theme.of(context).colorScheme.surface,
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(color: Colors.grey.shade200),
                         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2))],
@@ -340,10 +340,10 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(d['label'] as String,
-                                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textDark)),
+                                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface)),
                                 const SizedBox(height: 4),
                                 Text(d['desc'] as String,
-                                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                                    style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                               ],
                             ),
                           ),
@@ -393,12 +393,12 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
                     const SizedBox(height: 16),
                     Text(
                       'Question ${_currentIndex + 1}/$_totalQuestions',
-                      style: TextStyle(color: Colors.grey.shade600, fontSize: 13, fontWeight: FontWeight.w500),
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       q.question,
-                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.textDark, height: 1.3),
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface, height: 1.3),
                     ),
                     const SizedBox(height: 24),
                     ...q.options.asMap().entries.map((entry) => _optionCard(entry.key, entry.value, correctIndex, explanation)),
@@ -437,7 +437,7 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.9),
+        color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.9),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)],
       ),
       child: Row(
@@ -468,8 +468,8 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
       children: [
         Icon(icon, color: AppTheme.xpPurple, size: 18),
         const SizedBox(width: 4),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textDark)),
-        Text(' $label', style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
+        Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Theme.of(context).colorScheme.onSurface)),
+        Text(' $label', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11)),
       ],
     );
   }
@@ -494,7 +494,7 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
             borderRadius: BorderRadius.circular(20),
           ),
           child: Text(_difficultyLabel,
-              style: TextStyle(color: Colors.grey.shade700, fontSize: 11, fontWeight: FontWeight.w600)),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11, fontWeight: FontWeight.w600)),
         ),
       ],
     );
@@ -522,7 +522,7 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
         prefix = '';
       }
     } else {
-      bgColor = Colors.white;
+      bgColor = Theme.of(context).colorScheme.surface;
       borderColor = Colors.grey.shade300;
       prefix = '';
     }
@@ -555,7 +555,7 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
                   fontSize: 16,
                   fontWeight: _answered && isCorrect ? FontWeight.bold : FontWeight.normal,
                   color: _answered && isCorrect ? AppTheme.primaryGreen
-                      : _answered && isSelected && !isCorrect ? Colors.red : AppTheme.textDark,
+                      : _answered && isSelected && !isCorrect ? Colors.red : Theme.of(context).colorScheme.onSurface,
                 ),
               ),
             ),
@@ -595,18 +595,18 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
                 const SizedBox(height: 16),
                 Text(
                   pct >= 80 ? 'Financial Genius!' : pct >= 50 ? 'Great Effort!' : 'Keep Learning!',
-                  style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   '$_correctCount/$_totalQuestions correct ($_difficultyLabel)',
-                  style: TextStyle(fontSize: 18, color: Colors.grey.shade600),
+                  style: TextStyle(fontSize: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 24),
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: Theme.of(context).colorScheme.surface,
                     borderRadius: BorderRadius.circular(24),
                     boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 20)],
                   ),
@@ -650,9 +650,9 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
       children: [
         Icon(icon, color: color, size: 24),
         const SizedBox(width: 12),
-        Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 15)),
+        Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 15)),
         const Spacer(),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppTheme.textDark)),
+        Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Theme.of(context).colorScheme.onSurface)),
       ],
     );
   }

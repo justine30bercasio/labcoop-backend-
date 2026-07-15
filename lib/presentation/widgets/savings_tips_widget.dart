@@ -50,7 +50,7 @@ class _SavingsTipsWidgetState extends State<SavingsTipsWidget> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppTheme.accentAmber.withValues(alpha: 0.3)),
           boxShadow: [
@@ -78,7 +78,7 @@ class _SavingsTipsWidgetState extends State<SavingsTipsWidget> {
                 child: Text(
                   tip.message,
                   key: ValueKey(_currentTip),
-                  style: const TextStyle(fontSize: 13, color: AppTheme.textDark, height: 1.3),
+                  style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurface, height: 1.3),
                 ),
               ),
             ),

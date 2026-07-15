@@ -104,9 +104,9 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(
-        backgroundColor: Colors.white,
-        body: Center(child: CircularProgressIndicator()),
+      return Scaffold(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
@@ -135,7 +135,7 @@ class _HomePageState extends State<HomePage> {
         return Stack(
           children: [
             Scaffold(
-              backgroundColor: Colors.white,
+              backgroundColor: Theme.of(context).colorScheme.surface,
               body: SafeArea(
                 top: false,
                 bottom: false,
@@ -176,7 +176,7 @@ class _HomePageState extends State<HomePage> {
                   context.read<SavingsBloc>().add(LoadSavings(_accountId));
                 }
               },
-              backgroundColor: Colors.white,
+              backgroundColor: Theme.of(context).colorScheme.surface,
               elevation: 0,
               indicatorColor: AppTheme.primaryGreen.withValues(alpha: 0.12),
               animationDuration: AnimDurations.fast,

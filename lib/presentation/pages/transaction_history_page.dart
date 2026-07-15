@@ -58,9 +58,9 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         children: [
-          Text('Passbook Ledger', style: AppTextStyle.heading2),
+          Text('Passbook Ledger', style: AppTextStyle.heading2(context)),
           const Spacer(),
-          Text('$count entries', style: AppTextStyle.bodySmall),
+          Text('$count entries', style: AppTextStyle.bodySmall(context)),
         ],
       ),
     );
@@ -104,10 +104,10 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
                 children: [
                   Text(typeLabels[t.type] ?? t.type.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                   const SizedBox(height: 2),
-                  Text(t.description, style: AppTextStyle.bodySmall, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(t.description, style: AppTextStyle.bodySmall(context), maxLines: 1, overflow: TextOverflow.ellipsis),
                   const SizedBox(height: 2),
                   Text('${t.createdAt.month}/${t.createdAt.day}/${t.createdAt.year} ${t.createdAt.hour.toString().padLeft(2, '0')}:${t.createdAt.minute.toString().padLeft(2, '0')}',
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                    style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 ],
               ),
             ),
@@ -125,7 +125,7 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
                 const SizedBox(height: 2),
                 Text(
                   'Bal: PHP ${t.balanceAfter.toStringAsFixed(2)}',
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                  style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ],
             ),

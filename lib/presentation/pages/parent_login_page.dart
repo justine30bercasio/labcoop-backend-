@@ -319,7 +319,7 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                                 onPressed: () => _switchMode(0),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppTheme.accentAmber,
-                                  foregroundColor: AppTheme.textDark,
+                                  foregroundColor: Theme.of(context).colorScheme.onSurface,
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                 ),
                                 child: const Text('Back to Login', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -373,7 +373,7 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                                     : _otpSent ? 'Resend OTP Code' : 'Send OTP Code'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppTheme.accentAmber,
-                                  foregroundColor: AppTheme.textDark,
+                                  foregroundColor: Theme.of(context).colorScheme.onSurface,
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                 ),
                               ),
@@ -569,12 +569,12 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                                 onPressed: _loading ? null : (_mode == 0 ? _doLogin : _doRegister),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppTheme.accentAmber,
-                                  foregroundColor: AppTheme.textDark,
+                                  foregroundColor: Theme.of(context).colorScheme.onSurface,
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                                   elevation: 4,
                                 ),
                                 child: _loading
-                                    ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: AppTheme.textDark))
+                                    ? SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Theme.of(context).colorScheme.onSurface))
                                     : Text(_mode == 0 ? 'Login as Parent' : 'Submit for Approval',
                                         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                               ),

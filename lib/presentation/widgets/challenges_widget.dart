@@ -92,12 +92,12 @@ class _ChallengesWidgetState extends State<ChallengesWidget> {
         child: Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: Colors.grey.shade200),
           ),
-          child: const Center(
-            child: Text('No active challenges. Add one in settings!', style: TextStyle(color: Colors.grey)),
+          child: Center(
+            child: Text('No active challenges. Add one in settings!', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
           ),
         ),
       );
@@ -146,7 +146,7 @@ class _ChallengeCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: completed
@@ -180,7 +180,7 @@ class _ChallengeCard extends StatelessWidget {
                     label: Text('+$reward 🪙', style: const TextStyle(fontSize: 12)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.accentAmber,
-                      foregroundColor: AppTheme.textDark,
+                      foregroundColor: Theme.of(context).colorScheme.onSurface,
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),

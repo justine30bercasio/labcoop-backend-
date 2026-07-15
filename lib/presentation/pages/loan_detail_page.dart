@@ -86,7 +86,7 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
                 const SizedBox(height: 20),
                 if (loan.status == LoanStatus.active) _paymentSection(loan),
                 const SizedBox(height: 20),
-                Text('Payment History', style: AppTextStyle.heading3),
+                Text('Payment History', style: AppTextStyle.heading3(context)),
                 const SizedBox(height: 8),
                 if (state.loanPayments.isEmpty)
                   const Card(child: Padding(padding: EdgeInsets.all(24), child: Center(child: Text('No payments yet'))))
@@ -106,8 +106,8 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
   Widget _amortizationSection(Loan loan, int paymentsMade) {
     return Card(
       child: ExpansionTile(
-        title: Text('Amortization Schedule', style: AppTextStyle.heading3),
-        subtitle: Text('${loan.termMonths} payments', style: AppTextStyle.bodySmall),
+        title: Text('Amortization Schedule', style: AppTextStyle.heading3(context)),
+        subtitle: Text('${loan.termMonths} payments', style: AppTextStyle.bodySmall(context)),
         initiallyExpanded: _scheduleExpanded,
         onExpansionChanged: (expanded) {
           setState(() => _scheduleExpanded = expanded);
@@ -195,7 +195,7 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Loan Summary', style: AppTextStyle.heading3),
+                Text('Loan Summary', style: AppTextStyle.heading3(context)),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
@@ -240,9 +240,9 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Make a Payment', style: AppTextStyle.heading3),
+            Text('Make a Payment', style: AppTextStyle.heading3(context)),
             const SizedBox(height: 4),
-            Text('Monthly due: PHP ${loan.monthlyAmortization.toStringAsFixed(2)}', style: AppTextStyle.bodySmall),
+            Text('Monthly due: PHP ${loan.monthlyAmortization.toStringAsFixed(2)}', style: AppTextStyle.bodySmall(context)),
             const SizedBox(height: 12),
             Row(
               children: [
@@ -289,7 +289,7 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
           child: const Icon(Icons.check_circle, color: Colors.green, size: 20),
         ),
         title: Text('PHP ${p.amount.toStringAsFixed(2)} payment'),
-        subtitle: Text('${p.paidAt.month}/${p.paidAt.day}/${p.paidAt.year}', style: AppTextStyle.bodySmall),
+        subtitle: Text('${p.paidAt.month}/${p.paidAt.day}/${p.paidAt.year}', style: AppTextStyle.bodySmall(context)),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,

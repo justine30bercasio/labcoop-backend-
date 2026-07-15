@@ -90,7 +90,7 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
         title: const Text('LabCoop'),
         actions: [
@@ -256,7 +256,7 @@ class _DashboardPageState extends State<DashboardPage> {
               heroTag: 'allocate',
               onPressed: _showAllocateDialog,
               backgroundColor: AppTheme.accentAmber,
-              child: const Icon(Icons.payments, color: AppTheme.textDark),
+              child: Icon(Icons.payments, color: Theme.of(context).colorScheme.onSurface),
             ),
             const SizedBox(height: 8),
             FloatingActionButton.extended(
@@ -347,8 +347,8 @@ class _DashboardPageState extends State<DashboardPage> {
                         Text(
                           '✨ Tap "New Wish" to add something you want to save for!',
                           textAlign: TextAlign.center,
-                          style: AppTextStyle.body.copyWith(
-                            color: Colors.grey.shade500,
+                          style: AppTextStyle.body(context).copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ],
@@ -603,7 +603,7 @@ class _DashboardPageState extends State<DashboardPage> {
       children: [
         Icon(icon, color: AppTheme.primaryGreen, size: 20),
         const SizedBox(width: Spacing.sm),
-        Text(title, style: AppTextStyle.heading3),
+        Text(title, style: AppTextStyle.heading3(context)),
       ],
     );
   }
@@ -648,7 +648,7 @@ class _DashboardPageState extends State<DashboardPage> {
             const SizedBox(height: 8),
             Text(
               'Available: ₱${available.toStringAsFixed(0)}',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ],
         ),
@@ -754,7 +754,7 @@ class _DashboardPageState extends State<DashboardPage> {
             const SizedBox(height: 8),
             Text(
               'Available: ₱${available.toStringAsFixed(0)}',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ],
         ),

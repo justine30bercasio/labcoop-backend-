@@ -316,7 +316,7 @@ class _LoginPageState extends State<LoginPage>
                               onPressed: _loading ? null : _login,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppTheme.accentAmber,
-                                foregroundColor: AppTheme.textDark,
+                                foregroundColor: Theme.of(context).colorScheme.onSurface,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -324,11 +324,11 @@ class _LoginPageState extends State<LoginPage>
                                 shadowColor: AppTheme.accentAmber.withValues(alpha: 0.4),
                               ),
                               child: _loading
-                                  ? const SizedBox(
+                                  ? SizedBox(
                                       width: 20, height: 20,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2,
-                                        color: AppTheme.textDark,
+                                        color: Theme.of(context).colorScheme.onSurface,
                                       ),
                                     )
                                   : const Row(

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'app_theme.dart';
 
 class Spacing {
   const Spacing._();
@@ -22,40 +21,40 @@ class RadiusTokens {
 class AppTextStyle {
   const AppTextStyle._();
 
-  static const TextStyle heading1 = TextStyle(
+  static TextStyle heading1(BuildContext context) => TextStyle(
     fontSize: 28,
     fontWeight: FontWeight.bold,
-    color: AppTheme.textDark,
+    color: Theme.of(context).colorScheme.onSurface,
   );
-  static const TextStyle heading2 = TextStyle(
+  static TextStyle heading2(BuildContext context) => TextStyle(
     fontSize: 22,
     fontWeight: FontWeight.bold,
-    color: AppTheme.textDark,
+    color: Theme.of(context).colorScheme.onSurface,
   );
-  static const TextStyle heading3 = TextStyle(
+  static TextStyle heading3(BuildContext context) => TextStyle(
     fontSize: 18,
     fontWeight: FontWeight.bold,
-    color: AppTheme.textDark,
+    color: Theme.of(context).colorScheme.onSurface,
   );
-  static const TextStyle body = TextStyle(
+  static TextStyle body(BuildContext context) => TextStyle(
     fontSize: 14,
     fontWeight: FontWeight.normal,
-    color: AppTheme.textDark,
+    color: Theme.of(context).colorScheme.onSurface,
   );
-  static const TextStyle bodySmall = TextStyle(
+  static TextStyle bodySmall(BuildContext context) => TextStyle(
     fontSize: 12,
     fontWeight: FontWeight.normal,
-    color: Colors.grey,
+    color: Theme.of(context).colorScheme.onSurfaceVariant,
   );
-  static const TextStyle label = TextStyle(
+  static TextStyle label(BuildContext context) => TextStyle(
     fontSize: 13,
     fontWeight: FontWeight.w600,
-    color: AppTheme.textDark,
+    color: Theme.of(context).colorScheme.onSurface,
   );
-  static const TextStyle titleLarge = TextStyle(
+  static TextStyle titleLarge(BuildContext context) => TextStyle(
     fontSize: 17,
     fontWeight: FontWeight.bold,
-    color: AppTheme.textDark,
+    color: Theme.of(context).colorScheme.onSurface,
   );
 }
 

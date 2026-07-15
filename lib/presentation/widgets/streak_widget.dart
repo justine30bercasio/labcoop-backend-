@@ -187,7 +187,7 @@ class _StreakWidgetState extends State<StreakWidget> {
                   label: const Text('Check-in', style: TextStyle(fontSize: 12)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.accentAmber,
-                    foregroundColor: AppTheme.textDark,
+                    foregroundColor: Theme.of(context).colorScheme.onSurface,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                   ),

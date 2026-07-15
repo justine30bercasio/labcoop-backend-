@@ -140,7 +140,7 @@ class _CelebrationOverlayState extends State<CelebrationOverlay>
                     padding: const EdgeInsets.only(bottom: 12),
                     child: Text(
                       widget.title!,
-                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface),
                     ),
                   ),
                 if (widget.showCoinAnimation) ...[
@@ -180,7 +180,7 @@ class _CelebrationOverlayState extends State<CelebrationOverlay>
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 15,
-                      color: AppTheme.textDark.withValues(alpha: 0.7),
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
                     ),
                   ),
                 ],

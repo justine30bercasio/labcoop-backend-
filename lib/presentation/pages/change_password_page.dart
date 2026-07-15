@@ -153,12 +153,12 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                       onPressed: _loading ? null : _changePassword,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppTheme.accentAmber,
-                        foregroundColor: AppTheme.textDark,
+                        foregroundColor: Theme.of(context).colorScheme.onSurface,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         elevation: 4,
                       ),
                       child: _loading
-                          ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.textDark))
+                          ? SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.onSurface))
                           : const Text('Change Password', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                     ),
                   ),

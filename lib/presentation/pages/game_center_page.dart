@@ -110,7 +110,7 @@ class _GameCenterPageState extends State<GameCenterPage> {
                       label: Text(cat, style: TextStyle(
                         fontSize: 13,
                         fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-                        color: selected ? color : Colors.grey.shade700,
+                        color: selected ? color : Theme.of(ctx).colorScheme.onSurfaceVariant,
                       )),
                       selected: selected,
                       onSelected: (_) => setState(() => _selectedCategory = cat),
@@ -134,7 +134,7 @@ class _GameCenterPageState extends State<GameCenterPage> {
                 padding: const EdgeInsets.symmetric(vertical: 32),
                 child: Center(
                   child: Text('No games in this category',
-                      style: AppTextStyle.body.copyWith(color: Colors.grey.shade500)),
+                      style: AppTextStyle.body(context).copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 ),
               )
             else
@@ -176,9 +176,9 @@ class _GameCenterPageState extends State<GameCenterPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: AppTextStyle.heading2),
+        Text(title, style: AppTextStyle.heading2(context)),
         const SizedBox(height: 2),
-        Text(subtitle, style: AppTextStyle.bodySmall.copyWith(fontSize: 13)),
+        Text(subtitle, style: AppTextStyle.bodySmall(context).copyWith(fontSize: 13)),
       ],
     );
   }
@@ -247,7 +247,7 @@ class _AnimatedGameCardState extends State<_AnimatedGameCard> with SingleTickerP
                 const SizedBox(height: Spacing.xs),
                 Text(
                   widget.game.title,
-                  style: AppTextStyle.label.copyWith(fontSize: 11),
+                  style: AppTextStyle.label(context).copyWith(fontSize: 11),
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -354,9 +354,9 @@ class _GameCardState extends State<_GameCard> with SingleTickerProviderStateMixi
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(widget.title,
-                          style: AppTextStyle.titleLarge),
+                          style: AppTextStyle.titleLarge(context)),
                       const SizedBox(height: Spacing.xs),
-                      Text(widget.desc, style: AppTextStyle.bodySmall),
+                      Text(widget.desc, style: AppTextStyle.bodySmall(context)),
                     ],
                   ),
                 ),

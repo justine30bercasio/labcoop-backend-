@@ -91,7 +91,7 @@ class _LoanApplyPageState extends State<LoanApplyPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Select Loan Product', style: AppTextStyle.heading3),
+                  Text('Select Loan Product', style: AppTextStyle.heading3(context)),
                   const SizedBox(height: 12),
                   if (_selectedProduct != null)
                     Card(
@@ -134,7 +134,7 @@ class _LoanApplyPageState extends State<LoanApplyPage> {
                     },
                   ),
                   const SizedBox(height: 16),
-                  Text('Term (months)', style: AppTextStyle.label),
+                  Text('Term (months)', style: AppTextStyle.label(context)),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,

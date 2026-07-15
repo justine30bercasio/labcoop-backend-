@@ -99,6 +99,8 @@ class _LabCoopAppState extends State<LabCoopApp> {
         navigatorKey: _navigatorKey,
         title: 'LabCoop',
         theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: ThemeMode.system,
         debugShowCheckedModeBanner: false,
         home: home,
         builder: (context, child) {

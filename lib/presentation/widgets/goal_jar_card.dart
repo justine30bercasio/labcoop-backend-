@@ -30,10 +30,10 @@ class GoalJarCard extends StatelessWidget {
                   children: [
                     Text(
                       goal.title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: AppTheme.textDark,
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -56,10 +56,10 @@ class GoalJarCard extends StatelessWidget {
                       children: [
                         Text(
                           '₱${goal.currentAllocated.toStringAsFixed(0)}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
-                            color: AppTheme.textDark,
+                            color: Theme.of(context).colorScheme.onSurface,
                           ),
                         ),
                         Text(

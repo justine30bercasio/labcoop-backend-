@@ -297,7 +297,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
         title: Text(_parentInfo?['display_name'] ?? 'Parent Portal'),
         backgroundColor: _indigo,

@@ -93,7 +93,7 @@ class _WithdrawalRequestPageState extends State<WithdrawalRequestPage> {
           children: [
             _requestForm(),
             const SizedBox(height: 24),
-            Text('Request History', style: AppTextStyle.heading3),
+            Text('Request History', style: AppTextStyle.heading3(context)),
             const SizedBox(height: 8),
             if (_loading)
               const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
@@ -114,9 +114,9 @@ class _WithdrawalRequestPageState extends State<WithdrawalRequestPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Request a Withdrawal', style: AppTextStyle.heading3),
+            Text('Request a Withdrawal', style: AppTextStyle.heading3(context)),
             const SizedBox(height: 4),
-            Text('Available: PHP ${widget.currentBalance.toStringAsFixed(2)}', style: AppTextStyle.bodySmall),
+            Text('Available: PHP ${widget.currentBalance.toStringAsFixed(2)}', style: AppTextStyle.bodySmall(context)),
             const SizedBox(height: 12),
             TextField(
               controller: _amountCtrl,
@@ -201,7 +201,7 @@ class _WithdrawalRequestPageState extends State<WithdrawalRequestPage> {
           child: Icon(statusIcon, color: statusColor, size: 22),
         ),
         title: Text('PHP ${amount.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(reason.isNotEmpty ? reason : 'No reason given', style: AppTextStyle.bodySmall),
+        subtitle: Text(reason.isNotEmpty ? reason : 'No reason given', style: AppTextStyle.bodySmall(context)),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -215,7 +215,7 @@ class _WithdrawalRequestPageState extends State<WithdrawalRequestPage> {
               child: Text(statusLabel, style: TextStyle(color: statusColor, fontWeight: FontWeight.w600, fontSize: 11)),
             ),
             const SizedBox(height: 2),
-            Text(_formatDate(createdAt), style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+            Text(_formatDate(createdAt), style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant)),
           ],
         ),
       ),

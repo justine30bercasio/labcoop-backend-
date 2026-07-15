@@ -120,13 +120,13 @@ class _AutoSavePageState extends State<AutoSavePage> {
                   ? ListView(
                       children: [
                         SizedBox(height: MediaQuery.of(context).size.height * 0.3),
-                        const Center(child: Column(
+                        Center(child: Column(
                           children: [
-                            Icon(Icons.timer_off, size: 64, color: Colors.grey),
+                            Icon(Icons.timer_off, size: 64, color: Theme.of(context).colorScheme.onSurfaceVariant),
                             SizedBox(height: 16),
-                            Text('No standing orders', style: TextStyle(color: Colors.grey, fontSize: 16)),
+                            Text('No standing orders', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 16)),
                             SizedBox(height: 8),
-                            Text('Tap + to create one', style: TextStyle(color: Colors.grey)),
+                            Text('Tap + to create one', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                           ],
                         )),
                       ],
@@ -175,9 +175,9 @@ class _AutoSavePageState extends State<AutoSavePage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(description.isNotEmpty ? description : 'Auto-Save ${_freqLabel(frequency)}',
-                      style: TextStyle(fontWeight: FontWeight.w600, color: isActive ? AppTheme.textDark : Colors.grey)),
+                      style: TextStyle(fontWeight: FontWeight.w600, color: isActive ? Theme.of(context).colorScheme.onSurface : Theme.of(context).colorScheme.onSurfaceVariant)),
                     const SizedBox(height: 4),
-                    Text('${_freqLabel(frequency)} \u2022 Next: ${_formatDate(nextRun)}', style: AppTextStyle.bodySmall),
+                    Text('${_freqLabel(frequency)} \u2022 Next: ${_formatDate(nextRun)}', style: AppTextStyle.bodySmall(context)),
                   ],
                 ),
               ),
@@ -187,7 +187,7 @@ class _AutoSavePageState extends State<AutoSavePage> {
                   Text('PHP ${amount.toStringAsFixed(2)}', style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
-                    color: isActive ? AppTheme.textDark : Colors.grey,
+                    color: isActive ? Theme.of(context).colorScheme.onSurface : Theme.of(context).colorScheme.onSurfaceVariant,
                   )),
                   const SizedBox(height: 2),
                   Container(
@@ -198,7 +198,7 @@ class _AutoSavePageState extends State<AutoSavePage> {
                     ),
                     child: Text(isActive ? 'Active' : 'Inactive', style: TextStyle(
                       fontSize: 10, fontWeight: FontWeight.w600,
-                      color: isActive ? AppTheme.primaryGreen : Colors.grey,
+                      color: isActive ? AppTheme.primaryGreen : Theme.of(context).colorScheme.onSurfaceVariant,
                     )),
                   ),
                 ],
@@ -238,7 +238,7 @@ class _CreateOrderSheetState extends State<_CreateOrderSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('New Standing Order', style: AppTextStyle.heading2),
+          Text('New Standing Order', style: AppTextStyle.heading2(context)),
           const SizedBox(height: 20),
           TextField(
             controller: _amountCtrl,

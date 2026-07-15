@@ -248,12 +248,12 @@ class _PetPageState extends State<PetPage> with TickerProviderStateMixin {
             Text(
               'Your Piggy evolved to\n${AppConstants.petEvolutionNames[stage]}!',
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface),
             ),
             const SizedBox(height: 8),
             Text(
               'Keep saving to evolve further!',
-              style: TextStyle(color: Colors.grey.shade600),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ],
         ),
@@ -392,8 +392,8 @@ class _PetPageState extends State<PetPage> with TickerProviderStateMixin {
       children: [
         Icon(icon, color: AppTheme.primaryGreen, size: 28),
         const SizedBox(height: 4),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppTheme.textDark)),
-        Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+        Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Theme.of(context).colorScheme.onSurface)),
+        Text(label, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
       ],
     );
   }
@@ -403,7 +403,7 @@ class _PetPageState extends State<PetPage> with TickerProviderStateMixin {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)],
       ),
@@ -414,7 +414,7 @@ class _PetPageState extends State<PetPage> with TickerProviderStateMixin {
             children: [
               const Icon(Icons.auto_awesome, color: AppTheme.xpPurple, size: 18),
               const SizedBox(width: 8),
-              const Text('Evolution Progress', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textDark)),
+              Text('Evolution Progress', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Theme.of(context).colorScheme.onSurface)),
               const Spacer(),
               Text('${(_evolutionStage + 1)}/${AppConstants.petEvolutionEmojis.length}',
                   style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
@@ -491,7 +491,7 @@ class _PetPageState extends State<PetPage> with TickerProviderStateMixin {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppTheme.accentAmber.withValues(alpha: 0.3)),
       ),
@@ -511,7 +511,7 @@ class _PetPageState extends State<PetPage> with TickerProviderStateMixin {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)],
       ),
@@ -522,7 +522,7 @@ class _PetPageState extends State<PetPage> with TickerProviderStateMixin {
             children: [
               const Icon(Icons.favorite, color: Colors.red, size: 18),
               const SizedBox(width: 8),
-              const Text('Happiness', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textDark)),
+              Text('Happiness', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Theme.of(context).colorScheme.onSurface)),
               const Spacer(),
               Text('$_happiness%', style: TextStyle(color: _happiness > 50 ? AppTheme.primaryGreen : Colors.red, fontWeight: FontWeight.bold)),
             ],
@@ -549,7 +549,7 @@ class _PetPageState extends State<PetPage> with TickerProviderStateMixin {
           const SizedBox(height: 8),
           Text(
             _happiness < 30 ? '😟 Piggy is hungry! Feed some coins!' : _happiness >= 70 ? '😊 Piggy is very happy!' : '🙂 Piggy is content',
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
         ],
       ),

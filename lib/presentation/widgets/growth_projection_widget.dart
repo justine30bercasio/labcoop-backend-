@@ -53,7 +53,7 @@ class GrowthProjectionWidget extends StatelessWidget {
               children: [
                 Text(
                   '₱${currentBalance.toStringAsFixed(0)} saved',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.textDark),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Theme.of(context).colorScheme.onSurface),
                 ),
                 Text(
                   'of ₱${totalGoals.toStringAsFixed(0)}',

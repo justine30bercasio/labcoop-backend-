@@ -113,12 +113,12 @@ class _TownPageState extends State<TownPage> {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Text('${available.length} building(s) in inventory',
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13)),
             const SizedBox(height: 16),
             ...available.map((b) => ListTile(
                   leading: Text(b['emoji'] as String, style: const TextStyle(fontSize: 32)),
                   title: Text(b['name'] as String, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text(b['desc'] as String, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                  subtitle: Text(b['desc'] as String, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                   onTap: () {
                     Navigator.pop(ctx);
                     _placeBuilding(b, x, y);
@@ -146,7 +146,7 @@ class _TownPageState extends State<TownPage> {
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
             Text(building['desc'] as String,
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13)),
             const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
@@ -286,7 +286,7 @@ class _TownPageState extends State<TownPage> {
               const SizedBox(height: 20),
               Text(
                 'Building Shop ($unlockedCount/${AppConstants.townBuildings.length} built)',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface),
               ),
               const SizedBox(height: 8),
               ...AppConstants.townBuildings.map((b) => _buildingCard(b, ownedIds.contains(b['id'] as String))),
@@ -315,10 +315,10 @@ class _TownPageState extends State<TownPage> {
             children: [
               const Icon(Icons.map, color: AppTheme.primaryGreen, size: 20),
               const SizedBox(width: 8),
-              const Text('Your Dream Town', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textDark)),
+              Text('Your Dream Town', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Theme.of(context).colorScheme.onSurface)),
               const Spacer(),
               Text('$placedCount/$gridRows plottaken',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13)),
             ],
           ),
           const SizedBox(height: 16),
@@ -356,7 +356,7 @@ class _TownPageState extends State<TownPage> {
             width: 60,
             height: 60,
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(12),
               boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 8)],
             ),
@@ -386,7 +386,7 @@ class _TownPageState extends State<TownPage> {
               onTap: () => _showBuildingActions(building),
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.green.shade200),
                   boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 3)],
@@ -397,7 +397,7 @@ class _TownPageState extends State<TownPage> {
                     Text(building['emoji'] as String, style: const TextStyle(fontSize: 22)),
                     const SizedBox(height: 2),
                     Text(building['name'] as String,
-                        style: const TextStyle(fontSize: 7, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+                        style: TextStyle(fontSize: 7, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface),
                         textAlign: TextAlign.center,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis),
@@ -451,7 +451,7 @@ class _TownPageState extends State<TownPage> {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.amber.shade100),
       ),
@@ -499,7 +499,7 @@ class _TownPageState extends State<TownPage> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)],
       ),
@@ -510,7 +510,7 @@ class _TownPageState extends State<TownPage> {
             children: [
               const Icon(Icons.auto_awesome, color: AppTheme.accentAmber, size: 20),
               const SizedBox(width: 8),
-              const Text('Active Bonuses', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textDark)),
+              Text('Active Bonuses', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Theme.of(context).colorScheme.onSurface)),
             ],
           ),
           const SizedBox(height: 12),
@@ -521,7 +521,7 @@ class _TownPageState extends State<TownPage> {
                     Text(b['emoji'] as String, style: const TextStyle(fontSize: 20)),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text(b['desc'] as String, style: TextStyle(color: Colors.grey.shade700, fontSize: 13)),
+                      child: Text(b['desc'] as String, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13)),
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -565,7 +565,7 @@ class _TownPageState extends State<TownPage> {
             child: Center(child: Text(emoji, style: const TextStyle(fontSize: 28))),
           ),
           title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-          subtitle: Text(desc, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+          subtitle: Text(desc, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
           trailing: owned
               ? Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -586,7 +586,7 @@ class _TownPageState extends State<TownPage> {
                   onPressed: () => _buyBuilding(building),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _coins >= cost ? AppTheme.accentAmber : Colors.grey.shade300,
-                    foregroundColor: _coins >= cost ? AppTheme.textDark : Colors.grey.shade600,
+                    foregroundColor: _coins >= cost ? Theme.of(context).colorScheme.onSurface : Theme.of(context).colorScheme.onSurfaceVariant,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   child: Text('$cost 🪙', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),

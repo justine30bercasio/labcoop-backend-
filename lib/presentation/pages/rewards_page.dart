@@ -78,7 +78,7 @@ class _RewardsPageState extends State<RewardsPage> {
                 children: [
                   Icon(Icons.emoji_events, color: AppTheme.primaryGreen, size: 20),
                   const SizedBox(width: Spacing.sm),
-                  Text('Your Badges', style: AppTextStyle.heading3),
+                  Text('Your Badges', style: AppTextStyle.heading3(context)),
                 ],
               ),
             ),
@@ -126,7 +126,7 @@ class _RewardsPageState extends State<RewardsPage> {
             value: value,
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22, color: color),
           ),
-          Text(label, style: AppTextStyle.bodySmall),
+          Text(label, style: AppTextStyle.bodySmall(context)),
         ],
       ),
     );
@@ -151,7 +151,7 @@ class _RewardsPageState extends State<RewardsPage> {
               children: [
                 const Icon(Icons.auto_awesome, color: AppTheme.coinGold, size: 22),
                 const SizedBox(width: Spacing.sm),
-                Text('Rare Unlocks', style: AppTextStyle.heading3),
+                Text('Rare Unlocks', style: AppTextStyle.heading3(context)),
               ],
             ),
             const SizedBox(height: Spacing.sm + 4),
@@ -200,7 +200,7 @@ class _RewardsPageState extends State<RewardsPage> {
             child: Center(
               child: Icon(
                 unlocked ? Icons.check_circle : Icons.lock,
-                color: unlocked ? AppTheme.primaryGreen : Colors.grey,
+                color: unlocked ? AppTheme.primaryGreen : Theme.of(context).colorScheme.onSurfaceVariant,
                 size: 18,
               ),
             ),
@@ -214,7 +214,7 @@ class _RewardsPageState extends State<RewardsPage> {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: unlocked ? FontWeight.bold : FontWeight.normal,
-                color: unlocked ? AppTheme.textDark : Colors.grey,
+                color: unlocked ? Theme.of(context).colorScheme.onSurface : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
           ),

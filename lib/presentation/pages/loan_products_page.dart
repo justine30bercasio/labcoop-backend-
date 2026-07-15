@@ -43,7 +43,7 @@ class _LoanProductsPageState extends State<LoanProductsPage> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(product.name, style: AppTextStyle.heading3),
+                          Text(product.name, style: AppTextStyle.heading3(context)),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
@@ -57,7 +57,7 @@ class _LoanProductsPageState extends State<LoanProductsPage> {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      Text(product.description, style: AppTextStyle.body),
+                      Text(product.description, style: AppTextStyle.body(context)),
                       const SizedBox(height: 12),
                       Row(
                         children: [

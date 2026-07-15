@@ -249,11 +249,11 @@ class _MemoryMatchPageState extends State<MemoryMatchPage> {
               const SizedBox(height: 16),
               Text(
                 _gameOver ? 'You Win!' : 'Memory Match',
-                style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface),
               ),
               if (_gameOver) ...[
                 const SizedBox(height: 8),
-                const Text('All pairs matched!', style: TextStyle(fontSize: 18, color: Colors.grey)),
+                Text('All pairs matched!', style: TextStyle(fontSize: 18, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 const SizedBox(height: 4),
                 Text('$_attempts attempts · $_coinsEarned 🪙 earned',
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.xpPurple)),
@@ -272,8 +272,8 @@ class _MemoryMatchPageState extends State<MemoryMatchPage> {
                   ),
               ] else ...[
                 const SizedBox(height: 8),
-                const Text('Match all the pairs!', style: TextStyle(fontSize: 16, color: Colors.grey)),
-                const Text('🧮 16 cards · 8 pairs', style: TextStyle(fontSize: 14, color: Colors.grey)),
+                Text('Match all the pairs!', style: TextStyle(fontSize: 16, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                Text('🧮 16 cards · 8 pairs', style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.onSurfaceVariant)),
               ],
               const SizedBox(height: 32),
               FilledButton.icon(

@@ -227,7 +227,7 @@ class _CoopPageState extends State<CoopPage> {
               onPressed: _createGoal,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.accentAmber,
-                foregroundColor: AppTheme.textDark,
+                foregroundColor: Theme.of(context).colorScheme.onSurface,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),

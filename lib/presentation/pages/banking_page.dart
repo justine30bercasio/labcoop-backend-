@@ -115,7 +115,7 @@ class _BankingPageState extends State<BankingPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
         title: const Text('LabCoop Bank', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18)),
         centerTitle: true,
@@ -285,7 +285,7 @@ class _BankingPageState extends State<BankingPage> {
                             ? 'Your previous submission did not pass verification. Please submit correct documents to proceed.'
                             : 'You need to verify your identity before you can use banking features.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 14, color: Colors.grey.shade600, height: 1.5),
+                    style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.5),
                   ),
                   const SizedBox(height: 32),
                   // ── progress stepper ──
@@ -386,7 +386,7 @@ class _BankingPageState extends State<BankingPage> {
                             width: 16, height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
                           )
-                        : Text('${stepIdx + 1}', style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.w600, fontSize: 14)),
+                        : Text('${stepIdx + 1}', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600, fontSize: 14)),
               ),
             ),
             const SizedBox(height: 6),
@@ -395,7 +395,7 @@ class _BankingPageState extends State<BankingPage> {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-                color: isActive ? const Color(0xFFF59E0B) : done ? const Color(0xFF2E7D32) : Colors.grey.shade400,
+                color: isActive ? const Color(0xFFF59E0B) : done ? const Color(0xFF2E7D32) : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -502,7 +502,7 @@ class _BankingPageState extends State<BankingPage> {
         children: [
           Padding(
             padding: const EdgeInsets.only(left: 8, bottom: 12),
-            child: Text('Quick Actions', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.grey.shade800)),
+            child: Text('Quick Actions', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Theme.of(context).colorScheme.onSurfaceVariant)),
           ),
           _actionGrid([
             _ActionItem(Icons.add_circle_outline, 'Deposit', AppTheme.primaryGreen, () {
@@ -579,7 +579,7 @@ class _BankingPageState extends State<BankingPage> {
           const SizedBox(height: 6),
           Text(
             item.label,
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurfaceVariant),
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -612,7 +612,7 @@ class _BankingPageState extends State<BankingPage> {
                 child: const Icon(Icons.monetization_on, color: AppTheme.coinGold, size: 20),
               ),
               const SizedBox(width: 12),
-              Text('Interest Earned', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.grey.shade800)),
+              Text('Interest Earned', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Theme.of(context).colorScheme.onSurfaceVariant)),
               const Spacer(),
               if (!_interestLoading && _interestData != null)
                 Container(
@@ -629,7 +629,7 @@ class _BankingPageState extends State<BankingPage> {
           if (_interestLoading)
             const SizedBox(height: 40, child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))))
           else if (_interestData == null)
-            Text('Unable to load interest data', style: TextStyle(color: Colors.grey.shade400, fontSize: 13))
+            Text('Unable to load interest data', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13))
           else ...[
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -644,7 +644,7 @@ class _BankingPageState extends State<BankingPage> {
                     padding: const EdgeInsets.only(bottom: 4),
                     child: Text(
                       '+ PHP ${(_interestData!['projected_yearly']).toDouble().toStringAsFixed(2)}/yr projected',
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.w500),
+                      style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500),
                     ),
                   ),
               ],
@@ -670,7 +670,7 @@ class _BankingPageState extends State<BankingPage> {
                         child: Icon(Icons.add, color: Colors.green.shade600, size: 16),
                       ),
                       const SizedBox(width: 10),
-                      Expanded(child: Text(desc, style: TextStyle(fontSize: 13, color: Colors.grey.shade700))),
+                      Expanded(child: Text(desc, style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant))),
                       Text('+PHP ${amt.toStringAsFixed(2)}',
                         style: TextStyle(color: Colors.green.shade600, fontWeight: FontWeight.w700, fontSize: 13)),
                     ],
@@ -792,7 +792,7 @@ class _BankingPageState extends State<BankingPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Recent Transactions', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.grey.shade800)),
+              Text('Recent Transactions', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Theme.of(context).colorScheme.onSurfaceVariant)),
               TextButton(
                 onPressed: () => Navigator.push(context, PageTransition.slideUp(TransactionHistoryPage(accountId: widget.accountId))),
                 style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
@@ -804,7 +804,7 @@ class _BankingPageState extends State<BankingPage> {
           if (filtered.isEmpty)
             SizedBox(
               height: 80,
-              child: Center(child: Text('No transactions yet', style: TextStyle(color: Colors.grey.shade400, fontSize: 13))),
+                child: Center(child: Text('No transactions yet', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13))),
             )
           else
             ...filtered.take(5).map((t) => _transactionTile(t)),
@@ -836,9 +836,9 @@ class _BankingPageState extends State<BankingPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(t.description, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.grey.shade800)),
+                Text(t.description, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 const SizedBox(height: 2),
-                Text(_formatDate(t.createdAt), style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                Text(_formatDate(t.createdAt), style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
               ],
             ),
           ),

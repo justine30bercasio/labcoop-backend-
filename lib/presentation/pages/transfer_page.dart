@@ -335,7 +335,7 @@ class _TransferPageState extends State<TransferPage> {
               else
                 Text(
                   '₱${current.toStringAsFixed(0)}',
-                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                  style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
             ],
           ),

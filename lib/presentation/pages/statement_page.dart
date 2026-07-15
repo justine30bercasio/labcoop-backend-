@@ -145,9 +145,9 @@ class _StatementPageState extends State<StatementPage> {
           padding: const EdgeInsets.only(bottom: 8),
           child: Row(
             children: [
-              Text('Transactions', style: AppTextStyle.heading3),
+              Text('Transactions', style: AppTextStyle.heading3(context)),
               const Spacer(),
-              Text('${txs.length} entries', style: AppTextStyle.bodySmall),
+              Text('${txs.length} entries', style: AppTextStyle.bodySmall(context)),
             ],
           ),
         ),
@@ -230,7 +230,7 @@ class _StatementPageState extends State<StatementPage> {
                 children: [
                   Text(description.isNotEmpty ? description : type, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
                   const SizedBox(height: 2),
-                  Text(dateStr, style: AppTextStyle.bodySmall),
+                  Text(dateStr, style: AppTextStyle.bodySmall(context)),
                 ],
               ),
             ),
@@ -247,7 +247,7 @@ class _StatementPageState extends State<StatementPage> {
                 ),
                 Text(
                   'Bal: PHP ${balanceAfter.toStringAsFixed(2)}',
-                  style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                  style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ],
             ),
@@ -267,9 +267,9 @@ class _StatementPageState extends State<StatementPage> {
           padding: const EdgeInsets.only(bottom: 8),
           child: Row(
             children: [
-              Text('Savings Goals', style: AppTextStyle.heading3),
+              Text('Savings Goals', style: AppTextStyle.heading3(context)),
               const Spacer(),
-              Text('${goals.length} goals', style: AppTextStyle.bodySmall),
+              Text('${goals.length} goals', style: AppTextStyle.bodySmall(context)),
             ],
           ),
         ),
@@ -317,7 +317,7 @@ class _StatementPageState extends State<StatementPage> {
               ),
             ),
             const SizedBox(height: 4),
-            Text('PHP ${allocated.toStringAsFixed(2)} / PHP ${target.toStringAsFixed(2)}', style: AppTextStyle.bodySmall),
+            Text('PHP ${allocated.toStringAsFixed(2)} / PHP ${target.toStringAsFixed(2)}', style: AppTextStyle.bodySmall(context)),
           ],
         ),
       ),
@@ -334,9 +334,9 @@ class _StatementPageState extends State<StatementPage> {
           padding: const EdgeInsets.only(bottom: 8),
           child: Row(
             children: [
-              Text('Loans', style: AppTextStyle.heading3),
+              Text('Loans', style: AppTextStyle.heading3(context)),
               const Spacer(),
-              Text('${loans.length} loans', style: AppTextStyle.bodySmall),
+              Text('${loans.length} loans', style: AppTextStyle.bodySmall(context)),
             ],
           ),
         ),
@@ -405,7 +405,7 @@ class _StatementPageState extends State<StatementPage> {
             const SizedBox(height: 6),
             Row(
               children: [
-                Text('Principal: PHP ${principal.toStringAsFixed(2)}', style: AppTextStyle.bodySmall),
+                Text('Principal: PHP ${principal.toStringAsFixed(2)}', style: AppTextStyle.bodySmall(context)),
                 const SizedBox(width: 12),
                 Text('Balance: PHP ${remaining.toStringAsFixed(2)}', style: const TextStyle(color: Colors.red, fontSize: 12)),
               ],
@@ -422,7 +422,7 @@ class _StatementPageState extends State<StatementPage> {
                 ),
               ),
               const SizedBox(height: 2),
-              Text('Monthly: PHP ${monthly.toStringAsFixed(2)}', style: AppTextStyle.bodySmall),
+              Text('Monthly: PHP ${monthly.toStringAsFixed(2)}', style: AppTextStyle.bodySmall(context)),
             ],
           ],
         ),

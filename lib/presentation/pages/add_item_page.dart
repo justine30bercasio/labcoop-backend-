@@ -135,7 +135,7 @@ class _AddItemPageState extends State<AddItemPage>
             Text(
               'Start saving toward your ${_nameController.text.trim()}!',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 14),
             ),
             const SizedBox(height: 24),
             SizedBox(
@@ -289,9 +289,9 @@ class _AddItemPageState extends State<AddItemPage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Pick a category',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppTheme.textDark),
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurface),
         ),
         const SizedBox(height: 12),
         Wrap(
@@ -327,7 +327,7 @@ class _AddItemPageState extends State<AddItemPage>
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                        color: isSelected ? AppTheme.primaryGreen : Colors.grey.shade600,
+                        color: isSelected ? AppTheme.primaryGreen : Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],

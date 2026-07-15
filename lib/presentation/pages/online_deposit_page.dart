@@ -245,7 +245,7 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
                 ),
               ),
             const SizedBox(height: 16),
-            Text('Deposit History', style: AppTextStyle.heading3),
+            Text('Deposit History', style: AppTextStyle.heading3(context)),
             const SizedBox(height: 8),
             if (_loading)
               const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
@@ -281,7 +281,7 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
             const SizedBox(height: 12),
             const Text('Payment Successful!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green)),
             const SizedBox(height: 4),
-            Text('Your GCash deposit via PayMongo has been credited.', style: AppTextStyle.bodySmall),
+            Text('Your GCash deposit via PayMongo has been credited.', style: AppTextStyle.bodySmall(context)),
             const SizedBox(height: 12),
             ElevatedButton(
               onPressed: () {
@@ -313,7 +313,7 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
               Text('Complete Your Payment', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             ]),
             const SizedBox(height: 4),
-            Text('Scan the QR code with another device or tap the button below to pay via GCash.', style: AppTextStyle.bodySmall),
+            Text('Scan the QR code with another device or tap the button below to pay via GCash.', style: AppTextStyle.bodySmall(context)),
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(16),
@@ -349,7 +349,7 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
             const SizedBox(height: 4),
-              Text('Waiting for payment confirmation...', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+              Text('Waiting for payment confirmation...', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
             TextButton(
               onPressed: () {
                 _pollTimer?.cancel();
@@ -374,15 +374,15 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
               Row(children: [
                 const Text('\u{1F4B0}', style: TextStyle(fontSize: 24)),
                 const SizedBox(width: 8),
-                Text('GCash via PayMongo', style: AppTextStyle.heading3),
+                Text('GCash via PayMongo', style: AppTextStyle.heading3(context)),
               ]),
               const SizedBox(height: 4),
-              Text('Enter the amount and tap "Pay with GCash" to pay securely through PayMongo.', style: AppTextStyle.bodySmall),
+              Text('Enter the amount and tap "Pay with GCash" to pay securely through PayMongo.', style: AppTextStyle.bodySmall(context)),
             ] else ...[
               Row(children: [
                 const Text('\u{1F4B0}', style: TextStyle(fontSize: 24)),
                 const SizedBox(width: 8),
-                Text('Send a GCash Deposit (Manual)', style: AppTextStyle.heading3),
+                Text('Send a GCash Deposit (Manual)', style: AppTextStyle.heading3(context)),
               ]),
               const SizedBox(height: 4),
               Container(
@@ -503,8 +503,8 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (ref.isNotEmpty) Text('Ref: $ref', style: AppTextStyle.bodySmall),
-            if (sender.isNotEmpty) Text('From: $sender', style: AppTextStyle.bodySmall),
+            if (ref.isNotEmpty) Text('Ref: $ref', style: AppTextStyle.bodySmall(context)),
+            if (sender.isNotEmpty) Text('From: $sender', style: AppTextStyle.bodySmall(context)),
           ],
         ),
         trailing: status == 'paymongo_pending'
@@ -526,7 +526,7 @@ class _OnlineDepositPageState extends State<OnlineDepositPage> {
                     child: Text(statusLabel, style: TextStyle(color: statusColor, fontWeight: FontWeight.w600, fontSize: 11)),
                   ),
                   const SizedBox(height: 2),
-                  Text(_formatDate(createdAt), style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+                  Text(_formatDate(createdAt), style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 ],
               ),
       ),

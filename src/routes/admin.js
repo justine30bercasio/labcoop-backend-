@@ -7815,21 +7815,7 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
   <script>
   var accountId = '${req.params.accountId}';
 
-  // ── Socket.IO setup ──
-  var sock = window.adminSocket;
-  if (sock && sock.connected) {
-    sock.emit('join_account', accountId);
-  } else {
-    // Wait for socket to connect
-    var waitForSocket = setInterval(function(){
-      if (window.adminSocket && window.adminSocket.connected) {
-        window.adminSocket.emit('join_account', accountId);
-        clearInterval(waitForSocket);
-      }
-    }, 500);
-  }
-
-  // New child message via socket → append to thread (dedup by message_id)
+  // ── Wait for adminSocket then join room + register listener ──
   var seenMsgIds = {};
   document.querySelectorAll('#msgThread .msg-bubble[data-msg-id]').forEach(function(el){
     seenMsgIds[el.getAttribute('data-msg-id')] = true;
@@ -7850,8 +7836,18 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
     target.insertAdjacentHTML('beforebegin', html);
     target.scrollIntoView({ behavior:'smooth' });
   }
-  if (sock) sock.on('new_message', function(msg){
-    if (msg.account_id == accountId) appendMessage(msg);
+  function whenAdminSocket(cb){
+    if (window.adminSocket) { cb(window.adminSocket); return; }
+    var check = setInterval(function(){
+      if (window.adminSocket) { clearInterval(check); cb(window.adminSocket); }
+    }, 200);
+  }
+  whenAdminSocket(function(sock){
+    if (sock.connected) sock.emit('join_account', accountId);
+    else sock.on('connect', function(){ sock.emit('join_account', accountId); });
+    sock.on('new_message', function(msg){
+      if (msg.account_id == accountId) appendMessage(msg);
+    });
   });
 
   // ── Send reply via HTTP (CSRF) then emit via socket ──
@@ -7860,14 +7856,12 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
     if (!content.value.trim()) return;
     var text = content.value.trim();
     content.value = '';
-    // Optimistically show sent message
     var target = document.getElementById('replyTarget');
     var d = new Date();
     var ts = d.toISOString().slice(0,19).replace('T',' ');
     var html = '<div class="msg-bubble outgoing"><div class="mb-avatar">A</div><div class="mb-content"><div>' + text + '</div><div class="mb-meta">Admin · ' + ts + '</div></div></div>';
     target.insertAdjacentHTML('beforebegin', html);
     target.scrollIntoView({ behavior:'smooth' });
-    // POST for persistence + socket emit + FCM push (fire-and-forget)
     fetch('/admin/messages/reply', {
       method: 'POST',
       headers: { 'Content-Type':'application/json', 'X-CSRF-Token':'${csrf}' },
@@ -7878,23 +7872,22 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); }
   });
 
-  // ── Admin typing via socket (no more HTTP based polling) ──
+  // ── Admin typing via socket ──
   var adminTypingInt;
   document.getElementById('replyContent').addEventListener('input', function(){
-    if (sock && sock.connected) sock.emit('typing', { accountId: accountId, isTyping: true });
+    if (window.adminSocket && window.adminSocket.connected) window.adminSocket.emit('typing', { accountId: accountId, isTyping: true });
     if (!adminTypingInt) {
       adminTypingInt = setInterval(function(){
-        if (sock && sock.connected) sock.emit('typing', { accountId: accountId, isTyping: true });
+        if (window.adminSocket && window.adminSocket.connected) window.adminSocket.emit('typing', { accountId: accountId, isTyping: true });
       }, 3000);
     }
   });
   var origSend = sendReply;
   sendReply = function(){
-    if (sock && sock.connected) sock.emit('typing', { accountId: accountId, isTyping: false });
+    if (window.adminSocket && window.adminSocket.connected) window.adminSocket.emit('typing', { accountId: accountId, isTyping: false });
     if (adminTypingInt) { clearInterval(adminTypingInt); adminTypingInt = null; }
     origSend();
   };
-  // Refresh badge after marking messages as read
   setTimeout(function(){ window.refreshMessengerBadge(); }, 500);
   </script>`;
 

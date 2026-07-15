@@ -7814,6 +7814,7 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
 
   <script>
   var accountId = '${req.params.accountId}';
+  window._currentAccountId = accountId;
 
   // ── Real-time message appending (called by admin-lib.js global new_message handler) ──
   var _seenMsgIds = {};

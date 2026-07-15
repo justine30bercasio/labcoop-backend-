@@ -7848,9 +7848,13 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
   // ── HTTP polling every 2 seconds (bulletproof real-time) ──
   var _since = new Date().toISOString();
   (function poll(){
-    fetch('/admin/messages/' + accountId + '/poll?since=' + encodeURIComponent(_since))
-      .then(function(r){ return r.json(); })
+    fetch('/admin/messages/' + accountId + '/poll?since=' + encodeURIComponent(_since) + '&_=' + Date.now())
+      .then(function(r){
+        if (r.status !== 200) return [];
+        return r.json();
+      })
       .then(function(arr){
+        if (!arr || !arr.length) return;
         for (var i = 0; i < arr.length; i++) {
           appendIncoming(arr[i]);
           if (arr[i].created_at > _since) _since = arr[i].created_at;

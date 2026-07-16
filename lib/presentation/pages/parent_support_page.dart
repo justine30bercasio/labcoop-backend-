@@ -262,7 +262,7 @@ class _ParentSupportPageState extends State<ParentSupportPage> with SingleTicker
     return Scaffold(
       appBar: AppBar(
         title: const Text('Contact Support'),
-        backgroundColor: const Color(0xFF1565C0),
+        backgroundColor: const Color(0xFF00796B),
         foregroundColor: Colors.white,
         elevation: 1,
       ),
@@ -271,10 +271,10 @@ class _ParentSupportPageState extends State<ParentSupportPage> with SingleTicker
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            color: const Color(0xFFE3F2FD),
+            color: const Color(0xFFE0F2F1),
             child: Row(
               children: [
-                const Icon(Icons.support_agent, color: Color(0xFF4338CA), size: 20),
+                const Icon(Icons.support_agent, color: Color(0xFF00695C), size: 20),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -325,7 +325,7 @@ class _ParentSupportPageState extends State<ParentSupportPage> with SingleTicker
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                                     decoration: BoxDecoration(
-                                      color: isAdmin ? const Color(0xFFF1F5F9) : const Color(0xFF1565C0),
+                                      color: isAdmin ? const Color(0xFFF1F5F9) : const Color(0xFF00796B),
                                       borderRadius: BorderRadius.only(
                                         topLeft: const Radius.circular(14),
                                         topRight: const Radius.circular(14),
@@ -350,7 +350,7 @@ class _ParentSupportPageState extends State<ParentSupportPage> with SingleTicker
                                       if (isAdmin && parentRead == 1)
                                         Padding(
                                           padding: const EdgeInsets.only(right: 4),
-                                          child: Icon(Icons.check_circle, size: 10, color: const Color(0xFF1565C0)),
+                                          child: Icon(Icons.check_circle, size: 10, color: const Color(0xFF00796B)),
                                         ),
                                       Text(
                                         '$name · $ts',
@@ -410,7 +410,7 @@ class _ParentSupportPageState extends State<ParentSupportPage> with SingleTicker
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(22),
-                        borderSide: const BorderSide(color: Color(0xFF1565C0)),
+                        borderSide: const BorderSide(color: Color(0xFF00796B)),
                       ),
                     ),
                     onSubmitted: (_) => _send(),
@@ -419,7 +419,7 @@ class _ParentSupportPageState extends State<ParentSupportPage> with SingleTicker
                 const SizedBox(width: 6),
                 CircleAvatar(
                   radius: 20,
-                  backgroundColor: const Color(0xFF1565C0),
+                  backgroundColor: const Color(0xFF00796B),
                   child: IconButton(
                     icon: _sending
                         ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
@@ -482,7 +482,7 @@ class _BouncingDotsState extends State<_BouncingDots> with SingleTickerProviderS
                     width: 6,
                     height: 6,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1565C0),
+                      color: const Color(0xFF00796B),
                       shape: BoxShape.circle,
                     ),
                   ),

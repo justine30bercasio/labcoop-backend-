@@ -6,6 +6,7 @@ import '../constants/app_constants.dart';
 class SocketService {
   static IO.Socket? _socket;
   static bool _initialized = false;
+  static String? _currentToken;
   static String? _currentRoom;
 
   static IO.Socket? get socket => _socket;
@@ -30,16 +31,19 @@ class SocketService {
   }
 
   static Future<void> init({bool force = false, bool isParent = false}) async {
-    if (_initialized && !force) return;
     final storage = FlutterSecureStorage();
     final token = isParent
         ? (await storage.read(key: 'parent_token') ?? await storage.read(key: 'auth_token') ?? '')
         : (await storage.read(key: 'auth_token') ?? await storage.read(key: 'parent_token') ?? '');
+    if (_initialized && !force) {
+      if (token == _currentToken) return;
+      force = true; // token changed — reconnect
+    }
     if (_initialized && _socket?.id != null) {
-      if (!force) return;
       _socket?.disconnect();
       _socket?.dispose();
     }
+    _currentToken = token;
     _initialized = true;
 
     _socket = IO.io(AppConstants.baseUrl, <String, dynamic>{
@@ -130,6 +134,7 @@ class SocketService {
     _socket?.dispose();
     _socket = null;
     _initialized = false;
+    _currentToken = null;
     _currentRoom = null;
   }
 }

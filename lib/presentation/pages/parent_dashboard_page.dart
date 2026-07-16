@@ -41,8 +41,8 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
 
   final Set<String> _expandedTxChildren = {};
 
-  static const Color _indigo = Color(0xFF1565C0);
-  static const Color _indigoLight = Color(0xFF42A5F5);
+  static const Color _teal = Color(0xFF00796B);
+  static const Color _tealLight = Color(0xFF4DB6AC);
 
   @override
   void initState() {
@@ -313,10 +313,10 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F9FF),
+      backgroundColor: const Color(0xFFE0F2F1),
       appBar: AppBar(
         title: Text(_parentInfo?['display_name'] ?? 'Parent Portal'),
-        backgroundColor: const Color(0xFF1565C0),
+        backgroundColor: const Color(0xFF00796B),
         foregroundColor: Colors.white,
         elevation: 1,
         actions: [
@@ -354,7 +354,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                           onPressed: _loadData,
                           icon: const Icon(Icons.refresh),
                           label: const Text('Retry'),
-                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1565C0), foregroundColor: Colors.white),
+                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00796B), foregroundColor: Colors.white),
                         ),
                       ],
                     ),
@@ -389,12 +389,12 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                   height: 56,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [Color(0xFF1976D2), Color(0xFF1565C0)],
+                      colors: [Color(0xFF00897B), Color(0xFF00796B)],
                     ),
                     borderRadius: BorderRadius.circular(18),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF1565C0).withValues(alpha: 0.4),
+                        color: const Color(0xFF00796B).withValues(alpha: 0.4),
                         blurRadius: 12,
                         offset: const Offset(0, 4),
                       ),
@@ -444,7 +444,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
           },
           backgroundColor: Colors.white,
           elevation: 0,
-          indicatorColor: _indigo.withValues(alpha: 0.12),
+          indicatorColor: _teal.withValues(alpha: 0.12),
           animationDuration: const Duration(milliseconds: 200),
           labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
           height: MediaQuery.of(context).padding.bottom > 0 ? 72 : 64,
@@ -488,11 +488,11 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
             children: [
               Container(
                 padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(color: _indigo.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
-                child: const Icon(Icons.dashboard, color: _indigo, size: 22),
+                decoration: BoxDecoration(color: _teal.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.dashboard, color: _teal, size: 22),
               ),
               const SizedBox(width: 12),
-              Text('Dashboard', style: TextStyle(color: _indigo, fontSize: 20, fontWeight: FontWeight.bold)),
+              Text('Dashboard', style: TextStyle(color: _teal, fontSize: 20, fontWeight: FontWeight.bold)),
             ],
           ),
           const SizedBox(height: 8),
@@ -502,7 +502,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
           // Summary cards
           Row(
             children: [
-              Expanded(child: _summaryCard('Children', '${_children.length}', Icons.people, _indigoLight)),
+              Expanded(child: _summaryCard('Children', '${_children.length}', Icons.people, _tealLight)),
               const SizedBox(width: 12),
               Expanded(child: _summaryCard('Pending', '$totalPending', Icons.hourglass_empty, Colors.orange.shade700)),
               const SizedBox(width: 12),
@@ -514,9 +514,9 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
           // Pending approvals section
           Row(
             children: [
-              const Icon(Icons.hourglass_empty, color: _indigo, size: 20),
+              const Icon(Icons.hourglass_empty, color: _teal, size: 20),
               const SizedBox(width: 8),
-              Text('Pending Approvals', style: TextStyle(color: _indigo, fontSize: 17, fontWeight: FontWeight.bold)),
+              Text('Pending Approvals', style: TextStyle(color: _teal, fontSize: 17, fontWeight: FontWeight.bold)),
               if (totalPending > 0) ...[
                 const SizedBox(width: 8),
                 Container(
@@ -636,7 +636,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                       children: [
                         const Icon(Icons.person, color: Colors.redAccent, size: 18),
                         const SizedBox(width: 8),
-                        Text('${d['child_name'] ?? ''}', style: TextStyle(color: _indigo, fontWeight: FontWeight.w600, fontSize: 14)),
+                        Text('${d['child_name'] ?? ''}', style: TextStyle(color: _teal, fontWeight: FontWeight.w600, fontSize: 14)),
                       ],
                     ),
                     const SizedBox(height: 6),
@@ -707,7 +707,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('$type — $childName', style: const TextStyle(color: _indigo, fontWeight: FontWeight.w600, fontSize: 14)),
+                    Text('$type — $childName', style: const TextStyle(color: _teal, fontWeight: FontWeight.w600, fontSize: 14)),
                     if (amount > 0)
                       Text('PHP ${amount.toStringAsFixed(2)}', style: const TextStyle(color: AppTheme.accentAmber, fontWeight: FontWeight.bold, fontSize: 16)),
                   ],
@@ -813,7 +813,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('${tx['description'] ?? tx['type'] ?? 'Transaction'}', style: TextStyle(color: _indigo, fontSize: 12)),
+                          Text('${tx['description'] ?? tx['type'] ?? 'Transaction'}', style: TextStyle(color: _teal, fontSize: 12)),
                           Text('${tx['created_at']?.toString()?.substring(0, 10) ?? ''}', style: TextStyle(color: Colors.grey.shade400, fontSize: 10)),
                         ],
                       ),
@@ -845,11 +845,11 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
             children: [
               Container(
                 padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(color: _indigo.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
-                child: const Icon(Icons.people, color: _indigo, size: 22),
+                decoration: BoxDecoration(color: _teal.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.people, color: _teal, size: 22),
               ),
               const SizedBox(width: 12),
-              Text('Your Children', style: TextStyle(color: _indigo, fontSize: 20, fontWeight: FontWeight.bold)),
+              Text('Your Children', style: TextStyle(color: _teal, fontSize: 20, fontWeight: FontWeight.bold)),
             ],
           ),
           const SizedBox(height: 16),
@@ -885,15 +885,15 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                     children: [
                       Container(
                         padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(color: _indigo.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
-                        child: const Icon(Icons.person, color: _indigo, size: 20),
+                        decoration: BoxDecoration(color: _teal.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+                        child: const Icon(Icons.person, color: _teal, size: 20),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('${child['child_name'] ?? ''}', style: const TextStyle(color: _indigo, fontSize: 16, fontWeight: FontWeight.w600)),
+                            Text('${child['child_name'] ?? ''}', style: const TextStyle(color: _teal, fontSize: 16, fontWeight: FontWeight.w600)),
                             Text('ID: ${child['member_id'] ?? ''}', style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
                           ],
                         ),
@@ -925,11 +925,11 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
             children: [
               Container(
                 padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(color: _indigo.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
-                child: const Icon(Icons.link, color: _indigo, size: 22),
+                decoration: BoxDecoration(color: _teal.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.link, color: _teal, size: 22),
               ),
               const SizedBox(width: 12),
-              Text('Link a Child', style: TextStyle(color: _indigo, fontSize: 20, fontWeight: FontWeight.bold)),
+              Text('Link a Child', style: TextStyle(color: _teal, fontSize: 20, fontWeight: FontWeight.bold)),
             ],
           ),
           const SizedBox(height: 8),
@@ -941,7 +941,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
           TextField(
             controller: _linkCodeController,
             keyboardType: TextInputType.number,
-            style: TextStyle(color: _indigo, fontSize: 18, letterSpacing: 4),
+            style: TextStyle(color: _teal, fontSize: 18, letterSpacing: 4),
             textAlign: TextAlign.center,
             maxLength: 6,
             decoration: InputDecoration(
@@ -953,7 +953,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: Colors.grey.shade200)),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(color: _indigo.withValues(alpha: 0.8), width: 2),
+                borderSide: BorderSide(color: _teal.withValues(alpha: 0.8), width: 2),
               ),
               contentPadding: const EdgeInsets.symmetric(vertical: 20),
             ),
@@ -978,7 +978,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                   : const Icon(Icons.link),
               label: Text(_linking ? 'Linking...' : 'Link Child Account'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: _indigo,
+                backgroundColor: _teal,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -1003,7 +1003,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                   children: [
                     const Icon(Icons.check_circle, color: AppTheme.primaryGreen, size: 16),
                     const SizedBox(width: 8),
-                    Text('${child['child_name']} (${child['member_id']})', style: TextStyle(color: _indigo, fontSize: 13)),
+                    Text('${child['child_name']} (${child['member_id']})', style: TextStyle(color: _teal, fontSize: 13)),
                   ],
                 ),
               ),
@@ -1039,11 +1039,11 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
             children: [
               Container(
                 padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(color: _indigo.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
-                child: const Icon(Icons.hourglass_bottom, color: _indigo, size: 22),
+                decoration: BoxDecoration(color: _teal.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.hourglass_bottom, color: _teal, size: 22),
               ),
               const SizedBox(width: 12),
-              Text('Approvals', style: TextStyle(color: _indigo, fontSize: 20, fontWeight: FontWeight.bold)),
+              Text('Approvals', style: TextStyle(color: _teal, fontSize: 20, fontWeight: FontWeight.bold)),
               if (hasAny) ...[
                 const SizedBox(width: 8),
                 Container(
@@ -1181,7 +1181,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                       children: [
                         const Icon(Icons.person, color: Colors.redAccent, size: 18),
                         const SizedBox(width: 8),
-                        Text('${d['child_name'] ?? ''}', style: TextStyle(color: _indigo, fontWeight: FontWeight.w600, fontSize: 14)),
+                        Text('${d['child_name'] ?? ''}', style: TextStyle(color: _teal, fontWeight: FontWeight.w600, fontSize: 14)),
                       ],
                     ),
                     const SizedBox(height: 6),
@@ -1230,11 +1230,11 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
               children: [
                 Container(
                   padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: _indigo.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
-                  child: const Icon(Icons.person, color: _indigo, size: 22),
+                  decoration: BoxDecoration(color: _teal.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+                  child: const Icon(Icons.person, color: _teal, size: 22),
                 ),
                 const SizedBox(width: 12),
-                Text('My Profile', style: TextStyle(color: _indigo, fontSize: 20, fontWeight: FontWeight.bold)),
+                Text('My Profile', style: TextStyle(color: _teal, fontSize: 20, fontWeight: FontWeight.bold)),
               ],
             ),
             const SizedBox(height: 4),
@@ -1244,7 +1244,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
             // ── Display Name ──
             TextField(
               controller: nameCtrl,
-              style: TextStyle(color: _indigo, fontSize: 14),
+              style: TextStyle(color: _teal, fontSize: 14),
               decoration: InputDecoration(
                 labelText: 'Display Name',
                 labelStyle: TextStyle(color: Colors.grey.shade500),
@@ -1256,7 +1256,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
             // ── Phone ──
             TextField(
               controller: phoneCtrl,
-              style: TextStyle(color: _indigo, fontSize: 14),
+              style: TextStyle(color: _teal, fontSize: 14),
               keyboardType: TextInputType.phone,
               decoration: InputDecoration(
                 labelText: 'Mobile Number',
@@ -1269,7 +1269,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
             // ── Address ──
             TextField(
               controller: addressCtrl,
-              style: TextStyle(color: _indigo, fontSize: 14),
+              style: TextStyle(color: _teal, fontSize: 14),
               decoration: InputDecoration(
                 labelText: 'Address',
                 labelStyle: TextStyle(color: Colors.grey.shade500),
@@ -1282,7 +1282,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
               children: [
                 Expanded(child: TextField(
                   controller: cityCtrl,
-                  style: TextStyle(color: _indigo, fontSize: 14),
+                  style: TextStyle(color: _teal, fontSize: 14),
                   decoration: InputDecoration(
                     labelText: 'City',
                     labelStyle: TextStyle(color: Colors.grey.shade500),
@@ -1293,7 +1293,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                 const SizedBox(width: 12),
                 Expanded(child: TextField(
                   controller: provinceCtrl,
-                  style: TextStyle(color: _indigo, fontSize: 14),
+                  style: TextStyle(color: _teal, fontSize: 14),
                   decoration: InputDecoration(
                     labelText: 'Province',
                     labelStyle: TextStyle(color: Colors.grey.shade500),
@@ -1306,7 +1306,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
             const SizedBox(height: 12),
             TextField(
               controller: postalCtrl,
-              style: TextStyle(color: _indigo, fontSize: 14),
+              style: TextStyle(color: _teal, fontSize: 14),
               keyboardType: TextInputType.number,
               decoration: InputDecoration(
                 labelText: 'Postal Code',
@@ -1349,7 +1349,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                   });
                   if (ok) _loadData();
                 },
-                style: ElevatedButton.styleFrom(backgroundColor: _indigo, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                style: ElevatedButton.styleFrom(backgroundColor: _teal, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                 child: _saving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Save Profile', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ),
@@ -1361,9 +1361,9 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
             // ── Change PIN ──
             Row(
               children: [
-                const Icon(Icons.lock_outline, color: _indigo, size: 20),
+                const Icon(Icons.lock_outline, color: _teal, size: 20),
                 const SizedBox(width: 8),
-                Text('Change PIN', style: TextStyle(color: _indigo, fontSize: 17, fontWeight: FontWeight.bold)),
+                Text('Change PIN', style: TextStyle(color: _teal, fontSize: 17, fontWeight: FontWeight.bold)),
               ],
             ),
             const SizedBox(height: 12),
@@ -1372,7 +1372,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
               obscureText: true,
               maxLength: 6,
               keyboardType: TextInputType.number,
-              style: TextStyle(color: _indigo, fontSize: 14),
+              style: TextStyle(color: _teal, fontSize: 14),
               decoration: InputDecoration(
                 labelText: 'Current PIN',
                 labelStyle: TextStyle(color: Colors.grey.shade500),
@@ -1386,7 +1386,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
               obscureText: true,
               maxLength: 6,
               keyboardType: TextInputType.number,
-              style: TextStyle(color: _indigo, fontSize: 14),
+              style: TextStyle(color: _teal, fontSize: 14),
               decoration: InputDecoration(
                 labelText: 'New PIN (6 digits)',
                 labelStyle: TextStyle(color: Colors.grey.shade500),
@@ -1424,7 +1424,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                     else { _pinError = 'Current PIN is incorrect.'; }
                   });
                 },
-                style: ElevatedButton.styleFrom(backgroundColor: _indigo, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                style: ElevatedButton.styleFrom(backgroundColor: _teal, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                 child: _changingPin ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Change PIN', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ),
@@ -1436,9 +1436,9 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
             // ── Link Child ──
             Row(
               children: [
-                const Icon(Icons.link, color: _indigo, size: 20),
+                const Icon(Icons.link, color: _teal, size: 20),
                 const SizedBox(width: 8),
-                Text('Link a Child', style: TextStyle(color: _indigo, fontSize: 17, fontWeight: FontWeight.bold)),
+                Text('Link a Child', style: TextStyle(color: _teal, fontSize: 17, fontWeight: FontWeight.bold)),
               ],
             ),
             const SizedBox(height: 12),
@@ -1449,7 +1449,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
               controller: _linkCodeController,
               maxLength: 6,
               keyboardType: TextInputType.number,
-              style: TextStyle(color: _indigo, fontSize: 14),
+              style: TextStyle(color: _teal, fontSize: 14),
               decoration: InputDecoration(
                 hintText: 'Enter 6-digit code',
                 hintStyle: TextStyle(color: Colors.grey.shade400),
@@ -1474,7 +1474,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
               width: double.infinity, height: 44,
               child: ElevatedButton(
                 onPressed: _linking ? null : _linkChild,
-                style: ElevatedButton.styleFrom(backgroundColor: _indigo, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                style: ElevatedButton.styleFrom(backgroundColor: _teal, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                 child: _linking ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Link Child', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ),
@@ -1620,7 +1620,7 @@ class _ParentNotificationListPageState extends State<_ParentNotificationListPage
             onPressed: () => Navigator.of(context).pop(_popResult),
           ),
           title: const Text('Notifications', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          backgroundColor: const Color(0xFF1a237e),
+          backgroundColor: const Color(0xFF004D40),
           foregroundColor: Colors.white,
           iconTheme: const IconThemeData(color: Colors.white),
           elevation: 0,
@@ -1639,7 +1639,7 @@ class _ParentNotificationListPageState extends State<_ParentNotificationListPage
           ],
         ),
         body: _loading
-            ? const Center(child: CircularProgressIndicator(color: Color(0xFF1a237e)))
+            ? const Center(child: CircularProgressIndicator(color: Color(0xFF004D40)))
             : _notifications.isEmpty
                 ? const Center(
                     child: Column(
@@ -1652,7 +1652,7 @@ class _ParentNotificationListPageState extends State<_ParentNotificationListPage
                     ),
                   )
                 : RefreshIndicator(
-                    color: const Color(0xFF1a237e),
+                    color: const Color(0xFF004D40),
                     onRefresh: _fetch,
                     child: ListView.separated(
                       itemCount: _notifications.length,

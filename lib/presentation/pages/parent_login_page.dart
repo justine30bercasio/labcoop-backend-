@@ -258,7 +258,7 @@ class _ParentLoginPageState extends State<ParentLoginPage>
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF1565C0), Color(0xFF1976D2), Color(0xFF42A5F5)],
+            colors: [Color(0xFF004D40), Color(0xFF00796B), Color(0xFF4DB6AC)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -487,7 +487,7 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                                         style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 14)),
                                     ],
                                   ),
-                                  dropdownColor: const Color(0xFF1a237e),
+                                  dropdownColor: const Color(0xFF004D40),
                                   isExpanded: true,
                                   items: _idTypes.map((t) => DropdownMenuItem(
                                     value: t,

@@ -2845,6 +2845,7 @@ router.post('/reset-data', requireRole(4), asyncHandler(async (req, res) => {
     'refresh_tokens',
     'coin_transactions',
     'accounts',
+    'support_messages',
   ];
   if (isPostgres) {
     const existing = await store.query(
@@ -6156,6 +6157,7 @@ router.post('/reset-database', requireRole(4), asyncHandler(async (req, res) => 
     'refresh_tokens',
     'coin_transactions',
     'accounts',
+    'support_messages',
   ];
   if (isPostgres) {
     const existing = await store.query(

@@ -928,9 +928,9 @@ window.refreshMessengerBadge = function(){};
       }
     }
   });
-  // Read receipt
+  // Read receipt (child or parent)
   sio.on('readReceipt', function(data){
-    if (data.readBy === 'child' && data.room) {
+    if ((data.readBy === 'child' || data.readBy === 'parent') && data.room) {
       document.querySelectorAll('[data-msg-id]').forEach(function(el){
         var readBadge = el.querySelector('.mb-read');
         if (readBadge) {

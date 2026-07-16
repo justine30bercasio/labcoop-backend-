@@ -29,12 +29,13 @@ class SocketService {
     timer.cancel();
   }
 
-  static Future<void> init({bool force = false}) async {
+  static Future<void> init({bool force = false, bool isParent = false}) async {
     if (_initialized && !force) return;
     final storage = FlutterSecureStorage();
-    final token = await storage.read(key: 'auth_token') ?? await storage.read(key: 'parent_token') ?? '';
+    final token = isParent
+        ? (await storage.read(key: 'parent_token') ?? await storage.read(key: 'auth_token') ?? '')
+        : (await storage.read(key: 'auth_token') ?? await storage.read(key: 'parent_token') ?? '');
     if (_initialized && _socket?.id != null) {
-      // Already connected with a token — reconnect only if force
       if (!force) return;
       _socket?.disconnect();
       _socket?.dispose();

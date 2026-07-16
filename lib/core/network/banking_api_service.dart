@@ -685,7 +685,37 @@ return null;
     } on DioException { return {'isTyping': false}; }
   }
 
-  // ── Parent Messages ──
+  // ── Parent Messages (own support thread) ──
+  static Future<Map<String, dynamic>?> parentSupportSend(String content) async {
+    try {
+      await _addParentAuthHeader();
+      final resp = await _parentDio.post('/api/parent/support/send', data: {
+        'content': content,
+      });
+      return resp.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      return e.response?.data as Map<String, dynamic>?;
+    }
+  }
+
+  static Future<List<dynamic>> parentSupportGetMessages() async {
+    try {
+      await _addParentAuthHeader();
+      final resp = await _parentDio.get('/api/parent/support/messages');
+      return resp.data as List<dynamic>;
+    } on DioException { return []; }
+  }
+
+  static Future<int> parentSupportUnreadCount() async {
+    try {
+      await _addParentAuthHeader();
+      final resp = await _parentDio.get('/api/parent/support/unread');
+      final data = resp.data as Map<String, dynamic>;
+      return (data['unread'] as int?) ?? 0;
+    } on DioException { return 0; }
+  }
+
+  // ── Parent Messages (per child thread) ──
   static Future<Map<String, dynamic>?> parentSendMessage(String accountId, String content) async {
     try {
       await _addParentAuthHeader();

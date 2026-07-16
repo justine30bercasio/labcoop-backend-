@@ -29,11 +29,17 @@ class SocketService {
     timer.cancel();
   }
 
-  static Future<void> init() async {
-    if (_initialized) return;
-    _initialized = true;
+  static Future<void> init({bool force = false}) async {
+    if (_initialized && !force) return;
     final storage = FlutterSecureStorage();
-    final token = await storage.read(key: 'auth_token') ?? '';
+    final token = await storage.read(key: 'auth_token') ?? await storage.read(key: 'parent_token') ?? '';
+    if (_initialized && _socket?.id != null) {
+      // Already connected with a token — reconnect only if force
+      if (!force) return;
+      _socket?.disconnect();
+      _socket?.dispose();
+    }
+    _initialized = true;
 
     _socket = IO.io(AppConstants.baseUrl, <String, dynamic>{
       'transports': ['websocket', 'polling'],
@@ -65,6 +71,15 @@ class SocketService {
       'senderName': senderName,
       'accountId': accountId,
       'childName': childName ?? '',
+    });
+  }
+
+  static void sendParentMessage(String parentId, String content, {String? senderName}) {
+    _socket?.emit('sendMessage', {
+      'room': 'parent_chat_$parentId',
+      'content': content,
+      'senderName': senderName ?? 'Parent',
+      'parentId': parentId,
     });
   }
 

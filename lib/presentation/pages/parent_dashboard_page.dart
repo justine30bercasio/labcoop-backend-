@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/network/banking_api_service.dart';
 import '../../core/services/notification_service.dart';
 import 'parent_login_page.dart';
+import 'parent_support_page.dart';
 
 class ParentDashboardPage extends StatefulWidget {
   const ParentDashboardPage({super.key});
@@ -307,7 +308,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
           Stack(
             clipBehavior: Clip.none,
             children: [
-              IconButton(icon: const Icon(Icons.notifications_outlined), onPressed: _openNotifPage),
+              IconButton(icon: const Icon(Icons.support_agent_outlined), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ParentSupportPage()))),
               if (_notifUnreadCount > 0)
                 Positioned(right: 6, top: 6, child: Container(
                   padding: const EdgeInsets.all(4),

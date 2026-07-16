@@ -93,7 +93,7 @@ function initSocket(httpServer, sessionMiddleware) {
             content, admin_read: isAdmin ? 1 : 0, parent_read: isAdmin ? 0 : 1, created_at: createdAt,
           };
           io.to(room).emit('newMessage', payload);
-          if (role === 'parent') {
+          if (!isAdmin) {
             io.to('admin').emit('newMessage', payload);
           }
         } else {
@@ -113,7 +113,7 @@ function initSocket(httpServer, sessionMiddleware) {
             content, admin_read: isAdmin ? 1 : 0, child_read: isAdmin ? 0 : 1, created_at: createdAt,
           };
           io.to(room).emit('newMessage', payload);
-          if (role === 'child') {
+          if (!isAdmin) {
             io.to('admin').emit('newMessage', payload);
           }
         }

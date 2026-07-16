@@ -48,6 +48,15 @@ class _ParentSupportPageState extends State<ParentSupportPage> with SingleTicker
     if (!mounted) return;
     final msg = data as Map<String, dynamic>;
     if (msg['parent_id'] != _parentId) return;
+    // Replace optimistic message if found
+    for (var i = 0; i < _messages.length; i++) {
+      if (_messages[i]['message_id']?.toString().startsWith('opt_') == true &&
+          _messages[i]['content'] == msg['content']) {
+        _messages[i] = msg;
+        if (mounted) setState(() {});
+        return;
+      }
+    }
     if (msg['sender_type'] == 'admin') {
       SocketService.markRead('parent_chat_$_parentId');
       for (var i = 0; i < _messages.length; i++) {
@@ -185,13 +194,43 @@ class _ParentSupportPageState extends State<ParentSupportPage> with SingleTicker
     _userIsTyping = false;
     _typingHeartbeat?.cancel();
 
+    // Optimistic insert so message appears immediately
+    final optimisticMsg = <String, dynamic>{
+      'message_id': 'opt_${DateTime.now().millisecondsSinceEpoch}',
+      'parent_id': _parentId ?? '',
+      'sender_type': 'parent',
+      'sender_name': 'You',
+      'content': text,
+      'admin_read': 0,
+      'parent_read': 1,
+      'created_at': DateTime.now().toIso8601String(),
+    };
+    setState(() => _messages.add(optimisticMsg));
+    _scrollDown();
+
     if (SocketService.isConnected && _parentId != null) {
       SocketService.sendParentMessage(_parentId!, text, senderName: 'Parent');
+      // HTTP fallback: refresh after delay if socket echo doesn't arrive
+      await Future.delayed(const Duration(milliseconds: 1500));
+      if (mounted && optimisticMsg['message_id']?.toString().startsWith('opt_') == true) {
+        final fresh = await BankingApiService.parentSupportGetMessages();
+        if (mounted) {
+          setState(() => _messages = fresh.cast<Map<String, dynamic>>());
+          if (_parentId == null && _messages.isNotEmpty && _messages[0]['parent_id'] != null) {
+            _parentId = _messages[0]['parent_id'] as String?;
+            _joinRoom();
+          }
+        }
+      }
     } else {
       await BankingApiService.parentSupportSend(text);
       final fresh = await BankingApiService.parentSupportGetMessages();
       if (mounted) {
         setState(() => _messages = fresh.cast<Map<String, dynamic>>());
+        if (_parentId == null && _messages.isNotEmpty && _messages[0]['parent_id'] != null) {
+          _parentId = _messages[0]['parent_id'] as String?;
+          _joinRoom();
+        }
       }
     }
 

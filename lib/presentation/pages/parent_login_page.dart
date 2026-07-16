@@ -185,6 +185,10 @@ class _ParentLoginPageState extends State<ParentLoginPage>
       const storage = FlutterSecureStorage();
       await storage.write(key: 'parent_token', value: result['token'] as String);
       await storage.write(key: 'parent_email', value: email);
+      final parentData = result['parent'] as Map<String, dynamic>?;
+      if (parentData != null && parentData['parent_id'] != null) {
+        await storage.write(key: 'parent_id', value: parentData['parent_id'] as String);
+      }
       if (!mounted) return;
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const ParentDashboardPage()));
     } catch (e) {

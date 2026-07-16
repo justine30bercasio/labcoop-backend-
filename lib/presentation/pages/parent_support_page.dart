@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/network/banking_api_service.dart';
 import '../../core/network/socket_service.dart';
 
@@ -122,12 +123,16 @@ class _ParentSupportPageState extends State<ParentSupportPage> with SingleTicker
   }
 
   Future<void> _load() async {
+    if (_parentId == null) {
+      final storage = FlutterSecureStorage();
+      _parentId = await storage.read(key: 'parent_id');
+    }
     final msgs = await BankingApiService.parentSupportGetMessages();
     if (mounted) {
       setState(() {
         _messages = msgs.cast<Map<String, dynamic>>();
         _loading = false;
-        if (_messages.isNotEmpty && _messages[0]['parent_id'] != null) {
+        if (_parentId == null && _messages.isNotEmpty && _messages[0]['parent_id'] != null) {
           _parentId = _messages[0]['parent_id'] as String?;
         }
       });

@@ -28,6 +28,8 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
   bool _loading = true;
   String? _loadError;
   int _notifUnreadCount = 0;
+  int _unreadSupportCount = 0;
+  Timer? _supportPollTimer;
 
   final _linkCodeController = TextEditingController();
   bool _linking = false;
@@ -48,6 +50,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadData();
       _startNotifPolling();
+      _startSupportPolling();
       _registerParentFcm();
     });
   }
@@ -67,6 +70,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
     _linkCodeController.dispose();
     for (final c in _limitControllers.values) c.dispose();
     _notifTimer?.cancel();
+    _supportPollTimer?.cancel();
     super.dispose();
   }
 
@@ -76,6 +80,17 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
     _notifTimer?.cancel();
     _fetchNotifs();
     _notifTimer = Timer.periodic(const Duration(seconds: 15), (_) => _fetchNotifs());
+  }
+
+  void _startSupportPolling() {
+    _supportPollTimer?.cancel();
+    _fetchUnreadSupport();
+    _supportPollTimer = Timer.periodic(const Duration(seconds: 12), (_) => _fetchUnreadSupport());
+  }
+
+  Future<void> _fetchUnreadSupport() async {
+    final count = await BankingApiService.parentSupportUnreadCount();
+    if (mounted) setState(() => _unreadSupportCount = count);
   }
 
   Future<void> _fetchNotifs() async {
@@ -308,7 +323,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
           Stack(
             clipBehavior: Clip.none,
             children: [
-              IconButton(icon: const Icon(Icons.support_agent_outlined), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ParentSupportPage()))),
+              IconButton(icon: const Icon(Icons.support_agent_outlined), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ParentSupportPage())).then((_) => _fetchUnreadSupport())),
               if (_notifUnreadCount > 0)
                 Positioned(right: 6, top: 6, child: Container(
                   padding: const EdgeInsets.all(4),
@@ -322,38 +337,99 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
           IconButton(icon: const Icon(Icons.logout), onPressed: _logout),
         ],
       ),
-      body: _loadError != null
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.cloud_off, color: Colors.grey.shade400, size: 56),
-                    const SizedBox(height: 16),
-                    Text(_loadError!, textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600, fontSize: 15)),
-                    const SizedBox(height: 20),
-                    ElevatedButton.icon(
-                      onPressed: _loadData,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Retry'),
-                      style: ElevatedButton.styleFrom(backgroundColor: _indigo, foregroundColor: Colors.white),
+      body: Stack(
+        children: [
+          _loadError != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.cloud_off, color: Colors.grey.shade400, size: 56),
+                        const SizedBox(height: 16),
+                        Text(_loadError!, textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600, fontSize: 15)),
+                        const SizedBox(height: 20),
+                        ElevatedButton.icon(
+                          onPressed: _loadData,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Retry'),
+                          style: ElevatedButton.styleFrom(backgroundColor: _indigo, foregroundColor: Colors.white),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
+                )
+              : _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : IndexedStack(
+                      index: _currentIndex,
+                      children: [
+                        _buildDashboardTab(),
+                        _buildChildrenTab(),
+                        _buildApprovalsTab(),
+                        _buildProfileTab(),
+                      ],
+                    ),
+          // Floating support chat badge
+          Positioned(
+            right: 16,
+            bottom: 16,
+            child: AnimatedScale(
+              scale: _unreadSupportCount > 0 ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOutBack,
+              child: GestureDetector(
+                onTap: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const ParentSupportPage()))
+                      .then((_) => _fetchUnreadSupport());
+                },
+                child: Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF6366f1), Color(0xFF4338CA)],
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF4338CA).withValues(alpha: 0.4),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      const Center(child: Icon(Icons.chat_bubble_outline, color: Colors.white, size: 24)),
+                      if (_unreadSupportCount > 0)
+                        Positioned(
+                          top: -4,
+                          right: -4,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFef4444),
+                              borderRadius: BorderRadius.all(Radius.circular(10)),
+                            ),
+                            constraints: const BoxConstraints(minWidth: 20, minHeight: 16),
+                            child: Text(
+                              _unreadSupportCount > 99 ? '99+' : '$_unreadSupportCount',
+                              style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
-            )
-          : _loading
-              ? const Center(child: CircularProgressIndicator())
-              : IndexedStack(
-                  index: _currentIndex,
-                  children: [
-                    _buildDashboardTab(),
-                    _buildChildrenTab(),
-                    _buildApprovalsTab(),
-                    _buildProfileTab(),
-                  ],
-                ),
+            ),
+          ),
+        ],
+      ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           boxShadow: [

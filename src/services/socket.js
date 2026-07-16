@@ -22,12 +22,17 @@ function initSocket(httpServer, sessionMiddleware) {
       socket.data.name = req.session.adminName || 'Admin';
       return next();
     }
-    // Child: check JWT in auth handshake
+    // Child or Parent: check JWT in auth handshake
     const token = socket.handshake.auth?.token;
     if (token) {
       try {
         const jwt = require('jsonwebtoken');
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+        if (decoded.parentId) {
+          socket.data.role = 'parent';
+          socket.data.parentId = decoded.parentId;
+          return next();
+        }
         socket.data.role = 'child';
         socket.data.accountId = decoded.accountId || decoded.id;
         return next();
@@ -56,90 +61,124 @@ function initSocket(httpServer, sessionMiddleware) {
       socket.leave(room);
     });
 
-    // ── Send message (both admin and child) ──
+    // ── Send message (admin, child, or parent) ──
     socket.on('sendMessage', async (data) => {
       const { room, content, senderName } = data || {};
       if (!room || !content) return;
-      // Extract accountId from room name "chat_<accountId>"
-      const accountId = room.startsWith('chat_') ? room.slice(5) : null;
-      if (!accountId) return;
       if (!store?.query) return;
       try {
         const { v4: uuidv4 } = require('uuid');
         const messageId = uuidv4();
         const createdAt = new Date().toISOString();
         const isAdmin = role === 'admin';
-
-        // Flutter sends accountId in the payload for child messages
-        const actualAccountId = isAdmin ? accountId : (data.accountId || socket.data.accountId || accountId);
+        const isParent = role === 'parent';
+        const isChild = role === 'child';
         const childName = data.childName || '';
 
-        await store.query(
-          `INSERT INTO support_messages (message_id, account_id, child_name, sender_type, sender_name, content, admin_read, child_read, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-          [messageId, actualAccountId, childName, isAdmin ? 'admin' : 'child', senderName || (isAdmin ? 'Admin' : 'Child'), content, isAdmin ? 1 : 0, isAdmin ? 0 : 1, createdAt]
-        );
+        // Determine thread type
+        const isParentRoom = room.startsWith('parent_chat_');
+        const actualParentId = isParentRoom ? room.slice(12) : null;
 
-        const payload = {
-          message_id: messageId,
-          account_id: actualAccountId,
-          sender_type: isAdmin ? 'admin' : 'child',
-          sender_name: senderName || (isAdmin ? 'Admin' : 'Child'),
-          content,
-          admin_read: isAdmin ? 1 : 0,
-          child_read: isAdmin ? 0 : 1,
-          created_at: createdAt,
-        };
+        if (isParentRoom && actualParentId) {
+          // Parent chat thread
+          const parentName = senderName || 'Parent';
+          await store.query(
+            `INSERT INTO support_messages (message_id, account_id, parent_id, child_name, sender_type, sender_name, content, admin_read, parent_read, created_at)
+             VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [messageId, actualParentId, parentName, isAdmin ? 'admin' : 'parent', senderName || 'Parent', content, isAdmin ? 1 : 0, isAdmin ? 0 : 1, createdAt]
+          );
+          const payload = {
+            message_id: messageId, parent_id: actualParentId, child_name: parentName,
+            sender_type: isAdmin ? 'admin' : 'parent', sender_name: senderName || (isAdmin ? 'Admin' : 'Parent'),
+            content, admin_read: isAdmin ? 1 : 0, parent_read: isAdmin ? 0 : 1, created_at: createdAt,
+          };
+          io.to(room).emit('newMessage', payload);
+          if (role === 'parent') {
+            io.to('admin').emit('newMessage', payload);
+          }
+        } else {
+          // Child chat thread
+          const accountId = room.startsWith('chat_') ? room.slice(5) : null;
+          if (!accountId) return;
+          const actualAccountId = isAdmin ? accountId : (data.accountId || socket.data.accountId || accountId);
 
-        // Broadcast to the entire room (including sender for echo)
-        io.to(room).emit('newMessage', payload);
-        // Also emit to admin room for badge updates
-        if (role === 'child') {
-          io.to('admin').emit('newMessage', payload);
+          await store.query(
+            `INSERT INTO support_messages (message_id, account_id, child_name, sender_type, sender_name, content, admin_read, child_read, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [messageId, actualAccountId, childName, isAdmin ? 'admin' : 'child', senderName || (isAdmin ? 'Admin' : 'Child'), content, isAdmin ? 1 : 0, isAdmin ? 0 : 1, createdAt]
+          );
+          const payload = {
+            message_id: messageId, account_id: actualAccountId, child_name: childName,
+            sender_type: isAdmin ? 'admin' : 'child', sender_name: senderName || (isAdmin ? 'Admin' : 'Child'),
+            content, admin_read: isAdmin ? 1 : 0, child_read: isAdmin ? 0 : 1, created_at: createdAt,
+          };
+          io.to(room).emit('newMessage', payload);
+          if (role === 'child') {
+            io.to('admin').emit('newMessage', payload);
+          }
         }
       } catch (_) {}
     });
 
-    // ── Typing indicator ──
+    // ── Typing indicator (child and parent chats) ──
     socket.on('typing', (data) => {
       const { room, isTyping } = data || {};
       if (!room) return;
-      const accountId = room.startsWith('chat_') ? room.slice(5) : null;
-      // Relay to everyone in the room except sender
-      socket.to(room).emit('typingStatus', { room, accountId, isTyping, sender: role });
+      const id = room.startsWith('parent_chat_') ? room.slice(12) : (room.startsWith('chat_') ? room.slice(5) : null);
+      socket.to(room).emit('typingStatus', { room, accountId: id, isTyping, sender: role });
     });
 
-    // ── Read receipt: admin marks child messages as read ──
+    // ── Read receipt: admin marks messages as read (child or parent) ──
     socket.on('adminRead', async (data) => {
       const { room } = data || {};
       if (!room) return;
       if (role !== 'admin') return;
-      const accountId = room.startsWith('chat_') ? room.slice(5) : null;
-      if (!accountId) return;
       if (!store?.query) return;
       try {
-        await store.query(
-          "UPDATE support_messages SET admin_read = 1 WHERE account_id = $1 AND sender_type = 'child' AND admin_read = 0",
-          [accountId]
-        );
-        io.to(room).emit('readReceipt', { room, readBy: 'admin' });
+        if (room.startsWith('parent_chat_')) {
+          const parentId = room.slice(12);
+          if (!parentId) return;
+          await store.query(
+            "UPDATE support_messages SET admin_read = 1 WHERE parent_id = $1 AND sender_type = 'parent' AND admin_read = 0",
+            [parentId]
+          );
+          io.to(room).emit('readReceipt', { room, readBy: 'admin' });
+        } else {
+          const accountId = room.startsWith('chat_') ? room.slice(5) : null;
+          if (!accountId) return;
+          await store.query(
+            "UPDATE support_messages SET admin_read = 1 WHERE account_id = $1 AND sender_type = 'child' AND admin_read = 0",
+            [accountId]
+          );
+          io.to(room).emit('readReceipt', { room, readBy: 'admin' });
+        }
       } catch (_) {}
     });
 
-    // ── Read receipt (child marks admin messages as read) ──
+    // ── Read receipt (child or parent marks admin messages as read) ──
     socket.on('messageRead', async (data) => {
       const { room } = data || {};
       if (!room) return;
-      if (role !== 'child') return;
+      if (role !== 'child' && role !== 'parent') return;
       if (!store?.query) return;
-      const accountId = room.startsWith('chat_') ? room.slice(5) : null;
-      if (!accountId) return;
       try {
-        await store.query(
-          "UPDATE support_messages SET child_read = 1 WHERE account_id = $1 AND sender_type = 'admin' AND child_read = 0",
-          [accountId]
-        );
-        io.to(room).emit('readReceipt', { room, readBy: 'child' });
+        if (role === 'parent' && room.startsWith('parent_chat_')) {
+          const parentId = room.slice(12);
+          if (!parentId) return;
+          await store.query(
+            "UPDATE support_messages SET parent_read = 1 WHERE parent_id = $1 AND sender_type = 'admin' AND parent_read = 0",
+            [parentId]
+          );
+          io.to(room).emit('readReceipt', { room, readBy: role });
+        } else if (role === 'child' && room.startsWith('chat_')) {
+          const accountId = room.slice(5);
+          if (!accountId) return;
+          await store.query(
+            "UPDATE support_messages SET child_read = 1 WHERE account_id = $1 AND sender_type = 'admin' AND child_read = 0",
+            [accountId]
+          );
+          io.to(room).emit('readReceipt', { room, readBy: 'child' });
+        }
       } catch (_) {}
     });
 

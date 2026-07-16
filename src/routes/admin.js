@@ -7693,12 +7693,19 @@ router.post('/parents/reject/:parentId', requireRole(3,4), asyncHandler(async (r
 router.get('/messages', requireRole(1), asyncHandler(async (req, res) => {
   const sql = (s, p) => store.query(s, p || []).then(r => r.rows);
   const conversations = await sql(`
-    SELECT m.account_id, a.child_name, a.member_id,
+    SELECT m.account_id, NULL as parent_id, a.child_name, a.member_id, 'child' as thread_type,
       (SELECT content FROM support_messages WHERE account_id = m.account_id ORDER BY created_at DESC LIMIT 1) as last_message,
       (SELECT created_at FROM support_messages WHERE account_id = m.account_id ORDER BY created_at DESC LIMIT 1) as last_time,
       (SELECT COUNT(*) FROM support_messages WHERE account_id = m.account_id AND admin_read = 0 AND sender_type != 'admin') as unread
-    FROM (SELECT DISTINCT account_id FROM support_messages) m
+    FROM (SELECT DISTINCT account_id FROM support_messages WHERE account_id IS NOT NULL) m
     LEFT JOIN accounts a ON m.account_id = a.account_id
+    UNION ALL
+    SELECT NULL as account_id, m.parent_id, p.display_name as child_name, '' as member_id, 'parent' as thread_type,
+      (SELECT content FROM support_messages WHERE parent_id = m.parent_id ORDER BY created_at DESC LIMIT 1) as last_message,
+      (SELECT created_at FROM support_messages WHERE parent_id = m.parent_id ORDER BY created_at DESC LIMIT 1) as last_time,
+      (SELECT COUNT(*) FROM support_messages WHERE parent_id = m.parent_id AND admin_read = 0 AND sender_type != 'admin') as unread
+    FROM (SELECT DISTINCT parent_id FROM support_messages WHERE parent_id IS NOT NULL) m
+    LEFT JOIN parents p ON m.parent_id = p.parent_id
     ORDER BY last_time DESC
   `);
   const totalUnread = conversations.reduce((s, c) => s + Number(c.unread), 0);
@@ -7726,10 +7733,14 @@ router.get('/messages', requireRole(1), asyncHandler(async (req, res) => {
       ${conversations.length === 0 ?
         '<div class="msg-empty"><div class="me-icon">&#x1F4E8;</div><div>No messages yet. When a child or parent sends a message, it will appear here.</div></div>' :
         '<div class="msg-list">' + conversations.map(function(c) {
+          const isParent = c.thread_type === 'parent';
+          const link = isParent ? '/admin/parent-messages/' + c.parent_id : '/admin/messages/' + c.account_id;
           const initial = (c.child_name || '?')[0].toUpperCase();
           const time = c.last_time ? (c.last_time.slice(0,16).replace('T',' ')) : '';
           const unread = Number(c.unread);
-          return '<a href="/admin/messages/' + c.account_id + '" class="msg-conv"><div class="mc-avatar">' + initial + '</div><div class="mc-info"><div class="mc-name">' + h(c.child_name || 'Unknown') + ' <span style="font-size:11px;color:var(--text-muted);font-family:var(--mono)">' + (c.member_id || '') + '</span></div><div class="mc-preview">' + h(c.last_message || '') + '</div></div><div class="mc-time">' + (unread ? '<span class="mc-badge">' + unread + '</span>' : '') + time + '</div></a>';
+          const icon = isParent ? '<i class="fas fa-user-friends" style="font-size:14px"></i>' : initial;
+          const subtitle = isParent ? 'Parent' : (c.member_id || '');
+          return '<a href="' + link + '" class="msg-conv"><div class="mc-avatar" style="' + (isParent ? 'background:linear-gradient(135deg,#6366f1,#4338ca)' : '') + '">' + icon + '</div><div class="mc-info"><div class="mc-name">' + h(c.child_name || 'Unknown') + ' <span style="font-size:11px;color:var(--text-muted);font-family:var(--mono)">' + (subtitle ? '&middot; ' + subtitle : '') + '</span></div><div class="mc-preview">' + h(c.last_message || '') + '</div></div><div class="mc-time">' + (unread ? '<span class="mc-badge">' + unread + '</span>' : '') + time + '</div></a>';
         }).join('') + '</div>'
       }
     </div>
@@ -8018,18 +8029,262 @@ router.get('/messages/:accountId/read-status', requireRole(1), asyncHandler(asyn
   res.json({ statuses: rows.rows });
 }));
 
+// ── Parent Conversation View ──
+router.get('/parent-messages/:parentId', requireRole(1), asyncHandler(async (req, res) => {
+  const parentId = req.params.parentId;
+  // Mark unread as read
+  await store.query("UPDATE support_messages SET admin_read = 1 WHERE parent_id = $1 AND sender_type != 'admin'", [parentId]);
+
+  // Emit read receipt
+  try {
+    const { getIO } = require('../services/socket');
+    const io = getIO();
+    if (io) {
+      io.to('parent_chat_' + parentId).emit('readReceipt', { room: 'parent_chat_' + parentId, readBy: 'admin' });
+    }
+  } catch (_) {}
+
+  const sql = (s, p) => store.query(s, p || []).then(r => r.rows);
+  const one = (s, p) => store.query(s, p || []).then(r => r.rows[0]);
+
+  const [parent, msgs] = await Promise.all([
+    one('SELECT parent_id, display_name, email FROM parents WHERE parent_id = $1', [parentId]),
+    sql('SELECT * FROM support_messages WHERE parent_id = $1 ORDER BY created_at ASC', [parentId]),
+  ]);
+
+  if (!parent) return res.redirect('/admin/messages?error=Parent+not+found');
+
+  const csrf = res.locals.csrfToken || '';
+  const displayName = parent.display_name || parent.email || 'Parent';
+
+  const content = `
+  <style>
+  .msg-thread { max-width:700px; margin:0 auto; }
+  .msg-bubble { display:flex; gap:12px; margin-bottom:14px; }
+  .msg-bubble.incoming { flex-direction:row; }
+  .msg-bubble.outgoing { flex-direction:row-reverse; }
+  .msg-bubble .mb-avatar { width:32px; height:32px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; }
+  .msg-bubble.incoming .mb-avatar { background:linear-gradient(135deg,#6366f1,#4338ca); color:#fff; }
+  .msg-bubble.outgoing .mb-avatar { background:var(--accent); color:#fff; }
+  .msg-bubble .mb-content { max-width:75%; padding:10px 14px; border-radius:12px; font-size:13px; line-height:1.5; }
+  .msg-bubble.incoming .mb-content { background:#f1f5f9; color:var(--text); border-bottom-left-radius:4px; }
+  .msg-bubble.outgoing .mb-content { background:var(--accent); color:#fff; border-bottom-right-radius:4px; }
+  .msg-bubble .mb-meta { font-size:10px; color:var(--text-muted); margin-top:4px; opacity:0.7; display:flex; align-items:center; gap:4px; }
+  .msg-bubble.outgoing .mb-meta { color:rgba(255,255,255,0.7); }
+  .msg-bubble .mb-meta .mb-read { font-style:italic; }
+  .mb-typing { display:flex; align-items:center; gap:8px; padding:8px 0; font-size:12px; color:var(--text-muted); }
+  .mb-typing .typing-dots { display:flex; gap:3px; }
+  .mb-typing .typing-dots span { width:6px; height:6px; border-radius:50%; background:#6366f1; animation:typingBounce 1.2s ease infinite; }
+  .mb-typing .typing-dots span:nth-child(2) { animation-delay:0.2s; }
+  .mb-typing .typing-dots span:nth-child(3) { animation-delay:0.4s; }
+  @keyframes typingBounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-4px)} }
+  .msg-reply-box { margin-top:20px; background:var(--card); border:1px solid var(--border); border-radius:14px; overflow:hidden; }
+  .msg-reply-box textarea { width:100%; padding:14px; border:none; outline:none; font-size:13px; font-family:inherit; resize:vertical; min-height:70px; background:transparent; color:var(--text); }
+  .msg-reply-box .mr-actions { display:flex; align-items:center; justify-content:space-between; padding:8px 14px 12px; border-top:1px solid var(--border); }
+  </style>
+  <div style="margin-bottom:14px">
+    <a href="/admin/messages" class="btn btn-outline btn-sm">&larr; Back to Messages</a>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <h3><i class="fas fa-user-friends"></i> ${h(displayName)} <span style="font-size:12px;color:var(--text-muted)">Parent</span></h3>
+    </div>
+    <div class="card-body msg-thread" id="msgThread">
+      ${msgs.length === 0 ? '<div style="text-align:center;padding:40px;color:var(--text-muted)">No messages yet</div>' :
+        msgs.map(function(m) {
+          const isAdmin = m.sender_type === 'admin';
+          const initial = isAdmin ? 'A' : 'P';
+          var receipt = '';
+          if (isAdmin) {
+            receipt = Number(m.parent_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Delivered</span>';
+          } else {
+            receipt = ' <span class="mb-read">&#x2713; Read</span>';
+          }
+          return '<div class="msg-bubble ' + (isAdmin ? 'outgoing' : 'incoming') + '" data-msg-id="' + h(m.message_id || '') + '"><div class="mb-avatar">' + initial + '</div><div class="mb-content"><div>' + h(m.content) + '</div><div class="mb-meta">' + h(m.sender_name || m.sender_type) + ' · ' + (m.created_at ? m.created_at.slice(0,19).replace('T',' ') : '') + receipt + '</div></div></div>';
+        }).join('')
+      }
+      <div id="typingIndicator" class="mb-typing" style="display:none">
+        <div class="typing-dots"><span></span><span></span><span></span></div>
+        typing...
+      </div>
+      <div id="replyTarget"></div>
+    </div>
+  </div>
+
+  <div class="msg-reply-box">
+    <textarea id="replyContent" placeholder="Type your reply..." rows="2"></textarea>
+    <div class="mr-actions">
+      <span id="typingStatus" style="font-size:11px;color:var(--text-muted)">Press Enter to send</span>
+      <button class="btn btn-primary btn-sm" onclick="sendReply()"><i class="fas fa-paper-plane"></i> Send</button>
+    </div>
+  </div>
+
+  <script>
+  var parentId = '${parentId}';
+  var room = 'parent_chat_' + parentId;
+  window._currentAccountId = parentId; // reused for typing scope
+
+  function esc(s){ return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#x27;'}[c]}); }
+
+  var _knownIds = {};
+  document.querySelectorAll('#msgThread .msg-bubble[data-msg-id]').forEach(function(el){
+    _knownIds[el.getAttribute('data-msg-id')] = true;
+  });
+  function appendMsg(msg){
+    if (_knownIds[msg.message_id]) return;
+    _knownIds[msg.message_id] = true;
+    var target = document.getElementById('replyTarget');
+    if (!target) return;
+    var isAdmin = msg.sender_type === 'admin';
+    var initial = isAdmin ? 'A' : 'P';
+    var receipt;
+    if (isAdmin) {
+      receipt = Number(msg.parent_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Delivered</span>';
+    } else {
+      receipt = ' <span class="mb-read">&#x2713; Read</span>';
+    }
+    var html = '<div class="msg-bubble ' + (isAdmin ? 'outgoing' : 'incoming') + '" data-msg-id="' + esc(msg.message_id) + '"><div class="mb-avatar">' + initial + '</div><div class="mb-content"><div>' + esc(msg.content) + '</div><div class="mb-meta">' + esc(msg.sender_name || msg.sender_type) + ' · ' + (msg.created_at ? msg.created_at.slice(0,19).replace('T',' ') : '') + receipt + '</div></div></div>';
+    target.insertAdjacentHTML('beforebegin', html);
+    target.scrollIntoView({ behavior:'smooth' });
+  }
+
+  window._onNewMsg = function(msg){
+    if (msg.parent_id != parentId) return;
+    if (msg.sender_type === 'admin') {
+      var opt = document.querySelector('.msg-bubble.outgoing.msg-optimistic');
+      if (opt) {
+        opt.classList.remove('msg-optimistic');
+        if (msg.message_id) opt.setAttribute('data-msg-id', msg.message_id);
+        var meta = opt.querySelector('.mb-meta');
+        if (meta) {
+          var receipt = Number(msg.parent_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Delivered</span>';
+          var oldReceipt = meta.querySelector('.mb-read');
+          if (oldReceipt) oldReceipt.outerHTML = receipt;
+          else meta.insertAdjacentHTML('beforeend', receipt);
+        }
+        _knownIds[msg.message_id] = true;
+      }
+      return;
+    }
+    appendMsg(msg);
+    if (window.adminSocket && window.adminSocket.connected) {
+      window.adminSocket.emit('adminRead', { room: room });
+    }
+  };
+
+  function waitForSocket(cb){
+    if (window.adminSocket) { cb(window.adminSocket); return; }
+    var chk = setInterval(function(){
+      if (window.adminSocket) { clearInterval(chk); cb(window.adminSocket); }
+    }, 200);
+  }
+  waitForSocket(function(sock){
+    if (sock.connected) {
+      sock.emit('joinRoom', room);
+    } else {
+      sock.on('connect', function(){ sock.emit('joinRoom', room); });
+    }
+  });
+
+  function sendReply(){
+    var el = document.getElementById('replyContent');
+    if (!el.value.trim()) return;
+    var text = el.value.trim();
+    el.value = '';
+    var target = document.getElementById('replyTarget');
+    var d = new Date();
+    var ts = d.toISOString().slice(0,19).replace('T',' ');
+    var html = '<div class="msg-bubble outgoing msg-optimistic"><div class="mb-avatar">A</div><div class="mb-content"><div>' + esc(text) + '</div><div class="mb-meta">Admin · ' + ts + ' <span class="mb-read" style="opacity:0.5;font-style:italic">&#x2713; Sending...</span></div></div></div>';
+    target.insertAdjacentHTML('beforebegin', html);
+    target.scrollIntoView({ behavior:'smooth' });
+    if (window.adminSocket && window.adminSocket.connected) {
+      window.adminSocket.emit('sendMessage', { room: room, content: text, senderName: 'Admin' });
+    } else {
+      fetch('/admin/parent-messages/reply', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json', 'X-CSRF-Token':'${csrf}' },
+        body: JSON.stringify({ parentId: parentId, content: text })
+      }).catch(function(){});
+    }
+  }
+  document.getElementById('replyContent').addEventListener('keydown', function(e){
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); }
+  });
+
+  // ── Admin typing via socket ──
+  var adminTypingInt, adminLastKeystroke;
+  document.getElementById('replyContent').addEventListener('input', function(){
+    adminLastKeystroke = Date.now();
+    if (window.adminSocket && window.adminSocket.connected) window.adminSocket.emit('typing', { room: room, isTyping: true });
+    if (!adminTypingInt) {
+      adminTypingInt = setInterval(function(){
+        if (Date.now() - adminLastKeystroke > 3000) {
+          if (window.adminSocket && window.adminSocket.connected) window.adminSocket.emit('typing', { room: room, isTyping: false });
+          clearInterval(adminTypingInt); adminTypingInt = null;
+          return;
+        }
+        if (window.adminSocket && window.adminSocket.connected) window.adminSocket.emit('typing', { room: room, isTyping: true });
+      }, 3000);
+    }
+  });
+  var origSend = sendReply;
+  sendReply = function(){
+    if (window.adminSocket && window.adminSocket.connected) window.adminSocket.emit('typing', { room: room, isTyping: false });
+    if (adminTypingInt) { clearInterval(adminTypingInt); adminTypingInt = null; }
+    origSend();
+  };
+  setTimeout(function(){ window.refreshMessengerBadge(); }, 500);
+  </script>`;
+
+  res.type('html').send(layout('Messages', 'messages', content));
+}));
+
+// ── Admin reply to parent ──
+router.post('/parent-messages/reply', requireRole(1), asyncHandler(async (req, res) => {
+  const { parentId, content } = req.body;
+  if (!content || !content.trim()) return res.status(400).json({ message: 'Content is required' });
+  if (!parentId) return res.status(400).json({ message: 'Parent ID is required' });
+
+  const msgId = require('uuid').v4();
+  const adminName = req.session.adminName || 'Admin';
+  const parent = await store.query('SELECT display_name, email FROM parents WHERE parent_id = $1', [parentId]);
+  const parentName = parent.rows[0] ? (parent.rows[0].display_name || parent.rows[0].email || 'Parent') : 'Parent';
+
+  await store.query(
+    `INSERT INTO support_messages (message_id, account_id, parent_id, child_name, sender_type, sender_name, content, admin_read, parent_read, created_at)
+     VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [msgId, parentId, parentName, 'admin', adminName, content.trim(), 1, 0, new Date().toISOString()]
+  );
+
+  // Emit socket event
+  try {
+    const { getIO } = require('../services/socket');
+    const io = getIO();
+    if (io) {
+      io.to('parent_chat_' + parentId).emit('newMessage', {
+        message_id: msgId, parent_id: parentId, child_name: parentName,
+        sender_type: 'admin', sender_name: adminName, content: content.trim(),
+        admin_read: 1, parent_read: 0, created_at: new Date().toISOString(),
+      });
+    }
+  } catch (_) {}
+
+  res.json({ message: 'Sent', messageId: msgId });
+}));
+
 // ── Pending counts JSON endpoint (for admin notification bell) ──
 router.get('/pending-counts', requireRole(1), asyncHandler(async (req, res) => {
   const sql = (s, p) => store.query(s, p || []).then(r => r.rows);
   const one = (s, p) => store.query(s, p || []).then(r => r.rows[0]);
-  const [kyc, withdrawals, loans, onlineDeposits, consents, deletions, unreadMsgs] = await Promise.all([
+  const [kyc, withdrawals, loans, onlineDeposits, consents, deletions, childUnread, parentUnread] = await Promise.all([
     sql("SELECT COUNT(*) as c FROM accounts WHERE kyc_status = 'pending'"),
     sql("SELECT COUNT(*) as c FROM withdrawal_requests WHERE status = 'pending'"),
     sql("SELECT COUNT(*) as c FROM loans WHERE status = 'pending'"),
     sql("SELECT COUNT(*) as c FROM online_deposits WHERE status = 'pending'"),
     sql("SELECT COUNT(*) as c FROM parental_consent WHERE status = 'pending'"),
     sql("SELECT COUNT(*) as c FROM account_deletion_requests WHERE status = 'pending'"),
-    sql("SELECT COUNT(*) as c FROM support_messages WHERE admin_read = 0 AND sender_type != 'admin'"),
+    sql("SELECT COUNT(*) as c FROM support_messages WHERE admin_read = 0 AND sender_type != 'admin' AND account_id IS NOT NULL"),
+    sql("SELECT COUNT(*) as c FROM support_messages WHERE admin_read = 0 AND sender_type != 'admin' AND parent_id IS NOT NULL"),
   ]);
   const counts = {
     kyc: Number(kyc[0]?.c || 0),
@@ -8038,7 +8293,7 @@ router.get('/pending-counts', requireRole(1), asyncHandler(async (req, res) => {
     onlineDeposits: Number(onlineDeposits[0]?.c || 0),
     consents: Number(consents[0]?.c || 0),
     deletions: Number(deletions[0]?.c || 0),
-    messages: Number(unreadMsgs[0]?.c || 0),
+    messages: Number(childUnread[0]?.c || 0) + Number(parentUnread[0]?.c || 0),
   };
   counts.total = counts.kyc + counts.withdrawals + counts.loans + counts.onlineDeposits + counts.consents + counts.deletions + counts.messages;
   res.json(counts);
@@ -8096,21 +8351,36 @@ router.get('/pending-items', requireRole(1), asyncHandler(async (req, res) => {
 // ── Unread message threads for messenger dropdown ──
 router.get('/unread-message-threads', requireRole(1), asyncHandler(async (req, res) => {
   const sql = (s, p) => store.query(s, p || []).then(r => r.rows);
-  const threads = await sql(`
+  const childThreads = await sql(`
     SELECT
-      m.account_id,
-      a.child_name,
-      a.member_id,
+      m.account_id, NULL as parent_id, a.child_name, a.member_id, 'child' as thread_type,
       (SELECT content FROM support_messages WHERE account_id = m.account_id AND sender_type != 'admin' ORDER BY created_at DESC LIMIT 1) as last_message,
       (SELECT created_at FROM support_messages WHERE account_id = m.account_id AND sender_type != 'admin' ORDER BY created_at DESC LIMIT 1) as last_time,
       (SELECT COUNT(*) FROM support_messages WHERE account_id = m.account_id AND admin_read = 0 AND sender_type != 'admin') as unread
     FROM support_messages m
     LEFT JOIN accounts a ON m.account_id = a.account_id
-    WHERE m.admin_read = 0 AND m.sender_type != 'admin'
+    WHERE m.admin_read = 0 AND m.sender_type != 'admin' AND m.account_id IS NOT NULL
     GROUP BY m.account_id, a.child_name, a.member_id
     ORDER BY MAX(m.created_at) DESC
     LIMIT 20
   `);
+  const parentThreads = await sql(`
+    SELECT
+      NULL as account_id, m.parent_id, p.display_name as child_name, '' as member_id, 'parent' as thread_type,
+      (SELECT content FROM support_messages WHERE parent_id = m.parent_id AND sender_type != 'admin' ORDER BY created_at DESC LIMIT 1) as last_message,
+      (SELECT created_at FROM support_messages WHERE parent_id = m.parent_id AND sender_type != 'admin' ORDER BY created_at DESC LIMIT 1) as last_time,
+      (SELECT COUNT(*) FROM support_messages WHERE parent_id = m.parent_id AND admin_read = 0 AND sender_type != 'admin') as unread
+    FROM support_messages m
+    LEFT JOIN parents p ON m.parent_id = p.parent_id
+    WHERE m.admin_read = 0 AND m.sender_type != 'admin' AND m.parent_id IS NOT NULL
+    GROUP BY m.parent_id, p.display_name
+    ORDER BY MAX(m.created_at) DESC
+    LIMIT 20
+  `);
+  const threads = [...childThreads, ...parentThreads].sort((a, b) => {
+    const ta = a.last_time || ''; const tb = b.last_time || '';
+    return tb.localeCompare(ta);
+  }).slice(0, 20);
   res.json({ threads: threads, total: threads.length });
 }));
 

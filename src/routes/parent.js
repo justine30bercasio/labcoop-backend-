@@ -645,6 +645,73 @@ router.get('/messages/:accountId/unread', parentAuth, asyncHandler(async (req, r
   res.json({ unread: Number(result.rows[0]?.c || 0) });
 }));
 
+// ── Parent Support (own thread, not tied to a child) ──
+
+// Middleware to load parent info
+const loadParentInfo = asyncHandler(async (req, res, next) => {
+  const row = await store.query('SELECT parent_id, display_name, email FROM parents WHERE parent_id = $1', [req.parentId]);
+  if (!row.rows[0]) return res.status(404).json({ message: 'Parent not found' });
+  req.parentInfo = row.rows[0];
+  next();
+});
+
+// Send message to parent's own support thread
+router.post('/support/send', parentAuth, loadParentInfo, asyncHandler(async (req, res) => {
+  const { content } = req.body;
+  if (!content || !content.trim()) return res.status(400).json({ message: 'Content is required' });
+
+  const msgId = require('uuid').v4();
+  const parentName = req.parentInfo.display_name || req.parentInfo.email || 'Parent';
+
+  await store.query(
+    `INSERT INTO support_messages (message_id, account_id, parent_id, child_name, sender_type, sender_name, content, admin_read, parent_read, created_at)
+     VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [msgId, req.parentId, parentName, 'parent', parentName, content.trim(), 0, 1, new Date().toISOString()]
+  );
+
+  // Notify admin via socket
+  const { getIO } = require('../services/socket');
+  const io = getIO();
+  const room = 'parent_chat_' + req.parentId;
+  if (io) {
+    io.to(room).emit('newMessage', {
+      message_id: msgId, parent_id: req.parentId, child_name: parentName,
+      sender_type: 'parent', sender_name: parentName, content: content.trim(),
+      admin_read: 0, parent_read: 1, created_at: new Date().toISOString(),
+    });
+    io.to('admin').emit('newMessage', {
+      message_id: msgId, parent_id: req.parentId, child_name: parentName,
+      sender_type: 'parent', sender_name: parentName, content: content.trim(),
+      admin_read: 0, parent_read: 1, created_at: new Date().toISOString(),
+    });
+  }
+
+  res.json({ message: 'Sent', messageId: msgId });
+}));
+
+// Fetch parent's own messages
+router.get('/support/messages', parentAuth, loadParentInfo, asyncHandler(async (req, res) => {
+  const msgs = await store.query(
+    `SELECT * FROM support_messages WHERE parent_id = $1 ORDER BY created_at ASC`,
+    [req.parentId]
+  );
+  // Mark admin messages as read
+  await store.query(
+    `UPDATE support_messages SET parent_read = 1 WHERE parent_id = $1 AND sender_type = 'admin' AND parent_read = 0`,
+    [req.parentId]
+  );
+  res.json(msgs.rows);
+}));
+
+// Unread count for parent
+router.get('/support/unread', parentAuth, loadParentInfo, asyncHandler(async (req, res) => {
+  const result = await store.query(
+    `SELECT COUNT(*) as c FROM support_messages WHERE parent_id = $1 AND sender_type = 'admin' AND parent_read = 0`,
+    [req.parentId]
+  );
+  res.json({ unread: Number(result.rows[0]?.c || 0) });
+}));
+
 // ── Parent FCM Token Registration ──
 router.post('/register-fcm-token', parentAuth, asyncHandler(async (req, res) => {
   const { fcmToken, devicePlatform } = req.body;

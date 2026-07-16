@@ -41,8 +41,8 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
 
   final Set<String> _expandedTxChildren = {};
 
-  static const Color _indigo = Color(0xFF1a237e);
-  static const Color _indigoLight = Color(0xFF5c6bc0);
+  static const Color _indigo = Color(0xFF1565C0);
+  static const Color _indigoLight = Color(0xFF42A5F5);
 
   @override
   void initState() {
@@ -313,12 +313,12 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      backgroundColor: const Color(0xFFF5F9FF),
       appBar: AppBar(
         title: Text(_parentInfo?['display_name'] ?? 'Parent Portal'),
-        backgroundColor: _indigo,
+        backgroundColor: const Color(0xFF1565C0),
         foregroundColor: Colors.white,
-        elevation: 0,
+        elevation: 1,
         actions: [
           Stack(
             clipBehavior: Clip.none,
@@ -354,7 +354,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                           onPressed: _loadData,
                           icon: const Icon(Icons.refresh),
                           label: const Text('Retry'),
-                          style: ElevatedButton.styleFrom(backgroundColor: _indigo, foregroundColor: Colors.white),
+                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1565C0), foregroundColor: Colors.white),
                         ),
                       ],
                     ),
@@ -389,12 +389,12 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                   height: 56,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [Color(0xFF6366f1), Color(0xFF4338CA)],
+                      colors: [Color(0xFF1976D2), Color(0xFF1565C0)],
                     ),
                     borderRadius: BorderRadius.circular(18),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF4338CA).withValues(alpha: 0.4),
+                        color: const Color(0xFF1565C0).withValues(alpha: 0.4),
                         blurRadius: 12,
                         offset: const Offset(0, 4),
                       ),

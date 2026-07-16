@@ -258,7 +258,7 @@ class _ParentLoginPageState extends State<ParentLoginPage>
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF1a237e), Color(0xFF283593), Color(0xFF3949ab)],
+            colors: [Color(0xFF1565C0), Color(0xFF1976D2), Color(0xFF42A5F5)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -590,7 +590,7 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                     const SizedBox(height: 20),
                     TextButton(
                       onPressed: () => Navigator.pop(context),
-                      child: Text('\u2190 Back to Child Login', style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 13)),
+                      child: Text('\u2190 Back to Child Login', style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 13)),
                     ),
                     const SizedBox(height: 28),
                   ],

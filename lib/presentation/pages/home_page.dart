@@ -219,7 +219,7 @@ class _HomePageState extends State<HomePage> {
           right: 16,
           bottom: MediaQuery.of(context).padding.bottom + 80,
           child: AnimatedScale(
-            scale: _unreadMessages > 0 ? 1.0 : 0.0,
+            scale: 1.0,
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeOutBack,
             child: GestureDetector(

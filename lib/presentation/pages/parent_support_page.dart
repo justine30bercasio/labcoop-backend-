@@ -254,21 +254,19 @@ class _ParentSupportPageState extends State<ParentSupportPage> with SingleTicker
     }
   }
 
-  Widget _readReceipt(int? parentRead, String senderType) {
-    if (senderType == 'admin') return const SizedBox.shrink();
-    final read = parentRead == 1;
+  Widget _readReceipt(int? read, bool isRead) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(
-          read ? Icons.check_circle : Icons.check_circle_outline,
+          isRead ? Icons.check_circle : Icons.check_circle_outline,
           size: 11,
-          color: read ? Colors.indigo.shade300 : Colors.grey.shade400,
+          color: isRead ? Colors.indigo.shade300 : Colors.grey.shade400,
         ),
         const SizedBox(width: 2),
         Text(
-          read ? 'Read' : 'Sent',
-          style: TextStyle(fontSize: 9, color: read ? Colors.indigo.shade300 : Colors.grey.shade400),
+          isRead ? 'Read' : 'Delivered',
+          style: TextStyle(fontSize: 9, color: isRead ? Colors.indigo.shade300 : Colors.grey.shade400),
         ),
       ],
     );
@@ -364,18 +362,17 @@ class _ParentSupportPageState extends State<ParentSupportPage> with SingleTicker
                                     mainAxisSize: MainAxisSize.min,
                                     mainAxisAlignment: isAdmin ? MainAxisAlignment.start : MainAxisAlignment.end,
                                     children: [
-                                      if (isAdmin && parentRead == 1)
-                                        Padding(
-                                          padding: const EdgeInsets.only(right: 4),
-                                          child: Icon(Icons.check_circle, size: 10, color: const Color(0xFF00796B)),
-                                        ),
                                       Text(
                                         '$name · $ts',
                                         style: TextStyle(fontSize: 9, color: Colors.grey.shade500),
                                       ),
+                                      if (isAdmin) ...[
+                                        const SizedBox(width: 4),
+                                        _readReceipt(parentRead, parentRead == 1),
+                                      ],
                                       if (!isAdmin) ...[
                                         const SizedBox(width: 4),
-                                        _readReceipt(adminRead, 'parent'),
+                                        _readReceipt(adminRead, adminRead == 1),
                                       ],
                                     ],
                                   ),

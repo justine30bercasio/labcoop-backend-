@@ -136,46 +136,6 @@ class _HomePageState extends State<HomePage> {
           children: [
             Scaffold(
               backgroundColor: Theme.of(context).colorScheme.surface,
-              appBar: AppBar(
-                title: const Text('LabCoop'),
-                backgroundColor: const Color(0xFF2E7D32),
-                foregroundColor: Colors.white,
-                elevation: 1,
-                actions: [
-                  Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.support_agent_outlined),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => SupportPage(
-                              accountId: _accountId,
-                              childName: childName,
-                            )),
-                          ).then((_) => _fetchUnreadMsgs());
-                        },
-                      ),
-                      if (_unreadMessages > 0)
-                        Positioned(
-                          right: 6,
-                          top: 6,
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                            constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-                            child: Text(
-                              _unreadMessages > 99 ? '99+' : '$_unreadMessages',
-                              style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
               body: SafeArea(
                 top: false,
                 bottom: false,

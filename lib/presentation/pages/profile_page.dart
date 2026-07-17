@@ -15,6 +15,7 @@ import '../blocs/savings_state.dart';
 import '../widgets/animated_counter.dart';
 import '../widgets/app_card.dart';
 import '../widgets/notification_bell.dart';
+import '../widgets/support_bell.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/network/banking_api_service.dart';
 import '../../core/network/dio_client.dart';
@@ -119,7 +120,7 @@ class _ProfilePageState extends State<ProfilePage>
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Profile'),
-        actions: const [NotificationBell()],
+        actions: [const SupportBell(), const NotificationBell()],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(Spacing.lg),

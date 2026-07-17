@@ -209,25 +209,17 @@ class _ParentSupportPageState extends State<ParentSupportPage> with SingleTicker
     });
     _scrollDown();
 
+    // Always save via HTTP for persistence (socket send is optional for real-time)
+    await BankingApiService.parentSupportSend(text);
     if (SocketService.isConnected && _parentId != null) {
-      // Socket path — server echoes newMessage back, _onNewMessage replaces opt
       SocketService.sendParentMessage(_parentId!, text, senderName: 'Parent');
-    } else {
-      // HTTP fallback — save then refresh
-      final parentToken = await const FlutterSecureStorage().read(key: 'parent_token');
-      if (parentToken != null) {
-        await BankingApiService.parentSupportSend(text);
-      } else {
-        // No parent token — try child token for support (first-time sender)
-        await BankingApiService.parentSupportSend(text);
-      }
-      final fresh = await BankingApiService.parentSupportGetMessages();
-      if (mounted) {
-        setState(() => _messages = fresh.cast<Map<String, dynamic>>());
-        if (_parentId == null && _messages.isNotEmpty && _messages[0]['parent_id'] != null) {
-          _parentId = _messages[0]['parent_id'] as String?;
-          await _joinRoom();
-        }
+    }
+    final fresh = await BankingApiService.parentSupportGetMessages();
+    if (mounted) {
+      setState(() => _messages = fresh.cast<Map<String, dynamic>>());
+      if (_parentId == null && _messages.isNotEmpty && _messages[0]['parent_id'] != null) {
+        _parentId = _messages[0]['parent_id'] as String?;
+        await _joinRoom();
       }
     }
 

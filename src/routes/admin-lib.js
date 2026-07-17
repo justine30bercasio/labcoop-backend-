@@ -919,12 +919,16 @@ window.refreshMessengerBadge = function(){};
   });
   // Typing status
   sio.on('typingStatus', function(data){
-    if (data.sender === 'child' && window._currentAccountId && data.accountId == window._currentAccountId) {
+    var isChild = data.sender === 'child';
+    var isParent = data.sender === 'parent';
+    if ((isChild || isParent) && window._currentAccountId && data.accountId == window._currentAccountId) {
       var ti = document.getElementById('typingIndicator');
       var ts = document.getElementById('typingStatus');
       if (ti && ts) {
         ti.style.display = data.isTyping ? 'flex' : 'none';
-        ts.textContent = data.isTyping ? 'Child is typing...' : 'Press Enter to send';
+        ts.textContent = data.isTyping
+          ? (isChild ? 'Child is typing...' : 'Parent is typing...')
+          : 'Press Enter to send';
       }
     }
   });

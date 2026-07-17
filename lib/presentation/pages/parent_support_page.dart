@@ -224,10 +224,6 @@ class _ParentSupportPageState extends State<ParentSupportPage> with SingleTicker
     print('[ParentSupport] saveResult=$saveResult');
     final saved = saveResult != null && (saveResult['messageId'] != null || saveResult['message_id'] != null);
 
-    if (SocketService.isConnected && _parentId != null) {
-      SocketService.sendParentMessage(_parentId!, text, senderName: 'Parent');
-    }
-
     if (saved) {
       // Refresh from server to replace optimistic message with real ones
       try {

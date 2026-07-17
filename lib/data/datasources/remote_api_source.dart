@@ -368,4 +368,17 @@ class RemoteApiSource {
     final response = await _dio.get('/api/coins/$accountId/history');
     return (response.data as List).cast<Map<String, dynamic>>();
   }
+
+  // ── Spin Wheel ──
+
+  Future<Map<String, dynamic>> spinWheel(String accountId) async {
+    final response = await _dio.post('/api/spin/$accountId');
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<bool> canSpinWheel(String accountId) async {
+    final response = await _dio.get('/api/spin/$accountId/can-spin');
+    final data = response.data as Map<String, dynamic>;
+    return data['canSpin'] == true;
+  }
 }

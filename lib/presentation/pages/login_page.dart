@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../data/datasources/local_db_source.dart';
 import '../../data/datasources/remote_api_source.dart';
 import 'home_page.dart';
+import 'force_change_pin_page.dart';
 import 'parent_login_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -69,8 +70,22 @@ class _LoginPageState extends State<LoginPage>
     try {
       await GetIt.instance<LocalDbSource>().clearAll();
       final api = GetIt.instance<RemoteApiSource>();
-      await api.login(pin, memberId: cid);
+      final result = await api.login(pin, memberId: cid);
       if (!mounted) return;
+
+      final passwordChanged = result['passwordChanged'] == true;
+      if (!passwordChanged) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ForceChangePinPage(
+              accountId: result['account']['account_id'] as String,
+            ),
+          ),
+        );
+        return;
+      }
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(

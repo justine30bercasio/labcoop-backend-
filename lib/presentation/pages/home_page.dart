@@ -122,6 +122,7 @@ class _HomePageState extends State<HomePage> {
               currentXp: state.account.currentXp,
               lastGainedXp: state.lastXpGained,
               badges: state.badges,
+              accountId: accountId,
             )
           else
             const Scaffold(

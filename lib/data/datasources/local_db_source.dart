@@ -263,6 +263,17 @@ class LocalDbSource {
     await box.put('pet_data', jsonEncode(data));
   }
 
+  Future<void> saveLastSpinDate(DateTime date) async {
+    final box = await _openBox('_meta');
+    await box.put('last_spin_date', date.toIso8601String());
+  }
+
+  Future<DateTime?> getLastSpinDate() async {
+    final box = await _openBox('_meta');
+    final str = box.get('last_spin_date') as String?;
+    return str != null ? DateTime.tryParse(str) : null;
+  }
+
   Future<List<Map<String, dynamic>>> getTownBuildings() async {
     final box = await _openBox('_meta');
     final raw = box.get('town_buildings') as String?;

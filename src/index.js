@@ -335,7 +335,7 @@ app.use(sessionMiddleware);
 
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: 500,
   message: { message: 'Too many requests, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -344,7 +344,7 @@ app.use(globalLimiter);
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 20,
   message: { message: 'Too many login attempts. Try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -485,6 +485,7 @@ const parentalConsentRouter = require('./routes/parental-consent');
 const accountDeletionRouter = require('./routes/account-deletion');
 const { router: parentRouter } = require('./routes/parent');
 const coinsRouter = require('./routes/coins');
+const spinRouter = require('./routes/spin');
 
 apiRouter.use('/accounts', authMiddleware, requireOwnership, accountsRouter);
 apiRouter.get('/accounts/:accountId/goals', authMiddleware, requireOwnership, (req, res, next) => {
@@ -524,6 +525,7 @@ apiRouter.use(authMiddleware, requireOwnership, bankingFeaturesRouter);
 apiRouter.use('/leaderboard', authMiddleware, leaderboardRouter);
 apiRouter.use('/settings', authMiddleware, requireOwnership, settingsRouter);
 apiRouter.use('/coins', authMiddleware, requireOwnership, coinsRouter);
+apiRouter.use('/spin', authMiddleware, requireOwnership, spinRouter);
 apiRouter.use('/messages', authMiddleware, messagesRouter);
 
 // Mount: public first (health/auth handled here), then authenticated routes
@@ -546,7 +548,7 @@ app.post('/reset-database', async (req, res) => {
     await log(req, 'reset_database_denied', 'system', null, { reason: 'insufficient_role', role: req.session.adminRole });
     return res.status(403).json({ success: false, message: 'Only super_admin can reset the database' });
   }
-  const tables = ['parents','parent_child_links','parent_limits','parental_consent','parent_notifications','account_deletion_requests','gl_entries','loan_payments','transactions','badges','goal_jars','loans','withdrawal_requests','standing_orders','savings_applications','coop_contributions','coop_goals','accounts','support_messages'];
+  const tables = ['parents','parent_child_links','parent_limits','parental_consent','parent_notifications','account_deletion_requests','gl_entries','loan_payments','transactions','badges','goal_jars','loans','withdrawal_requests','standing_orders','savings_applications','coop_contributions','coop_goals','accounts','support_messages','daily_spins'];
   try {
     if (isPostgres) {
       const existing = await store.query(

@@ -595,8 +595,9 @@ class PgStore {
     await this.pool.query("ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS child_read INTEGER DEFAULT 0").catch(() => {});
     await this.pool.query("ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS parent_id TEXT").catch(() => {});
     await this.pool.query("ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS parent_read INTEGER DEFAULT 0").catch(() => {});
-    await this.pool.query(`CREATE TABLE IF NOT EXISTS typing_status (account_id TEXT PRIMARY KEY, is_typing INTEGER DEFAULT 0, last_heartbeat TEXT)`).catch(() => {});
-    await this._seedGlAccounts();
+      await this.pool.query(`CREATE TABLE IF NOT EXISTS typing_status (account_id TEXT PRIMARY KEY, is_typing INTEGER DEFAULT 0, last_heartbeat TEXT)`).catch(() => {});
+      await this.pool.query(`CREATE TABLE IF NOT EXISTS daily_spins (account_id TEXT PRIMARY KEY, last_spin_date TEXT, spin_count INTEGER DEFAULT 0)`).catch(() => {});
+      await this._seedGlAccounts();
 
     // --- Performance Indexes ---
     await this.pool.query('CREATE INDEX IF NOT EXISTS idx_transactions_account_created ON transactions(account_id, created_at DESC)');
@@ -1758,6 +1759,29 @@ class PgStore {
 
   async markAllParentNotificationsRead(parentId) {
     await this.query('UPDATE parent_notifications SET is_read = 1 WHERE parent_id = $1', [parentId]);
+  }
+
+  // ── Spin Wheel ──
+
+  async getLastSpinDate(accountId) {
+    const res = await this.query('SELECT last_spin_date FROM daily_spins WHERE account_id = $1', [accountId]);
+    return res.rows[0] ? res.rows[0].last_spin_date : null;
+  }
+
+  async recordSpin(accountId, date) {
+    await this.query(`
+      INSERT INTO daily_spins (account_id, last_spin_date, spin_count)
+      VALUES ($1, $2, 1)
+      ON CONFLICT (account_id) DO UPDATE SET last_spin_date = EXCLUDED.last_spin_date, spin_count = daily_spins.spin_count + 1
+    `, [accountId, date]);
+  }
+
+  async addXp(accountId, amount) {
+    const res = await this.query(
+      'UPDATE accounts SET current_xp = current_xp + $1, updated_at = $2 WHERE account_id = $3 RETURNING current_xp',
+      [amount, new Date().toISOString(), accountId]
+    );
+    return res.rows[0] ? Number(res.rows[0].current_xp) : 0;
   }
 
   // ── Refresh Tokens ──

@@ -17,11 +17,21 @@ const JWT_SECRET = process.env.JWT_SECRET;
 const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY_DAYS = 7;
 
-// Rate limiter for change-pin: 3 attempts per 15 minutes per account
+// Rate limiter for change-pin: 10 attempts per 15 minutes per account
 const changePinLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 3,
-  keyGenerator: (req) => req.body?.accountId || req.accountId || 'global',
+  max: 10,
+  keyGenerator: (req) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        return decoded.accountId || 'global';
+      }
+    } catch (_) {}
+    return 'global';
+  },
   message: { message: 'Too many PIN change attempts. Try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -164,7 +174,7 @@ router.post('/login', pinLoginLimiter, asyncHandler(async (req, res) => {
   res.json({
     token,
     refreshToken: refreshTokenValue,
-    pinChanged: account.pin_hash ? true : false,
+    passwordChanged: account.password_changed ? true : false,
     account: {
       account_id: account.account_id,
       child_name: account.child_name,
@@ -478,7 +488,7 @@ router.post('/change-pin', changePinLimiter, asyncHandler(async (req, res) => {
 
     const hash = bcrypt.hashSync(newPin, 10);
     await store.query(
-      'UPDATE accounts SET pin_hash = $1, password = $2 WHERE account_id = $3',
+      'UPDATE accounts SET pin_hash = $1, password = $2, password_changed = 1 WHERE account_id = $3',
       [hash, hash, decoded.accountId]
     );
     res.json({ message: 'PIN changed successfully' });

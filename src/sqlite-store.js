@@ -1087,6 +1087,32 @@ function getCoinHistory(accountId) {
   return getDb().prepare('SELECT * FROM coin_transactions WHERE account_id = ? ORDER BY created_at DESC LIMIT 100').all(accountId);
 }
 
+// ── Spin Wheel ──
+
+function getLastSpinDate(accountId) {
+  const row = getDb().prepare('SELECT last_spin_date FROM daily_spins WHERE account_id = ?').get(accountId);
+  return row ? row.last_spin_date : null;
+}
+
+function recordSpin(accountId, date) {
+  getDb().prepare(`
+    INSERT INTO daily_spins (account_id, last_spin_date, spin_count)
+    VALUES (?, ?, 1)
+    ON CONFLICT(account_id) DO UPDATE SET last_spin_date = excluded.last_spin_date, spin_count = spin_count + 1
+  `).run(accountId, date);
+}
+
+function addXp(accountId, amount) {
+  getDb().prepare('UPDATE accounts SET current_xp = current_xp + ?, updated_at = datetime(\'now\') WHERE account_id = ?').run(amount, accountId);
+  const row = getDb().prepare('SELECT current_xp FROM accounts WHERE account_id = ?').get(accountId);
+  return row ? Number(row.current_xp) : 0;
+}
+
+// Ensure daily_spins table exists
+try {
+  getDb().exec("CREATE TABLE IF NOT EXISTS daily_spins (account_id TEXT PRIMARY KEY, last_spin_date TEXT, spin_count INTEGER DEFAULT 0)");
+} catch (_) {}
+
 // ── Refresh Tokens ──
 
 function saveRefreshToken(accountId, tokenHash, expiresAt) {
@@ -1189,6 +1215,10 @@ module.exports = {
   addCoins,
   spendCoins,
   getCoinHistory,
+  // ── Spin Wheel ──
+  getLastSpinDate,
+  recordSpin,
+  addXp,
   // ── Refresh Tokens ──
   saveRefreshToken,
   getRefreshToken,

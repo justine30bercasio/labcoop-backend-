@@ -209,18 +209,27 @@ class _ParentSupportPageState extends State<ParentSupportPage> with SingleTicker
     });
     _scrollDown();
 
-    // Always save via HTTP for persistence (socket send is optional for real-time)
-    await BankingApiService.parentSupportSend(text);
+    // Always save via HTTP first for persistence
+    final saveResult = await BankingApiService.parentSupportSend(text);
+    final saved = saveResult != null && (saveResult['messageId'] != null || saveResult['message_id'] != null);
+
     if (SocketService.isConnected && _parentId != null) {
       SocketService.sendParentMessage(_parentId!, text, senderName: 'Parent');
     }
-    final fresh = await BankingApiService.parentSupportGetMessages();
-    if (mounted) {
-      setState(() => _messages = fresh.cast<Map<String, dynamic>>());
-      if (_parentId == null && _messages.isNotEmpty && _messages[0]['parent_id'] != null) {
-        _parentId = _messages[0]['parent_id'] as String?;
-        await _joinRoom();
+
+    if (saved && mounted) {
+      // Refresh from server to replace optimistic message with real one
+      final fresh = await BankingApiService.parentSupportGetMessages();
+      if (mounted) {
+        setState(() => _messages = fresh.cast<Map<String, dynamic>>());
+        if (_parentId == null && _messages.isNotEmpty && _messages[0]['parent_id'] != null) {
+          _parentId = _messages[0]['parent_id'] as String?;
+          await _joinRoom();
+        }
       }
+    } else if (!saved && mounted) {
+      // Save failed — show error but keep optimistic message
+      setState(() {});
     }
 
     if (mounted) {

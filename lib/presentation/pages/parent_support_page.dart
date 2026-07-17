@@ -139,13 +139,18 @@ class _ParentSupportPageState extends State<ParentSupportPage> with SingleTicker
     try {
       final msgs = await BankingApiService.parentSupportGetMessages();
       if (mounted) {
-        setState(() {
-          _messages = (msgs is List ? msgs : []).cast<Map<String, dynamic>>();
-          _loading = false;
-          if (_parentId == null && _messages.isNotEmpty && _messages[0]['parent_id'] != null) {
-            _parentId = _messages[0]['parent_id'] as String?;
-          }
-        });
+        final parsed = (msgs is List ? msgs : []);
+        if (parsed.isNotEmpty || _messages.isEmpty) {
+          setState(() {
+            _messages = parsed.cast<Map<String, dynamic>>();
+            _loading = false;
+            if (_parentId == null && _messages.isNotEmpty && _messages[0]['parent_id'] != null) {
+              _parentId = _messages[0]['parent_id'] as String?;
+            }
+          });
+        } else {
+          setState(() => _loading = false);
+        }
         _scrollDown();
       }
     } catch (e) {
@@ -229,7 +234,10 @@ class _ParentSupportPageState extends State<ParentSupportPage> with SingleTicker
         final fresh = await BankingApiService.parentSupportGetMessages();
         print('[ParentSupport] fresh=${fresh.length} msgs');
         if (mounted) {
-          setState(() => _messages = (fresh is List ? fresh : []).cast<Map<String, dynamic>>());
+          final parsed = (fresh is List ? fresh : []);
+          if (parsed.isNotEmpty) {
+            setState(() => _messages = parsed.cast<Map<String, dynamic>>());
+          }
         }
       } catch (e) {
         print('[ParentSupport] refresh error: $e');

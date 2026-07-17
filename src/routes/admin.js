@@ -8252,8 +8252,8 @@ router.post('/parent-messages/reply', requireRole(1), asyncHandler(async (req, r
 
   await store.query(
     `INSERT INTO support_messages (message_id, account_id, parent_id, child_name, sender_type, sender_name, content, admin_read, parent_read, created_at)
-     VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [msgId, parentId, parentName, 'admin', adminName, content.trim(), 1, 0, new Date().toISOString()]
+     VALUES ($1, $10, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [msgId, parentId, parentName, 'admin', adminName, content.trim(), 1, 0, new Date().toISOString(), '']
   );
 
   // Emit socket event

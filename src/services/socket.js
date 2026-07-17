@@ -84,8 +84,8 @@ function initSocket(httpServer, sessionMiddleware) {
           const parentName = senderName || 'Parent';
           await store.query(
             `INSERT INTO support_messages (message_id, account_id, parent_id, child_name, sender_type, sender_name, content, admin_read, parent_read, created_at)
-             VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9)`,
-            [messageId, actualParentId, parentName, isAdmin ? 'admin' : 'parent', senderName || 'Parent', content, isAdmin ? 1 : 0, isAdmin ? 0 : 1, createdAt]
+             VALUES ($1, $10, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [messageId, actualParentId, parentName, isAdmin ? 'admin' : 'parent', senderName || 'Parent', content, isAdmin ? 1 : 0, isAdmin ? 0 : 1, createdAt, '']
           );
           const payload = {
             message_id: messageId, parent_id: actualParentId, child_name: parentName,

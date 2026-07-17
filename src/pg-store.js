@@ -567,6 +567,11 @@ class PgStore {
     await this.pool.query("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS total_shares INTEGER DEFAULT 0").catch(() => {});
     await this.pool.query("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS share_capital_balance DECIMAL(12,2) DEFAULT 0").catch(() => {});
     await this.pool.query("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS overdraft_limit DECIMAL(12,2) DEFAULT 0").catch(() => {});
+    // Fix support_messages CHECK constraint to include 'parent' sender type
+    await this.pool.query("ALTER TABLE support_messages DROP CONSTRAINT IF EXISTS support_messages_sender_type_check").catch(() => {});
+    await this.pool.query("ALTER TABLE support_messages ADD CONSTRAINT support_messages_sender_type_check CHECK(sender_type IN ('child','parent','admin'))").catch(() => {});
+    // Ensure account_id is nullable (for parent messages)
+    await this.pool.query("ALTER TABLE support_messages ALTER COLUMN account_id DROP NOT NULL").catch(() => {});
     await this.pool.query("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS overdraft_interest_rate DECIMAL(5,2) DEFAULT 0").catch(() => {});
     await this.pool.query("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS address TEXT DEFAULT ''").catch(() => {});
     await this.pool.query("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS city TEXT DEFAULT ''").catch(() => {});

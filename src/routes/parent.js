@@ -665,8 +665,8 @@ router.post('/support/send', parentAuth, loadParentInfo, asyncHandler(async (req
 
   await store.query(
     `INSERT INTO support_messages (message_id, account_id, parent_id, child_name, sender_type, sender_name, content, admin_read, parent_read, created_at)
-     VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [msgId, req.parentId, parentName, 'parent', parentName, content.trim(), 0, 1, new Date().toISOString()]
+     VALUES ($1, $10, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [msgId, req.parentId, parentName, 'parent', parentName, content.trim(), 0, 1, new Date().toISOString(), '']
   );
 
   // Notify admin via socket

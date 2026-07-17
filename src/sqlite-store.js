@@ -136,6 +136,25 @@ function getDb() {
     try { db.exec("CREATE TABLE IF NOT EXISTS support_messages (message_id TEXT PRIMARY KEY, account_id TEXT, parent_id TEXT, child_name TEXT DEFAULT '', sender_type TEXT NOT NULL DEFAULT 'child' CHECK(sender_type IN ('child','parent','admin')), sender_name TEXT DEFAULT '', content TEXT NOT NULL, admin_read INTEGER DEFAULT 0, child_read INTEGER DEFAULT 0, parent_read INTEGER DEFAULT 0, created_at TEXT)"); } catch (_) {}
     try { db.exec("ALTER TABLE support_messages ADD COLUMN parent_id TEXT"); } catch (_) {}
     try { db.exec("ALTER TABLE support_messages ADD COLUMN parent_read INTEGER DEFAULT 0"); } catch (_) {}
+    // Migration: fix NOT NULL on account_id and update sender_type CHECK to include 'parent'
+    try {
+      const info = db.prepare("PRAGMA table_info('support_messages')").all();
+      const acct = info.find(c => c.name === 'account_id');
+      console.log('[SQLite Migration] account_id notnull=' + (acct ? acct.notnull : 'NOT FOUND'));
+      if (acct && Number(acct.notnull) === 1) {
+        console.log('[SQLite Migration] Recreating support_messages table...');
+        db.exec("DROP TABLE IF EXISTS support_messages_new");
+        db.exec("CREATE TABLE support_messages_new (message_id TEXT PRIMARY KEY, account_id TEXT, parent_id TEXT, child_name TEXT DEFAULT '', sender_type TEXT NOT NULL DEFAULT 'child' CHECK(sender_type IN ('child','parent','admin')), sender_name TEXT DEFAULT '', content TEXT NOT NULL, admin_read INTEGER DEFAULT 0, child_read INTEGER DEFAULT 0, parent_read INTEGER DEFAULT 0, created_at TEXT)");
+        db.exec("INSERT INTO support_messages_new (message_id, account_id, parent_id, child_name, sender_type, sender_name, content, admin_read, child_read, parent_read, created_at) SELECT message_id, account_id, parent_id, child_name, sender_type, sender_name, content, admin_read, 0, COALESCE(parent_read, 0), created_at FROM support_messages");
+        db.exec("DROP TABLE support_messages");
+        db.exec("ALTER TABLE support_messages_new RENAME TO support_messages");
+        console.log('[SQLite Migration] Table recreated successfully');
+      } else {
+        console.log('[SQLite Migration] No migration needed');
+      }
+    } catch (e) {
+      console.log('[SQLite Migration] Error:', e.message);
+    }
     try { db.exec("CREATE TABLE IF NOT EXISTS typing_status (account_id TEXT PRIMARY KEY, is_typing INTEGER DEFAULT 0, last_heartbeat TEXT)"); } catch (_) {}
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON refresh_tokens(token_hash)"); } catch (_) {}
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_account ON refresh_tokens(account_id)"); } catch (_) {}

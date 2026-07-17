@@ -365,10 +365,11 @@ router.post('/online-deposits',
       // 3. Post double-entry GL
       const gl = require('../services/gl');
       const txId = txRecord?.transaction_id || uuidv4();
+      const orNumber = await store.assignOrNumber('deposit');
       await gl.postDoubleEntry(txId, [
         { account_code: '1000', debit: amt, description: 'Online deposit: ' + (account.child_name || 'Member') },
         { account_code: '2000', credit: amt, description: 'Online deposit: ' + (account.child_name || 'Member') }
-      ], { postedBy: 'system', referenceType: 'online_deposit', referenceNumber: reference_number || txId, tx });
+      ], { postedBy: 'system', referenceType: 'online_deposit', referenceNumber: orNumber, tx });
 
       return txRecord;
     };

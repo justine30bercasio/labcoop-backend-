@@ -369,7 +369,9 @@ function unlockBadges(accountId, currentXp) {
 function assignOrNumber(type) {
   const year = new Date().getFullYear();
   const seriesId = 'or_' + type;
-  getDb().prepare("INSERT OR IGNORE INTO or_series (series_id, prefix, current_number, type) VALUES (?, 'LABCOOP', 1, ?)").run(seriesId, type);
+  const prefixMap = { deposit: 'OR', withdrawal: 'WT', jv: 'JV' };
+  const prefix = prefixMap[type] || 'OR';
+  getDb().prepare("INSERT OR IGNORE INTO or_series (series_id, prefix, current_number, type) VALUES (?, ?, 1, ?)").run(seriesId, prefix, type);
   const row = getDb().prepare('UPDATE or_series SET current_number = current_number + 1 WHERE series_id = ? RETURNING current_number, prefix').get(seriesId);
   const num = String(Number(row.current_number) - 1).padStart(5, '0');
   return row.prefix + '-' + year + '-' + num;

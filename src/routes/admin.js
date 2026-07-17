@@ -1592,6 +1592,18 @@ router.post('/accounts/deposit/:id', requireRole(2), asyncHandler(async (req, re
 
     const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
     if (!account) return res.redirect('/admin/accounts?error=Account+not+found');
+
+    // Post GL FIRST — if this fails, nothing changes
+    const gl = require('../services/gl');
+    const audit = require('../services/audit');
+    const glTxId = uuidv4();
+    const orNumber = await store.assignOrNumber('deposit');
+    await gl.postDoubleEntry(glTxId, [
+      { account_code: '1000', debit: val, description: 'Admin deposit: ' + account.child_name },
+      { account_code: '2000', credit: val, description: 'Admin deposit: ' + account.child_name },
+    ], { postedBy: req.session.adminName || 'admin', referenceType: 'tx', referenceNumber: orNumber });
+
+    // Then update account and create transaction
     const newBalance = Number(account.actual_balance) + val;
     await store.query('UPDATE accounts SET actual_balance=$1, unallocated_balance=unallocated_balance+$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3', [newBalance, val, req.params.id]);
     const result = await store.addTransaction({
@@ -1603,15 +1615,8 @@ router.post('/accounts/deposit/:id', requireRole(2), asyncHandler(async (req, re
       balance_after: newBalance,
     });
     const txId = result?.transaction_id || '';
-    try {
-      const gl = require('../services/gl');
-      await gl.postDoubleEntry(txId, [
-        { account_code: '1000', debit: val, description: 'Admin deposit: ' + account.child_name },
-        { account_code: '2000', credit: val, description: 'Admin deposit: ' + account.child_name },
-      ], { postedBy: req.session.adminName || 'admin', referenceType: 'tx', referenceNumber: txId });
-      const audit = require('../services/audit');
-      await audit.log(req, 'ADMIN_DEPOSIT', 'account', req.params.id, { amount: val, txId, desc: description || 'Admin deposit' });
-    } catch (glErr) { console.error('GL post failed (non-fatal):', glErr.message); }
+    await store.query('UPDATE gl_entries SET transaction_id = $1 WHERE entry_id = $2', [txId, glTxId]).catch(() => {});
+    await audit.log(req, 'ADMIN_DEPOSIT', 'account', req.params.id, { amount: val, txId, desc: description || 'Admin deposit' });
     res.redirect('/admin/accounts?deposited=ok');
   } catch (err) {
     res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
@@ -1627,6 +1632,18 @@ router.post('/accounts/withdraw/:id', requireRole(2), asyncHandler(async (req, r
     const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
     if (!account) return res.redirect('/admin/accounts?error=Account+not+found');
     if (Number(account.actual_balance) < val) return res.redirect('/admin/accounts?error=Insufficient+balance');
+
+    // Post GL FIRST — if this fails, nothing changes
+    const gl = require('../services/gl');
+    const audit = require('../services/audit');
+    const glTxId = uuidv4();
+    const orNumber = await store.assignOrNumber('withdrawal');
+    await gl.postDoubleEntry(glTxId, [
+      { account_code: '2000', debit: val, description: 'Admin withdrawal: ' + account.child_name },
+      { account_code: '1000', credit: val, description: 'Admin withdrawal: ' + account.child_name },
+    ], { postedBy: req.session.adminName || 'admin', referenceType: 'tx', referenceNumber: orNumber });
+
+    // Then update account and create transaction
     const newBalance = Math.round((Number(account.actual_balance) - val) * 100) / 100;
     const newUnallocated = Math.round((Number(account.unallocated_balance) - val) * 100) / 100;
     await store.query('UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3', [newBalance, Math.max(0, newUnallocated), req.params.id]);
@@ -1639,15 +1656,8 @@ router.post('/accounts/withdraw/:id', requireRole(2), asyncHandler(async (req, r
       balance_after: newBalance,
     });
     const txId = result?.transaction_id || '';
-    try {
-      const gl = require('../services/gl');
-      await gl.postDoubleEntry(txId, [
-        { account_code: '2000', debit: val, description: 'Admin withdrawal: ' + account.child_name },
-        { account_code: '1000', credit: val, description: 'Admin withdrawal: ' + account.child_name },
-      ], { postedBy: req.session.adminName || 'admin', referenceType: 'tx', referenceNumber: txId });
-      const audit = require('../services/audit');
-      await audit.log(req, 'ADMIN_WITHDRAWAL', 'account', req.params.id, { amount: val, txId, desc: description || 'Admin withdrawal' });
-    } catch (glErr) { console.error('GL post failed (non-fatal):', glErr.message); }
+    await store.query('UPDATE gl_entries SET transaction_id = $1 WHERE entry_id = $2', [txId, glTxId]).catch(() => {});
+    await audit.log(req, 'ADMIN_WITHDRAWAL', 'account', req.params.id, { amount: val, txId, desc: description || 'Admin withdrawal' });
     res.redirect('/admin/accounts?withdrawn=ok');
   } catch (err) {
     res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
@@ -2244,11 +2254,21 @@ router.post('/loans/disburse/:id', requireRole(3), asyncHandler(async (req, res)
     const account = await store.getAccount(loan.account_id);
     if (!account) return res.redirect('/admin/loans?error=Account+not+found');
 
+    // Post GL FIRST — if this fails, nothing changes
+    const gl = require('../services/gl');
+    const audit = require('../services/audit');
+    const glTxId = uuidv4();
+    const orNumber = await store.assignOrNumber('deposit');
+    await gl.postDoubleEntry(glTxId, [
+      { account_code: '1100', debit: Number(loan.principal), description: 'Loan disbursement: ' + (loan.purpose || 'Loan') },
+      { account_code: '1000', credit: Number(loan.principal), description: 'Loan disbursement to member' },
+    ], { postedBy: req.session.adminName || 'admin', referenceType: 'loan', referenceNumber: orNumber });
+
+    // Then update account, create transaction, update loan status
     const newBalance = Math.round((Number(account.actual_balance) + Number(loan.principal)) * 100) / 100;
     const newUnallocated = Math.round((Number(account.unallocated_balance) + Number(loan.principal)) * 100) / 100;
-
     await store.query('UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=datetime(\'now\') WHERE account_id=$3', [newBalance, newUnallocated, loan.account_id]);
-    await store.addTransaction({
+    const txRec = await store.addTransaction({
       account_id: loan.account_id,
       type: 'loan_disbursement',
       amount: Number(loan.principal),
@@ -2261,15 +2281,8 @@ router.post('/loans/disburse/:id', requireRole(3), asyncHandler(async (req, res)
     const dueDate = new Date();
     dueDate.setMonth(dueDate.getMonth() + Number(loan.term_months));
     await store.updateLoan(req.params.id, { status: 'active', disbursed_at: new Date().toISOString(), due_date: dueDate.toISOString().slice(0, 10) });
-    try {
-      const gl = require('../services/gl');
-      await gl.postDoubleEntry(loan.loan_id, [
-        { account_code: '1100', debit: Number(loan.principal), description: 'Loan disbursement: ' + (loan.purpose || 'Loan') },
-        { account_code: '1000', credit: Number(loan.principal), description: 'Loan disbursement to member' },
-      ], { postedBy: req.session.adminName || 'admin', referenceType: 'loan', referenceNumber: loan.loan_id });
-      const audit = require('../services/audit');
-      await audit.log(req, 'LOAN_DISBURSE', 'loan', req.params.id, { principal: loan.principal, account: loan.account_id });
-    } catch (e) { console.error('GL post failed (non-fatal):', e.message); }
+    await store.query('UPDATE gl_entries SET transaction_id = $1 WHERE entry_id = $2', [txRec?.transaction_id || '', glTxId]).catch(() => {});
+    await audit.log(req, 'LOAN_DISBURSE', 'loan', req.params.id, { principal: loan.principal, account: loan.account_id });
     res.redirect('/admin/loans?disbursed=ok');
   } catch (err) {
     res.redirect(`/admin/loans?error=${encodeURIComponent(err.message)}`);
@@ -4096,10 +4109,11 @@ router.post('/teller/deposit/:id', requireRole(2), asyncHandler(async (req, res)
     const gl = require('../services/gl');
     const audit = require('../services/audit');
     const glTxId = uuidv4();
+    const orNumber = await store.assignOrNumber('deposit');
     await gl.postDoubleEntry(glTxId, [
       { account_code: '1000', debit: val, description: 'Counter deposit: ' + account.child_name },
       { account_code: '2000', credit: val, description: 'Counter deposit: ' + account.child_name },
-    ], { postedBy: req.session.adminName || 'admin', referenceType: 'teller', referenceNumber: glTxId });
+    ], { postedBy: req.session.adminName || 'admin', referenceType: 'teller', referenceNumber: orNumber });
 
     // Now update account and create transaction
     await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=unallocated_balance+$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3", [newBalance, val, req.params.id]);
@@ -4142,10 +4156,11 @@ router.post('/teller/withdraw/:id', requireRole(2), asyncHandler(async (req, res
     const gl = require('../services/gl');
     const audit = require('../services/audit');
     const glTxId = uuidv4();
+    const orNumber = await store.assignOrNumber('withdrawal');
     await gl.postDoubleEntry(glTxId, [
       { account_code: '2000', debit: val, description: 'Counter withdrawal: ' + account.child_name },
       { account_code: '1000', credit: val, description: 'Counter withdrawal: ' + account.child_name },
-    ], { postedBy: req.session.adminName || 'admin', referenceType: 'teller', referenceNumber: glTxId });
+    ], { postedBy: req.session.adminName || 'admin', referenceType: 'teller', referenceNumber: orNumber });
 
     // Then update account and create transaction
     await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3", [newBalance, Math.max(0, newUnallocated), req.params.id]);
@@ -5362,19 +5377,21 @@ router.get('/eom', requireRole(1), asyncHandler(async (req, res) => {
       for (const loan of loans) {
         const monthlyInt = Math.round(Number(loan.principal) * Number(loan.interest_rate) / 100 / 12 * 100) / 100;
         if (monthlyInt <= 0) continue;
+        const orNumber = await store.assignOrNumber('jv');
         await gl.postDoubleEntry(uuidv4(), [
           { account_code: '1300', debit: monthlyInt, description: `Accrued interest — ${loan.name}` },
           { account_code: '4000', credit: monthlyInt, description: `Interest income — ${loan.name}` }
-        ], { postedBy: req.session.adminName || 'admin', referenceType: 'accrual', referenceNumber: `EOM-${monthPrefix}-${loan.loan_id.slice(0,8)}` });
+        ], { postedBy: req.session.adminName || 'admin', referenceType: 'accrual', referenceNumber: orNumber });
         accCount++;
       }
       for (const s of savings) {
         const monthlyInt = Math.round(Number(s.actual_balance) * sRate * 100) / 100;
         if (monthlyInt <= 0) continue;
+        const orNumber = await store.assignOrNumber('jv');
         await gl.postDoubleEntry(uuidv4(), [
           { account_code: '5000', debit: monthlyInt, description: 'Interest expense accrual — savings' },
           { account_code: '2500', credit: monthlyInt, description: 'Accrued interest payable — savings' }
-        ], { postedBy: req.session.adminName || 'admin', referenceType: 'accrual', referenceNumber: `EOM-${monthPrefix}-${s.account_id.slice(0,8)}` });
+        ], { postedBy: req.session.adminName || 'admin', referenceType: 'accrual', referenceNumber: orNumber });
         accCount++;
       }
       await store.setSetting('last_accrual_run', monthPrefix);

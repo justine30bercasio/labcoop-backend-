@@ -1590,9 +1590,11 @@ class PgStore {
 
   async assignOrNumber(type) {
     const year = new Date().getFullYear();
+    const prefixMap = { deposit: 'OR', withdrawal: 'WT', jv: 'JV' };
+    const prefix = prefixMap[type] || 'OR';
     await this.query(
       'INSERT INTO or_series (series_id, prefix, current_number, type) VALUES ($1, $2, 1, $3) ON CONFLICT (series_id) DO NOTHING',
-      ['or_' + type, 'LABCOOP', type]
+      ['or_' + type, prefix, type]
     );
     const res = await this.query(
       'UPDATE or_series SET current_number = current_number + 1 WHERE series_id = $1 RETURNING current_number, prefix',

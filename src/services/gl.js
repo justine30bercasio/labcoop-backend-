@@ -2,9 +2,9 @@ const { store } = require('../db');
 const { v4: uuidv4 } = require('uuid');
 
 async function postDoubleEntry(transactionId, entries, opts = {}) {
-  const { postedBy, referenceType, referenceNumber, tx: outerTx } = opts;
+  const { postedBy, referenceType, referenceNumber, tx: outerTx, createdAt } = opts;
   let totalDebit = 0, totalCredit = 0;
-  const now = new Date().toISOString();
+  const now = createdAt || new Date().toISOString();
 
   // Check period is not closed
   if (await store.isPeriodClosed(now)) {

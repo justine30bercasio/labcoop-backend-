@@ -482,7 +482,7 @@ router.post('/dividends/declare', requireRole(3), asyncHandler(async (req, res) 
   await gl.postDoubleEntry(uuidv4(), [
     {account_code:'3100', debit: totalAmt, description:'Dividend declared (gross) '+year},
     {account_code:'2400', credit: taxAmount, description:'Dividend withholding tax '+year},
-    {account_code:'3000', credit: netDividend, description:'Dividend payable (net) '+year},
+    {account_code:'2300', credit: netDividend, description:'Dividend payable (net) '+year},
   ], { postedBy: req.session.adminName || 'admin', referenceType: 'dividend' });
   res.redirect('/admin/dividends?declared=ok');
 }));
@@ -508,7 +508,7 @@ router.get('/dividends/pay/:id', requireRole(3), asyncHandler(async (req, res) =
     if (totalPayout > 0) {
       const gl = require('../services/gl');
       await gl.postDoubleEntry(uuidv4(), [
-        { account_code: '3000', debit: totalPayout, description: 'Dividend payout ' + div.year },
+        { account_code: '2300', debit: totalPayout, description: 'Dividend payout ' + div.year },
         { account_code: '1000', credit: totalPayout, description: 'Dividend payout ' + div.year }
       ], { postedBy: req.session.adminName || 'admin', referenceType: 'dividend_payout', referenceNumber: 'DIV-' + div.year });
     }

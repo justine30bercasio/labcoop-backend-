@@ -105,10 +105,11 @@ router.put('/:accountId/deposit',
       // Post GL entry
       const gl = require('../services/gl');
       const glTxId = txRecord?.transaction_id || uuidv4();
+      const orNumber = await store.assignOrNumber('deposit');
       await gl.postDoubleEntry(glTxId, [
         { account_code: '1000', debit: Number(amount), description: 'API deposit: ' + (account.child_name || 'Member') },
         { account_code: '2000', credit: Number(amount), description: 'API deposit: ' + (account.child_name || 'Member') }
-      ], { postedBy: 'api', referenceType: 'deposit', referenceNumber: glTxId, tx });
+      ], { postedBy: 'api', referenceType: 'deposit', referenceNumber: orNumber, tx });
 
       return { ...updated, transaction_id: txRecord?.transaction_id || glTxId };
     };

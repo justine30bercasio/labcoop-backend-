@@ -136,6 +136,46 @@ class _HomePageState extends State<HomePage> {
           children: [
             Scaffold(
               backgroundColor: Theme.of(context).colorScheme.surface,
+              appBar: AppBar(
+                title: const Text('LabCoop'),
+                backgroundColor: const Color(0xFF2E7D32),
+                foregroundColor: Colors.white,
+                elevation: 1,
+                actions: [
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.support_agent_outlined),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => SupportPage(
+                              accountId: _accountId,
+                              childName: childName,
+                            )),
+                          ).then((_) => _fetchUnreadMsgs());
+                        },
+                      ),
+                      if (_unreadMessages > 0)
+                        Positioned(
+                          right: 6,
+                          top: 6,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                            constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                            child: Text(
+                              _unreadMessages > 99 ? '99+' : '$_unreadMessages',
+                              style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
               body: SafeArea(
                 top: false,
                 bottom: false,
@@ -214,68 +254,6 @@ class _HomePageState extends State<HomePage> {
           drawer: _buildDrawer(state),
         ),
 
-        // Floating chat bubble
-        Positioned(
-          right: 16,
-          bottom: MediaQuery.of(context).padding.bottom + 80,
-          child: AnimatedScale(
-            scale: 1.0,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOutBack,
-            child: GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  PageTransition.slideUp(SupportPage(
-                    accountId: _accountId,
-                    childName: childName,
-                  )),
-                ).then((_) => _fetchUnreadMsgs());
-              },
-              child: Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF0284c7), Color(0xFF0369a1)],
-                  ),
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF0284c7).withValues(alpha: 0.4),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    const Center(child: Icon(Icons.chat_bubble_outline, color: Colors.white, size: 24)),
-                    if (_unreadMessages > 0)
-                      Positioned(
-                        top: -4,
-                        right: -4,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFef4444),
-                            borderRadius: BorderRadius.all(Radius.circular(10)),
-                          ),
-                          constraints: const BoxConstraints(minWidth: 20, minHeight: 16),
-                          child: Text(
-                            _unreadMessages > 99 ? '99+' : '$_unreadMessages',
-                            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
       ],
     );
   },

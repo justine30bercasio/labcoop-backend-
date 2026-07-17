@@ -136,18 +136,23 @@ class _ParentSupportPageState extends State<ParentSupportPage> with SingleTicker
       final storage = FlutterSecureStorage();
       _parentId = await storage.read(key: 'parent_id');
     }
-    final msgs = await BankingApiService.parentSupportGetMessages();
-    if (mounted) {
-      setState(() {
-        _messages = msgs.cast<Map<String, dynamic>>();
-        _loading = false;
-        if (_parentId == null && _messages.isNotEmpty && _messages[0]['parent_id'] != null) {
-          _parentId = _messages[0]['parent_id'] as String?;
-        }
-      });
-      _scrollDown();
-      _joinRoom();
+    try {
+      final msgs = await BankingApiService.parentSupportGetMessages();
+      if (mounted) {
+        setState(() {
+          _messages = (msgs is List ? msgs : []).cast<Map<String, dynamic>>();
+          _loading = false;
+          if (_parentId == null && _messages.isNotEmpty && _messages[0]['parent_id'] != null) {
+            _parentId = _messages[0]['parent_id'] as String?;
+          }
+        });
+        _scrollDown();
+      }
+    } catch (e) {
+      print('[ParentSupport] _load error: $e');
+      if (mounted) setState(() => _loading = false);
     }
+    _joinRoom();
   }
 
   void _scrollDown() {
@@ -211,25 +216,32 @@ class _ParentSupportPageState extends State<ParentSupportPage> with SingleTicker
 
     // Always save via HTTP first for persistence
     final saveResult = await BankingApiService.parentSupportSend(text);
+    print('[ParentSupport] saveResult=$saveResult');
     final saved = saveResult != null && (saveResult['messageId'] != null || saveResult['message_id'] != null);
 
     if (SocketService.isConnected && _parentId != null) {
       SocketService.sendParentMessage(_parentId!, text, senderName: 'Parent');
     }
 
-    if (saved && mounted) {
-      // Refresh from server to replace optimistic message with real one
-      final fresh = await BankingApiService.parentSupportGetMessages();
+    if (saved) {
+      // Refresh from server to replace optimistic message with real ones
+      try {
+        final fresh = await BankingApiService.parentSupportGetMessages();
+        print('[ParentSupport] fresh=${fresh.length} msgs');
+        if (mounted) {
+          setState(() => _messages = (fresh is List ? fresh : []).cast<Map<String, dynamic>>());
+        }
+      } catch (e) {
+        print('[ParentSupport] refresh error: $e');
+      }
       if (mounted) {
-        setState(() => _messages = fresh.cast<Map<String, dynamic>>());
         if (_parentId == null && _messages.isNotEmpty && _messages[0]['parent_id'] != null) {
           _parentId = _messages[0]['parent_id'] as String?;
           await _joinRoom();
         }
       }
-    } else if (!saved && mounted) {
-      // Save failed — show error but keep optimistic message
-      setState(() {});
+    } else {
+      print('[ParentSupport] save failed — keeping optimistic msg');
     }
 
     if (mounted) {

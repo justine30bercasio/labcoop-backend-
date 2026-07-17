@@ -689,11 +689,14 @@ return null;
   static Future<Map<String, dynamic>?> parentSupportSend(String content) async {
     try {
       await _addParentAuthHeader();
+      print('[API] POST /api/parent/support/send content=$content');
       final resp = await _parentDio.post('/api/parent/support/send', data: {
         'content': content,
       });
+      print('[API] POST response=${resp.statusCode} data=${resp.data}');
       return resp.data as Map<String, dynamic>;
     } on DioException catch (e) {
+      print('[API] POST error=${e.response?.statusCode} body=${e.response?.data}');
       return e.response?.data as Map<String, dynamic>?;
     }
   }
@@ -703,7 +706,10 @@ return null;
       await _addParentAuthHeader();
       final resp = await _parentDio.get('/api/parent/support/messages');
       return resp.data as List<dynamic>;
-    } on DioException { return []; }
+    } on DioException catch (e) {
+      print('[API] GET messages error=${e.response?.statusCode}');
+      return [];
+    }
   }
 
   static Future<int> parentSupportUnreadCount() async {

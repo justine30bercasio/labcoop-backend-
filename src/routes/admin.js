@@ -7697,7 +7697,7 @@ router.get('/messages', requireRole(1), asyncHandler(async (req, res) => {
       (SELECT content FROM support_messages WHERE account_id = m.account_id ORDER BY created_at DESC LIMIT 1) as last_message,
       (SELECT created_at FROM support_messages WHERE account_id = m.account_id ORDER BY created_at DESC LIMIT 1) as last_time,
       (SELECT COUNT(*) FROM support_messages WHERE account_id = m.account_id AND admin_read = 0 AND sender_type != 'admin') as unread
-    FROM (SELECT DISTINCT account_id FROM support_messages WHERE account_id IS NOT NULL) m
+    FROM (SELECT DISTINCT account_id FROM support_messages WHERE account_id IS NOT NULL AND account_id != '') m
     LEFT JOIN accounts a ON m.account_id = a.account_id
     UNION ALL
     SELECT NULL as account_id, m.parent_id, p.display_name as child_name, '' as member_id, 'parent' as thread_type,
@@ -8283,7 +8283,7 @@ router.get('/pending-counts', requireRole(1), asyncHandler(async (req, res) => {
     sql("SELECT COUNT(*) as c FROM online_deposits WHERE status = 'pending'"),
     sql("SELECT COUNT(*) as c FROM parental_consent WHERE status = 'pending'"),
     sql("SELECT COUNT(*) as c FROM account_deletion_requests WHERE status = 'pending'"),
-    sql("SELECT COUNT(*) as c FROM support_messages WHERE admin_read = 0 AND sender_type != 'admin' AND account_id IS NOT NULL"),
+    sql("SELECT COUNT(*) as c FROM support_messages WHERE admin_read = 0 AND sender_type != 'admin' AND account_id IS NOT NULL AND account_id != ''"),
     sql("SELECT COUNT(*) as c FROM support_messages WHERE admin_read = 0 AND sender_type != 'admin' AND parent_id IS NOT NULL"),
   ]);
   const counts = {
@@ -8359,7 +8359,7 @@ router.get('/unread-message-threads', requireRole(1), asyncHandler(async (req, r
       (SELECT COUNT(*) FROM support_messages WHERE account_id = m.account_id AND admin_read = 0 AND sender_type != 'admin') as unread
     FROM support_messages m
     LEFT JOIN accounts a ON m.account_id = a.account_id
-    WHERE m.admin_read = 0 AND m.sender_type != 'admin' AND m.account_id IS NOT NULL
+    WHERE m.admin_read = 0 AND m.sender_type != 'admin' AND m.account_id IS NOT NULL AND m.account_id != ''
     GROUP BY m.account_id, a.child_name, a.member_id
     ORDER BY MAX(m.created_at) DESC
     LIMIT 20

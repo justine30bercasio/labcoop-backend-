@@ -915,13 +915,14 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
   // TODO: Add pagination (LIMIT/OFFSET) for large datasets
   const accounts = await sql('SELECT * FROM accounts ORDER BY child_name ASC');
   const q = req.query;
-  const toast = q.added ? 'success:Account created. Temporary PIN: ' + h(q.pin || '000000') + ' — member must change on first login.'
+  const toast = q.added ? 'success:Account created!'
     : q.updated ? 'success:Account updated.'
     : q.deleted ? 'success:Account deleted.'
     : q.toggled ? 'success:Account status changed.'
     : q.uploaded ? 'success:Photo uploaded.'
     : q.error ? `error:${q.error}`
     : '';
+  const showCreds = q.added && q.pin ? { pin: q.pin, memberId: q.member_id || '', childName: decodeURIComponent(q.child_name || '') } : null;
   const membershipFee = await store.getSetting('membership_fee') || '100';
   const insuranceFee = await store.getSetting('insurance_fee') || '50';
   const initialSavings = await store.getSetting('initial_savings') || '100';
@@ -1095,7 +1096,44 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
   function closeZoom() {
     document.getElementById('zoom-modal').style.display = 'none';
   }
+  function closeCreds() {
+    document.getElementById('creds-modal').style.display = 'none';
+    window.location.hash = '';
+  }
+  window.addEventListener('DOMContentLoaded', function() {
+    if (${showCreds ? 'true' : 'false'}) {
+      document.getElementById('creds-modal').style.display = 'flex';
+    }
+  });
   </script>
+
+  ${showCreds ? `
+  <div id="creds-modal" class="modal-overlay" style="display:none;z-index:10000">
+    <div class="modal" style="max-width:420px;text-align:center;padding:32px 24px">
+      <div style="font-size:48px;margin-bottom:8px">&#x1F389;</div>
+      <h2 style="margin:0 0 4px">Account Created!</h2>
+      <p style="color:var(--text-muted);margin:0 0 20px">Give these credentials to the child or parent.</p>
+      <div style="background:var(--bg-secondary);border-radius:12px;padding:20px;margin-bottom:20px;text-align:left">
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);font-weight:600;margin-bottom:2px">Child Name</div>
+          <div style="font-size:16px;font-weight:700">${h(showCreds.childName)}</div>
+        </div>
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);font-weight:600;margin-bottom:2px">Member ID</div>
+          <div style="font-size:18px;font-weight:700;font-family:monospace;letter-spacing:2px">${h(showCreds.memberId)}</div>
+        </div>
+        <div>
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);font-weight:600;margin-bottom:2px">Temporary PIN</div>
+          <div style="font-size:24px;font-weight:700;font-family:monospace;letter-spacing:4px;color:var(--accent);background:var(--bg);display:inline-block;padding:4px 16px;border-radius:8px">${h(showCreds.pin)}</div>
+        </div>
+      </div>
+      <div style="background:#fff3cd;border-radius:8px;padding:10px 14px;font-size:12px;color:#856404;margin-bottom:20px;text-align:left">
+        <strong>&#x26A0;&#xFE0F; Important:</strong> The child must change this PIN on first login. Share securely.
+      </div>
+      <button onclick="closeCreds()" class="btn btn-primary" style="width:100%">&#x2705; Got it</button>
+    </div>
+  </div>
+  ` : ''}
   `;
 
   res.type('html').send(layout('Accounts', 'accounts', content, {
@@ -1462,8 +1500,9 @@ router.post('/accounts/create', requireRole(2), asyncHandler(async (req, res) =>
     const branchCode = account.branch_id || '01';
     const savingsNumber = await store.generateSavingsAccountNumber(branchCode);
 
+    const memberId = String(maxMember + 1).padStart(6, '0');
     await store.query('UPDATE accounts SET member_id=$1, regular_savings_number=$2, savings_product_id=$3, maintaining_balance=$4 WHERE account_id=$5',
-      [String(maxMember + 1).padStart(6, '0'), savingsNumber, 'sp_regular', maintainingBalance, account.account_id]);
+      [memberId, savingsNumber, 'sp_regular', maintainingBalance, account.account_id]);
     try { const audit = require('../services/audit'); await audit.log(req, 'ACCOUNT_CREATE', 'account', account.account_id, { child_name: child_name.trim(), membership_fee: membershipAmt, insurance_fee: insuranceAmt, savings_deposit: savingsAmt, total_payment: totalPayment, regular_savings_number: savingsNumber }); } catch (e) {}
 
     // Membership fee transaction + GL
@@ -1529,7 +1568,7 @@ router.post('/accounts/create', requireRole(2), asyncHandler(async (req, res) =>
       } catch (e) { console.error('Savings deposit GL posting error', e); }
     }
 
-    res.redirect(`/admin/accounts?added=ok&pin=${defaultPin}`);
+    res.redirect(`/admin/accounts?added=ok&pin=${defaultPin}&member_id=${memberId}&child_name=${encodeURIComponent(displayName)}`);
   } catch (err) {
     res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
   }

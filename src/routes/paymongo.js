@@ -165,14 +165,16 @@ webhookRouter.post('/paymongo', express.raw({ type: 'application/json' }), async
   }
 
   const whSecret = process.env.PAYMONGO_WEBHOOK_SECRET;
-  if (whSecret) {
-    const sigHeader = req.headers['paymongo-signature'] || '';
-    const sig = crypto.createHmac('sha256', whSecret).update(rawBody).digest('hex');
-    const received = sigHeader.replace(/^v1=/, '').split(',').map(s => s.trim());
-    if (!received.includes(sig)) {
-      console.error('PayMongo webhook: invalid signature');
-      return res.status(401).json({ error: 'Invalid signature' });
-    }
+  if (!whSecret) {
+    console.error('PayMongo webhook: PAYMONGO_WEBHOOK_SECRET not configured — rejecting');
+    return res.status(500).json({ error: 'Webhook secret not configured' });
+  }
+  const sigHeader = req.headers['paymongo-signature'] || '';
+  const sig = crypto.createHmac('sha256', whSecret).update(rawBody).digest('hex');
+  const received = sigHeader.replace(/^v1=/, '').split(',').map(s => s.trim());
+  if (!received.includes(sig)) {
+    console.error('PayMongo webhook: invalid signature');
+    return res.status(401).json({ error: 'Invalid signature' });
   }
 
   let event;

@@ -158,6 +158,16 @@ function getDb() {
     try { db.exec("CREATE TABLE IF NOT EXISTS typing_status (account_id TEXT PRIMARY KEY, is_typing INTEGER DEFAULT 0, last_heartbeat TEXT)"); } catch (_) {}
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON refresh_tokens(token_hash)"); } catch (_) {}
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_account ON refresh_tokens(account_id)"); } catch (_) {}
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_transactions_account_created ON transactions(account_id, created_at DESC)"); } catch (_) {}
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_gl_entries_account_code ON gl_entries(account_code)"); } catch (_) {}
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_gl_entries_created ON gl_entries(created_at)"); } catch (_) {}
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_loans_account_id ON loans(account_id)"); } catch (_) {}
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_goal_jars_account_id ON goal_jars(account_id)"); } catch (_) {}
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_badges_account_id ON badges(account_id)"); } catch (_) {}
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_gl_entries_period ON gl_entries(period_id)"); } catch (_) {}
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type)"); } catch (_) {}
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_loans_status ON loans(status)"); } catch (_) {}
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_standing_orders_next_run ON standing_orders(next_run)"); } catch (_) {}
     const accounts = [
       ['1000','Cash on Hand','asset','current_asset',0], ['1010','Cash in Bank','asset','current_asset',0],
       ['1020','Petty Cash','asset','current_asset',0], ['1100','Loans Receivable','asset','current_asset',0],

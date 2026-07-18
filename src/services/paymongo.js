@@ -6,7 +6,7 @@ const API_BASE = 'api.paymongo.com';
 const API_VERSION = 'v1';
 
 if (PAYMONGO_SECRET) {
-  console.log('PayMongo configured (secret key found, length=' + PAYMONGO_SECRET.length + ')');
+  console.log('PayMongo configured');
 } else {
   console.log('PayMongo NOT configured — set PAYMONGO_SECRET in .env or Render env vars');
 }

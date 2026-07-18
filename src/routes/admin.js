@@ -915,7 +915,7 @@ router.get('/accounts', requireRole(1), asyncHandler(async (req, res) => {
   // TODO: Add pagination (LIMIT/OFFSET) for large datasets
   const accounts = await sql('SELECT * FROM accounts ORDER BY child_name ASC');
   const q = req.query;
-  const toast = q.added ? 'success:Account created.'
+  const toast = q.added ? 'success:Account created. Temporary PIN: ' + h(q.pin || '000000') + ' — member must change on first login.'
     : q.updated ? 'success:Account updated.'
     : q.deleted ? 'success:Account deleted.'
     : q.toggled ? 'success:Account status changed.'
@@ -1439,6 +1439,7 @@ router.post('/accounts/create', requireRole(2), asyncHandler(async (req, res) =>
     const defaultMaintaining = await store.getSetting('default_maintaining_balance');
     const maintainingBalance = parseFloat(defaultMaintaining) || savingsAmt;
 
+    const defaultPin = String(crypto.randomInt(100000, 999999));
     const account = await store.createAccount({
       child_name: displayName,
       last_name: ulast,
@@ -1451,8 +1452,8 @@ router.post('/accounts/create', requireRole(2), asyncHandler(async (req, res) =>
       unallocated_balance: savingsAmt,
       current_xp: Number(current_xp) || 0,
       parent_phone: parent_phone || '',
-      password: bcrypt.hashSync('000000', 10),
-      pin_hash: bcrypt.hashSync('000000', 10),
+      password: bcrypt.hashSync(defaultPin, 10),
+      pin_hash: bcrypt.hashSync(defaultPin, 10),
       savings_product_id: 'sp_regular',
       maintaining_balance: maintainingBalance,
       consent_status: 'none',
@@ -1528,7 +1529,7 @@ router.post('/accounts/create', requireRole(2), asyncHandler(async (req, res) =>
       } catch (e) { console.error('Savings deposit GL posting error', e); }
     }
 
-    res.redirect('/admin/accounts?added=ok');
+    res.redirect(`/admin/accounts?added=ok&pin=${defaultPin}`);
   } catch (err) {
     res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
   }
@@ -1592,18 +1593,6 @@ router.post('/accounts/deposit/:id', requireRole(2), asyncHandler(async (req, re
 
     const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
     if (!account) return res.redirect('/admin/accounts?error=Account+not+found');
-
-    // Post GL FIRST — if this fails, nothing changes
-    const gl = require('../services/gl');
-    const audit = require('../services/audit');
-    const glTxId = uuidv4();
-    const orNumber = await store.assignOrNumber('deposit');
-    await gl.postDoubleEntry(glTxId, [
-      { account_code: '1000', debit: val, description: 'Admin deposit: ' + account.child_name },
-      { account_code: '2000', credit: val, description: 'Admin deposit: ' + account.child_name },
-    ], { postedBy: req.session.adminName || 'admin', referenceType: 'tx', referenceNumber: orNumber });
-
-    // Then update account and create transaction
     const newBalance = Number(account.actual_balance) + val;
     await store.query('UPDATE accounts SET actual_balance=$1, unallocated_balance=unallocated_balance+$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3', [newBalance, val, req.params.id]);
     const result = await store.addTransaction({
@@ -1615,8 +1604,15 @@ router.post('/accounts/deposit/:id', requireRole(2), asyncHandler(async (req, re
       balance_after: newBalance,
     });
     const txId = result?.transaction_id || '';
-    await store.query('UPDATE gl_entries SET transaction_id = $1 WHERE entry_id = $2', [txId, glTxId]).catch(() => {});
-    await audit.log(req, 'ADMIN_DEPOSIT', 'account', req.params.id, { amount: val, txId, desc: description || 'Admin deposit' });
+    try {
+      const gl = require('../services/gl');
+      await gl.postDoubleEntry(txId, [
+        { account_code: '1000', debit: val, description: 'Admin deposit: ' + account.child_name },
+        { account_code: '2000', credit: val, description: 'Admin deposit: ' + account.child_name },
+      ], { postedBy: req.session.adminName || 'admin', referenceType: 'tx', referenceNumber: txId });
+      const audit = require('../services/audit');
+      await audit.log(req, 'ADMIN_DEPOSIT', 'account', req.params.id, { amount: val, txId, desc: description || 'Admin deposit' });
+    } catch (glErr) { console.error('GL post failed (non-fatal):', glErr.message); }
     res.redirect('/admin/accounts?deposited=ok');
   } catch (err) {
     res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
@@ -1632,18 +1628,6 @@ router.post('/accounts/withdraw/:id', requireRole(2), asyncHandler(async (req, r
     const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
     if (!account) return res.redirect('/admin/accounts?error=Account+not+found');
     if (Number(account.actual_balance) < val) return res.redirect('/admin/accounts?error=Insufficient+balance');
-
-    // Post GL FIRST — if this fails, nothing changes
-    const gl = require('../services/gl');
-    const audit = require('../services/audit');
-    const glTxId = uuidv4();
-    const orNumber = await store.assignOrNumber('withdrawal');
-    await gl.postDoubleEntry(glTxId, [
-      { account_code: '2000', debit: val, description: 'Admin withdrawal: ' + account.child_name },
-      { account_code: '1000', credit: val, description: 'Admin withdrawal: ' + account.child_name },
-    ], { postedBy: req.session.adminName || 'admin', referenceType: 'tx', referenceNumber: orNumber });
-
-    // Then update account and create transaction
     const newBalance = Math.round((Number(account.actual_balance) - val) * 100) / 100;
     const newUnallocated = Math.round((Number(account.unallocated_balance) - val) * 100) / 100;
     await store.query('UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3', [newBalance, Math.max(0, newUnallocated), req.params.id]);
@@ -1656,8 +1640,15 @@ router.post('/accounts/withdraw/:id', requireRole(2), asyncHandler(async (req, r
       balance_after: newBalance,
     });
     const txId = result?.transaction_id || '';
-    await store.query('UPDATE gl_entries SET transaction_id = $1 WHERE entry_id = $2', [txId, glTxId]).catch(() => {});
-    await audit.log(req, 'ADMIN_WITHDRAWAL', 'account', req.params.id, { amount: val, txId, desc: description || 'Admin withdrawal' });
+    try {
+      const gl = require('../services/gl');
+      await gl.postDoubleEntry(txId, [
+        { account_code: '2000', debit: val, description: 'Admin withdrawal: ' + account.child_name },
+        { account_code: '1000', credit: val, description: 'Admin withdrawal: ' + account.child_name },
+      ], { postedBy: req.session.adminName || 'admin', referenceType: 'tx', referenceNumber: txId });
+      const audit = require('../services/audit');
+      await audit.log(req, 'ADMIN_WITHDRAWAL', 'account', req.params.id, { amount: val, txId, desc: description || 'Admin withdrawal' });
+    } catch (glErr) { console.error('GL post failed (non-fatal):', glErr.message); }
     res.redirect('/admin/accounts?withdrawn=ok');
   } catch (err) {
     res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);
@@ -2254,21 +2245,11 @@ router.post('/loans/disburse/:id', requireRole(3), asyncHandler(async (req, res)
     const account = await store.getAccount(loan.account_id);
     if (!account) return res.redirect('/admin/loans?error=Account+not+found');
 
-    // Post GL FIRST — if this fails, nothing changes
-    const gl = require('../services/gl');
-    const audit = require('../services/audit');
-    const glTxId = uuidv4();
-    const orNumber = await store.assignOrNumber('deposit');
-    await gl.postDoubleEntry(glTxId, [
-      { account_code: '1100', debit: Number(loan.principal), description: 'Loan disbursement: ' + (loan.purpose || 'Loan') },
-      { account_code: '1000', credit: Number(loan.principal), description: 'Loan disbursement to member' },
-    ], { postedBy: req.session.adminName || 'admin', referenceType: 'loan', referenceNumber: orNumber });
-
-    // Then update account, create transaction, update loan status
     const newBalance = Math.round((Number(account.actual_balance) + Number(loan.principal)) * 100) / 100;
     const newUnallocated = Math.round((Number(account.unallocated_balance) + Number(loan.principal)) * 100) / 100;
+
     await store.query('UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=datetime(\'now\') WHERE account_id=$3', [newBalance, newUnallocated, loan.account_id]);
-    const txRec = await store.addTransaction({
+    await store.addTransaction({
       account_id: loan.account_id,
       type: 'loan_disbursement',
       amount: Number(loan.principal),
@@ -2281,8 +2262,15 @@ router.post('/loans/disburse/:id', requireRole(3), asyncHandler(async (req, res)
     const dueDate = new Date();
     dueDate.setMonth(dueDate.getMonth() + Number(loan.term_months));
     await store.updateLoan(req.params.id, { status: 'active', disbursed_at: new Date().toISOString(), due_date: dueDate.toISOString().slice(0, 10) });
-    await store.query('UPDATE gl_entries SET transaction_id = $1 WHERE entry_id = $2', [txRec?.transaction_id || '', glTxId]).catch(() => {});
-    await audit.log(req, 'LOAN_DISBURSE', 'loan', req.params.id, { principal: loan.principal, account: loan.account_id });
+    try {
+      const gl = require('../services/gl');
+      await gl.postDoubleEntry(loan.loan_id, [
+        { account_code: '1100', debit: Number(loan.principal), description: 'Loan disbursement: ' + (loan.purpose || 'Loan') },
+        { account_code: '1000', credit: Number(loan.principal), description: 'Loan disbursement to member' },
+      ], { postedBy: req.session.adminName || 'admin', referenceType: 'loan', referenceNumber: loan.loan_id });
+      const audit = require('../services/audit');
+      await audit.log(req, 'LOAN_DISBURSE', 'loan', req.params.id, { principal: loan.principal, account: loan.account_id });
+    } catch (e) { console.error('GL post failed (non-fatal):', e.message); }
     res.redirect('/admin/loans?disbursed=ok');
   } catch (err) {
     res.redirect(`/admin/loans?error=${encodeURIComponent(err.message)}`);
@@ -2858,7 +2846,6 @@ router.post('/reset-data', requireRole(4), asyncHandler(async (req, res) => {
     'refresh_tokens',
     'coin_transactions',
     'accounts',
-    'support_messages',
   ];
   if (isPostgres) {
     const existing = await store.query(
@@ -4109,11 +4096,10 @@ router.post('/teller/deposit/:id', requireRole(2), asyncHandler(async (req, res)
     const gl = require('../services/gl');
     const audit = require('../services/audit');
     const glTxId = uuidv4();
-    const orNumber = await store.assignOrNumber('deposit');
     await gl.postDoubleEntry(glTxId, [
       { account_code: '1000', debit: val, description: 'Counter deposit: ' + account.child_name },
       { account_code: '2000', credit: val, description: 'Counter deposit: ' + account.child_name },
-    ], { postedBy: req.session.adminName || 'admin', referenceType: 'teller', referenceNumber: orNumber });
+    ], { postedBy: req.session.adminName || 'admin', referenceType: 'teller', referenceNumber: glTxId });
 
     // Now update account and create transaction
     await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=unallocated_balance+$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3", [newBalance, val, req.params.id]);
@@ -4156,11 +4142,10 @@ router.post('/teller/withdraw/:id', requireRole(2), asyncHandler(async (req, res
     const gl = require('../services/gl');
     const audit = require('../services/audit');
     const glTxId = uuidv4();
-    const orNumber = await store.assignOrNumber('withdrawal');
     await gl.postDoubleEntry(glTxId, [
       { account_code: '2000', debit: val, description: 'Counter withdrawal: ' + account.child_name },
       { account_code: '1000', credit: val, description: 'Counter withdrawal: ' + account.child_name },
-    ], { postedBy: req.session.adminName || 'admin', referenceType: 'teller', referenceNumber: orNumber });
+    ], { postedBy: req.session.adminName || 'admin', referenceType: 'teller', referenceNumber: glTxId });
 
     // Then update account and create transaction
     await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3", [newBalance, Math.max(0, newUnallocated), req.params.id]);
@@ -5377,21 +5362,19 @@ router.get('/eom', requireRole(1), asyncHandler(async (req, res) => {
       for (const loan of loans) {
         const monthlyInt = Math.round(Number(loan.principal) * Number(loan.interest_rate) / 100 / 12 * 100) / 100;
         if (monthlyInt <= 0) continue;
-        const orNumber = await store.assignOrNumber('jv');
         await gl.postDoubleEntry(uuidv4(), [
           { account_code: '1300', debit: monthlyInt, description: `Accrued interest — ${loan.name}` },
           { account_code: '4000', credit: monthlyInt, description: `Interest income — ${loan.name}` }
-        ], { postedBy: req.session.adminName || 'admin', referenceType: 'accrual', referenceNumber: orNumber });
+        ], { postedBy: req.session.adminName || 'admin', referenceType: 'accrual', referenceNumber: `EOM-${monthPrefix}-${loan.loan_id.slice(0,8)}` });
         accCount++;
       }
       for (const s of savings) {
         const monthlyInt = Math.round(Number(s.actual_balance) * sRate * 100) / 100;
         if (monthlyInt <= 0) continue;
-        const orNumber = await store.assignOrNumber('jv');
         await gl.postDoubleEntry(uuidv4(), [
           { account_code: '5000', debit: monthlyInt, description: 'Interest expense accrual — savings' },
           { account_code: '2500', credit: monthlyInt, description: 'Accrued interest payable — savings' }
-        ], { postedBy: req.session.adminName || 'admin', referenceType: 'accrual', referenceNumber: orNumber });
+        ], { postedBy: req.session.adminName || 'admin', referenceType: 'accrual', referenceNumber: `EOM-${monthPrefix}-${s.account_id.slice(0,8)}` });
         accCount++;
       }
       await store.setSetting('last_accrual_run', monthPrefix);
@@ -5584,6 +5567,11 @@ async function closeYear(year, closedBy) {
      VALUES ($1,$2,$3,$4,$5,$6,1,$7,$8)`,
     [uuidv4(), year, pnl.totalIncome, pnl.totalExpense, pnl.netProfit, txs.length, closedBy || 'admin', new Date().toISOString()]
   );
+  // Lock all 12 monthly periods for the closed year
+  for (let m = 1; m <= 12; m++) {
+    const periodId = year + '-' + String(m).padStart(2, '0');
+    try { await store.closePeriod(periodId, closedBy || 'admin'); } catch (_) {}
+  }
   return { year, netProfit: pnl.netProfit, txCount: txs.length };
 }
 
@@ -6174,7 +6162,6 @@ router.post('/reset-database', requireRole(4), asyncHandler(async (req, res) => 
     'refresh_tokens',
     'coin_transactions',
     'accounts',
-    'support_messages',
   ];
   if (isPostgres) {
     const existing = await store.query(
@@ -7710,19 +7697,12 @@ router.post('/parents/reject/:parentId', requireRole(3,4), asyncHandler(async (r
 router.get('/messages', requireRole(1), asyncHandler(async (req, res) => {
   const sql = (s, p) => store.query(s, p || []).then(r => r.rows);
   const conversations = await sql(`
-    SELECT m.account_id, NULL as parent_id, a.child_name, a.member_id, 'child' as thread_type,
+    SELECT m.account_id, a.child_name, a.member_id,
       (SELECT content FROM support_messages WHERE account_id = m.account_id ORDER BY created_at DESC LIMIT 1) as last_message,
       (SELECT created_at FROM support_messages WHERE account_id = m.account_id ORDER BY created_at DESC LIMIT 1) as last_time,
       (SELECT COUNT(*) FROM support_messages WHERE account_id = m.account_id AND admin_read = 0 AND sender_type != 'admin') as unread
-    FROM (SELECT DISTINCT account_id FROM support_messages WHERE account_id IS NOT NULL AND account_id != '') m
+    FROM (SELECT DISTINCT account_id FROM support_messages) m
     LEFT JOIN accounts a ON m.account_id = a.account_id
-    UNION ALL
-    SELECT NULL as account_id, m.parent_id, p.display_name as child_name, '' as member_id, 'parent' as thread_type,
-      (SELECT content FROM support_messages WHERE parent_id = m.parent_id ORDER BY created_at DESC LIMIT 1) as last_message,
-      (SELECT created_at FROM support_messages WHERE parent_id = m.parent_id ORDER BY created_at DESC LIMIT 1) as last_time,
-      (SELECT COUNT(*) FROM support_messages WHERE parent_id = m.parent_id AND admin_read = 0 AND sender_type != 'admin') as unread
-    FROM (SELECT DISTINCT parent_id FROM support_messages WHERE parent_id IS NOT NULL) m
-    LEFT JOIN parents p ON m.parent_id = p.parent_id
     ORDER BY last_time DESC
   `);
   const totalUnread = conversations.reduce((s, c) => s + Number(c.unread), 0);
@@ -7750,14 +7730,10 @@ router.get('/messages', requireRole(1), asyncHandler(async (req, res) => {
       ${conversations.length === 0 ?
         '<div class="msg-empty"><div class="me-icon">&#x1F4E8;</div><div>No messages yet. When a child or parent sends a message, it will appear here.</div></div>' :
         '<div class="msg-list">' + conversations.map(function(c) {
-          const isParent = c.thread_type === 'parent';
-          const link = isParent ? '/admin/parent-messages/' + c.parent_id : '/admin/messages/' + c.account_id;
           const initial = (c.child_name || '?')[0].toUpperCase();
           const time = c.last_time ? (c.last_time.slice(0,16).replace('T',' ')) : '';
           const unread = Number(c.unread);
-          const icon = isParent ? '<i class="fas fa-user-friends" style="font-size:14px"></i>' : initial;
-          const subtitle = isParent ? 'Parent' : (c.member_id || '');
-          return '<a href="' + link + '" class="msg-conv"><div class="mc-avatar" style="' + (isParent ? 'background:linear-gradient(135deg,#6366f1,#4338ca)' : '') + '">' + icon + '</div><div class="mc-info"><div class="mc-name">' + h(c.child_name || 'Unknown') + ' <span style="font-size:11px;color:var(--text-muted);font-family:var(--mono)">' + (subtitle ? '&middot; ' + subtitle : '') + '</span></div><div class="mc-preview">' + h(c.last_message || '') + '</div></div><div class="mc-time">' + (unread ? '<span class="mc-badge">' + unread + '</span>' : '') + time + '</div></a>';
+          return '<a href="/admin/messages/' + c.account_id + '" class="msg-conv"><div class="mc-avatar">' + initial + '</div><div class="mc-info"><div class="mc-name">' + h(c.child_name || 'Unknown') + ' <span style="font-size:11px;color:var(--text-muted);font-family:var(--mono)">' + (c.member_id || '') + '</span></div><div class="mc-preview">' + h(c.last_message || '') + '</div></div><div class="mc-time">' + (unread ? '<span class="mc-badge">' + unread + '</span>' : '') + time + '</div></a>';
         }).join('') + '</div>'
       }
     </div>
@@ -7767,18 +7743,6 @@ router.get('/messages', requireRole(1), asyncHandler(async (req, res) => {
 }));
 
 router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res) => {
-  // Mark unread as read FIRST so rendered messages show correct status
-  await store.query("UPDATE support_messages SET admin_read = 1 WHERE account_id = $1 AND sender_type != 'admin'", [req.params.accountId]);
-
-  // Emit read receipt to chat room so child sees "Read" in real-time
-  try {
-    const { getIO } = require('../services/socket');
-    const io = getIO();
-    if (io) {
-      io.to('chat_' + req.params.accountId).emit('readReceipt', { room: 'chat_' + req.params.accountId, readBy: 'admin' });
-    }
-  } catch (_) {}
-
   const sql = (s, p) => store.query(s, p || []).then(r => r.rows);
   const [account, msgs] = await Promise.all([
     sql('SELECT * FROM accounts WHERE account_id = $1', [req.params.accountId]).then(r => r[0]),
@@ -7786,6 +7750,9 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
   ]);
 
   if (!account) return res.redirect('/admin/messages?error=Account+not+found');
+
+  // Mark unread as read
+  await store.query("UPDATE support_messages SET admin_read = 1 WHERE account_id = $1 AND sender_type != 'admin'", [req.params.accountId]);
 
   const csrf = res.locals.csrfToken || '';
   const content = `
@@ -7853,130 +7820,125 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
 
   <script>
   var accountId = '${req.params.accountId}';
-  var room = 'chat_' + accountId;
-  window._currentAccountId = accountId;
-
-  // ── HTML escaping ──
-  function esc(s){ return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#x27;'}[c]}); }
-
-  // ── Append a single message to the thread (never removes existing) ──
-  var _knownIds = {};
-  document.querySelectorAll('#msgThread .msg-bubble[data-msg-id]').forEach(function(el){
-    _knownIds[el.getAttribute('data-msg-id')] = true;
-  });
-  function appendMsg(msg){
-    if (_knownIds[msg.message_id]) return;
-    _knownIds[msg.message_id] = true;
-    var target = document.getElementById('replyTarget');
-    if (!target) return;
-    var isAdmin = msg.sender_type === 'admin';
-    var initial = isAdmin ? 'A' : (msg.sender_name ? esc(msg.sender_name[0].toUpperCase()) : '?');
-    var receipt;
-    if (isAdmin) {
-      receipt = Number(msg.child_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Delivered</span>';
-    } else {
-      // Admin is viewing the conversation — child messages are auto-read
-      receipt = ' <span class="mb-read">&#x2713; Read</span>';
-    }
-    var html = '<div class="msg-bubble ' + (isAdmin ? 'outgoing' : 'incoming') + '" data-msg-id="' + esc(msg.message_id) + '"><div class="mb-avatar">' + initial + '</div><div class="mb-content"><div>' + esc(msg.content) + '</div><div class="mb-meta">' + esc(msg.sender_name || msg.sender_type) + ' · ' + (msg.created_at ? msg.created_at.slice(0,19).replace('T',' ') : '') + receipt + '</div></div></div>';
-    target.insertAdjacentHTML('beforebegin', html);
-    target.scrollIntoView({ behavior:'smooth' });
-  }
-
-  // ── Socket signal (called by global newMessage handler) ──
-  window._onNewMsg = function(msg){
-    if (msg.account_id != accountId) return;
-    if (msg.sender_type === 'admin') {
-      // Update optimistic bubble with server-confirmed msg-id and status
-      var opt = document.querySelector('.msg-bubble.outgoing.msg-optimistic');
-      if (opt) {
-        opt.classList.remove('msg-optimistic');
-        if (msg.message_id) opt.setAttribute('data-msg-id', msg.message_id);
-        var meta = opt.querySelector('.mb-meta');
-        if (meta) {
-          var receipt = Number(msg.child_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Delivered</span>';
-          // Replace the "Sending..." span
-          var oldReceipt = meta.querySelector('.mb-read');
-          if (oldReceipt) oldReceipt.outerHTML = receipt;
-          else meta.insertAdjacentHTML('beforeend', receipt);
-        }
-        _knownIds[msg.message_id] = true;
-      }
-      return;
-    }
-    appendMsg(msg);
-    // Notify server admin read this message (updates DB + emits readReceipt to child)
-    if (window.adminSocket && window.adminSocket.connected) {
-      window.adminSocket.emit('adminRead', { room: room });
-    }
-  };
-
-  // ── Join chat room when socket is ready ──
-  function waitForSocket(cb){
-    if (window.adminSocket) { cb(window.adminSocket); return; }
-    var chk = setInterval(function(){
-      if (window.adminSocket) { clearInterval(chk); cb(window.adminSocket); }
-    }, 200);
-  }
-  waitForSocket(function(sock){
-    if (sock.connected) {
-      sock.emit('joinRoom', room);
-    } else {
-      sock.on('connect', function(){ sock.emit('joinRoom', room); });
-    }
-  });
-
-  // ── Send reply via socket (primary) or HTTP (fallback) ──
   function sendReply(){
-    var el = document.getElementById('replyContent');
-    if (!el.value.trim()) return;
-    var text = el.value.trim();
-    el.value = '';
-    // Optimistic outgoing bubble with "Sending..." status
-    var target = document.getElementById('replyTarget');
-    var d = new Date();
-    var ts = d.toISOString().slice(0,19).replace('T',' ');
-    var html = '<div class="msg-bubble outgoing msg-optimistic"><div class="mb-avatar">A</div><div class="mb-content"><div>' + esc(text) + '</div><div class="mb-meta">Admin · ' + ts + ' <span class="mb-read" style="opacity:0.5;font-style:italic">&#x2713; Sending...</span></div></div></div>';
-    target.insertAdjacentHTML('beforebegin', html);
-    target.scrollIntoView({ behavior:'smooth' });
-    if (window.adminSocket && window.adminSocket.connected) {
-      window.adminSocket.emit('sendMessage', { room: room, content: text, senderName: 'Admin' });
-    } else {
-      fetch('/admin/messages/reply', {
-        method: 'POST',
-        headers: { 'Content-Type':'application/json', 'X-CSRF-Token':'${csrf}' },
-        body: JSON.stringify({ accountId: accountId, content: text })
-      }).catch(function(){});
-    }
+    var content = document.getElementById('replyContent');
+    if (!content.value.trim()) return;
+    fetch('/admin/messages/reply', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'X-CSRF-Token':'${csrf}' },
+      body: JSON.stringify({ accountId: accountId, content: content.value.trim() })
+    }).then(function(r){ return r.json(); }).then(function(data){
+      if (data.message === 'Sent') {
+        var target = document.getElementById('replyTarget');
+        var d = new Date();
+        var ts = d.toISOString().slice(0,19).replace('T',' ');
+        var html = '<div class="msg-bubble outgoing"><div class="mb-avatar">A</div><div class="mb-content"><div>' + content.value.trim() + '</div><div class="mb-meta">Admin · ' + ts + '</div></div></div>';
+        target.insertAdjacentHTML('beforebegin', html);
+        content.value = '';
+        target.scrollIntoView({ behavior:'smooth' });
+      }
+    }).catch(function(){});
   }
   document.getElementById('replyContent').addEventListener('keydown', function(e){
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); }
   });
-
-  // ── Admin typing via socket (auto-stops after 3s idle) ──
-  var adminTypingInt, adminLastKeystroke;
+  // Admin typing heartbeat while typing reply
+  var adminTypingInt;
   document.getElementById('replyContent').addEventListener('input', function(){
-    adminLastKeystroke = Date.now();
-    if (window.adminSocket && window.adminSocket.connected) window.adminSocket.emit('typing', { room: room, isTyping: true });
+    fetch('/api/v1/messages/admin-typing', {
+      method: 'POST', headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ accountId: accountId, isTyping: true })
+    }).catch(function(){});
     if (!adminTypingInt) {
       adminTypingInt = setInterval(function(){
-        if (Date.now() - adminLastKeystroke > 3000) {
-          // Idle for 3+ seconds — stop typing
-          if (window.adminSocket && window.adminSocket.connected) window.adminSocket.emit('typing', { room: room, isTyping: false });
-          clearInterval(adminTypingInt); adminTypingInt = null;
-          return;
-        }
-        if (window.adminSocket && window.adminSocket.connected) window.adminSocket.emit('typing', { room: room, isTyping: true });
+        fetch('/api/v1/messages/admin-typing', {
+          method: 'POST', headers: { 'Content-Type':'application/json' },
+          body: JSON.stringify({ accountId: accountId, isTyping: true })
+        }).catch(function(){});
       }, 3000);
     }
   });
+  // Stop typing indicator when sending
   var origSend = sendReply;
   sendReply = function(){
-    if (window.adminSocket && window.adminSocket.connected) window.adminSocket.emit('typing', { room: room, isTyping: false });
-    if (adminTypingInt) { clearInterval(adminTypingInt); adminTypingInt = null; }
     origSend();
+    fetch('/api/v1/messages/admin-typing', {
+      method: 'POST', headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ accountId: accountId, isTyping: false })
+    }).catch(function(){});
+    if (adminTypingInt) { clearInterval(adminTypingInt); adminTypingInt = null; }
   };
+  // Refresh messenger FAB badge after marking messages as read
   setTimeout(function(){ window.refreshMessengerBadge(); }, 500);
+  // Poll read receipts on admin messages every 4s
+  setInterval(function(){
+    fetch('/admin/messages/' + accountId + '/read-status')
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if (data.statuses && data.statuses.length > 0) {
+          data.statuses.forEach(function(s){
+            var el = document.querySelector('[data-msg-id="' + s.message_id + '"] .mb-read');
+            if (el && Number(s.child_read) === 1) {
+              el.innerHTML = '&#x2713; Read';
+              el.style.opacity = '1';
+              el.style.fontStyle = 'italic';
+            }
+          });
+        }
+      })
+      .catch(function(){});
+  }, 4000);
+  // Poll typing indicator every 3s
+  setInterval(function(){
+    fetch('/api/v1/messages/typing/' + accountId)
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        var ti = document.getElementById('typingIndicator');
+        var ts = document.getElementById('typingStatus');
+        if (data.isTyping) {
+          ti.style.display = 'flex';
+          ts.textContent = 'Child is typing...';
+        } else {
+          ti.style.display = 'none';
+          ts.textContent = 'Press Enter to send';
+        }
+      })
+      .catch(function(){});
+  }, 3000);
+  // Poll for new messages every 5s (track seen IDs to avoid duplicates)
+  var seenIds = {};
+  var lastPoll = new Date().toISOString();
+  document.querySelectorAll('#msgThread .msg-bubble').forEach(function(el){
+    var id = el.getAttribute('data-msg-id');
+    if (id) seenIds[id] = true;
+  });
+  setInterval(function(){
+    fetch('/admin/messages/' + accountId + '/poll?since=' + encodeURIComponent(lastPoll))
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if (data.messages && data.messages.length > 0) {
+          var target = document.getElementById('replyTarget');
+          data.messages.forEach(function(m){
+            if (seenIds[m.message_id]) return;
+            seenIds[m.message_id] = true;
+            var isAdmin = m.sender_type === 'admin';
+            if (!isAdmin) {
+              var initial = m.sender_name ? m.sender_name[0].toUpperCase() : '?';
+              var receipt = Number(m.admin_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Sent</span>';
+              var content = document.createElement('div');
+              content.textContent = m.content || '';
+              var sender = m.sender_name || m.sender_type || '';
+              var ts = m.created_at ? m.created_at.slice(0,19).replace('T',' ') : '';
+              var html = '<div class="msg-bubble incoming" data-msg-id="' + m.message_id + '"><div class="mb-avatar">' + initial + '</div><div class="mb-content"><div>' + content.innerHTML + '</div><div class="mb-meta">' + sender.replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#x27;'}[c]}) + ' · ' + ts + receipt + '</div></div></div>';
+              target.insertAdjacentHTML('beforebegin', html);
+            }
+          });
+          target.scrollIntoView({ behavior:'smooth' });
+        }
+        lastPoll = new Date().toISOString();
+      })
+      .catch(function(){});
+  }, 5000);
   </script>`;
 
   res.type('html').send(layout('Messages', 'messages', content));
@@ -7992,28 +7954,10 @@ router.post('/messages/reply', requireRole(1), asyncHandler(async (req, res) => 
   const child = await store.query('SELECT child_name FROM accounts WHERE account_id = $1', [accountId]);
 
   await store.query(
-    `INSERT INTO support_messages (message_id, account_id, child_name, sender_type, sender_name, content, admin_read, child_read, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [msgId, accountId, child.rows[0]?.child_name || '', 'admin', adminName, content.trim(), 1, 0, new Date().toISOString()]
+    `INSERT INTO support_messages (message_id, account_id, child_name, sender_type, sender_name, content, admin_read, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [msgId, accountId, child.rows[0]?.child_name || '', 'admin', adminName, content.trim(), 1, new Date().toISOString()]
   );
-
-  // Emit socket event for real-time delivery
-  try {
-    const { getIO } = require('../services/socket');
-    const io = getIO();
-    if (io) {
-      io.to('chat_' + accountId).emit('newMessage', {
-        message_id: msgId,
-        account_id: accountId,
-        sender_type: 'admin',
-        sender_name: adminName,
-        content: content.trim(),
-        admin_read: 1,
-        child_read: 0,
-        created_at: new Date().toISOString(),
-      });
-    }
-  } catch (_) {}
 
   // Try to send FCM push to the child
   try {
@@ -8046,262 +7990,18 @@ router.get('/messages/:accountId/read-status', requireRole(1), asyncHandler(asyn
   res.json({ statuses: rows.rows });
 }));
 
-// ── Parent Conversation View ──
-router.get('/parent-messages/:parentId', requireRole(1), asyncHandler(async (req, res) => {
-  const parentId = req.params.parentId;
-  // Mark unread as read
-  await store.query("UPDATE support_messages SET admin_read = 1 WHERE parent_id = $1 AND sender_type != 'admin'", [parentId]);
-
-  // Emit read receipt
-  try {
-    const { getIO } = require('../services/socket');
-    const io = getIO();
-    if (io) {
-      io.to('parent_chat_' + parentId).emit('readReceipt', { room: 'parent_chat_' + parentId, readBy: 'admin' });
-    }
-  } catch (_) {}
-
-  const sql = (s, p) => store.query(s, p || []).then(r => r.rows);
-  const one = (s, p) => store.query(s, p || []).then(r => r.rows[0]);
-
-  const [parent, msgs] = await Promise.all([
-    one('SELECT parent_id, display_name, email FROM parents WHERE parent_id = $1', [parentId]),
-    sql('SELECT * FROM support_messages WHERE parent_id = $1 ORDER BY created_at ASC', [parentId]),
-  ]);
-
-  if (!parent) return res.redirect('/admin/messages?error=Parent+not+found');
-
-  const csrf = res.locals.csrfToken || '';
-  const displayName = parent.display_name || parent.email || 'Parent';
-
-  const content = `
-  <style>
-  .msg-thread { max-width:700px; margin:0 auto; }
-  .msg-bubble { display:flex; gap:12px; margin-bottom:14px; }
-  .msg-bubble.incoming { flex-direction:row; }
-  .msg-bubble.outgoing { flex-direction:row-reverse; }
-  .msg-bubble .mb-avatar { width:32px; height:32px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; }
-  .msg-bubble.incoming .mb-avatar { background:linear-gradient(135deg,#6366f1,#4338ca); color:#fff; }
-  .msg-bubble.outgoing .mb-avatar { background:var(--accent); color:#fff; }
-  .msg-bubble .mb-content { max-width:75%; padding:10px 14px; border-radius:12px; font-size:13px; line-height:1.5; }
-  .msg-bubble.incoming .mb-content { background:#f1f5f9; color:var(--text); border-bottom-left-radius:4px; }
-  .msg-bubble.outgoing .mb-content { background:var(--accent); color:#fff; border-bottom-right-radius:4px; }
-  .msg-bubble .mb-meta { font-size:10px; color:var(--text-muted); margin-top:4px; opacity:0.7; display:flex; align-items:center; gap:4px; }
-  .msg-bubble.outgoing .mb-meta { color:rgba(255,255,255,0.7); }
-  .msg-bubble .mb-meta .mb-read { font-style:italic; }
-  .mb-typing { display:flex; align-items:center; gap:8px; padding:8px 0; font-size:12px; color:var(--text-muted); }
-  .mb-typing .typing-dots { display:flex; gap:3px; }
-  .mb-typing .typing-dots span { width:6px; height:6px; border-radius:50%; background:#6366f1; animation:typingBounce 1.2s ease infinite; }
-  .mb-typing .typing-dots span:nth-child(2) { animation-delay:0.2s; }
-  .mb-typing .typing-dots span:nth-child(3) { animation-delay:0.4s; }
-  @keyframes typingBounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-4px)} }
-  .msg-reply-box { margin-top:20px; background:var(--card); border:1px solid var(--border); border-radius:14px; overflow:hidden; }
-  .msg-reply-box textarea { width:100%; padding:14px; border:none; outline:none; font-size:13px; font-family:inherit; resize:vertical; min-height:70px; background:transparent; color:var(--text); }
-  .msg-reply-box .mr-actions { display:flex; align-items:center; justify-content:space-between; padding:8px 14px 12px; border-top:1px solid var(--border); }
-  </style>
-  <div style="margin-bottom:14px">
-    <a href="/admin/messages" class="btn btn-outline btn-sm">&larr; Back to Messages</a>
-  </div>
-  <div class="card">
-    <div class="card-header">
-      <h3><i class="fas fa-user-friends"></i> ${h(displayName)} <span style="font-size:12px;color:var(--text-muted)">Parent</span></h3>
-    </div>
-    <div class="card-body msg-thread" id="msgThread">
-      ${msgs.length === 0 ? '<div style="text-align:center;padding:40px;color:var(--text-muted)">No messages yet</div>' :
-        msgs.map(function(m) {
-          const isAdmin = m.sender_type === 'admin';
-          const initial = isAdmin ? 'A' : 'P';
-          var receipt = '';
-          if (isAdmin) {
-            receipt = Number(m.parent_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Delivered</span>';
-          } else {
-            receipt = ' <span class="mb-read">&#x2713; Read</span>';
-          }
-          return '<div class="msg-bubble ' + (isAdmin ? 'outgoing' : 'incoming') + '" data-msg-id="' + h(m.message_id || '') + '"><div class="mb-avatar">' + initial + '</div><div class="mb-content"><div>' + h(m.content) + '</div><div class="mb-meta">' + h(m.sender_name || m.sender_type) + ' · ' + (m.created_at ? m.created_at.slice(0,19).replace('T',' ') : '') + receipt + '</div></div></div>';
-        }).join('')
-      }
-      <div id="typingIndicator" class="mb-typing" style="display:none">
-        <div class="typing-dots"><span></span><span></span><span></span></div>
-        typing...
-      </div>
-      <div id="replyTarget"></div>
-    </div>
-  </div>
-
-  <div class="msg-reply-box">
-    <textarea id="replyContent" placeholder="Type your reply..." rows="2"></textarea>
-    <div class="mr-actions">
-      <span id="typingStatus" style="font-size:11px;color:var(--text-muted)">Press Enter to send</span>
-      <button class="btn btn-primary btn-sm" onclick="sendReply()"><i class="fas fa-paper-plane"></i> Send</button>
-    </div>
-  </div>
-
-  <script>
-  var parentId = '${parentId}';
-  var room = 'parent_chat_' + parentId;
-  window._currentAccountId = parentId; // reused for typing scope
-
-  function esc(s){ return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#x27;'}[c]}); }
-
-  var _knownIds = {};
-  document.querySelectorAll('#msgThread .msg-bubble[data-msg-id]').forEach(function(el){
-    _knownIds[el.getAttribute('data-msg-id')] = true;
-  });
-  function appendMsg(msg){
-    if (_knownIds[msg.message_id]) return;
-    _knownIds[msg.message_id] = true;
-    var target = document.getElementById('replyTarget');
-    if (!target) return;
-    var isAdmin = msg.sender_type === 'admin';
-    var initial = isAdmin ? 'A' : 'P';
-    var receipt;
-    if (isAdmin) {
-      receipt = Number(msg.parent_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Delivered</span>';
-    } else {
-      receipt = ' <span class="mb-read">&#x2713; Read</span>';
-    }
-    var html = '<div class="msg-bubble ' + (isAdmin ? 'outgoing' : 'incoming') + '" data-msg-id="' + esc(msg.message_id) + '"><div class="mb-avatar">' + initial + '</div><div class="mb-content"><div>' + esc(msg.content) + '</div><div class="mb-meta">' + esc(msg.sender_name || msg.sender_type) + ' · ' + (msg.created_at ? msg.created_at.slice(0,19).replace('T',' ') : '') + receipt + '</div></div></div>';
-    target.insertAdjacentHTML('beforebegin', html);
-    target.scrollIntoView({ behavior:'smooth' });
-  }
-
-  window._onNewMsg = function(msg){
-    if (msg.parent_id != parentId) return;
-    if (msg.sender_type === 'admin') {
-      var opt = document.querySelector('.msg-bubble.outgoing.msg-optimistic');
-      if (opt) {
-        opt.classList.remove('msg-optimistic');
-        if (msg.message_id) opt.setAttribute('data-msg-id', msg.message_id);
-        var meta = opt.querySelector('.mb-meta');
-        if (meta) {
-          var receipt = Number(msg.parent_read) === 1 ? ' <span class="mb-read">&#x2713; Read</span>' : ' <span class="mb-read" style="opacity:0.5">&#x2713; Delivered</span>';
-          var oldReceipt = meta.querySelector('.mb-read');
-          if (oldReceipt) oldReceipt.outerHTML = receipt;
-          else meta.insertAdjacentHTML('beforeend', receipt);
-        }
-        _knownIds[msg.message_id] = true;
-      }
-      return;
-    }
-    appendMsg(msg);
-    if (window.adminSocket && window.adminSocket.connected) {
-      window.adminSocket.emit('adminRead', { room: room });
-    }
-  };
-
-  function waitForSocket(cb){
-    if (window.adminSocket) { cb(window.adminSocket); return; }
-    var chk = setInterval(function(){
-      if (window.adminSocket) { clearInterval(chk); cb(window.adminSocket); }
-    }, 200);
-  }
-  waitForSocket(function(sock){
-    if (sock.connected) {
-      sock.emit('joinRoom', room);
-    } else {
-      sock.on('connect', function(){ sock.emit('joinRoom', room); });
-    }
-  });
-
-  function sendReply(){
-    var el = document.getElementById('replyContent');
-    if (!el.value.trim()) return;
-    var text = el.value.trim();
-    el.value = '';
-    var target = document.getElementById('replyTarget');
-    var d = new Date();
-    var ts = d.toISOString().slice(0,19).replace('T',' ');
-    var html = '<div class="msg-bubble outgoing msg-optimistic"><div class="mb-avatar">A</div><div class="mb-content"><div>' + esc(text) + '</div><div class="mb-meta">Admin · ' + ts + ' <span class="mb-read" style="opacity:0.5;font-style:italic">&#x2713; Sending...</span></div></div></div>';
-    target.insertAdjacentHTML('beforebegin', html);
-    target.scrollIntoView({ behavior:'smooth' });
-    if (window.adminSocket && window.adminSocket.connected) {
-      window.adminSocket.emit('sendMessage', { room: room, content: text, senderName: 'Admin' });
-    } else {
-      fetch('/admin/parent-messages/reply', {
-        method: 'POST',
-        headers: { 'Content-Type':'application/json', 'X-CSRF-Token':'${csrf}' },
-        body: JSON.stringify({ parentId: parentId, content: text })
-      }).catch(function(){});
-    }
-  }
-  document.getElementById('replyContent').addEventListener('keydown', function(e){
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); }
-  });
-
-  // ── Admin typing via socket ──
-  var adminTypingInt, adminLastKeystroke;
-  document.getElementById('replyContent').addEventListener('input', function(){
-    adminLastKeystroke = Date.now();
-    if (window.adminSocket && window.adminSocket.connected) window.adminSocket.emit('typing', { room: room, isTyping: true });
-    if (!adminTypingInt) {
-      adminTypingInt = setInterval(function(){
-        if (Date.now() - adminLastKeystroke > 3000) {
-          if (window.adminSocket && window.adminSocket.connected) window.adminSocket.emit('typing', { room: room, isTyping: false });
-          clearInterval(adminTypingInt); adminTypingInt = null;
-          return;
-        }
-        if (window.adminSocket && window.adminSocket.connected) window.adminSocket.emit('typing', { room: room, isTyping: true });
-      }, 3000);
-    }
-  });
-  var origSend = sendReply;
-  sendReply = function(){
-    if (window.adminSocket && window.adminSocket.connected) window.adminSocket.emit('typing', { room: room, isTyping: false });
-    if (adminTypingInt) { clearInterval(adminTypingInt); adminTypingInt = null; }
-    origSend();
-  };
-  setTimeout(function(){ window.refreshMessengerBadge(); }, 500);
-  </script>`;
-
-  res.type('html').send(layout('Messages', 'messages', content));
-}));
-
-// ── Admin reply to parent ──
-router.post('/parent-messages/reply', requireRole(1), asyncHandler(async (req, res) => {
-  const { parentId, content } = req.body;
-  if (!content || !content.trim()) return res.status(400).json({ message: 'Content is required' });
-  if (!parentId) return res.status(400).json({ message: 'Parent ID is required' });
-
-  const msgId = require('uuid').v4();
-  const adminName = req.session.adminName || 'Admin';
-  const parent = await store.query('SELECT display_name, email FROM parents WHERE parent_id = $1', [parentId]);
-  const parentName = parent.rows[0] ? (parent.rows[0].display_name || parent.rows[0].email || 'Parent') : 'Parent';
-
-  await store.query(
-    `INSERT INTO support_messages (message_id, account_id, parent_id, child_name, sender_type, sender_name, content, admin_read, parent_read, created_at)
-     VALUES ($1, $10, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [msgId, parentId, parentName, 'admin', adminName, content.trim(), 1, 0, new Date().toISOString(), '']
-  );
-
-  // Emit socket event
-  try {
-    const { getIO } = require('../services/socket');
-    const io = getIO();
-    if (io) {
-      io.to('parent_chat_' + parentId).emit('newMessage', {
-        message_id: msgId, parent_id: parentId, child_name: parentName,
-        sender_type: 'admin', sender_name: adminName, content: content.trim(),
-        admin_read: 1, parent_read: 0, created_at: new Date().toISOString(),
-      });
-    }
-  } catch (_) {}
-
-  res.json({ message: 'Sent', messageId: msgId });
-}));
-
 // ── Pending counts JSON endpoint (for admin notification bell) ──
 router.get('/pending-counts', requireRole(1), asyncHandler(async (req, res) => {
   const sql = (s, p) => store.query(s, p || []).then(r => r.rows);
   const one = (s, p) => store.query(s, p || []).then(r => r.rows[0]);
-  const [kyc, withdrawals, loans, onlineDeposits, consents, deletions, childUnread, parentUnread] = await Promise.all([
+  const [kyc, withdrawals, loans, onlineDeposits, consents, deletions, unreadMsgs] = await Promise.all([
     sql("SELECT COUNT(*) as c FROM accounts WHERE kyc_status = 'pending'"),
     sql("SELECT COUNT(*) as c FROM withdrawal_requests WHERE status = 'pending'"),
     sql("SELECT COUNT(*) as c FROM loans WHERE status = 'pending'"),
     sql("SELECT COUNT(*) as c FROM online_deposits WHERE status = 'pending'"),
     sql("SELECT COUNT(*) as c FROM parental_consent WHERE status = 'pending'"),
     sql("SELECT COUNT(*) as c FROM account_deletion_requests WHERE status = 'pending'"),
-    sql("SELECT COUNT(*) as c FROM support_messages WHERE admin_read = 0 AND sender_type != 'admin' AND account_id IS NOT NULL AND account_id != ''"),
-    sql("SELECT COUNT(*) as c FROM support_messages WHERE admin_read = 0 AND sender_type != 'admin' AND parent_id IS NOT NULL"),
+    sql("SELECT COUNT(*) as c FROM support_messages WHERE admin_read = 0 AND sender_type != 'admin'"),
   ]);
   const counts = {
     kyc: Number(kyc[0]?.c || 0),
@@ -8310,7 +8010,7 @@ router.get('/pending-counts', requireRole(1), asyncHandler(async (req, res) => {
     onlineDeposits: Number(onlineDeposits[0]?.c || 0),
     consents: Number(consents[0]?.c || 0),
     deletions: Number(deletions[0]?.c || 0),
-    messages: Number(childUnread[0]?.c || 0) + Number(parentUnread[0]?.c || 0),
+    messages: Number(unreadMsgs[0]?.c || 0),
   };
   counts.total = counts.kyc + counts.withdrawals + counts.loans + counts.onlineDeposits + counts.consents + counts.deletions + counts.messages;
   res.json(counts);
@@ -8368,36 +8068,21 @@ router.get('/pending-items', requireRole(1), asyncHandler(async (req, res) => {
 // ── Unread message threads for messenger dropdown ──
 router.get('/unread-message-threads', requireRole(1), asyncHandler(async (req, res) => {
   const sql = (s, p) => store.query(s, p || []).then(r => r.rows);
-  const childThreads = await sql(`
+  const threads = await sql(`
     SELECT
-      m.account_id, NULL as parent_id, a.child_name, a.member_id, 'child' as thread_type,
+      m.account_id,
+      a.child_name,
+      a.member_id,
       (SELECT content FROM support_messages WHERE account_id = m.account_id AND sender_type != 'admin' ORDER BY created_at DESC LIMIT 1) as last_message,
       (SELECT created_at FROM support_messages WHERE account_id = m.account_id AND sender_type != 'admin' ORDER BY created_at DESC LIMIT 1) as last_time,
       (SELECT COUNT(*) FROM support_messages WHERE account_id = m.account_id AND admin_read = 0 AND sender_type != 'admin') as unread
     FROM support_messages m
     LEFT JOIN accounts a ON m.account_id = a.account_id
-    WHERE m.admin_read = 0 AND m.sender_type != 'admin' AND m.account_id IS NOT NULL AND m.account_id != ''
+    WHERE m.admin_read = 0 AND m.sender_type != 'admin'
     GROUP BY m.account_id, a.child_name, a.member_id
     ORDER BY MAX(m.created_at) DESC
     LIMIT 20
   `);
-  const parentThreads = await sql(`
-    SELECT
-      NULL as account_id, m.parent_id, p.display_name as child_name, '' as member_id, 'parent' as thread_type,
-      (SELECT content FROM support_messages WHERE parent_id = m.parent_id AND sender_type != 'admin' ORDER BY created_at DESC LIMIT 1) as last_message,
-      (SELECT created_at FROM support_messages WHERE parent_id = m.parent_id AND sender_type != 'admin' ORDER BY created_at DESC LIMIT 1) as last_time,
-      (SELECT COUNT(*) FROM support_messages WHERE parent_id = m.parent_id AND admin_read = 0 AND sender_type != 'admin') as unread
-    FROM support_messages m
-    LEFT JOIN parents p ON m.parent_id = p.parent_id
-    WHERE m.admin_read = 0 AND m.sender_type != 'admin' AND m.parent_id IS NOT NULL
-    GROUP BY m.parent_id, p.display_name
-    ORDER BY MAX(m.created_at) DESC
-    LIMIT 20
-  `);
-  const threads = [...childThreads, ...parentThreads].sort((a, b) => {
-    const ta = a.last_time || ''; const tb = b.last_time || '';
-    return tb.localeCompare(ta);
-  }).slice(0, 20);
   res.json({ threads: threads, total: threads.length });
 }));
 

@@ -2,7 +2,7 @@ const { store } = require('../db');
 const { v4: uuidv4 } = require('uuid');
 
 async function postDoubleEntry(transactionId, entries, opts = {}) {
-  const { postedBy, referenceType, referenceNumber, tx: outerTx, createdAt } = opts;
+  const { postedBy, approvedBy, referenceType, referenceNumber, tx: outerTx, createdAt } = opts;
   let totalDebit = 0, totalCredit = 0;
   const now = createdAt || new Date().toISOString();
 
@@ -30,8 +30,8 @@ async function postDoubleEntry(transactionId, entries, opts = {}) {
     const q = (tx && typeof tx.query === 'function') ? tx.query.bind(tx) : (sql, p) => store.query(sql, p);
     for (const e of entries) {
       await q(
-        'INSERT INTO gl_entries (entry_id, transaction_id, account_code, debit, credit, description, posted_by, reference_type, reference_number, period_id, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
-        [uuidv4(), transactionId || null, e.account_code, e.debit || 0, e.credit || 0, e.description || '', postedBy || null, referenceType || null, referenceNumber || null, periodId, now]
+        'INSERT INTO gl_entries (entry_id, transaction_id, account_code, debit, credit, description, posted_by, approved_by, reference_type, reference_number, period_id, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
+        [uuidv4(), transactionId || null, e.account_code, e.debit || 0, e.credit || 0, e.description || '', postedBy || null, approvedBy || null, referenceType || null, referenceNumber || null, periodId, now]
       );
     }
   };

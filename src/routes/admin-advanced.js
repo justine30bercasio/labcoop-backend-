@@ -235,7 +235,7 @@ router.get('/late-fees/charge/:id', requireRole(2), asyncHandler(async (req, res
     [txId, loan.account_id, 'fee', fee, Number(acc.actual_balance), Number(acc.actual_balance)-fee, 'Late payment fee - Loan '+loan.loan_id.slice(0,8), new Date().toISOString()]);
   await store.query('UPDATE accounts SET actual_balance = actual_balance - $1 WHERE account_id = $2', [fee, loan.account_id]);
   const gl = require('../services/gl');
-  await gl.postDoubleEntry(txId, [{account_code:'1000',credit:fee,description:'Late fee charged'},{account_code:'4100',debit:fee,description:'Late fee income'}], { postedBy: req.session.adminName || 'admin', referenceType: 'late_fee' });
+  await gl.postDoubleEntry(txId, [{account_code:'1000',credit:fee,description:'Late fee charged'},{account_code:'4100',debit:fee,description:'Late fee income'}], { postedBy: req.session.adminName || 'admin', referenceType: 'late_fee', referenceNumber: txId });
   res.redirect('/admin/late-fees?charged=ok');
 }));
 
@@ -426,7 +426,7 @@ router.post('/share-capital/subscribe', requireRole(2), asyncHandler(async (req,
     await gl.postDoubleEntry(uuidv4(), [
       { account_code: '1000', debit: total, description: 'Share subscription - ' + shares + ' shares' },
       { account_code: '3000', credit: total, description: 'Share subscription - ' + shares + ' shares' }
-    ], { postedBy: req.session.adminName || 'admin', referenceType: 'share_subscription' });
+    ], { postedBy: req.session.adminName || 'admin', referenceType: 'share_subscription', referenceNumber: txId });
   } catch (glErr) {
     console.error('[ShareCapital] GL post failed:', glErr.message);
   }
@@ -482,34 +482,39 @@ router.post('/dividends/declare', requireRole(3), asyncHandler(async (req, res) 
   await gl.postDoubleEntry(uuidv4(), [
     {account_code:'3100', debit: totalAmt, description:'Dividend declared (gross) '+year},
     {account_code:'2400', credit: taxAmount, description:'Dividend withholding tax '+year},
-    {account_code:'2300', credit: netDividend, description:'Dividend payable (net) '+year},
-  ], { postedBy: req.session.adminName || 'admin', referenceType: 'dividend' });
+    {account_code:'2300', credit: netDividend, description:'Dividend payable (net) '+year}
+  ], { postedBy: req.session.adminName || 'admin', referenceType: 'dividend', referenceNumber: 'DIV-' + year });
   res.redirect('/admin/dividends?declared=ok');
 }));
 
 router.get('/dividends/pay/:id', requireRole(3), asyncHandler(async (req, res) => {
   const div = await one('SELECT * FROM dividends WHERE dividend_id=$1', [req.params.id]);
   if (!div) return res.redirect('/admin/dividends?error=Not+found');
+  const taxConfig = await one("SELECT * FROM tax_config WHERE applies_to = 'dividend' AND is_active = 1 LIMIT 1");
+  const taxRate = taxConfig ? Number(taxConfig.rate) / 100 : 0;
   const shareholders = await sql('SELECT account_id, child_name, total_shares, share_capital_balance FROM accounts WHERE COALESCE(total_shares,0) > 0');
   for (const sh of shareholders) {
-    const amount = Number(sh.total_shares) * Number(div.per_share);
-    if (amount <= 0) continue;
+    const grossAmount = Number(sh.total_shares) * Number(div.per_share);
+    if (grossAmount <= 0) continue;
+    const netAmount = Math.round(grossAmount * (1 - taxRate) * 100) / 100;
     await store.query('INSERT INTO share_capital (share_id,account_id,shares,share_value,total_amount,transaction_type,notes,created_at) VALUES ($1,$2,0,0,$3,$4,$5,$6)',
-      [uuidv4(), sh.account_id, amount, 'dividend', 'Dividend payout '+div.year, new Date().toISOString()]);
-    await store.query('UPDATE accounts SET actual_balance = actual_balance + $1 WHERE account_id = $2', [amount, sh.account_id]);
+      [uuidv4(), sh.account_id, netAmount, 'dividend', 'Dividend payout '+div.year, new Date().toISOString()]);
+    await store.query('UPDATE accounts SET actual_balance = actual_balance + $1 WHERE account_id = $2', [netAmount, sh.account_id]);
   }
   await store.query('UPDATE dividends SET status=$1, paid_date=$2 WHERE dividend_id=$3', ['paid', new Date().toISOString(), req.params.id]);
-  // Post GL for dividend payout
+  // Post GL for dividend payout (net amount only — tax already credited to 2400 at declaration)
   try {
     const totalPayout = shareholders.reduce((s, sh) => {
-      const amt = Number(sh.total_shares) * Number(div.per_share);
-      return s + (amt > 0 ? amt : 0);
+      const grossAmt = Number(sh.total_shares) * Number(div.per_share);
+      if (grossAmt <= 0) return s;
+      const netAmt = Math.round(grossAmt * (1 - taxRate) * 100) / 100;
+      return s + netAmt;
     }, 0);
     if (totalPayout > 0) {
       const gl = require('../services/gl');
       await gl.postDoubleEntry(uuidv4(), [
-        { account_code: '2300', debit: totalPayout, description: 'Dividend payout ' + div.year },
-        { account_code: '1000', credit: totalPayout, description: 'Dividend payout ' + div.year }
+        { account_code: '2300', debit: totalPayout, description: 'Dividend payout (net) ' + div.year },
+        { account_code: '1000', credit: totalPayout, description: 'Dividend payout (net) ' + div.year }
       ], { postedBy: req.session.adminName || 'admin', referenceType: 'dividend_payout', referenceNumber: 'DIV-' + div.year });
     }
   } catch (glErr) {
@@ -610,7 +615,7 @@ router.get('/cash-flow', requireRole(1), asyncHandler(async (req, res) => {
   const deposits = await one("SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type IN ($1,$2,$3,$4,$5) AND created_at BETWEEN $6 AND $7", ['deposit','fee','loan_payment','penalty','interest_income', from+'T00:00:00', to+'T23:59:59']);
   const withdrawals = await one("SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type=$1 AND created_at BETWEEN $2 AND $3", ['withdrawal', from+'T00:00:00', to+'T23:59:59']);
   const loanDisb = await one("SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type=$1 AND created_at BETWEEN $2 AND $3", ['loan_disbursement', from+'T00:00:00', to+'T23:59:59']);
-  const opCash = await one("SELECT COALESCE(SUM(debit),0) - COALESCE(SUM(credit),0) as bal FROM gl_entries WHERE account_code='1000' AND created_at < $1", [from+'T00:00:00']);
+  const opCash = await one("SELECT COALESCE(SUM(debit),0) - COALESCE(SUM(credit),0) as bal FROM gl_entries WHERE account_code IN ('1000','1010','1020') AND created_at < $1", [from+'T00:00:00']);
   const op = Number(opCash?.bal||0);
   const dep = Number(deposits.total||0); const wd = Number(withdrawals.total||0); const ld = Number(loanDisb.total||0);
   const totalIn = dep; const totalOut = wd + ld;

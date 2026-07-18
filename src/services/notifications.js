@@ -16,7 +16,7 @@ if (FCM_ENABLED) {
       console.log('Firebase Admin: loaded from FIREBASE_SERVICE_ACCOUNT_JSON env var');
     } else {
       serviceAccount = require(process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
-      console.log('Firebase Admin: loaded from file ' + process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
+      console.log('Firebase Admin: loaded from service account file');
     }
     if (!admin.apps || admin.apps.length === 0) {
       _app = admin.initializeApp({ credential: cert(serviceAccount) });

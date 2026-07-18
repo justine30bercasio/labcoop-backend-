@@ -1,7 +1,5 @@
 const jwt = require('jsonwebtoken');
 
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
-
 function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
 
@@ -24,21 +22,6 @@ function requireOwnership(req, res, next) {
   const requestedId = req.params.accountId || req.query.account_id || req.body.account_id;
   if (requestedId && req.accountId !== requestedId) {
     return res.status(403).json({ message: 'Forbidden: you can only access your own account' });
-  }
-  next();
-}
-
-function adminAuthMiddleware(req, res, next) {
-  if (!ADMIN_TOKEN) {
-    return res.status(403).json({ message: 'Admin access not configured (set ADMIN_TOKEN)' });
-  }
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ message: 'Missing or invalid authorization header' });
-  }
-  const token = authHeader.split(' ')[1];
-  if (token !== ADMIN_TOKEN) {
-    return res.status(403).json({ message: 'Invalid admin token' });
   }
   next();
 }
@@ -90,4 +73,4 @@ function requireConsent(req, res, next) {
   });
 }
 
-module.exports = { authMiddleware, adminAuthMiddleware, requireOwnership, requireRole, requireConsent };
+module.exports = { authMiddleware, requireOwnership, requireRole, requireConsent };

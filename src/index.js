@@ -206,7 +206,11 @@ async function ensureAdmin() {
     const result = await store.query('SELECT COUNT(*) as c FROM admin_users');
     if (parseInt(result.rows[0]?.c || '0', 10) === 0) {
       const adminPass = process.env.NODE_ENV === 'production' ? crypto.randomBytes(6).toString('hex') : 'admin123';
-    console.log(`[SEED] Admin account created. Username: admin / Temporary password: ${adminPass} — CHANGE IMMEDIATELY AFTER LOGIN`);
+      if (process.env.NODE_ENV === 'production') {
+        console.log(`[SEED] Admin account created. Username: admin / Temporary password: ${adminPass} — CHANGE IMMEDIATELY AFTER LOGIN`);
+      } else {
+        console.log('[SEED] Admin account created with default password. Change on first login.');
+      }
     const hash = bcrypt.hashSync(adminPass, 10);
       await store.query(
         'INSERT INTO admin_users (admin_id, username, password_hash, role, display_name, is_active, created_at) VALUES ($1,$2,$3,$4,$5,1,$6)',

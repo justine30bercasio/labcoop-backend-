@@ -32,3 +32,5 @@ for (let i = 0; i < lines.length; i++) {
   if (bal < 0) { console.log('*** NEGATIVE at line ' + (i + 1)); process.exit(1); }
 }
 console.log('Final balance:', bal);
+
+

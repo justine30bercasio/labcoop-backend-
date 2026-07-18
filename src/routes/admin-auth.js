@@ -1,6 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const nodemailer = require('nodemailer');
+const sgMail = require('@sendgrid/mail');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const { store } = require('../db');
@@ -8,22 +8,8 @@ const { log } = require('../services/audit');
 
 const router = express.Router();
 
-let transporter = null;
-function getTransporter() {
-  if (transporter) return transporter;
-  if (!process.env.MAIL_HOST || !process.env.MAIL_USERNAME || !process.env.MAIL_PASSWORD) {
-    return null;
-  }
-  transporter = nodemailer.createTransport({
-    host: process.env.MAIL_HOST,
-    port: Number(process.env.MAIL_PORT) || 465,
-    secure: (process.env.MAIL_SCHEME || 'smtps') === 'smtps',
-    auth: {
-      user: process.env.MAIL_USERNAME,
-      pass: process.env.MAIL_PASSWORD,
-    },
-  });
-  return transporter;
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 }
 
 const otpStore = new Map();
@@ -167,21 +153,20 @@ input:focus { border-color:#2E7D32; }
 }
 
 function sendOtpEmail(email, otp) {
-  const t = getTransporter();
-  if (!t) return false;
-  t.sendMail({
-    from: `"${process.env.MAIL_FROM_NAME || 'LabCoop Admin'}" <${process.env.MAIL_FROM_ADDRESS || process.env.MAIL_USERNAME}>`,
+  if (!process.env.SENDGRID_API_KEY) return false;
+  sgMail.send({
+    from: { email: 'itsmejus10its@gmail.com', name: 'MYCOOPPIGGY Admin' },
     to: email,
     subject: 'Your LabCoop Admin OTP Code',
     html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto">
-      <h2 style="color:#2E7D32">🔐 Admin Login OTP</h2>
+      <h2 style="color:#2E7D32">Admin Login OTP</h2>
       <p>Use the code below to complete your sign in:</p>
       <div style="background:#e8f5e9;padding:20px;border-radius:12px;text-align:center;font-size:32px;letter-spacing:8px;font-weight:700;color:#1B5E20;margin:16px 0">${otp}</div>
       <p style="color:#888;font-size:13px">This code expires in 10 minutes.</p>
       <hr style="border:none;border-top:1px solid #eee;margin:20px 0">
       <p style="color:#999;font-size:12px">If you didn't request this, you can ignore this email.</p>
     </div>`,
-  }).catch(() => {});
+  }).catch(e => console.error('[AdminAuth] SendGrid OTP error:', e.message));
   return true;
 }
 

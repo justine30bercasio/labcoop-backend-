@@ -465,13 +465,6 @@ class _ProfilePageState extends State<ProfilePage>
         }),
         const SizedBox(height: 24),
         _sectionHeader('Rewards', Icons.auto_awesome),
-        _actionTile(
-            Icons.auto_awesome,
-            'Rare Unlocks',
-            'Milestones & hidden achievements',
-            AppTheme.coinGold,
-            _showRareUnlocks),
-        const SizedBox(height: 10),
         _actionTile(Icons.store_rounded, 'Shop', 'Avatars & borders',
             AppTheme.accentAmber, () {
           Navigator.push(context, PageTransition.slideUp(const _ShopPage()))
@@ -577,64 +570,6 @@ class _ProfilePageState extends State<ProfilePage>
 
   String _nameFromStorage() => 'User';
 
-  void _showRareUnlocks() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Row(
-          children: [
-            Icon(Icons.auto_awesome, color: AppTheme.coinGold),
-            SizedBox(width: 8),
-            Text('Rare Unlocks', style: TextStyle(fontWeight: FontWeight.bold)),
-          ],
-        ),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _UnlockRow(
-                emoji: '🐉',
-                title: 'Legendary Pet',
-                desc: 'Evolve Piggy to max stage'),
-            SizedBox(height: 8),
-            _UnlockRow(
-                emoji: '🏰',
-                title: 'Dream Town Complete',
-                desc: 'Build all 10 buildings'),
-            SizedBox(height: 8),
-            _UnlockRow(
-                emoji: '🏆',
-                title: 'Quiz Champion',
-                desc: 'Score 100+ in Financial Quiz'),
-            SizedBox(height: 8),
-            _UnlockRow(
-                emoji: '👑', title: 'Savings King', desc: 'Save ₱5,000 total'),
-            SizedBox(height: 8),
-            _UnlockRow(
-                emoji: '🎭',
-                title: 'All Avatars',
-                desc: 'Collect every avatar in the shop'),
-            SizedBox(height: 8),
-            _UnlockRow(
-                emoji: '🌈',
-                title: 'Mythic Border',
-                desc: 'Unlock all borders'),
-          ],
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryGreen,
-                foregroundColor: Colors.white),
-            child: const Text('Keep Going!'),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _avatarCircle() {
     final hasLocal = _profileImageBytes != null;
     final hasUrl = _profilePicUrl.isNotEmpty;
@@ -685,36 +620,6 @@ class _ProfilePageState extends State<ProfilePage>
         border: Border.all(color: Colors.white, width: 3),
       ),
       child: Center(child: Text(_avatar, style: const TextStyle(fontSize: 48))),
-    );
-  }
-}
-
-class _UnlockRow extends StatelessWidget {
-  final String emoji;
-  final String title;
-  final String desc;
-  const _UnlockRow(
-      {required this.emoji, required this.title, required this.desc});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Text(emoji, style: const TextStyle(fontSize: 24)),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 14)),
-              Text(desc,
-                  style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }

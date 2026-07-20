@@ -299,7 +299,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", 'code.jquery.com', 'cdn.datatables.net', 'cdn.jsdelivr.net'],
+      scriptSrc: ["'self'", "'unsafe-inline'", 'code.jquery.com', 'cdn.datatables.net', 'cdn.jsdelivr.net', 'blob:'],
       scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", 'cdn.datatables.net', 'cdnjs.cloudflare.com'],
       imgSrc: ["'self'", 'data:', 'https://*'],

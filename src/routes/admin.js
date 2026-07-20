@@ -7792,6 +7792,8 @@ router.get('/messages/:accountId', requireRole(1), asyncHandler(async (req, res)
 
   // Mark unread as read
   await store.query("UPDATE support_messages SET admin_read = 1 WHERE account_id = $1 AND sender_type != 'admin'", [req.params.accountId]);
+  // Notify client via socket
+  try { const { getIO } = require('../services/socket'); const io = getIO(); if (io) io.to('chat_' + req.params.accountId).emit('messagesRead', { accountId: req.params.accountId, readBy: 'admin' }); } catch(e){};
 
   const csrf = res.locals.csrfToken || '';
   const content = `

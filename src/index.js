@@ -530,20 +530,13 @@ apiRouter.use('/leaderboard', authMiddleware, leaderboardRouter);
 apiRouter.use('/settings', authMiddleware, requireOwnership, settingsRouter);
 apiRouter.use('/coins', authMiddleware, requireOwnership, coinsRouter);
 apiRouter.use('/spin', authMiddleware, requireOwnership, spinRouter);
-// Admin typing endpoints need session auth, not JWT
+// Admin typing endpoints
 apiRouter.post('/messages/admin-typing', (req, res, next) => {
   if (!req.session?.adminId) return res.status(401).json({ message: 'Unauthorized' });
   next();
 }, require('./routes/messages').adminTypingPost);
-apiRouter.get('/messages/admin-typing/:accountId', (req, res, next) => {
-  if (!req.session?.adminId) return res.status(401).json({ message: 'Unauthorized' });
-  next();
-}, require('./routes/messages').adminTypingGet);
-// Admin also polls child typing status
-apiRouter.get('/messages/typing/:accountId', (req, res, next) => {
-  if (!req.session?.adminId) return res.status(401).json({ message: 'Unauthorized' });
-  next();
-}, require('./routes/messages').childTypingGet);
+apiRouter.get('/messages/admin-typing/:accountId', require('./routes/messages').adminTypingGet);
+apiRouter.get('/messages/typing/:accountId', require('./routes/messages').childTypingGet);
 apiRouter.use('/messages', authMiddleware, messagesRouter);
 
 // Mount: public first (health/auth handled here), then authenticated routes

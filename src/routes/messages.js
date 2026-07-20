@@ -116,7 +116,7 @@ const adminTypingGet = asyncHandler(async (req, res) => {
 router.get('/admin-typing/:accountId', adminTypingGet);
 
 // ── Admin checks if child is typing ──
-router.get('/typing/:accountId', asyncHandler(async (req, res) => {
+const childTypingGet = asyncHandler(async (req, res) => {
   const row = await store.query(
     `SELECT is_typing, last_heartbeat FROM typing_status WHERE account_id = $1`,
     [req.params.accountId]
@@ -126,8 +126,10 @@ router.get('/typing/:accountId', asyncHandler(async (req, res) => {
   // Expire after 5 seconds of no heartbeat
   const expired = Date.now() - new Date(r.last_heartbeat).getTime() > 5000;
   res.json({ isTyping: !expired && Number(r.is_typing) === 1 });
-}));
+});
+router.get('/typing/:accountId', childTypingGet);
 
 module.exports = router;
 module.exports.adminTypingPost = adminTypingPost;
 module.exports.adminTypingGet = adminTypingGet;
+module.exports.childTypingGet = childTypingGet;

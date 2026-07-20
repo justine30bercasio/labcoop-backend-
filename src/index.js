@@ -540,6 +540,11 @@ apiRouter.get('/messages/admin-typing/:accountId', (req, res, next) => {
   if (!req.session?.user) return res.status(401).json({ message: 'Unauthorized' });
   next();
 }, require('./routes/messages').adminTypingGet);
+// Admin also polls child typing status
+apiRouter.get('/messages/typing/:accountId', (req, res, next) => {
+  if (!req.session?.user) return res.status(401).json({ message: 'Unauthorized' });
+  next();
+}, require('./routes/messages').childTypingGet);
 apiRouter.use('/messages', authMiddleware, messagesRouter);
 
 // Mount: public first (health/auth handled here), then authenticated routes

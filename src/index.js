@@ -615,14 +615,14 @@ app.get('/orglogo.jpg', (req, res) => {
 });
 
 // ── Ensure upload directories exist (Render's ephemeral fs wipes them on deploy) ──
-for (const sub of ['shop', 'board', 'profiles', 'kyc', 'registration']) {
+for (const sub of ['shop', 'board', 'profiles', 'kyc', 'registration', 'parents']) {
   const d = path.join(__dirname, 'uploads', sub);
   if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
 }
 
-// ── Public uploads: shop images (avatars/borders) and board photos — no auth needed ──
+// ── Public uploads: shop/board/parents images — no auth needed ──
 // Return 404 for missing files instead of falling through to auth-gated /uploads (which returns 401)
-for (const dir of ['shop', 'board']) {
+for (const dir of ['shop', 'board', 'parents']) {
   app.use(`/uploads/${dir}`, express.static(path.join(__dirname, 'uploads', dir), {
     dotfiles: 'deny',
     index: false,

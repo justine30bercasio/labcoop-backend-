@@ -206,6 +206,16 @@ router.post('/register', parentPhotoUpload.fields([
     [parentId, email.toLowerCase().trim(), pinHash, displayName || 'Parent', phone || '',
      photoUrl, idType, idNumber, idPhotoUrl, new Date().toISOString()]
   );
+
+  // Notify admin via socket
+  try {
+    const { getIO } = require('../services/socket');
+    const io = getIO();
+    if (io) {
+      io.to('admin').emit('pendingUpdate', { type: 'parent_registration', parentId, displayName: displayName || 'Parent', timestamp: new Date().toISOString() });
+    }
+  } catch (_) {}
+
   res.status(201).json({
     message: 'Registration submitted! An admin will review and approve your account.',
     status: 'pending',

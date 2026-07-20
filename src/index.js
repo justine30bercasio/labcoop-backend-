@@ -530,6 +530,16 @@ apiRouter.use('/leaderboard', authMiddleware, leaderboardRouter);
 apiRouter.use('/settings', authMiddleware, requireOwnership, settingsRouter);
 apiRouter.use('/coins', authMiddleware, requireOwnership, coinsRouter);
 apiRouter.use('/spin', authMiddleware, requireOwnership, spinRouter);
+// Admin typing endpoints need session auth, not JWT
+apiRouter.post('/messages/admin-typing', (req, res, next) => {
+  if (!req.session?.user) return res.status(401).json({ message: 'Unauthorized' });
+  req.body.accountId = req.body.accountId || req.session.user.id?.toString();
+  next();
+}, require('./routes/messages').adminTypingPost);
+apiRouter.get('/messages/admin-typing/:accountId', (req, res, next) => {
+  if (!req.session?.user) return res.status(401).json({ message: 'Unauthorized' });
+  next();
+}, require('./routes/messages').adminTypingGet);
 apiRouter.use('/messages', authMiddleware, messagesRouter);
 
 // Mount: public first (health/auth handled here), then authenticated routes

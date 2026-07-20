@@ -90,7 +90,7 @@ router.post('/typing', asyncHandler(async (req, res) => {
 }));
 
 // ── Admin typing heartbeat ──
-router.post('/admin-typing', asyncHandler(async (req, res) => {
+const adminTypingPost = asyncHandler(async (req, res) => {
   const { accountId, isTyping } = req.body;
   if (!accountId) return res.status(400).json({ message: 'Account ID is required' });
   await store.query(
@@ -99,10 +99,11 @@ router.post('/admin-typing', asyncHandler(async (req, res) => {
     ['admin:' + accountId, isTyping ? 1 : 0, new Date().toISOString()]
   );
   res.json({ ok: true });
-}));
+});
+router.post('/admin-typing', adminTypingPost);
 
 // ── Flutter checks if admin is typing ──
-router.get('/admin-typing/:accountId', asyncHandler(async (req, res) => {
+const adminTypingGet = asyncHandler(async (req, res) => {
   const row = await store.query(
     `SELECT is_typing, last_heartbeat FROM typing_status WHERE account_id = $1`,
     ['admin:' + req.params.accountId]
@@ -111,7 +112,8 @@ router.get('/admin-typing/:accountId', asyncHandler(async (req, res) => {
   if (!r) return res.json({ isTyping: false });
   const expired = Date.now() - new Date(r.last_heartbeat).getTime() > 5000;
   res.json({ isTyping: !expired && Number(r.is_typing) === 1 });
-}));
+});
+router.get('/admin-typing/:accountId', adminTypingGet);
 
 // ── Admin checks if child is typing ──
 router.get('/typing/:accountId', asyncHandler(async (req, res) => {
@@ -127,3 +129,5 @@ router.get('/typing/:accountId', asyncHandler(async (req, res) => {
 }));
 
 module.exports = router;
+module.exports.adminTypingPost = adminTypingPost;
+module.exports.adminTypingGet = adminTypingGet;

@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -37,12 +36,14 @@ void main() async {
     );
     await NotificationService.init();
   } catch (e) {
-    stderr.writeln('FATAL: Firebase init failed — $e');
-    // App still works without push notifications
+    debugPrint('Firebase init failed — $e');
   }
 
   // Root/jailbreak detection — warn user on compromised devices
-  final isCompromised = await SecurityService.isDeviceCompromised();
+  bool isCompromised = false;
+  try {
+    isCompromised = await SecurityService.isDeviceCompromised();
+  } catch (_) {}
   if (isCompromised && !kDebugMode) {
     runApp(const LabCoopApp(initialPage: _AppStartupPage.compromised));
     return;

@@ -3587,6 +3587,21 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   const todayRecentTxs = await sql(`SELECT t.*, a.child_name, a.member_id FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id WHERE t.created_at >= $1 ORDER BY t.created_at DESC LIMIT 10`, [today]);
   const totalAccountsCount = (await one('SELECT COUNT(*) as cnt FROM accounts'))?.cnt || 0;
 
+  // Hourly breakdown for chart
+  const hourlyRaw = await sql(`SELECT CAST(strftime('%H', created_at) AS INTEGER) as hr, type, COUNT(*) as cnt, SUM(amount) as total FROM transactions WHERE created_at >= $1 GROUP BY hr, type ORDER BY hr`, [today]);
+  const hourlyLabels = Array.from({length: 24}, (_, i) => i.toString().padStart(2,':00'));
+  const hourlyDeposits = Array(24).fill(0);
+  const hourlyWithdrawals = Array(24).fill(0);
+  hourlyRaw.forEach(function(r) {
+    if (r.type === 'deposit') hourlyDeposits[r.hr] = Number(r.total);
+    if (r.type === 'withdrawal') hourlyWithdrawals[r.hr] = Number(r.total);
+  });
+
+  // Type breakdown for pie
+  const typeCounts = await sql(`SELECT type, COUNT(*) as cnt FROM transactions WHERE created_at >= $1 GROUP BY type ORDER BY cnt DESC`, [today]);
+  const todayTxTypes = typeCounts.map(function(r) { return r.type; });
+  const todayTxCounts = typeCounts.map(function(r) { return parseInt(r.cnt); });
+
   const toast = qry.deposited ? 'success:Deposit completed. Receipt #' + (qry.receipt || '')
     : qry.withdrawn ? 'success:Withdrawal completed. Receipt #' + (qry.receipt || '')
     : qry.loanpaid ? 'success:Loan payment collected. Receipt #' + (qry.receipt || '')
@@ -3884,27 +3899,30 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
 
   /* ── Today's Dashboard ── */
   .today-dashboard { background:var(--card); border-radius:16px; border:1px solid var(--border); box-shadow:0 2px 10px rgba(0,0,0,0.04); padding:24px; }
-  .td-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-wrap:wrap; gap:6px; }
-  .td-title { font-size:17px; font-weight:700; color:var(--text); }
-  .td-title i { color:var(--accent); margin-right:8px; }
+  .td-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:6px; }
+  .td-title { font-size:18px; font-weight:700; color:var(--text); display:flex; align-items:center; gap:8px; }
+  .td-title i { color:var(--accent); }
   .td-date { font-size:12px; color:var(--text-muted); }
-  .td-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:20px; }
-  .td-stat { display:flex; align-items:center; gap:12px; padding:16px; border-radius:12px; background:var(--bg); }
-  .td-stat-green { border-left:3px solid #16a34a; }
-  .td-stat-orange { border-left:3px solid #ea580c; }
-  .td-stat-blue { border-left:3px solid #2563eb; }
-  .td-stat-purple { border-left:3px solid #7c3aed; }
-  .tds-icon { width:40px; height:40px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:18px; color:#fff; flex-shrink:0; }
-  .td-stat-green .tds-icon { background:#16a34a; }
-  .td-stat-orange .tds-icon { background:#ea580c; }
-  .td-stat-blue .tds-icon { background:#2563eb; }
-  .td-stat-purple .tds-icon { background:#7c3aed; }
-  .tds-body { min-width:0; }
-  .tds-count { font-size:22px; font-weight:800; color:var(--text); line-height:1.1; }
-  .tds-label { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.3px; }
-  .tds-total { font-size:13px; color:var(--text); font-weight:600; margin-top:2px; }
-  .td-section-title { font-size:13px; font-weight:700; color:var(--text); margin-bottom:10px; text-transform:uppercase; letter-spacing:0.5px; }
-  .td-section-title i { color:var(--accent); margin-right:6px; }
+  .td-kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-bottom:20px; }
+  .td-kpi { display:flex; align-items:center; gap:14px; padding:18px; border-radius:12px; background:var(--bg); border:1px solid var(--border); box-shadow:0 1px 4px rgba(0,0,0,0.03); transition:transform 0.15s; }
+  .td-kpi:hover { transform:translateY(-1px); }
+  .kpi-icon { width:44px; height:44px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px; color:#fff; flex-shrink:0; }
+  .td-kpi-deposit .kpi-icon { background:linear-gradient(135deg,#16a34a,#22c55e); }
+  .td-kpi-withdraw .kpi-icon { background:linear-gradient(135deg,#dc2626,#ef4444); }
+  .td-kpi-loan .kpi-icon { background:linear-gradient(135deg,#2563eb,#3b82f6); }
+  .td-kpi-members .kpi-icon { background:linear-gradient(135deg,#7c3aed,#a855f7); }
+  .kpi-body { min-width:0; }
+  .kpi-val { font-size:20px; font-weight:800; color:var(--text); line-height:1.2; letter-spacing:-0.3px; }
+  .kpi-label { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.3px; margin-top:1px; }
+  .kpi-count { font-weight:400; text-transform:none; letter-spacing:0; color:var(--text-muted); font-size:10px; }
+  .td-chart-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:20px; }
+  @media (max-width:800px) { .td-chart-row { grid-template-columns:1fr; } }
+  .td-chart-card { background:var(--bg); border-radius:12px; border:1px solid var(--border); padding:16px; }
+  .td-chart-title { font-size:12px; font-weight:700; color:var(--text); margin-bottom:10px; display:flex; align-items:center; gap:6px; }
+  .td-chart-title i { color:var(--accent); }
+  .td-chart-wrap { height:200px; position:relative; }
+  .td-section-title { font-size:13px; font-weight:700; color:var(--text); margin-bottom:10px; text-transform:uppercase; letter-spacing:0.5px; display:flex; align-items:center; gap:6px; }
+  .td-section-title i { color:var(--accent); }
   .td-activity { display:flex; flex-direction:column; gap:2px; }
   .td-tx { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:8px; text-decoration:none; color:var(--text); transition:background 0.15s; }
   .td-tx:hover { background:var(--bg); }
@@ -4010,41 +4028,50 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
       <div class="td-title"><i class="fas fa-chart-line"></i> Today's Overview</div>
       <div class="td-date">${new Date().toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
     </div>
-    <div class="td-stats">
-      <div class="td-stat td-stat-green">
-        <div class="tds-icon"><i class="fas fa-arrow-down"></i></div>
-        <div class="tds-body">
-          <div class="tds-count">${sessionSummary.deposits.count}</div>
-          <div class="tds-label">Deposits</div>
-          <div class="tds-total">${fmt(sessionSummary.deposits.total)}</div>
+
+    <div class="td-kpi-row">
+      <div class="td-kpi td-kpi-deposit">
+        <div class="kpi-icon"><i class="fas fa-arrow-down"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-val">${fmt(sessionSummary.deposits.total)}</div>
+          <div class="kpi-label">Deposits <span class="kpi-count">(${sessionSummary.deposits.count} txns)</span></div>
         </div>
       </div>
-      <div class="td-stat td-stat-orange">
-        <div class="tds-icon"><i class="fas fa-arrow-up"></i></div>
-        <div class="tds-body">
-          <div class="tds-count">${sessionSummary.withdrawals.count}</div>
-          <div class="tds-label">Withdrawals</div>
-          <div class="tds-total">${fmt(sessionSummary.withdrawals.total)}</div>
+      <div class="td-kpi td-kpi-withdraw">
+        <div class="kpi-icon"><i class="fas fa-arrow-up"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-val">${fmt(sessionSummary.withdrawals.total)}</div>
+          <div class="kpi-label">Withdrawals <span class="kpi-count">(${sessionSummary.withdrawals.count} txns)</span></div>
         </div>
       </div>
-      <div class="td-stat td-stat-blue">
-        <div class="tds-icon"><i class="fas fa-hand-holding-usd"></i></div>
-        <div class="tds-body">
-          <div class="tds-count">${sessionSummary.loanPayments.count}</div>
-          <div class="tds-label">Loan Payments</div>
-          <div class="tds-total">${fmt(sessionSummary.loanPayments.total)}</div>
+      <div class="td-kpi td-kpi-loan">
+        <div class="kpi-icon"><i class="fas fa-hand-holding-usd"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-val">${fmt(sessionSummary.loanPayments.total)}</div>
+          <div class="kpi-label">Loan Payments <span class="kpi-count">(${sessionSummary.loanPayments.count} txns)</span></div>
         </div>
       </div>
-      <div class="td-stat td-stat-purple">
-        <div class="tds-icon"><i class="fas fa-users"></i></div>
-        <div class="tds-body">
-          <div class="tds-count">${totalAccountsCount}</div>
-          <div class="tds-label">Total Members</div>
-          <div class="tds-total">Search to start</div>
+      <div class="td-kpi td-kpi-members">
+        <div class="kpi-icon"><i class="fas fa-users"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-val">${totalAccountsCount}</div>
+          <div class="kpi-label">Active Members</div>
         </div>
       </div>
     </div>
-    <div class="td-section-title"><i class="fas fa-clock"></i> Recent Activity Today</div>
+
+    <div class="td-chart-row">
+      <div class="td-chart-card">
+        <div class="td-chart-title"><i class="fas fa-chart-bar"></i> Hourly Activity (Amount)</div>
+        <div class="td-chart-wrap"><canvas id="tdHourlyChart"></canvas></div>
+      </div>
+      <div class="td-chart-card">
+        <div class="td-chart-title"><i class="fas fa-chart-pie"></i> Transaction Mix</div>
+        <div class="td-chart-wrap"><canvas id="tdPieChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="td-section-title"><i class="fas fa-clock"></i> Recent Activity</div>
     <div class="td-activity">
       ${todayRecentTxs.length === 0 ? '<div class="td-empty">No transactions yet today. Search for a member above to get started.</div>' : todayRecentTxs.map(function(tx) {
         var isCredit = tx.type === 'deposit' || tx.type === 'loan_disbursement' || tx.type === 'interest' || tx.type === 'interest_credit';
@@ -4053,6 +4080,56 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
       }).join('')}
     </div>
   </div>
+
+  <script>
+  document.addEventListener('DOMContentLoaded', function() {
+    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    var txtCol = isDark ? '#94a3b8' : '#64748b';
+    var gridCol = isDark ? '#2a3a2e' : '#e2e8f0';
+    Chart.defaults.color = txtCol;
+    Chart.defaults.font.family = "'Inter', -apple-system, sans-serif";
+
+    var hCtx = document.getElementById('tdHourlyChart');
+    if (hCtx) {
+      new Chart(hCtx, {
+        type: 'bar',
+        data: {
+          labels: ${JSON.stringify(hourlyLabels)},
+          datasets: [
+            { label: 'Deposits', data: ${JSON.stringify(hourlyDeposits)}, backgroundColor: 'rgba(34,197,94,0.7)', borderColor: '#22c55e', borderWidth: 1, borderRadius: 3 },
+            { label: 'Withdrawals', data: ${JSON.stringify(hourlyWithdrawals)}, backgroundColor: 'rgba(239,68,68,0.7)', borderColor: '#ef4444', borderWidth: 1, borderRadius: 3 }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: true, position: 'top', labels: { boxWidth: 12, padding: 8, font: { size: 11 } } } },
+          scales: {
+            x: { grid: { color: gridCol }, ticks: { maxRotation: 0, font: { size: 9 } } },
+            y: { grid: { color: gridCol }, ticks: { callback: function(v) { return '₱' + (v/1000).toFixed(1) + 'k'; } } }
+          }
+        }
+      });
+    }
+
+    var pCtx = document.getElementById('tdPieChart');
+    if (pCtx) {
+      var pieLabels = ${JSON.stringify(todayTxTypes.map(function(t) { return t.replace(/_/g,' '); }))};
+      var pieData = ${JSON.stringify(todayTxCounts)};
+      var pieColors = ['rgba(34,197,94,0.8)','rgba(239,68,68,0.8)','rgba(59,130,246,0.8)','rgba(245,158,11,0.8)','rgba(139,92,246,0.8)','rgba(6,182,212,0.8)','rgba(168,85,247,0.8)','rgba(236,72,153,0.8)','rgba(34,211,238,0.8)','rgba(250,204,21,0.8)'];
+      new Chart(pCtx, {
+        type: 'doughnut',
+        data: {
+          labels: pieLabels,
+          datasets: [{ data: pieData, backgroundColor: pieColors.slice(0, pieData.length), borderWidth: 2, borderColor: isDark ? '#1a231c' : '#fff' }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, cutout: '65%',
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 5, font: { size: 10 } } } }
+        }
+      });
+    }
+  });
+  <\/script>
   ` : `
   <div class="teller-grid">
 

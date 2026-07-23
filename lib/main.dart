@@ -8,7 +8,7 @@ import 'core/di/injection.dart' as di;
 import 'core/theme/app_theme.dart';
 import 'core/network/dio_client.dart';
 import 'core/services/inactivity_timer.dart';
-import 'core/services/security_service.dart';
+
 import 'presentation/blocs/savings_bloc.dart';
 import 'presentation/blocs/goal_bloc.dart';
 import 'presentation/blocs/banking_bloc.dart';
@@ -39,24 +39,11 @@ void main() async {
     debugPrint('Firebase init failed — $e');
   }
 
-  // Root/jailbreak detection — warn user on compromised devices
-  bool isCompromised = false;
-  try {
-    isCompromised = await SecurityService.isDeviceCompromised();
-  } catch (_) {}
-  if (isCompromised && !kDebugMode) {
-    runApp(const LabCoopApp(initialPage: _AppStartupPage.compromised));
-    return;
-  }
-
   runApp(const LabCoopApp());
 }
 
-enum _AppStartupPage { normal, compromised }
-
 class LabCoopApp extends StatefulWidget {
-  final _AppStartupPage initialPage;
-  const LabCoopApp({super.key, this.initialPage = _AppStartupPage.normal});
+  const LabCoopApp({super.key});
 
   @override
   State<LabCoopApp> createState() => _LabCoopAppState();
@@ -85,9 +72,7 @@ class _LabCoopAppState extends State<LabCoopApp> {
 
   @override
   Widget build(BuildContext context) {
-    final home = widget.initialPage == _AppStartupPage.compromised
-        ? const _CompromisedDevicePage() as Widget
-        : const SplashPage() as Widget;
+    const home = SplashPage();
 
     return MultiBlocProvider(
       providers: [
@@ -116,45 +101,4 @@ class _LabCoopAppState extends State<LabCoopApp> {
   }
 }
 
-/// Shown when the device is rooted/jailbroken — blocks access to financial data.
-class _CompromisedDevicePage extends StatelessWidget {
-  const _CompromisedDevicePage();
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF1A1A2E),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.security, color: Colors.redAccent, size: 72),
-              const SizedBox(height: 24),
-              Text(
-                'Unsecure Device Detected',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'LabCoop has detected that this device has been modified '
-                '(rooted/jailbroken). For the security of your financial data, '
-                'this app cannot run on modified devices.\n\n'
-                'Please use an unmodified device to access LabCoop.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.white70,
-                      height: 1.5,
-                    ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}

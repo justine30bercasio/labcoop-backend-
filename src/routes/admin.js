@@ -4235,6 +4235,9 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   // ENHANCED TELLER JAVASCRIPT
   // ═══════════════════════════════════════════════════════════════
 
+  function h(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function fmt(v) { return '\u20B1' + Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
   var currentPage = 1;
   var currentFilter = 'all';
   var totalPages = 1;
@@ -4264,7 +4267,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
             } else {
               liveResults.innerHTML = data.accounts.map(function(a) {
                 var av = a.profile_pic_url ? '<img src="' + h(a.profile_pic_url) + '" style="width:34px;height:34px;border-radius:50%;object-fit:cover">' : '<div class="lr-avatar">' + h((a.child_name || '?')[0].toUpperCase()) + '</div>';
-                return '<a href="/admin/teller?account=' + encodeURIComponent(a.account_id) + (q ? '&q=' + encodeURIComponent(q) : '') + '" class="lr-item" onclick="document.body.style.cursor=\'wait\'">' + av + '<div><div class="lr-name">' + h(a.child_name) + '</div><div class="lr-mid">' + h(a.member_id || '---') + '</div></div><div class="lr-bal">' + fmt(a.actual_balance) + '</div></a>';
+                return '<a href="/admin/teller?account=' + encodeURIComponent(a.account_id) + (q ? '&q=' + encodeURIComponent(q) : '') + '" class="lr-item">' + av + '<div><div class="lr-name">' + h(a.child_name) + '</div><div class="lr-mid">' + h(a.member_id || '---') + '</div></div><div class="lr-bal">' + fmt(a.actual_balance) + '</div></a>';
               }).join('');
             }
             liveResults.classList.add('open');

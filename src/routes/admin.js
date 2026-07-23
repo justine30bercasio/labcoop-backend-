@@ -4143,7 +4143,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
 
   <!-- ── Confirm Transaction Modal ── -->
   <div class="confirm-overlay" id="confirmOverlay" onclick="if(event.target===this)closeConfirm()">
-    <div class="confirm-modal">
+    <div class="confirm-modal" id="cmModal">
       <div class="cm-icon" id="cmIcon">&#x1F4B5;</div>
       <h3 id="cmTitle">Confirm Transaction</h3>
       <p class="cm-sub" id="cmSub">Please review the details below before processing.</p>
@@ -4160,10 +4160,18 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
         <button class="cm-cancel" onclick="closeConfirm()">Cancel</button>
         <button class="cm-confirm cm-green" id="cmConfirmBtn" onclick="executeTransaction()"><i class="fas fa-check-circle"></i> Confirm</button>
       </div>
+      <!-- Processing overlay (preserves DOM for next transaction) -->
+      <div class="cm-processing" id="cmProcessing" style="display:none;position:absolute;inset:0;background:var(--card-bg,#fff);border-radius:16px;display:none;align-items:center;justify-content:center;z-index:10">
+        <div style="text-align:center;padding:30px">
+          <i class="fas fa-circle-notch fa-spin" style="font-size:40px;color:var(--accent);margin:0 auto 16px;display:block"></i>
+          <div style="font-size:16px;font-weight:600;color:var(--text)">Processing Transaction...</div>
+          <div style="font-size:13px;color:var(--text-muted);margin-top:6px">Please wait while we complete your request</div>
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- ── Receipt Overlay ── -->
+  <!-- ── Receipt Overlay (for manual viewing from activity log) ── -->
   <div class="receipt-overlay" id="receiptOverlay">
     <div class="receipt-modal" id="rinline">
       <div class="rm-void-banner" id="rmVoidBanner" style="display:none"><i class="fas fa-ban"></i> VOIDED</div>
@@ -4192,26 +4200,10 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   </div>
 
   ${receipt ? `<script>
-    (function() {
-      var tx = ${JSON.stringify(receipt)};
-      var isCredit = tx.type === 'deposit' || tx.type === 'loan_disbursement' || tx.type === 'interest' || tx.type === 'interest_credit';
-      document.getElementById('rmTrn').textContent = tx.trn_number || 'TXN-' + (tx.transaction_id || '').slice(0,8).toUpperCase();
-      document.getElementById('rmDate').textContent = (tx.created_at || '').slice(0,19).replace('T',' ');
-      document.getElementById('rmMember').textContent = (tx.child_name || 'N/A') + ' (' + (tx.member_id || '---') + ')';
-      document.getElementById('rmTxType').textContent = (tx.type || '').replace(/_/g,' ');
-      var amtEl = document.getElementById('rmAmount');
-      amtEl.textContent = (isCredit ? '+' : '-') + ' \\u20B1' + Number(tx.amount).toFixed(2);
-      amtEl.className = 'rm-value ' + (isCredit ? 'rm-credit' : 'rm-debit');
-      document.getElementById('rmDesc').textContent = tx.description || '-';
-      document.getElementById('rmBalBefore').textContent = '\\u20B1' + Number(tx.balance_before || 0).toFixed(2);
-      document.getElementById('rmBalAfter').textContent = '\\u20B1' + Number(tx.balance_after || 0).toFixed(2);
-      if (tx.voided_at) {
-        var vb = document.getElementById('rmVoidBanner');
-        if (vb) { vb.style.display = 'flex'; vb.textContent = 'VOIDED' + (tx.void_reason ? ': ' + tx.void_reason : ''); }
-      }
-      var ol = document.getElementById('receiptOverlay');
-      if (ol) { ol.classList.add('show'); ol.style.display = 'flex'; }
-    })();
+    setTimeout(function() {
+      var pp = document.getElementById('ppOverlay');
+      if (pp) pp.classList.add('show');
+    }, 300);
   <\/script>` : ''}
 
   <!-- ── Print Prompt ── -->
@@ -4455,11 +4447,8 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
     if (!pendingTransaction) return;
     var url = pendingTransaction.action;
     var formData = pendingTransaction.data;
-    var ovr = document.getElementById('confirmOverlay');
-    var modal = ovr ? ovr.querySelector('.confirm-modal') : null;
-    if (modal) {
-      modal.innerHTML = '<div style="text-align:center;padding:30px"><i class="fas fa-circle-notch fa-spin" style="font-size:40px;color:var(--accent);margin:0 auto 16px;display:block"></i><div style="font-size:16px;font-weight:600;color:var(--text)">Processing Transaction...</div><div style="font-size:13px;color:var(--text-muted);margin-top:6px">Please wait while we complete your request</div></div>';
-    }
+    var procEl = document.getElementById('cmProcessing');
+    if (procEl) procEl.style.display = 'flex';
 
     // Submit via fetch
     fetch(url, {
@@ -4499,9 +4488,6 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
       var balEl = document.getElementById('balanceActual');
       if (balEl) balEl.textContent = '\u20B1' + Number(tx.balance_after).toFixed(2);
     }
-
-    // Show receipt
-    showReceiptAjax(tx.transaction_id);
 
     // Show print prompt (unless auto-print is on)
     setTimeout(function() {
@@ -4738,6 +4724,8 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   function closeConfirm() {
     var co = document.getElementById('confirmOverlay');
     if (co) co.classList.remove('show');
+    var procEl = document.getElementById('cmProcessing');
+    if (procEl) procEl.style.display = 'none';
   }
 
   // ── Clean URL params ──
@@ -4747,16 +4735,6 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
       window.history.replaceState({}, document.title, clean);
     }
   }
-
-  // ── Print prompt on page load (legacy support) ──
-  (function() {
-    var ol = document.getElementById('receiptOverlay');
-    if (ol && ol.classList.contains('show') && document.querySelector('.toast')) {
-      setTimeout(function() {
-        document.getElementById('ppOverlay').classList.add('show');
-      }, 400);
-    }
-  })();
 
   // ── Escape key ──
   document.addEventListener('keydown', function(e) {

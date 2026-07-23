@@ -3583,6 +3583,10 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
     loanPayments: { count: todaysLoanPayments.length > 0 ? parseInt(todaysLoanPayments[0].cnt) : 0, total: todaysLoanPayments.length > 0 ? Number(todaysLoanPayments[0].total) : 0 },
   };
 
+  // Today's all-member recent activity for dashboard
+  const todayRecentTxs = await sql(`SELECT t.*, a.child_name, a.member_id FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id WHERE t.created_at >= $1 ORDER BY t.created_at DESC LIMIT 10`, [today]);
+  const totalAccountsCount = (await one('SELECT COUNT(*) as cnt FROM accounts'))?.cnt || 0;
+
   const toast = qry.deposited ? 'success:Deposit completed. Receipt #' + (qry.receipt || '')
     : qry.withdrawn ? 'success:Withdrawal completed. Receipt #' + (qry.receipt || '')
     : qry.loanpaid ? 'success:Loan payment collected. Receipt #' + (qry.receipt || '')
@@ -3654,7 +3658,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   .tl-section:last-child { margin-bottom:0; }
 
   /* ── Customer Hero ── */
-  .customer-hero { display:flex; align-items:center; gap:14px; padding-bottom:14px; border-bottom:2px solid var(--accent); margin-bottom:14px; }
+  .customer-hero { display:flex; align-items:center; gap:14px; padding-bottom:14px; border-bottom:2px solid var(--accent); margin-bottom:14px; position:relative; }
   .customer-hero-avatar { width:52px; height:52px; border-radius:50%; background:linear-gradient(135deg,var(--accent),#1B5E20); color:#fff; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:700; flex-shrink:0; box-shadow:0 2px 8px rgba(46,125,50,0.2); }
   .customer-hero-avatar img { width:100%; height:100%; border-radius:50%; object-fit:cover; }
   .customer-hero-info h2 { font-size:18px; font-weight:700; margin:0; line-height:1.2; }
@@ -3878,11 +3882,48 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   .pp-modal .pp-skip { background:#f1f5f9; color:var(--text-muted); }
   .pp-modal .pp-skip:hover { background:#e2e8f0; color:var(--text); }
 
-  /* ── Welcome Card ── */
-  .welcome-card { text-align:center; padding:60px 20px; color:var(--text-muted); background:var(--card); border-radius:16px; border:1px solid var(--border); box-shadow:0 2px 10px rgba(0,0,0,0.04); }
-  .welcome-card .wc-icon { font-size:52px; margin-bottom:12px; }
-  .welcome-card h3 { font-size:18px; font-weight:600; color:var(--text); margin-bottom:3px; }
-  .welcome-card p { font-size:13px; }
+  /* ── Today's Dashboard ── */
+  .today-dashboard { background:var(--card); border-radius:16px; border:1px solid var(--border); box-shadow:0 2px 10px rgba(0,0,0,0.04); padding:24px; }
+  .td-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-wrap:wrap; gap:6px; }
+  .td-title { font-size:17px; font-weight:700; color:var(--text); }
+  .td-title i { color:var(--accent); margin-right:8px; }
+  .td-date { font-size:12px; color:var(--text-muted); }
+  .td-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:20px; }
+  .td-stat { display:flex; align-items:center; gap:12px; padding:16px; border-radius:12px; background:var(--bg); }
+  .td-stat-green { border-left:3px solid #16a34a; }
+  .td-stat-orange { border-left:3px solid #ea580c; }
+  .td-stat-blue { border-left:3px solid #2563eb; }
+  .td-stat-purple { border-left:3px solid #7c3aed; }
+  .tds-icon { width:40px; height:40px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:18px; color:#fff; flex-shrink:0; }
+  .td-stat-green .tds-icon { background:#16a34a; }
+  .td-stat-orange .tds-icon { background:#ea580c; }
+  .td-stat-blue .tds-icon { background:#2563eb; }
+  .td-stat-purple .tds-icon { background:#7c3aed; }
+  .tds-body { min-width:0; }
+  .tds-count { font-size:22px; font-weight:800; color:var(--text); line-height:1.1; }
+  .tds-label { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.3px; }
+  .tds-total { font-size:13px; color:var(--text); font-weight:600; margin-top:2px; }
+  .td-section-title { font-size:13px; font-weight:700; color:var(--text); margin-bottom:10px; text-transform:uppercase; letter-spacing:0.5px; }
+  .td-section-title i { color:var(--accent); margin-right:6px; }
+  .td-activity { display:flex; flex-direction:column; gap:2px; }
+  .td-tx { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:8px; text-decoration:none; color:var(--text); transition:background 0.15s; }
+  .td-tx:hover { background:var(--bg); }
+  .td-tx-badge { font-size:10px; font-weight:700; padding:2px 8px; border-radius:4px; text-transform:uppercase; letter-spacing:0.3px; }
+  .td-tx-badge.deposit { background:#dcfce7; color:#16a34a; }
+  .td-tx-badge.withdrawal { background:#fff7ed; color:#ea580c; }
+  .td-tx-badge.loan_payment { background:#eff6ff; color:#2563eb; }
+  .td-tx-name { flex:1; font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .td-tx-amt { font-size:13px; font-weight:700; white-space:nowrap; }
+  .td-tx-time { font-size:11px; color:var(--text-muted); }
+  .td-empty { text-align:center; padding:30px; color:var(--text-muted); font-size:13px; }
+
+  /* ── Hero back button ── */
+  .hero-back { position:absolute; top:12px; right:12px; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--text-muted); text-decoration:none; font-size:14px; transition:all 0.15s; }
+  .hero-back:hover { background:#fee2e2; color:#dc2626; }
+
+  /* ── Search back to dashboard ── */
+  .lr-back { font-size:13px; font-weight:600; color:var(--accent) !important; border-bottom:1px solid var(--border); padding:10px 14px !important; }
+  .lr-back i { margin-right:8px; }
 
   /* ── Success Toast / Notification ── */
   .tx-toast { position:fixed; bottom:24px; right:24px; padding:14px 20px; border-radius:12px; font-size:14px; font-weight:600; z-index:2000; box-shadow:0 8px 24px rgba(0,0,0,0.15); animation:slideUp 0.3s ease; display:flex; align-items:center; gap:10px; max-width:400px; }
@@ -3964,10 +4005,53 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   ${ssHtml}
 
   ${!selectedAccount ? `
-  <div class="welcome-card">
-    <div class="wc-icon">&#x1F3E6;</div>
-    <h3>Welcome to Teller Counter</h3>
-    <p>Search for a member above to process deposits, withdrawals, and loan payments.</p>
+  <div class="today-dashboard">
+    <div class="td-header">
+      <div class="td-title"><i class="fas fa-chart-line"></i> Today's Overview</div>
+      <div class="td-date">${new Date().toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+    </div>
+    <div class="td-stats">
+      <div class="td-stat td-stat-green">
+        <div class="tds-icon"><i class="fas fa-arrow-down"></i></div>
+        <div class="tds-body">
+          <div class="tds-count">${sessionSummary.deposits.count}</div>
+          <div class="tds-label">Deposits</div>
+          <div class="tds-total">${fmt(sessionSummary.deposits.total)}</div>
+        </div>
+      </div>
+      <div class="td-stat td-stat-orange">
+        <div class="tds-icon"><i class="fas fa-arrow-up"></i></div>
+        <div class="tds-body">
+          <div class="tds-count">${sessionSummary.withdrawals.count}</div>
+          <div class="tds-label">Withdrawals</div>
+          <div class="tds-total">${fmt(sessionSummary.withdrawals.total)}</div>
+        </div>
+      </div>
+      <div class="td-stat td-stat-blue">
+        <div class="tds-icon"><i class="fas fa-hand-holding-usd"></i></div>
+        <div class="tds-body">
+          <div class="tds-count">${sessionSummary.loanPayments.count}</div>
+          <div class="tds-label">Loan Payments</div>
+          <div class="tds-total">${fmt(sessionSummary.loanPayments.total)}</div>
+        </div>
+      </div>
+      <div class="td-stat td-stat-purple">
+        <div class="tds-icon"><i class="fas fa-users"></i></div>
+        <div class="tds-body">
+          <div class="tds-count">${totalAccountsCount}</div>
+          <div class="tds-label">Total Members</div>
+          <div class="tds-total">Search to start</div>
+        </div>
+      </div>
+    </div>
+    <div class="td-section-title"><i class="fas fa-clock"></i> Recent Activity Today</div>
+    <div class="td-activity">
+      ${todayRecentTxs.length === 0 ? '<div class="td-empty">No transactions yet today. Search for a member above to get started.</div>' : todayRecentTxs.map(function(tx) {
+        var isCredit = tx.type === 'deposit' || tx.type === 'loan_disbursement' || tx.type === 'interest' || tx.type === 'interest_credit';
+        var tc = tx.type === 'deposit' ? 'deposit' : tx.type === 'withdrawal' ? 'withdrawal' : tx.type === 'loan_payment' ? 'loan_payment' : '';
+        return '<a href="/admin/teller?account=' + encodeURIComponent(tx.account_id) + '" class="td-tx"><span class="td-tx-badge ' + tc + '">' + h(tx.type.replace(/_/g,' ')) + '</span><span class="td-tx-name">' + h(tx.child_name || 'N/A') + '</span><span class="td-tx-amt" style="color:' + (isCredit ? '#16a34a' : '#dc2626') + '">' + (isCredit ? '+' : '-') + fmt(tx.amount) + '</span><span class="td-tx-time">' + h((tx.created_at || '').slice(11,19)) + '</span></a>';
+      }).join('')}
+    </div>
   </div>
   ` : `
   <div class="teller-grid">
@@ -3983,6 +4067,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
             <h2 id="heroName">${h(selectedAccount.child_name)}</h2>
             <span class="member-tag"><i class="fas fa-id-badge"></i> <span id="heroMemberId">${h(selectedAccount.member_id || '---')}</span></span>
           </div>
+          <a href="/admin/teller${searchQ ? '?q=' + encodeURIComponent(searchQ) : ''}" class="hero-back" title="Back to dashboard"><i class="fas fa-times"></i></a>
         </div>
 
         ${quickInfoHtml}
@@ -4263,14 +4348,19 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
           .then(function(r) { return r.json(); })
           .then(function(data) {
             searchSpinner.classList.remove('active');
+            var html = '';
+            if (selectedAccountId) {
+              html += '<a href="/admin/teller" class="lr-item lr-back"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>';
+            }
             if (!data.accounts || data.accounts.length === 0) {
-              liveResults.innerHTML = '<div class="lr-empty">No members found for "' + h(q) + '"</div>';
+              html += '<div class="lr-empty">No members found for "' + h(q) + '"</div>';
             } else {
-              liveResults.innerHTML = data.accounts.map(function(a) {
+              html += data.accounts.map(function(a) {
                 var av = a.profile_pic_url ? '<img src="' + h(a.profile_pic_url) + '" style="width:34px;height:34px;border-radius:50%;object-fit:cover">' : '<div class="lr-avatar">' + h((a.child_name || '?')[0].toUpperCase()) + '</div>';
                 return '<a href="/admin/teller?account=' + encodeURIComponent(a.account_id) + (q ? '&q=' + encodeURIComponent(q) : '') + '" class="lr-item">' + av + '<div><div class="lr-name">' + h(a.child_name) + '</div><div class="lr-mid">' + h(a.member_id || '---') + '</div></div><div class="lr-bal">' + fmt(a.actual_balance) + '</div></a>';
               }).join('');
             }
+            liveResults.innerHTML = html;
             liveResults.classList.add('open');
           })
           .catch(function() { searchSpinner.classList.remove('active'); });

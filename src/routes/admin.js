@@ -4191,6 +4191,29 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
     </div>
   </div>
 
+  ${receipt ? `<script>
+    (function() {
+      var tx = ${JSON.stringify(receipt)};
+      var isCredit = tx.type === 'deposit' || tx.type === 'loan_disbursement' || tx.type === 'interest' || tx.type === 'interest_credit';
+      document.getElementById('rmTrn').textContent = tx.trn_number || 'TXN-' + (tx.transaction_id || '').slice(0,8).toUpperCase();
+      document.getElementById('rmDate').textContent = (tx.created_at || '').slice(0,19).replace('T',' ');
+      document.getElementById('rmMember').textContent = (tx.child_name || 'N/A') + ' (' + (tx.member_id || '---') + ')';
+      document.getElementById('rmTxType').textContent = (tx.type || '').replace(/_/g,' ');
+      var amtEl = document.getElementById('rmAmount');
+      amtEl.textContent = (isCredit ? '+' : '-') + ' \\u20B1' + Number(tx.amount).toFixed(2);
+      amtEl.className = 'rm-value ' + (isCredit ? 'rm-credit' : 'rm-debit');
+      document.getElementById('rmDesc').textContent = tx.description || '-';
+      document.getElementById('rmBalBefore').textContent = '\\u20B1' + Number(tx.balance_before || 0).toFixed(2);
+      document.getElementById('rmBalAfter').textContent = '\\u20B1' + Number(tx.balance_after || 0).toFixed(2);
+      if (tx.voided_at) {
+        var vb = document.getElementById('rmVoidBanner');
+        if (vb) { vb.style.display = 'flex'; vb.textContent = 'VOIDED' + (tx.void_reason ? ': ' + tx.void_reason : ''); }
+      }
+      var ol = document.getElementById('receiptOverlay');
+      if (ol) { ol.classList.add('show'); ol.style.display = 'flex'; }
+    })();
+  <\/script>` : ''}
+
   <!-- ── Print Prompt ── -->
   <div class="pp-overlay" id="ppOverlay" onclick="if(event.target===this)closePrintPrompt()">
     <div class="pp-modal">
@@ -4409,9 +4432,9 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
       document.getElementById('cmAmount').innerHTML = '&#x20B1;' + parseFloat(amount).toFixed(2);
       document.getElementById('cmAmount').style.color = type === 'deposit' ? '#16a34a' : type === 'withdraw' ? '#ea580c' : '#2563eb';
       document.getElementById('cmDesc').textContent = desc || (type === 'loan' ? 'Loan payment' : 'Counter ' + type);
-      document.getElementById('cmBalanceAfter').textContent = '&#x20B1;' + balanceAfter.toFixed(2);
+      document.getElementById('cmBalanceAfter').textContent = '\u20B1' + balanceAfter.toFixed(2);
       document.getElementById('cmBalanceAfter').style.color = balanceAfter >= 0 ? '#16a34a' : '#dc2626';
-      document.getElementById('cmNote').textContent = balanceAfter < 100 ? '&#x26A0; Balance will be low after this transaction' : '';
+      document.getElementById('cmNote').textContent = balanceAfter < 100 ? '\u26A0 Balance will be low after this transaction' : '';
 
       var confirmBtn = document.getElementById('cmConfirmBtn');
       confirmBtn.className = 'cm-confirm ' + (colorMap[type] || 'cm-green');
@@ -4471,11 +4494,17 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
       updateBalanceDisplay(tx.actual_balance, tx.unallocated_balance);
     } else if (tx.balance_after !== undefined) {
       var balEl = document.getElementById('balanceActual');
-      if (balEl) balEl.textContent = '&#x20B1;' + Number(tx.balance_after).toFixed(2);
+      if (balEl) balEl.textContent = '\u20B1' + Number(tx.balance_after).toFixed(2);
     }
 
     // Show receipt
     showReceiptAjax(tx.transaction_id);
+
+    // Show print prompt (unless auto-print is on)
+    setTimeout(function() {
+      var pp = document.getElementById('ppOverlay');
+      if (pp && !(autoPrintCheck && autoPrintCheck.checked)) pp.classList.add('show');
+    }, 600);
 
     // Reset form
     var form = formData ? document.getElementById(type === 'loan_payment' ? 'loanForm' : type + 'Form') : null;
@@ -4591,15 +4620,29 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   var receiptData = null;
   function showReceiptAjax(txId) {
     if (!txId) return;
-    // Fetch receipt data via the existing receipt query param
-    fetch('/admin/teller/activity/' + encodeURIComponent(selectedAccountId) + '?page=1&limit=1')
+    fetch('/admin/teller/receipt/' + encodeURIComponent(txId))
       .then(function(r) { return r.json(); })
-      .then(function() {
-        // Open a new window with receipt view for now
-        var w = window.open('/admin/teller?account=' + encodeURIComponent(selectedAccountId) + '&receipt=' + txId, '_blank');
-        if (w) w.focus();
+      .then(function(tx) {
+        if (tx.error) { showToast(tx.error, 'error'); return; }
+        var isCredit = tx.type === 'deposit' || tx.type === 'loan_disbursement' || tx.type === 'interest' || tx.type === 'interest_credit';
+        document.getElementById('rmTrn').textContent = tx.trn_number ? tx.trn_number : 'TXN-' + (tx.transaction_id || '').slice(0,8).toUpperCase();
+        document.getElementById('rmDate').textContent = (tx.created_at || '').slice(0,19).replace('T',' ');
+        document.getElementById('rmMember').textContent = (tx.child_name || 'N/A') + ' (' + (tx.member_id || '---') + ')';
+        document.getElementById('rmTxType').textContent = (tx.type || '').replace(/_/g,' ');
+        var amtEl = document.getElementById('rmAmount');
+        amtEl.textContent = (isCredit ? '+' : '-') + ' \u20B1' + Number(tx.amount).toFixed(2);
+        amtEl.className = 'rm-value ' + (isCredit ? 'rm-credit' : 'rm-debit');
+        document.getElementById('rmDesc').textContent = tx.description || '-';
+        document.getElementById('rmBalBefore').textContent = '\u20B1' + Number(tx.balance_before || 0).toFixed(2);
+        document.getElementById('rmBalAfter').textContent = '\u20B1' + Number(tx.balance_after || 0).toFixed(2);
+        if (tx.voided_at) {
+          var vb = document.getElementById('rmVoidBanner');
+          if (vb) { vb.style.display = 'flex'; vb.textContent = 'VOIDED ' + (tx.void_reason ? ': ' + tx.void_reason : ''); }
+        }
+        var ol = document.getElementById('receiptOverlay');
+        if (ol) { ol.classList.add('show'); ol.style.display = 'flex'; }
       })
-      .catch(function() {});
+      .catch(function(err) { showToast('Failed to load receipt: ' + err.message, 'error'); });
   }
 
   function closeReceipt() {
@@ -5093,6 +5136,12 @@ router.get('/teller-search', requireRole(1), asyncHandler(async (req, res) => {
   }
   accounts = accounts.slice(0, 20);
   res.json({ accounts });
+}));
+
+router.get('/teller/receipt/:txId', requireRole(1), asyncHandler(async (req, res) => {
+  const r = await one("SELECT t.*, a.child_name, a.member_id, a.account_id FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id WHERE t.transaction_id = $1", [req.params.txId]);
+  if (!r) return res.status(404).json({ error: 'Transaction not found' });
+  res.json(r);
 }));
 
 router.get('/teller/activity/:id', requireRole(1), asyncHandler(async (req, res) => {

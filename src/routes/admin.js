@@ -4763,7 +4763,9 @@ function redirectOrJson(req, res, url) {
   res.redirect(url);
 }
 
-router.post('/teller/deposit/:id', requireRole(2), asyncHandler(async (req, res) => {
+const tellerFormParser = require('multer')().none();
+
+router.post('/teller/deposit/:id', requireRole(2), tellerFormParser, asyncHandler(async (req, res) => {
   try {
     const { amount, description } = req.body;
     const val = Number(amount);
@@ -4805,7 +4807,7 @@ router.post('/teller/deposit/:id', requireRole(2), asyncHandler(async (req, res)
   }
 }));
 
-router.post('/teller/withdraw/:id', requireRole(2), asyncHandler(async (req, res) => {
+router.post('/teller/withdraw/:id', requireRole(2), tellerFormParser, asyncHandler(async (req, res) => {
   try {
     const { amount, description } = req.body;
     const val = Number(amount);
@@ -4852,7 +4854,7 @@ router.post('/teller/withdraw/:id', requireRole(2), asyncHandler(async (req, res
   }
 }));
 
-router.post('/teller/loan-pay/:id', requireRole(2), asyncHandler(async (req, res) => {
+router.post('/teller/loan-pay/:id', requireRole(2), tellerFormParser, asyncHandler(async (req, res) => {
   try {
     const { loan_id, amount } = req.body;
     const val = Number(amount);
@@ -4941,7 +4943,7 @@ router.post('/teller/loan-pay/:id', requireRole(2), asyncHandler(async (req, res
 
 const VOIDABLE_TYPES = ['deposit', 'withdrawal', 'loan_payment', 'interest', 'interest_credit', 'auto_save', 'fee', 'penalty'];
 
-router.post('/teller/void/:txId', requireRole(3), asyncHandler(async (req, res) => {
+router.post('/teller/void/:txId', requireRole(3), tellerFormParser, asyncHandler(async (req, res) => {
   try {
     const txId = req.params.txId;
     const { reason, password } = req.body;

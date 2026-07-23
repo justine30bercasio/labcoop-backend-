@@ -3583,6 +3583,17 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
     loanPayments: { count: todaysLoanPayments.length > 0 ? parseInt(todaysLoanPayments[0].cnt) : 0, total: todaysLoanPayments.length > 0 ? Number(todaysLoanPayments[0].total) : 0 },
   };
 
+  // Today's all-member totals for dashboard KPIs (no admin filter)
+  const todayTotals = await sql(`SELECT type, COUNT(*) as cnt, SUM(amount) as total FROM transactions WHERE created_at >= $1 GROUP BY type`, [today]);
+  const todayDep = todayTotals.filter(t => t.type === 'deposit');
+  const todayWd = todayTotals.filter(t => t.type === 'withdrawal');
+  const todayLoan = todayTotals.filter(t => t.type === 'loan_payment');
+  const dashboardTotals = {
+    deposits: { count: todayDep.length > 0 ? parseInt(todayDep[0].cnt) : 0, total: todayDep.length > 0 ? Number(todayDep[0].total) : 0 },
+    withdrawals: { count: todayWd.length > 0 ? parseInt(todayWd[0].cnt) : 0, total: todayWd.length > 0 ? Number(todayWd[0].total) : 0 },
+    loanPayments: { count: todayLoan.length > 0 ? parseInt(todayLoan[0].cnt) : 0, total: todayLoan.length > 0 ? Number(todayLoan[0].total) : 0 },
+  };
+
   // Today's all-member recent activity for dashboard
   const todayRecentTxs = await sql(`SELECT t.*, a.child_name, a.member_id FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id WHERE t.created_at >= $1 ORDER BY t.created_at DESC LIMIT 10`, [today]);
   const totalAccountsCount = (await one('SELECT COUNT(*) as cnt FROM accounts'))?.cnt || 0;
@@ -4034,22 +4045,22 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
       <div class="td-kpi td-kpi-deposit">
         <div class="kpi-icon"><i class="fas fa-arrow-down"></i></div>
         <div class="kpi-body">
-          <div class="kpi-val">${fmt(sessionSummary.deposits.total)}</div>
-          <div class="kpi-label">Deposits <span class="kpi-count">(${sessionSummary.deposits.count} txns)</span></div>
+          <div class="kpi-val">${fmt(dashboardTotals.deposits.total)}</div>
+          <div class="kpi-label">Deposits <span class="kpi-count">(${dashboardTotals.deposits.count} txns)</span></div>
         </div>
       </div>
       <div class="td-kpi td-kpi-withdraw">
         <div class="kpi-icon"><i class="fas fa-arrow-up"></i></div>
         <div class="kpi-body">
-          <div class="kpi-val">${fmt(sessionSummary.withdrawals.total)}</div>
-          <div class="kpi-label">Withdrawals <span class="kpi-count">(${sessionSummary.withdrawals.count} txns)</span></div>
+          <div class="kpi-val">${fmt(dashboardTotals.withdrawals.total)}</div>
+          <div class="kpi-label">Withdrawals <span class="kpi-count">(${dashboardTotals.withdrawals.count} txns)</span></div>
         </div>
       </div>
       <div class="td-kpi td-kpi-loan">
         <div class="kpi-icon"><i class="fas fa-hand-holding-usd"></i></div>
         <div class="kpi-body">
-          <div class="kpi-val">${fmt(sessionSummary.loanPayments.total)}</div>
-          <div class="kpi-label">Loan Payments <span class="kpi-count">(${sessionSummary.loanPayments.count} txns)</span></div>
+          <div class="kpi-val">${fmt(dashboardTotals.loanPayments.total)}</div>
+          <div class="kpi-label">Loan Payments <span class="kpi-count">(${dashboardTotals.loanPayments.count} txns)</span></div>
         </div>
       </div>
       <div class="td-kpi td-kpi-members">

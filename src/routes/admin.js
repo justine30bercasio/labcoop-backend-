@@ -3588,9 +3588,9 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   const totalAccountsCount = (await one('SELECT COUNT(*) as cnt FROM accounts'))?.cnt || 0;
 
   // Hourly breakdown for chart
-  const hourExpr = isPostgres ? "EXTRACT(HOUR FROM created_at)::int" : "CAST(strftime('%H', created_at) AS INTEGER)";
+  const hourExpr = isPostgres ? "EXTRACT(HOUR FROM created_at::timestamp)::int" : "CAST(strftime('%H', created_at) AS INTEGER)";
   const hourlyRaw = await sql(`SELECT ${hourExpr} as hr, type, COUNT(*) as cnt, SUM(amount) as total FROM transactions WHERE created_at >= $1 GROUP BY hr, type ORDER BY hr`, [today]);
-  const hourlyLabels = Array.from({length: 24}, (_, i) => i.toString().padStart(2,':00'));
+  const hourlyLabels = Array.from({length: 24}, (_, i) => (i < 10 ? '0' : '') + i + ':00');
   const hourlyDeposits = Array(24).fill(0);
   const hourlyWithdrawals = Array(24).fill(0);
   hourlyRaw.forEach(function(r) {

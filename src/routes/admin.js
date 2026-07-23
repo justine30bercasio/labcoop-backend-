@@ -3553,16 +3553,35 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   let selectedAccount = null;
   let recentTxs = [];
   let loanOptionsHtml = '';
+  let activeLoans = [];
+  let lastTransaction = null;
+  let activeLoansCount = 0;
   if (selectedId) {
     selectedAccount = await one('SELECT * FROM accounts WHERE account_id = $1', [selectedId]);
     if (selectedAccount) {
       recentTxs = await sql('SELECT * FROM transactions WHERE account_id = $1 AND type != \'allocation\' ORDER BY created_at DESC LIMIT 20', [selectedId]);
-      const activeLoans = await sql("SELECT * FROM loans WHERE account_id = $1 AND status = 'active' ORDER BY created_at DESC", [selectedId]);
+      activeLoans = await sql("SELECT * FROM loans WHERE account_id = $1 AND status = 'active' ORDER BY created_at DESC", [selectedId]);
+      activeLoansCount = activeLoans.length;
       loanOptionsHtml = activeLoans.map(function(l) {
         return '<option value="' + l.loan_id + '">' + (l.purpose || 'Loan') + ' - \u20B1' + Number(l.remaining_balance).toFixed(2) + ' remaining</option>';
       }).join('');
+      const lastTx = await one("SELECT created_at FROM transactions WHERE account_id = $1 ORDER BY created_at DESC LIMIT 1", [selectedId]);
+      lastTransaction = lastTx ? lastTx.created_at : null;
     }
   }
+
+  // Session summary - today's transactions by this admin
+  const today = new Date().toISOString().slice(0,10);
+  const tellerId = req.session.adminId || '';
+  const todayTxs = await sql(`SELECT type, COUNT(*) as cnt, SUM(amount) as total FROM transactions WHERE created_at >= $1 AND description LIKE $2 GROUP BY type`, [today, '%' + (req.session.adminName || 'admin') + '%']);
+  const todaysDeposits = todayTxs.filter(t => t.type === 'deposit');
+  const todaysWithdrawals = todayTxs.filter(t => t.type === 'withdrawal');
+  const todaysLoanPayments = todayTxs.filter(t => t.type === 'loan_payment');
+  const sessionSummary = {
+    deposits: { count: todaysDeposits.length > 0 ? parseInt(todaysDeposits[0].cnt) : 0, total: todaysDeposits.length > 0 ? Number(todaysDeposits[0].total) : 0 },
+    withdrawals: { count: todaysWithdrawals.length > 0 ? parseInt(todaysWithdrawals[0].cnt) : 0, total: todaysWithdrawals.length > 0 ? Number(todaysWithdrawals[0].total) : 0 },
+    loanPayments: { count: todaysLoanPayments.length > 0 ? parseInt(todaysLoanPayments[0].cnt) : 0, total: todaysLoanPayments.length > 0 ? Number(todaysLoanPayments[0].total) : 0 },
+  };
 
   const toast = qry.deposited ? 'success:Deposit completed. Receipt #' + (qry.receipt || '')
     : qry.withdrawn ? 'success:Withdrawal completed. Receipt #' + (qry.receipt || '')
@@ -3575,121 +3594,217 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   const adminRole = ROLE_LEVELS[req.session.adminRole] ?? 0;
 
   const bankStyle = `<style>
-  /* ── Tell bar ── */
-  .teller-bar { background:linear-gradient(135deg,var(--card),#fafcff); border:1px solid var(--border); border-radius:14px; padding:18px 24px; margin-bottom:16px; box-shadow:0 2px 8px rgba(0,0,0,0.05); position:sticky; top:0; z-index:10; }
-  .teller-bar-inner { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
-  .teller-search { display:flex; flex:1; min-width:280px; gap:8px; }
-  .teller-search input { flex:1; padding:11px 16px; border:2px solid var(--border); border-radius:10px; font-size:14px; outline:none; background:var(--card); transition:border-color 0.2s,box-shadow 0.2s; }
+  /* ══════════════════════════════════════════════════════════════
+     ENHANCED TELLER COUNTER — Modern Banking-Grade UI
+     ══════════════════════════════════════════════════════════════ */
+
+  /* ── Top Toolbar ── */
+  .teller-bar { background:linear-gradient(135deg,var(--card),#fafcff); border:1px solid var(--border); border-radius:14px; padding:14px 20px; margin-bottom:14px; box-shadow:0 2px 10px rgba(0,0,0,0.05); position:sticky; top:0; z-index:10; }
+  .teller-bar-row { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .teller-search { position:relative; display:flex; flex:1; min-width:260px; }
+  .teller-search input { flex:1; padding:10px 16px 10px 38px; border:2px solid var(--border); border-radius:10px; font-size:14px; outline:none; background:var(--card); transition:border-color 0.2s,box-shadow 0.2s; }
   .teller-search input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(46,125,50,0.12); }
-  .teller-search button { padding:11px 22px; border:none; border-radius:10px; background:linear-gradient(135deg,var(--accent),#1B5E20); color:#fff; font-weight:600; font-size:13px; cursor:pointer; transition:transform 0.15s,box-shadow 0.2s; white-space:nowrap; }
-  .teller-search button:hover { transform:translateY(-1px); box-shadow:0 4px 12px rgba(46,125,50,0.3); }
-  .teller-search button:active { transform:translateY(0); }
-  .teller-meta { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:10px; }
-  .teller-meta label { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-muted); cursor:pointer; user-select:none; }
-  .teller-meta input[type="checkbox"] { width:15px; height:15px; cursor:pointer; accent-color:var(--accent); }
-  .shortcuts-bar { display:flex; align-items:center; gap:4px; flex-wrap:wrap; font-size:11px; color:var(--text-muted); }
-  .shortcuts-bar kbd { display:inline-block; padding:1px 5px; font-size:10px; font-family:var(--mono); background:var(--card); border:1px solid var(--border); border-radius:4px; box-shadow:0 1px 0 var(--border); line-height:1.5; }
-  .shortcuts-bar .sep { opacity:0.25; margin:0 3px; }
-  .customer-chip { display:inline-flex; align-items:center; gap:6px; padding:3px 12px 3px 8px; background:#e8f5e9; border-radius:20px; font-size:12px; font-weight:600; color:#166534; border:1px solid #a5d6a7; }
-  .customer-chip img { width:20px; height:20px; border-radius:50%; object-fit:cover; }
-  .customer-chip .chip-avatar { width:20px; height:20px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; }
+  .teller-search .search-icon { position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--text-muted); font-size:14px; pointer-events:none; }
+  .teller-search .search-spinner { position:absolute; right:12px; top:50%; transform:translateY(-50%); display:none; width:16px; height:16px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.6s linear infinite; }
+  .teller-search .search-spinner.active { display:block; }
+  .teller-meta { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .teller-meta label { display:flex; align-items:center; gap:5px; font-size:11px; color:var(--text-muted); cursor:pointer; user-select:none; padding:4px 8px; border-radius:6px; transition:background 0.15s; }
+  .teller-meta label:hover { background:#f1f5f9; }
+  .teller-meta input[type="checkbox"] { width:14px; height:14px; cursor:pointer; accent-color:var(--accent); }
+  .shortcuts-bar { display:flex; align-items:center; gap:3px; flex-wrap:wrap; font-size:10px; color:var(--text-muted); margin-top:6px; }
+  .shortcuts-bar kbd { display:inline-block; padding:1px 4px; font-size:9px; font-family:var(--mono); background:var(--card); border:1px solid var(--border); border-radius:3px; box-shadow:0 1px 0 var(--border); line-height:1.4; }
+  .shortcuts-bar .sep { opacity:0.2; margin:0 2px; }
+  .customer-chip { display:inline-flex; align-items:center; gap:5px; padding:2px 10px 2px 6px; background:#e8f5e9; border-radius:20px; font-size:11px; font-weight:600; color:#166534; border:1px solid #a5d6a7; }
+  .customer-chip img { width:18px; height:18px; border-radius:50%; object-fit:cover; }
+  .customer-chip .chip-avatar { width:18px; height:18px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:700; }
 
-  /* ── Search results ── */
-  .search-results { margin:-4px 0 14px 0; background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; box-shadow:0 4px 16px rgba(0,0,0,0.06); }
-  .search-result-item { display:flex; align-items:center; gap:12px; padding:12px 16px; cursor:pointer; transition:background 0.12s; text-decoration:none; color:var(--text); border-bottom:1px solid #f1f5f9; }
-  .search-result-item:last-child { border-bottom:none; }
-  .search-result-item:hover { background:#f0fdf4; }
-  .search-result-item .sra { width:38px; height:38px; border-radius:50%; background:linear-gradient(135deg,var(--accent),#1B5E20); color:#fff; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:700; flex-shrink:0; }
-  .search-result-item .sra-img { width:38px; height:38px; border-radius:50%; object-fit:cover; flex-shrink:0; }
-  .search-result-item .srn { font-weight:600; font-size:14px; }
-  .search-result-item .srm { font-size:11px; color:var(--text-muted); font-family:var(--mono); }
+  /* ── Session Summary Bar ── */
+  .session-summary { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .ss-item { display:flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--border); border-radius:10px; padding:8px 14px; font-size:12px; box-shadow:0 1px 4px rgba(0,0,0,0.03); transition:transform 0.15s; }
+  .ss-item:hover { transform:translateY(-1px); }
+  .ss-item .ss-icon { font-size:16px; }
+  .ss-item .ss-info { display:flex; flex-direction:column; }
+  .ss-item .ss-label { font-size:9px; text-transform:uppercase; letter-spacing:0.3px; color:var(--text-muted); font-weight:600; }
+  .ss-item .ss-value { font-size:14px; font-weight:700; font-family:var(--mono); }
+  .ss-item.ss-deposit .ss-value { color:#16a34a; }
+  .ss-item.ss-withdraw .ss-value { color:#ea580c; }
+  .ss-item.ss-loan .ss-value { color:#2563eb; }
 
-  /* ── Main layout ── */
-  .teller-grid { display:grid; grid-template-columns: 400px 1fr; gap:20px; align-items:start; }
-  body.teller-fs .teller-grid { grid-template-columns: 420px 1fr; gap:24px; }
+  /* ── Live Search Results ── */
+  .live-results { position:absolute; top:100%; left:0; right:0; background:var(--card); border:1px solid var(--border); border-radius:0 0 12px 12px; box-shadow:0 8px 24px rgba(0,0,0,0.1); max-height:320px; overflow-y:auto; z-index:50; display:none; margin-top:2px; }
+  .live-results.open { display:block; }
+  .live-results .lr-item { display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; transition:background 0.1s; border-bottom:1px solid #f1f5f9; text-decoration:none; color:var(--text); }
+  .live-results .lr-item:last-child { border-bottom:none; }
+  .live-results .lr-item:hover { background:#f0fdf4; }
+  .live-results .lr-item .lr-avatar { width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg,var(--accent),#1B5E20); color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; flex-shrink:0; }
+  .live-results .lr-item .lr-avatar img { width:100%; height:100%; border-radius:50%; object-fit:cover; }
+  .live-results .lr-item .lr-name { font-weight:600; font-size:13px; }
+  .live-results .lr-item .lr-mid { font-size:10px; color:var(--text-muted); font-family:var(--mono); }
+  .live-results .lr-item .lr-bal { margin-left:auto; font-size:13px; font-weight:700; font-family:var(--mono); color:var(--accent); }
+  .live-results .lr-empty { text-align:center; padding:24px; color:var(--text-muted); font-size:13px; }
 
-  /* ── Left panel cards ── */
-  .tl-card { background:var(--card); border:1px solid var(--border); border-radius:14px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.04); }
-  .tl-card-body { padding:20px; }
-  .tl-section { margin-bottom:16px; }
+  /* ── Main Layout ── */
+  .teller-grid { display:grid; grid-template-columns: 420px 1fr; gap:18px; align-items:start; }
+  body.teller-fs .teller-grid { grid-template-columns: 440px 1fr; gap:22px; }
+
+  /* ── Left Panel ── */
+  .tl-card { background:var(--card); border:1px solid var(--border); border-radius:16px; overflow:hidden; box-shadow:0 2px 10px rgba(0,0,0,0.04); }
+  .tl-card-body { padding:18px; }
+  .tl-section { margin-bottom:14px; }
   .tl-section:last-child { margin-bottom:0; }
 
-  /* ── Customer hero ── */
-  .customer-hero { display:flex; align-items:center; gap:16px; padding-bottom:16px; border-bottom:2px solid var(--accent); margin-bottom:16px; }
-  .customer-hero-avatar { width:56px; height:56px; border-radius:50%; background:linear-gradient(135deg,var(--accent),#1B5E20); color:#fff; display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:700; flex-shrink:0; box-shadow:0 2px 8px rgba(46,125,50,0.2); }
+  /* ── Customer Hero ── */
+  .customer-hero { display:flex; align-items:center; gap:14px; padding-bottom:14px; border-bottom:2px solid var(--accent); margin-bottom:14px; }
+  .customer-hero-avatar { width:52px; height:52px; border-radius:50%; background:linear-gradient(135deg,var(--accent),#1B5E20); color:#fff; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:700; flex-shrink:0; box-shadow:0 2px 8px rgba(46,125,50,0.2); }
   .customer-hero-avatar img { width:100%; height:100%; border-radius:50%; object-fit:cover; }
-  .customer-hero-info h2 { font-size:20px; font-weight:700; margin:0; line-height:1.2; }
-  .customer-hero-info .member-tag { display:inline-block; margin-top:3px; padding:1px 8px; background:#f1f5f9; border-radius:4px; font-size:11px; color:var(--text-muted); font-family:var(--mono); }
+  .customer-hero-info h2 { font-size:18px; font-weight:700; margin:0; line-height:1.2; }
+  .customer-hero-info .member-tag { display:inline-block; margin-top:2px; padding:1px 7px; background:#f1f5f9; border-radius:4px; font-size:10px; color:var(--text-muted); font-family:var(--mono); }
 
-  /* ── Balance display ── */
-  .balance-primary { background:linear-gradient(135deg,#e8f5e9,#f0fdf4); border-radius:12px; padding:18px 20px; border:1px solid #a5d6a7; margin-bottom:10px; }
-  .balance-primary .bp-label { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.4px; color:#558b2f; }
-  .balance-primary .bp-value { font-size:30px; font-weight:800; font-family:var(--mono); color:#1B5E20; line-height:1.1; margin-top:2px; }
-  .balance-secondary { display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
-  .balance-secondary .bs-item { background:#f8fafc; border-radius:8px; padding:10px 14px; border:1px solid var(--border); }
-  .balance-secondary .bs-item .bs-label { font-size:9px; text-transform:uppercase; letter-spacing:0.4px; color:var(--text-muted); font-weight:600; }
-  .balance-secondary .bs-item .bs-value { font-size:16px; font-weight:700; font-family:var(--mono); margin-top:1px; color:var(--text); }
+  /* ── Quick Info Strip ── */
+  .quick-info { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-bottom:12px; }
+  .qi-item { text-align:center; background:#f8fafc; border-radius:8px; padding:6px 4px; border:1px solid var(--border); }
+  .qi-item .qi-value { font-size:14px; font-weight:700; color:var(--text); line-height:1.2; }
+  .qi-item .qi-label { font-size:8px; text-transform:uppercase; letter-spacing:0.3px; color:var(--text-muted); font-weight:600; margin-top:1px; }
+  .qi-item.qi-loans .qi-value { color:#2563eb; }
+  .qi-item.qi-last .qi-value { font-size:10px; font-weight:600; color:var(--text-muted); }
+  .qi-item.qi-kyc .qi-value { font-size:10px; }
+  .qi-status-verified { color:#16a34a !important; }
+  .qi-status-pending { color:#f59e0b !important; }
+  .qi-status-rejected { color:#dc2626 !important; }
 
-  /* ── Action tabs ── */
-  .action-tabs { display:flex; gap:6px; margin-bottom:14px; }
-  .action-tab { flex:1; text-align:center; padding:12px 8px; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer; border:none; background:#f1f5f9; color:var(--text-muted); transition:all 0.2s; display:flex; align-items:center; justify-content:center; gap:6px; }
+  /* ── Balance Display ── */
+  .balance-primary { background:linear-gradient(135deg,#e8f5e9,#f0fdf4); border-radius:12px; padding:16px 18px; border:1px solid #a5d6a7; margin-bottom:8px; position:relative; }
+  .balance-primary .bp-label { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.4px; color:#558b2f; display:flex; align-items:center; gap:6px; }
+  .balance-primary .bp-value { font-size:28px; font-weight:800; font-family:var(--mono); color:#1B5E20; line-height:1.1; margin-top:2px; }
+  .balance-secondary { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px; }
+  .balance-secondary .bs-item { background:#f8fafc; border-radius:8px; padding:8px 12px; border:1px solid var(--border); }
+  .balance-secondary .bs-item .bs-label { font-size:8px; text-transform:uppercase; letter-spacing:0.4px; color:var(--text-muted); font-weight:600; }
+  .balance-secondary .bs-item .bs-value { font-size:14px; font-weight:700; font-family:var(--mono); margin-top:1px; color:var(--text); }
+
+  /* ── Balance Progress Bar ── */
+  .balance-bar-wrap { background:#f1f5f9; border-radius:6px; height:6px; overflow:hidden; margin-top:6px; }
+  .balance-bar-fill { height:100%; border-radius:6px; background:linear-gradient(90deg,#16a34a,#22c55e); transition:width 0.4s ease; }
+  .balance-bar-fill.warning { background:linear-gradient(90deg,#f59e0b,#eab308); }
+  .balance-bar-fill.danger { background:linear-gradient(90deg,#dc2626,#ef4444); }
+  .balance-bar-label { display:flex; justify-content:space-between; font-size:8px; color:var(--text-muted); margin-top:2px; }
+
+  /* ── Action Tabs ── */
+  .action-tabs { display:flex; gap:5px; margin-bottom:12px; }
+  .action-tab { flex:1; text-align:center; padding:10px 6px; border-radius:10px; font-size:12px; font-weight:600; cursor:pointer; border:none; background:#f1f5f9; color:var(--text-muted); transition:all 0.2s; display:flex; align-items:center; justify-content:center; gap:5px; position:relative; }
   .action-tab:hover { color:var(--text); background:#e2e8f0; }
   .action-tab.active { background:var(--card); color:var(--text); box-shadow:0 2px 8px rgba(0,0,0,0.08); border:1px solid var(--border); }
-  .action-tab .tab-icon { font-size:16px; }
+  .action-tab .tab-icon { font-size:14px; }
+  .action-tab .tab-badge { position:absolute; top:-4px; right:-4px; background:#dc2626; color:#fff; font-size:8px; padding:1px 5px; border-radius:8px; font-weight:700; }
 
-  /* ── Action panels ── */
+  /* ── Action Panels ── */
   .action-panel { display:none; }
   .action-panel.active { display:block; }
-  .action-panel .fgroup { margin-bottom:12px; }
-  .action-panel .fgroup label { display:block; font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.3px; }
-  .action-panel .fgroup input, .action-panel .fgroup select { width:100%; padding:11px 14px; border:2px solid var(--border); border-radius:8px; font-size:15px; outline:none; transition:border-color 0.2s,box-shadow 0.2s; box-sizing:border-box; background:var(--card); font-family:var(--mono); font-weight:600; }
+  .action-panel .fgroup { margin-bottom:10px; }
+  .action-panel .fgroup label { display:block; font-size:10px; font-weight:600; color:var(--text-muted); margin-bottom:3px; text-transform:uppercase; letter-spacing:0.3px; }
+  .action-panel .fgroup input, .action-panel .fgroup select { width:100%; padding:10px 12px; border:2px solid var(--border); border-radius:8px; font-size:14px; outline:none; transition:border-color 0.2s,box-shadow 0.2s; box-sizing:border-box; background:var(--card); font-family:var(--mono); font-weight:600; }
   .action-panel .fgroup input:focus, .action-panel .fgroup select:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(46,125,50,0.1); }
   .action-panel .fgroup select { font-family:var(--font); font-weight:400; }
+  .action-panel .fgroup .hint { font-size:10px; color:var(--text-muted); margin-top:3px; }
 
-  /* ── POS-style keypad ── */
-  .keypad { display:grid; grid-template-columns:repeat(4,1fr); gap:5px; margin-bottom:12px; }
-  .keypad-btn { padding:12px 4px; border:2px solid var(--border); border-radius:8px; background:var(--card); font-size:15px; font-weight:700; cursor:pointer; transition:all 0.12s; text-align:center; font-family:var(--mono); color:var(--text); }
-  .keypad-btn:hover { border-color:var(--accent); background:#f0fdf4; transform:scale(1.05); box-shadow:0 2px 6px rgba(46,125,50,0.15); }
+  /* ── POS-style Keypad ── */
+  .keypad { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; margin-bottom:10px; }
+  .keypad-btn { padding:11px 4px; border:2px solid var(--border); border-radius:8px; background:var(--card); font-size:14px; font-weight:700; cursor:pointer; transition:all 0.12s; text-align:center; font-family:var(--mono); color:var(--text); }
+  .keypad-btn:hover { border-color:var(--accent); background:#f0fdf4; transform:scale(1.04); box-shadow:0 2px 6px rgba(46,125,50,0.12); }
   .keypad-btn:active { transform:scale(0.93); }
-  .keypad-btn.selected { border-color:var(--accent); background:#e8f5e9; box-shadow:0 0 0 2px rgba(46,125,50,0.25); color:#1B5E20; }
+  .keypad-btn.selected { border-color:var(--accent); background:#e8f5e9; box-shadow:0 0 0 2px rgba(46,125,50,0.2); color:#1B5E20; }
   .keypad-btn.kp-green { border-color:#a5d6a7; color:#1B5E20; }
   .keypad-btn.kp-orange { border-color:#fed7aa; color:#9a3412; }
   .keypad-btn.kp-blue { border-color:#bfdbfe; color:#1e40af; }
-  .keypad-btn.kp-action { grid-column:span 2; background:#f8fafc; font-size:13px; letter-spacing:0.3px; }
+  .keypad-btn.kp-action { grid-column:span 2; background:#f8fafc; font-size:12px; letter-spacing:0.3px; }
 
-  /* ── Process buttons ── */
-  .proc-btn { color:#fff; border:none; padding:14px 24px; border-radius:10px; font-size:15px; font-weight:700; cursor:pointer; width:100%; transition:all 0.2s; display:flex; align-items:center; justify-content:center; gap:8px; }
-  .proc-btn:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(0,0,0,0.15); }
-  .proc-btn:active { transform:translateY(0); }
+  /* ── Cash Breakdown (POS-style) ── */
+  .cash-breakdown { display:none; margin-bottom:10px; padding:10px 12px; background:#f8fafc; border:1px solid var(--border); border-radius:10px; }
+  .cash-breakdown.open { display:block; }
+  .cash-breakdown .cb-toggle { display:flex; align-items:center; gap:6px; font-size:11px; font-weight:600; color:var(--text-muted); cursor:pointer; margin-bottom:8px; user-select:none; }
+  .cash-breakdown .cb-toggle:hover { color:var(--text); }
+  .cash-breakdown .cb-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:4px; }
+  .cash-breakdown .cb-row { display:flex; align-items:center; gap:3px; }
+  .cash-breakdown .cb-row label { font-size:10px; font-weight:700; color:var(--text); min-width:32px; font-family:var(--mono); }
+  .cash-breakdown .cb-row input { width:100%; padding:5px 6px; border:1px solid var(--border); border-radius:6px; font-size:12px; font-family:var(--mono); text-align:center; outline:none; }
+  .cash-breakdown .cb-row input:focus { border-color:var(--accent); }
+  .cash-breakdown .cb-total { text-align:right; font-size:13px; font-weight:700; margin-top:6px; padding-top:6px; border-top:1px solid var(--border); font-family:var(--mono); }
+  .cash-breakdown .cb-total.ok { color:#16a34a; }
+  .cash-breakdown .cb-total.err { color:#dc2626; }
+  .cash-breakdown .cb-total .cb-diff { font-size:10px; font-weight:400; color:var(--text-muted); }
+
+  /* ── Confirm Step ── */
+  .confirm-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1002; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
+  .confirm-overlay.show { display:flex; }
+  .confirm-modal { background:var(--card); border-radius:20px; padding:28px; max-width:420px; width:92%; box-shadow:0 20px 60px rgba(0,0,0,0.25); animation:modalIn 0.25s ease; }
+  .confirm-modal .cm-icon { font-size:40px; text-align:center; margin-bottom:8px; }
+  .confirm-modal h3 { font-size:18px; font-weight:700; text-align:center; margin-bottom:4px; }
+  .confirm-modal .cm-sub { font-size:13px; color:var(--text-muted); text-align:center; margin-bottom:18px; }
+  .confirm-modal .cm-detail { background:#f8fafc; border-radius:12px; padding:16px; margin-bottom:18px; }
+  .confirm-modal .cm-detail .cm-row { display:flex; justify-content:space-between; padding:4px 0; font-size:13px; }
+  .confirm-modal .cm-detail .cm-row .cm-label { color:var(--text-muted); }
+  .confirm-modal .cm-detail .cm-row .cm-value { font-weight:700; }
+  .confirm-modal .cm-detail .cm-amount { font-size:28px; font-weight:800; text-align:center; padding:8px 0; font-family:var(--mono); }
+  .confirm-modal .cm-balance-after { text-align:center; font-size:12px; color:var(--text-muted); margin-bottom:14px; }
+  .confirm-modal .cm-actions { display:flex; gap:10px; }
+  .confirm-modal .cm-actions button { flex:1; padding:12px; border:none; border-radius:10px; font-size:14px; font-weight:700; cursor:pointer; transition:all 0.15s; }
+  .confirm-modal .cm-actions .cm-cancel { background:#f1f5f9; color:var(--text-muted); }
+  .confirm-modal .cm-actions .cm-cancel:hover { background:#e2e8f0; color:var(--text); }
+  .confirm-modal .cm-actions .cm-confirm { color:#fff; }
+  .confirm-modal .cm-actions .cm-confirm.cm-green { background:linear-gradient(135deg,#16a34a,#15803d); }
+  .confirm-modal .cm-actions .cm-confirm.cm-green:hover { box-shadow:0 4px 14px rgba(22,163,74,0.35); }
+  .confirm-modal .cm-actions .cm-confirm.cm-orange { background:linear-gradient(135deg,#ea580c,#c2410c); }
+  .confirm-modal .cm-actions .cm-confirm.cm-orange:hover { box-shadow:0 4px 14px rgba(234,88,12,0.35); }
+  .confirm-modal .cm-actions .cm-confirm.cm-blue { background:linear-gradient(135deg,#2563eb,#1d4ed8); }
+  .confirm-modal .cm-actions .cm-confirm.cm-blue:hover { box-shadow:0 4px 14px rgba(37,99,235,0.35); }
+
+  /* ── Process Buttons ── */
+  .proc-btn { color:#fff; border:none; padding:12px 20px; border-radius:10px; font-size:14px; font-weight:700; cursor:pointer; width:100%; transition:all 0.2s; display:flex; align-items:center; justify-content:center; gap:8px; }
+  .proc-btn:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 4px 14px rgba(0,0,0,0.15); }
+  .proc-btn:active:not(:disabled) { transform:translateY(0); }
+  .proc-btn:disabled { opacity:0.5; cursor:not-allowed; }
+  .proc-btn .btn-spinner { display:none; width:16px; height:16px; border:2px solid rgba(255,255,255,0.3); border-top-color:#fff; border-radius:50%; animation:spin 0.6s linear infinite; }
+  .proc-btn.loading .btn-spinner { display:inline-block; }
+  .proc-btn.loading .btn-text { display:none; }
   .proc-green { background:linear-gradient(135deg,#16a34a,#15803d); }
-  .proc-green:hover { box-shadow:0 4px 14px rgba(22,163,74,0.35) !important; }
+  .proc-green:hover:not(:disabled) { box-shadow:0 4px 14px rgba(22,163,74,0.35) !important; }
   .proc-orange { background:linear-gradient(135deg,#ea580c,#c2410c); }
-  .proc-orange:hover { box-shadow:0 4px 14px rgba(234,88,12,0.35) !important; }
+  .proc-orange:hover:not(:disabled) { box-shadow:0 4px 14px rgba(234,88,12,0.35) !important; }
   .proc-blue { background:linear-gradient(135deg,#2563eb,#1d4ed8); }
-  .proc-blue:hover { box-shadow:0 4px 14px rgba(37,99,235,0.35) !important; }
+  .proc-blue:hover:not(:disabled) { box-shadow:0 4px 14px rgba(37,99,235,0.35) !important; }
 
-  /* ── Right panel — activity ── */
-  .tr-card { background:var(--card); border:1px solid var(--border); border-radius:14px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.04); display:flex; flex-direction:column; min-height:500px; max-height:calc(100vh - 200px); }
-  .tr-header { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); background:#fafbfc; flex-shrink:0; }
-  .tr-header h3 { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); display:flex; align-items:center; gap:8px; }
-  .tr-header .tr-count { font-size:11px; color:var(--text-muted); background:#f1f5f9; padding:2px 10px; border-radius:10px; }
+  /* ── Right Panel ── */
+  .tr-card { background:var(--card); border:1px solid var(--border); border-radius:16px; overflow:hidden; box-shadow:0 2px 10px rgba(0,0,0,0.04); display:flex; flex-direction:column; min-height:480px; max-height:calc(100vh - 200px); }
+  .tr-header { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid var(--border); background:#fafbfc; flex-shrink:0; }
+  .tr-header h3 { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
+  .tr-header .tr-count { font-size:10px; color:var(--text-muted); background:#f1f5f9; padding:2px 8px; border-radius:10px; }
   .tr-body { overflow-y:auto; flex:1; }
   .tr-body::-webkit-scrollbar { width:4px; }
   .tr-body::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
 
-  /* ── Activity list ── */
+  /* ── Activity Filters ── */
+  .tr-filters { display:flex; gap:4px; padding:8px 14px; border-bottom:1px solid var(--border); flex-shrink:0; flex-wrap:wrap; }
+  .tr-filter { padding:4px 10px; border-radius:6px; font-size:10px; font-weight:600; cursor:pointer; border:none; background:transparent; color:var(--text-muted); transition:all 0.15s; }
+  .tr-filter:hover { background:#f1f5f9; color:var(--text); }
+  .tr-filter.active { background:var(--accent); color:#fff; box-shadow:0 2px 6px rgba(46,125,50,0.2); }
+
+  /* ── Activity List ── */
   .activity-table { width:100%; border-collapse:collapse; }
-  .activity-table th { text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); font-weight:600; padding:8px 14px; border-bottom:2px solid var(--border); background:#f8fafc; position:sticky; top:0; z-index:1; }
-  .activity-table td { padding:11px 14px; font-size:13px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
+  .activity-table th { text-align:left; font-size:9px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); font-weight:600; padding:6px 12px; border-bottom:2px solid var(--border); background:#f8fafc; position:sticky; top:0; z-index:1; }
+  .activity-table td { padding:10px 12px; font-size:12px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
   .activity-table tr:last-child td { border-bottom:none; }
   .activity-table tr { transition:background 0.1s; }
   .activity-table tr:hover td { background:#f8fdfa; }
+  .activity-table tr.tx-row-deposit { border-left:3px solid #16a34a; }
+  .activity-table tr.tx-row-withdrawal { border-left:3px solid #ea580c; }
+  .activity-table tr.tx-row-loan_payment { border-left:3px solid #2563eb; }
+  .activity-table tr.tx-row-voided { border-left:3px solid #dc2626; opacity:0.6; }
   .activity-table .tx-amt { font-weight:700; font-family:var(--mono); text-align:right; white-space:nowrap; }
-  .activity-table .tx-date { font-size:11px; color:var(--text-muted); font-family:var(--mono); white-space:nowrap; }
-  .activity-table .tx-ref { font-size:10px; color:var(--text-muted); font-family:var(--mono); display:block; margin-top:1px; }
-  .activity-table .tx-desc { color:var(--text-muted); max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .activity-table .tx-date { font-size:10px; color:var(--text-muted); font-family:var(--mono); white-space:nowrap; }
+  .activity-table .tx-ref { font-size:9px; color:var(--text-muted); font-family:var(--mono); display:block; margin-top:1px; }
+  .activity-table .tx-desc { color:var(--text-muted); max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .activity-table .tx-bal { font-size:10px; font-family:var(--mono); color:var(--text-muted); text-align:right; }
 
-  .tx-badge { display:inline-flex; align-items:center; gap:3px; padding:3px 9px; border-radius:6px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.3px; white-space:nowrap; }
+  .tx-badge { display:inline-flex; align-items:center; gap:2px; padding:2px 8px; border-radius:6px; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.3px; white-space:nowrap; }
   .tx-badge.deposit, .tx-badge.interest, .tx-badge.interest_credit { background:#dcfce7; color:#166534; }
   .tx-badge.withdrawal { background:#fee2e2; color:#991b1b; }
   .tx-badge.loan_payment { background:#dbeafe; color:#1e40af; }
@@ -3698,70 +3813,88 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   .tx-badge.fee { background:#f3e8ff; color:#6b21a8; }
   .tx-badge.voided { background:#fce4ec; color:#b71c1c; }
 
-  .tr-action-btn { display:inline-flex; align-items:center; gap:3px; padding:4px 8px; border:none; border-radius:6px; font-size:10px; font-weight:600; cursor:pointer; transition:all 0.15s; text-decoration:none; }
+  .tr-action-btn { display:inline-flex; align-items:center; gap:2px; padding:3px 7px; border:none; border-radius:6px; font-size:9px; font-weight:600; cursor:pointer; transition:all 0.15s; text-decoration:none; }
   .tr-action-btn.rcpt { background:#e8f5e9; color:var(--accent); }
   .tr-action-btn.rcpt:hover { background:#c8e6c9; }
   .tr-action-btn.void { background:#fce4ec; color:#dc2626; }
   .tr-action-btn.void:hover { background:#f8b4b4; }
 
-  .empty-state { text-align:center; padding:60px 20px; color:var(--text-muted); }
-  .empty-state .es-icon { font-size:48px; margin-bottom:12px; opacity:0.4; }
-  .empty-state h3 { font-size:18px; font-weight:600; color:var(--text); margin-bottom:4px; }
-  .empty-state p { font-size:13px; }
+  .load-more-wrap { text-align:center; padding:12px; border-top:1px solid var(--border); }
+  .load-more-btn { padding:8px 24px; border:2px solid var(--border); border-radius:8px; background:var(--card); font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; color:var(--text-muted); }
+  .load-more-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .load-more-btn:disabled { opacity:0.4; cursor:not-allowed; }
 
-  /* ── Receipt modal overlay ── */
+  .empty-state { text-align:center; padding:50px 20px; color:var(--text-muted); }
+  .empty-state .es-icon { font-size:42px; margin-bottom:10px; opacity:0.35; }
+  .empty-state h3 { font-size:16px; font-weight:600; color:var(--text); margin-bottom:3px; }
+  .empty-state p { font-size:12px; }
+
+  /* ── Receipt Modal ── */
   .receipt-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center; backdrop-filter:blur(3px); }
   .receipt-overlay.show { display:flex; }
-  .receipt-modal { background:#fff; border-radius:16px; width:380px; max-width:94vw; max-height:90vh; overflow-y:auto; box-shadow:0 16px 48px rgba(0,0,0,0.25); font-family:'Courier New',monospace; font-size:13px; animation:modalIn 0.25s ease; }
-  .receipt-modal .rm-header { text-align:center; padding:16px 20px 10px; border-bottom:2px dashed #2E7D32; }
-  .receipt-modal .rm-header .rm-title { font-size:16px; font-weight:800; color:#1B5E20; letter-spacing:0.5px; }
-  .receipt-modal .rm-header .rm-sub { font-size:11px; color:#888; margin-top:2px; }
-  .receipt-modal .rm-body { padding:14px 20px; }
-  .receipt-modal .rm-row { display:flex; justify-content:space-between; padding:4px 0; }
+  .receipt-modal { background:#fff; border-radius:16px; width:370px; max-width:94vw; max-height:90vh; overflow-y:auto; box-shadow:0 16px 48px rgba(0,0,0,0.25); font-family:'Courier New',monospace; font-size:12px; animation:modalIn 0.25s ease; }
+  .receipt-modal .rm-header { text-align:center; padding:14px 18px 8px; border-bottom:2px dashed #2E7D32; }
+  .receipt-modal .rm-header .rm-title { font-size:15px; font-weight:800; color:#1B5E20; letter-spacing:0.5px; }
+  .receipt-modal .rm-header .rm-sub { font-size:10px; color:#888; margin-top:2px; }
+  .receipt-modal .rm-body { padding:12px 18px; }
+  .receipt-modal .rm-row { display:flex; justify-content:space-between; padding:3px 0; }
   .receipt-modal .rm-label { color:#888; }
   .receipt-modal .rm-value { font-weight:700; color:#1e293b; }
   .receipt-modal .rm-credit { color:#16a34a !important; }
   .receipt-modal .rm-debit { color:#dc2626 !important; }
-  .receipt-modal .rm-divider { border-top:2px dashed #e0e0e0; margin:6px 0; }
-  .receipt-modal .rm-footer { text-align:center; padding:12px 20px; border-top:2px dashed #e0e0e0; display:flex; gap:8px; justify-content:center; }
-  .receipt-modal .rm-void-banner { background:#fef2f2; color:#dc2626; text-align:center; padding:8px; font-weight:700; font-size:13px; border-bottom:2px solid #dc2626; }
+  .receipt-modal .rm-divider { border-top:2px dashed #e0e0e0; margin:5px 0; }
+  .receipt-modal .rm-footer { text-align:center; padding:10px 18px; border-top:2px dashed #e0e0e0; display:flex; gap:6px; justify-content:center; flex-wrap:wrap; }
+  .receipt-modal .rm-void-banner { background:#fef2f2; color:#dc2626; text-align:center; padding:6px; font-weight:700; font-size:12px; border-bottom:2px solid #dc2626; }
   @media print { body * { visibility:hidden !important; } .receipt-overlay, .receipt-overlay * { visibility:visible !important; } .receipt-overlay { display:flex !important; position:fixed !important; background:transparent !important; backdrop-filter:none !important; } .receipt-modal { box-shadow:none !important; border:2px solid #000 !important; } .receipt-overlay .rm-footer .btn-outline:first-child { display:none !important; } }
-  @keyframes modalIn { from { opacity:0; transform:scale(0.92) translateY(20px); } to { opacity:1; transform:scale(1) translateY(0); } }
 
-  /* ── Void modal ── */
+  /* ── Void Modal ── */
   .void-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:999; align-items:center; justify-content:center; backdrop-filter:blur(3px); }
   .void-overlay.show { display:flex; }
-  .void-modal { background:var(--card); border-radius:16px; padding:28px; max-width:480px; width:90%; box-shadow:0 16px 48px rgba(0,0,0,0.2); animation:modalIn 0.25s ease; }
-  .void-modal h3 { color:#dc2626; margin-bottom:14px; font-size:18px; display:flex; align-items:center; gap:8px; }
+  .void-modal { background:var(--card); border-radius:16px; padding:24px; max-width:460px; width:90%; box-shadow:0 16px 48px rgba(0,0,0,0.2); animation:modalIn 0.25s ease; }
+  .void-modal h3 { color:#dc2626; margin-bottom:12px; font-size:16px; display:flex; align-items:center; gap:8px; }
 
-  /* ── Full-screen adjustments ── */
+  /* ── Full-Screen Adjustments ── */
   body.teller-fs .sidebar { transform:translateX(-100%); }
   body.teller-fs .hamburger { left:12px !important; }
   body.teller-fs .main { margin-left:0; }
-  body.teller-fs .customer-hero-avatar { width:64px; height:64px; font-size:26px; }
-  body.teller-fs .customer-hero-info h2 { font-size:22px; }
-  body.teller-fs .balance-primary .bp-value { font-size:34px; }
-  body.teller-fs .tl-card { border-radius:16px; }
-  body.teller-fs .tr-card { border-radius:16px; min-height:550px; max-height:calc(100vh - 180px); }
+  body.teller-fs .customer-hero-avatar { width:60px; height:60px; font-size:24px; }
+  body.teller-fs .customer-hero-info h2 { font-size:20px; }
+  body.teller-fs .balance-primary .bp-value { font-size:32px; }
+  body.teller-fs .tl-card { border-radius:18px; }
+  body.teller-fs .tr-card { border-radius:18px; min-height:520px; max-height:calc(100vh - 170px); }
 
+  /* ── Print Prompt ── */
   .pp-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.4); z-index:1001; align-items:center; justify-content:center; backdrop-filter:blur(2px); }
   .pp-overlay.show { display:flex; }
-  .pp-modal { background:var(--card); border-radius:16px; padding:32px; max-width:400px; width:90%; box-shadow:0 16px 48px rgba(0,0,0,0.2); animation:modalIn 0.2s ease; text-align:center; }
-  .pp-modal .pp-icon { font-size:48px; margin-bottom:12px; }
-  .pp-modal h3 { font-size:18px; font-weight:700; margin-bottom:4px; }
-  .pp-modal p { font-size:14px; color:var(--text-muted); margin-bottom:20px; }
-  .pp-modal .pp-actions { display:flex; gap:10px; justify-content:center; }
-  .pp-modal .pp-actions button { padding:12px 28px; border:none; border-radius:10px; font-size:14px; font-weight:700; cursor:pointer; transition:all 0.15s; min-width:120px; }
+  .pp-modal { background:var(--card); border-radius:16px; padding:28px; max-width:380px; width:90%; box-shadow:0 16px 48px rgba(0,0,0,0.2); animation:modalIn 0.2s ease; text-align:center; }
+  .pp-modal .pp-icon { font-size:44px; margin-bottom:10px; }
+  .pp-modal h3 { font-size:17px; font-weight:700; margin-bottom:3px; }
+  .pp-modal p { font-size:13px; color:var(--text-muted); margin-bottom:18px; }
+  .pp-modal .pp-actions { display:flex; gap:8px; justify-content:center; }
+  .pp-modal .pp-actions button { padding:10px 24px; border:none; border-radius:10px; font-size:13px; font-weight:700; cursor:pointer; transition:all 0.15s; min-width:100px; }
   .pp-modal .pp-actions button:hover { transform:translateY(-1px); }
   .pp-modal .pp-print { background:linear-gradient(135deg,var(--accent),#1B5E20); color:#fff; }
   .pp-modal .pp-print:hover { box-shadow:0 4px 14px rgba(46,125,50,0.3); }
   .pp-modal .pp-skip { background:#f1f5f9; color:var(--text-muted); }
   .pp-modal .pp-skip:hover { background:#e2e8f0; color:var(--text); }
 
-  .welcome-card { text-align:center; padding:60px 20px; color:var(--text-muted); background:var(--card); border-radius:14px; border:1px solid var(--border); box-shadow:0 2px 8px rgba(0,0,0,0.04); }
-  .welcome-card .wc-icon { font-size:56px; margin-bottom:14px; }
-  .welcome-card h3 { font-size:20px; font-weight:600; color:var(--text); margin-bottom:4px; }
-  .welcome-card p { font-size:14px; }
+  /* ── Welcome Card ── */
+  .welcome-card { text-align:center; padding:60px 20px; color:var(--text-muted); background:var(--card); border-radius:16px; border:1px solid var(--border); box-shadow:0 2px 10px rgba(0,0,0,0.04); }
+  .welcome-card .wc-icon { font-size:52px; margin-bottom:12px; }
+  .welcome-card h3 { font-size:18px; font-weight:600; color:var(--text); margin-bottom:3px; }
+  .welcome-card p { font-size:13px; }
+
+  /* ── Success Toast / Notification ── */
+  .tx-toast { position:fixed; bottom:24px; right:24px; padding:14px 20px; border-radius:12px; font-size:14px; font-weight:600; z-index:2000; box-shadow:0 8px 24px rgba(0,0,0,0.15); animation:slideUp 0.3s ease; display:flex; align-items:center; gap:10px; max-width:400px; }
+  .tx-toast.success { background:#16a34a; color:#fff; }
+  .tx-toast.error { background:#dc2626; color:#fff; }
+  .tx-toast .tt-icon { font-size:20px; }
+  @keyframes slideUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+
+  @keyframes spin { to { transform:translateY(-50%) rotate(360deg); } }
+  @keyframes modalIn { from { opacity:0; transform:scale(0.92) translateY(20px); } to { opacity:1; transform:scale(1) translateY(0); } }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+  .pulsing { animation:pulse 1.5s ease-in-out infinite; }
   </style>`;
 
   function receiptHtml(r) {
@@ -3769,9 +3902,9 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
     var isCredit = r.type === 'deposit' || r.type === 'loan_disbursement' || r.type === 'interest' || r.type === 'interest_credit';
     var isVoided = r.voided_at ? true : false;
     var extRef = r.reference_id ? (r.reference_type ? r.reference_type + ':' : '') + r.reference_id : '-';
-    var voidBanner = isVoided ? '<div class="rm-void-banner"><i class="fas fa-ban"></i> VOIDED — ' + (r.void_reason || '') + '</div>' : '';
-    var voidRow = isVoided ? '<div class="rm-divider"></div><div class="rm-row"><span class="rm-label">Voided By</span><span class="rm-value" style="color:#dc2626">' + (r.voided_by || '') + ' on ' + (r.voided_at || '').slice(0,10) + '</span></div>' : '';
-    return '<div class="receipt-overlay' + (r ? ' show' : '') + '" id="receiptOverlay"><div class="receipt-modal" id="rinline">' + voidBanner + '<div class="rm-header"><div class="rm-title">LABCOOP PASSBOOK</div><div class="rm-sub">Official Transaction Receipt</div></div><div class="rm-body"><div class="rm-row"><span class="rm-label">TRN#</span><span class="rm-value">' + fmtRef(r, 'TXN-' + (r.transaction_id || '').slice(0,8).toUpperCase()) + '</span></div><div class="rm-row"><span class="rm-label">Date</span><span class="rm-value">' + (r.created_at || '').slice(0,19).replace('T',' ') + '</span></div><div class="rm-row"><span class="rm-label">Member</span><span class="rm-value">' + (r.child_name||'N/A') + ' (' + (r.member_id||'---') + ')</span></div><div class="rm-divider"></div><div class="rm-row"><span class="rm-label">Transaction</span><span class="rm-value" style="text-transform:uppercase">' + r.type.replace(/_/g,' ') + '</span></div><div class="rm-row"><span class="rm-label">Amount</span><span class="rm-value ' + (isCredit ? 'rm-credit' : 'rm-debit') + '">' + (isCredit ? '+' : '-') + ' \u20B1' + Number(r.amount).toFixed(2) + '</span></div><div class="rm-row"><span class="rm-label">Description</span><span class="rm-value">' + (r.description||'-') + '</span></div>' + voidRow + '<div class="rm-divider"></div><div class="rm-row"><span class="rm-label">Balance Before</span><span class="rm-value">\u20B1' + Number(r.balance_before || 0).toFixed(2) + '</span></div><div class="rm-row"><span class="rm-label">Balance After</span><span class="rm-value">\u20B1' + Number(r.balance_after || 0).toFixed(2) + '</span></div><div class="rm-row"><span class="rm-label" style="font-size:11px">Ext. Ref</span><span class="rm-value" style="font-size:11px">' + extRef + '</span></div></div><div class="rm-footer"><button data-action="print-receipt" class="btn btn-sm" style="background:var(--accent);color:#fff;padding:8px 20px;border:none;border-radius:8px;font-weight:600;cursor:pointer"><i class="fas fa-print"></i> Print</button> <button data-action="close-receipt" class="btn btn-sm btn-outline" style="padding:8px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;cursor:pointer;font-weight:600"><i class="fas fa-times"></i> Close</button></div></div></div>';
+    var voidBanner = isVoided ? '<div class="rm-void-banner"><i class="fas fa-ban"></i> VOIDED — ' + h(r.void_reason || '') + '</div>' : '';
+    var voidRow = isVoided ? '<div class="rm-divider"></div><div class="rm-row"><span class="rm-label">Voided By</span><span class="rm-value" style="color:#dc2626">' + h(r.voided_by || '') + ' on ' + (r.voided_at || '').slice(0,10) + '</span></div>' : '';
+    return '<div class="receipt-overlay show" id="receiptOverlay"><div class="receipt-modal" id="rinline">' + voidBanner + '<div class="rm-header"><div class="rm-title">LABCOOP PASSBOOK</div><div class="rm-sub">Official Transaction Receipt</div></div><div class="rm-body"><div class="rm-row"><span class="rm-label">TRN#</span><span class="rm-value">' + (r.trn_number ? fmtRef(r) : 'TXN-' + (r.transaction_id || '').slice(0,8).toUpperCase()) + '</span></div><div class="rm-row"><span class="rm-label">Date</span><span class="rm-value">' + (r.created_at || '').slice(0,19).replace('T',' ') + '</span></div><div class="rm-row"><span class="rm-label">Member</span><span class="rm-value">' + h(r.child_name||'N/A') + ' (' + h(r.member_id||'---') + ')</span></div><div class="rm-divider"></div><div class="rm-row"><span class="rm-label">Transaction</span><span class="rm-value" style="text-transform:uppercase">' + h(r.type.replace(/_/g,' ')) + '</span></div><div class="rm-row"><span class="rm-label">Amount</span><span class="rm-value ' + (isCredit ? 'rm-credit' : 'rm-debit') + '">' + (isCredit ? '+' : '-') + ' \u20B1' + Number(r.amount).toFixed(2) + '</span></div><div class="rm-row"><span class="rm-label">Description</span><span class="rm-value">' + h(r.description||'-') + '</span></div>' + voidRow + '<div class="rm-divider"></div><div class="rm-row"><span class="rm-label">Balance Before</span><span class="rm-value">\u20B1' + Number(r.balance_before || 0).toFixed(2) + '</span></div><div class="rm-row"><span class="rm-label">Balance After</span><span class="rm-value">\u20B1' + Number(r.balance_after || 0).toFixed(2) + '</span></div><div class="rm-row"><span class="rm-label">Ext. Ref</span><span class="rm-value" style="font-size:10px">' + extRef + '</span></div></div><div class="rm-footer"><button onclick="doPrint()" class="btn btn-sm" style="background:var(--accent);color:#fff;padding:8px 20px;border:none;border-radius:8px;font-weight:600;cursor:pointer"><i class="fas fa-print"></i> Print</button><button onclick="closeReceipt()" class="btn btn-sm btn-outline" style="padding:8px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;cursor:pointer;font-weight:600"><i class="fas fa-times"></i> Close</button></div></div></div>';
   }
 
   function searchResultItem(a) {
@@ -3779,24 +3912,56 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
     return '<a href="/admin/teller?account=' + encodeURIComponent(a.account_id) + (searchQ ? '&q=' + encodeURIComponent(searchQ) : '') + '" class="search-result-item">' + avatarHtml + '<div><div class="srn">' + h(a.child_name) + '</div><div class="srm">' + h(a.member_id || '---') + '</div></div></a>';
   }
 
+  // ── Build session summary HTML ──
+  var ssHtml = '';
+  if (selectedAccount) {
+    ssHtml = '<div class="session-summary" id="sessionSummary">' +
+      '<div class="ss-item ss-deposit"><span class="ss-icon">&#x1F4B5;</span><div class="ss-info"><span class="ss-label">Deposits Today</span><span class="ss-value">' + sessionSummary.deposits.count + ' (' + fmt(sessionSummary.deposits.total) + ')</span></div></div>' +
+      '<div class="ss-item ss-withdraw"><span class="ss-icon">&#x1F4B8;</span><div class="ss-info"><span class="ss-label">Withdrawals Today</span><span class="ss-value">' + sessionSummary.withdrawals.count + ' (' + fmt(sessionSummary.withdrawals.total) + ')</span></div></div>' +
+      '<div class="ss-item ss-loan"><span class="ss-icon">&#x1F3E6;</span><div class="ss-info"><span class="ss-label">Loan Payments Today</span><span class="ss-value">' + sessionSummary.loanPayments.count + ' (' + fmt(sessionSummary.loanPayments.total) + ')</span></div></div>' +
+    '</div>';
+  }
+
+  // ── Quick info strip ──
+  var kycStatus = selectedAccount ? (h(selectedAccount.kyc_status || 'pending')) : '';
+  var kycClass = selectedAccount ? ('qi-' + (selectedAccount.kyc_status || 'pending')) : '';
+  var lastTxLabel = lastTransaction ? (lastTransaction.slice(0,16).replace('T',' ')) : 'Never';
+  var quickInfoHtml = selectedAccount ? '<div class="quick-info" id="quickInfo">' +
+    '<div class="qi-item qi-loans"><div class="qi-value">' + activeLoansCount + '</div><div class="qi-label">Active Loans</div></div>' +
+    '<div class="qi-item qi-last"><div class="qi-value">' + lastTxLabel + '</div><div class="qi-label">Last Transaction</div></div>' +
+    '<div class="qi-item qi-kyc"><div class="qi-value ' + kycClass + '">' + kycStatus.toUpperCase() + '</div><div class="qi-label">KYC Status</div></div>' +
+  '</div>' : '';
+
+  // ── Balance bar percentage ──
+  var allocPct = 0;
+  var barClass = '';
+  if (selectedAccount && Number(selectedAccount.actual_balance) > 0) {
+    var saved = Number(selectedAccount.actual_balance) - Number(selectedAccount.unallocated_balance);
+    allocPct = Math.round((saved / Number(selectedAccount.actual_balance)) * 100);
+    barClass = allocPct > 90 ? 'danger' : allocPct > 70 ? 'warning' : '';
+  }
+  var balanceBarHtml = selectedAccount ? '<div class="balance-bar-wrap" id="balanceBarWrap"><div class="balance-bar-fill ' + barClass + '" style="width:' + Math.min(allocPct, 100) + '%" id="balanceBarFill"></div></div><div class="balance-bar-label"><span>Available: ' + fmt(selectedAccount.unallocated_balance) + '</span><span>' + allocPct + '% allocated</span></div>' : '';
+
   const bankContent = bankStyle + `
-  <!-- Top Bar -->
+  <!-- ── Top Toolbar ── -->
   <div class="teller-bar">
-    <div class="teller-bar-inner">
-      <form method="get" action="/admin/teller" class="teller-search">
-        <input type="text" name="q" id="tellerSearch" placeholder="&#x1F50D; Search member by name or ID..." value="${h(searchQ)}" autocomplete="off">
-        <button type="submit"><i class="fas fa-search"></i> Search</button>
-      </form>
+    <div class="teller-bar-row">
+      <div class="teller-search">
+        <span class="search-icon">&#x1F50D;</span>
+        <input type="text" id="tellerSearch" placeholder="Search member by name or ID..." value="${h(searchQ)}" autocomplete="off">
+        <span class="search-spinner" id="searchSpinner"></span>
+        <div class="live-results" id="liveResults"></div>
+      </div>
       <div class="teller-meta">
-        <span style="font-size:11px;color:var(--text-muted)"><i class="fas fa-print"></i> Receipt prompts to print</span>
+        <label title="Auto-print receipt after every transaction"><input type="checkbox" id="autoPrintCheck"> <i class="fas fa-print"></i> Auto-print</label>
         <label title="Hide sidebar for more screen space"><input type="checkbox" id="fullScreenCheck"> <i class="fas fa-expand"></i> Full screen</label>
-        ${selectedAccount ? '<span class="customer-chip">' + (selectedAccount.profile_pic_url ? '<img src="' + h(selectedAccount.profile_pic_url) + '">' : '<span class="chip-avatar">' + h((selectedAccount.child_name || '?')[0].toUpperCase()) + '</span>') + h(selectedAccount.child_name) + ' (' + h(selectedAccount.member_id || '---') + ')</span>' : ''}
+        ${selectedAccount ? '<span class="customer-chip" id="customerChip">' + (selectedAccount.profile_pic_url ? '<img src="' + h(selectedAccount.profile_pic_url) + '">' : '<span class="chip-avatar">' + h((selectedAccount.child_name || '?')[0].toUpperCase()) + '</span>') + h(selectedAccount.child_name) + ' (' + h(selectedAccount.member_id || '---') + ')</span>' : ''}
       </div>
     </div>
-    <div class="shortcuts-bar" style="margin-top:8px"><kbd>F5</kbd> Search <span class="sep">|</span> <kbd>F8</kbd> Deposit <kbd>F9</kbd> Withdraw <kbd>F10</kbd> Loan Pay <span class="sep">|</span> <kbd>F11</kbd> Fullscreen <kbd>Esc</kbd> Close</div>
+    <div class="shortcuts-bar"><kbd>F5</kbd> Search <span class="sep">|</span> <kbd>F8</kbd> Deposit <kbd>F9</kbd> Withdraw <kbd>F10</kbd> Loan Pay <span class="sep">|</span> <kbd>F11</kbd> Fullscreen <kbd>Esc</kbd> Close</div>
   </div>
-  ${searchQ && !selectedId && accounts.length > 0 ? '<div class="search-results">' + accounts.map(searchResultItem).join('') + '</div>' : ''}
-  ${searchQ && !selectedId && accounts.length === 0 ? '<div class="search-results" style="padding:20px;text-align:center;color:var(--text-muted)">No members found for "' + h(searchQ) + '"</div>' : ''}
+
+  ${ssHtml}
 
   ${!selectedAccount ? `
   <div class="welcome-card">
@@ -3807,45 +3972,50 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   ` : `
   <div class="teller-grid">
 
-    <!-- Left: Customer + Actions -->
-    <div class="tl-card">
+    <!-- ── Left Panel ── -->
+    <div class="tl-card" id="leftPanel">
       <div class="tl-card-body">
 
-        <!-- Customer hero -->
+        <!-- Customer Hero -->
         <div class="customer-hero">
-          <div class="customer-hero-avatar">${selectedAccount.profile_pic_url ? '<img src="' + h(selectedAccount.profile_pic_url) + '">' : h((selectedAccount.child_name || '?')[0].toUpperCase())}</div>
+          <div class="customer-hero-avatar" id="heroAvatar">${selectedAccount.profile_pic_url ? '<img src="' + h(selectedAccount.profile_pic_url) + '">' : h((selectedAccount.child_name || '?')[0].toUpperCase())}</div>
           <div class="customer-hero-info">
-            <h2>${h(selectedAccount.child_name)}</h2>
-            <span class="member-tag"><i class="fas fa-id-badge"></i> ${h(selectedAccount.member_id || '---')}</span>
+            <h2 id="heroName">${h(selectedAccount.child_name)}</h2>
+            <span class="member-tag"><i class="fas fa-id-badge"></i> <span id="heroMemberId">${h(selectedAccount.member_id || '---')}</span></span>
           </div>
         </div>
+
+        ${quickInfoHtml}
 
         <!-- Balance -->
         <div class="tl-section">
           <div class="balance-primary">
             <div class="bp-label"><i class="fas fa-piggy-bank"></i> Actual Balance</div>
-            <div class="bp-value">${fmt(selectedAccount.actual_balance)}</div>
+            <div class="bp-value" id="balanceActual">${fmt(selectedAccount.actual_balance)}</div>
           </div>
           <div class="balance-secondary">
-            <div class="bs-item"><div class="bs-label">Available</div><div class="bs-value">${fmt(selectedAccount.unallocated_balance)}</div></div>
-            <div class="bs-item"><div class="bs-label">Savings</div><div class="bs-value">${fmt(Number(selectedAccount.actual_balance) - Number(selectedAccount.unallocated_balance))}</div></div>
+            <div class="bs-item"><div class="bs-label">Available</div><div class="bs-value" id="balanceAvailable">${fmt(selectedAccount.unallocated_balance)}</div></div>
+            <div class="bs-item"><div class="bs-label">Savings</div><div class="bs-value" id="balanceSavings">${fmt(Number(selectedAccount.actual_balance) - Number(selectedAccount.unallocated_balance))}</div></div>
           </div>
+          ${balanceBarHtml}
+          <div class="fgroup hint" id="lowBalanceWarning" style="display:none;color:#dc2626;font-size:11px;margin-top:4px"><i class="fas fa-exclamation-triangle"></i> Low balance</div>
         </div>
 
-        <!-- Action tabs -->
+        <!-- Action Tabs -->
         <div class="action-tabs">
           <button class="action-tab active" data-tab="deposit" id="tab-deposit"><span class="tab-icon">&#x1F4B5;</span> Deposit</button>
           <button class="action-tab" data-tab="withdraw" id="tab-withdraw"><span class="tab-icon">&#x1F4B8;</span> Withdraw</button>
           <button class="action-tab" data-tab="loan" id="tab-loan"><span class="tab-icon">&#x1F3E6;</span> Loan Pay</button>
         </div>
 
-        <!-- Deposit Panel -->
+        <!-- ── Deposit Panel ── -->
         <div class="action-panel active" id="panel-deposit">
-          <form method="post" action="/admin/teller/deposit/${selectedAccount.account_id}?_csrf=${res.locals.csrfToken}">
+          <form id="depositForm" data-action="/admin/teller/deposit/${selectedAccount.account_id}">
+            <input type="hidden" name="_csrf" value="${res.locals.csrfToken}">
             <input type="hidden" name="q" value="${h(searchQ)}">
             <div class="fgroup">
               <label><i class="fas fa-coins"></i> Amount (&#x20B1;)</label>
-              <input type="number" name="amount" min="1" step="0.01" placeholder="0.00" required class="amt-input" id="depAmt">
+              <input type="number" name="amount" min="1" step="0.01" placeholder="0.00" required class="amt-input" id="depAmt" autocomplete="off">
             </div>
             <div class="keypad" data-target="depAmt">
               <button type="button" class="keypad-btn kp-green" data-val="50">50</button>
@@ -3857,21 +4027,37 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
               <button type="button" class="keypad-btn kp-green" data-val="5000">5,000</button>
               <button type="button" class="keypad-btn kp-action" data-val="">Custom</button>
             </div>
+            <div class="cash-breakdown" id="depBreakdown">
+              <div class="cb-toggle" onclick="toggleBreakdown('depBreakdown')"><i class="fas fa-chevron-right" id="depBrIcon"></i> Cash Breakdown (optional)</div>
+              <div class="cb-grid" id="depBreakdownGrid">
+                <div class="cb-row"><label>1000</label><input type="number" min="0" class="cb-qty" data-denom="1000" value="0"></div>
+                <div class="cb-row"><label>500</label><input type="number" min="0" class="cb-qty" data-denom="500" value="0"></div>
+                <div class="cb-row"><label>200</label><input type="number" min="0" class="cb-qty" data-denom="200" value="0"></div>
+                <div class="cb-row"><label>100</label><input type="number" min="0" class="cb-qty" data-denom="100" value="0"></div>
+                <div class="cb-row"><label>50</label><input type="number" min="0" class="cb-qty" data-denom="50" value="0"></div>
+                <div class="cb-row"><label>20</label><input type="number" min="0" class="cb-qty" data-denom="20" value="0"></div>
+                <div class="cb-row"><label>10</label><input type="number" min="0" class="cb-qty" data-denom="10" value="0"></div>
+                <div class="cb-row"><label>5</label><input type="number" min="0" class="cb-qty" data-denom="5" value="0"></div>
+                <div class="cb-row"><label>1</label><input type="number" min="0" class="cb-qty" data-denom="1" value="0"></div>
+              </div>
+              <div class="cb-total" id="depBrTotal">Breakdown: &#x20B1;0.00</div>
+            </div>
             <div class="fgroup">
               <label><i class="fas fa-pen"></i> Description</label>
               <input type="text" name="description" placeholder="e.g. OTC deposit" value="Counter deposit">
             </div>
-            <button type="submit" class="proc-btn proc-green"><i class="fas fa-check-circle"></i> Process Deposit</button>
+            <button type="submit" class="proc-btn proc-green" id="depBtn"><span class="btn-spinner"></span><span class="btn-text"><i class="fas fa-check-circle"></i> Process Deposit</span></button>
           </form>
         </div>
 
-        <!-- Withdraw Panel -->
+        <!-- ── Withdraw Panel ── -->
         <div class="action-panel" id="panel-withdraw">
-          <form method="post" action="/admin/teller/withdraw/${selectedAccount.account_id}?_csrf=${res.locals.csrfToken}">
+          <form id="withdrawForm" data-action="/admin/teller/withdraw/${selectedAccount.account_id}">
+            <input type="hidden" name="_csrf" value="${res.locals.csrfToken}">
             <input type="hidden" name="q" value="${h(searchQ)}">
             <div class="fgroup">
               <label><i class="fas fa-money-bill-wave"></i> Amount (&#x20B1;)</label>
-              <input type="number" name="amount" min="1" step="0.01" placeholder="0.00" required class="amt-input" id="wdAmt">
+              <input type="number" name="amount" min="1" step="0.01" placeholder="0.00" required class="amt-input" id="wdAmt" autocomplete="off">
             </div>
             <div class="keypad" data-target="wdAmt">
               <button type="button" class="keypad-btn kp-orange" data-val="50">50</button>
@@ -3887,24 +4073,25 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
               <label><i class="fas fa-pen"></i> Description</label>
               <input type="text" name="description" placeholder="e.g. Cash withdrawal" value="Counter withdrawal">
             </div>
-            <button type="submit" class="proc-btn proc-orange"><i class="fas fa-check-circle"></i> Process Withdrawal</button>
+            <button type="submit" class="proc-btn proc-orange" id="wdBtn"><span class="btn-spinner"></span><span class="btn-text"><i class="fas fa-check-circle"></i> Process Withdrawal</span></button>
           </form>
         </div>
 
-        <!-- Loan Pay Panel -->
+        <!-- ── Loan Pay Panel ── -->
         <div class="action-panel" id="panel-loan">
-          <form method="post" action="/admin/teller/loan-pay/${selectedAccount.account_id}?_csrf=${res.locals.csrfToken}">
+          <form id="loanForm" data-action="/admin/teller/loan-pay/${selectedAccount.account_id}">
+            <input type="hidden" name="_csrf" value="${res.locals.csrfToken}">
             <input type="hidden" name="q" value="${h(searchQ)}">
             <div class="fgroup">
               <label><i class="fas fa-hand-holding-dollar"></i> Select Loan</label>
-              <select name="loan_id" required>
+              <select name="loan_id" id="loanSelect" required>
                 <option value="">-- Choose active loan --</option>
                 ${loanOptionsHtml}
               </select>
             </div>
             <div class="fgroup">
               <label><i class="fas fa-coins"></i> Payment Amount (&#x20B1;)</label>
-              <input type="number" name="amount" min="1" step="0.01" placeholder="0.00" required class="amt-input" id="loanAmt">
+              <input type="number" name="amount" min="1" step="0.01" placeholder="0.00" required class="amt-input" id="loanAmt" autocomplete="off">
             </div>
             <div class="keypad" data-target="loanAmt">
               <button type="button" class="keypad-btn kp-blue" data-val="50">50</button>
@@ -3916,39 +4103,95 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
               <button type="button" class="keypad-btn kp-blue" data-val="5000">5,000</button>
               <button type="button" class="keypad-btn kp-action" data-val="">Full balance</button>
             </div>
-            <button type="submit" class="proc-btn proc-blue"><i class="fas fa-check-circle"></i> Process Payment</button>
+            <button type="submit" class="proc-btn proc-blue" id="loanBtn"><span class="btn-spinner"></span><span class="btn-text"><i class="fas fa-check-circle"></i> Process Payment</span></button>
           </form>
         </div>
 
       </div>
     </div>
 
-    <!-- Right: Activity -->
-    <div class="tr-card">
+    <!-- ── Right Panel: Activity ── -->
+    <div class="tr-card" id="rightPanel">
       <div class="tr-header">
         <h3><i class="fas fa-clock-rotate-left"></i> Activity</h3>
-        <span class="tr-count">${recentTxs.length}</span>
+        <span class="tr-count" id="txCount">${recentTxs.length}</span>
       </div>
-      <div class="tr-body">
-        
-        ${recentTxs.length === 0 ? '<div class="empty-state"><div class="es-icon"><i class="fas fa-inbox"></i></div><h3>No transactions yet</h3><p>Complete a transaction above to see it here.</p></div>' : '<table class="activity-table"><tr><th>Type</th><th style="text-align:right">Amount</th><th>Description</th><th>Date</th><th></th></tr>' + recentTxs.map(function(tx) {
+      <div class="tr-filters" id="filterBar">
+        <button class="tr-filter active" data-type="all">All</button>
+        <button class="tr-filter" data-type="deposit">Deposits</button>
+        <button class="tr-filter" data-type="withdrawal">Withdrawals</button>
+        <button class="tr-filter" data-type="loan_payment">Loan Pays</button>
+      </div>
+      <div class="tr-body" id="txBody">
+        ${recentTxs.length === 0 ? '<div class="empty-state" id="emptyState"><div class="es-icon"><i class="fas fa-inbox"></i></div><h3>No transactions yet</h3><p>Complete a transaction above to see it here.</p></div>' : '<table class="activity-table" id="txTable"><thead><tr><th>Type</th><th style="text-align:right">Amount</th><th>Description</th><th style="text-align:right">Balance</th><th>Date</th><th></th></tr></thead><tbody id="txBodyContent">' + recentTxs.map(function(tx) {
             var isCredit = tx.type === 'deposit' || tx.type === 'loan_disbursement' || tx.type === 'interest' || tx.type === 'interest_credit';
             var tc = tx.voided_at ? 'voided' : ({deposit:'deposit',withdrawal:'withdrawal',loan_payment:'loan_payment',loan_disbursement:'loan_disbursement',interest:'interest',interest_credit:'interest',allocation:'allocation',fee:'fee'})[tx.type] || 'deposit';
             var sign = isCredit ? '+' : '-';
             var col = isCredit ? '#16a34a' : '#dc2626';
-            var voidLabel = tx.voided_at ? ' <span style="font-size:9px;color:#dc2626;display:block">Voided</span>' : '';
+            var voidLabel = tx.voided_at ? ' <span style="font-size:8px;color:#dc2626;display:block">Voided</span>' : '';
             var refHtml = tx.trn_number ? '<span class="tx-ref">' + fmtRef(tx) + '</span>' : '';
-            return '<tr><td><span class="tx-badge ' + tc + '">' + (tx.voided_at ? '<i class="fas fa-ban"></i>' : '') + h(tx.type.replace(/_/g,' ')) + '</span>' + voidLabel + '</td><td class="tx-amt" style="color:' + col + '">' + sign + fmt(tx.amount) + refHtml + '</td><td class="tx-desc">' + h(tx.description||'-') + '</td><td class="tx-date">' + h((tx.created_at||'').slice(0,16).replace('T',' ')) + '</td><td style="white-space:nowrap">' + (tx.voided_at ? '' : '<button class="tr-action-btn rcpt" onclick="showReceipt(\'' + h(tx.transaction_id) + '\')" title="View receipt"><i class="fas fa-receipt"></i></button>' + (adminRole >= 3 && ['deposit','withdrawal','loan_payment','interest','interest_credit','auto_save','fee','penalty'].includes(tx.type) ? ' <button class="tr-action-btn void" onclick="openVoidModal(\'' + h(tx.transaction_id) + '\',\'' + h(tx.type.replace(/_/g,' ')) + '\',\'' + Number(tx.amount).toFixed(2) + '\')" title="Void"><i class="fas fa-ban"></i></button>' : '')) + '</td></tr>';
-          }).join('') + '</table>'}
+            var rowClass = tx.voided_at ? 'tx-row-voided' : 'tx-row-' + tx.type;
+            var voidBtn = (!tx.voided_at && adminRole >= 3 && ['deposit','withdrawal','loan_payment','interest','interest_credit','auto_save','fee','penalty'].includes(tx.type)) ? ' <button class="tr-action-btn void" onclick="openVoidModal(\'' + h(tx.transaction_id) + '\',\'' + h(tx.type.replace(/_/g,' ')) + '\',\'' + Number(tx.amount).toFixed(2) + '\')" title="Void"><i class="fas fa-ban"></i></button>' : '';
+            return '<tr class="' + rowClass + '"><td><span class="tx-badge ' + tc + '">' + (tx.voided_at ? '<i class="fas fa-ban"></i>' : '') + h(tx.type.replace(/_/g,' ')) + '</span>' + voidLabel + '</td><td class="tx-amt" style="color:' + col + '">' + sign + fmt(tx.amount) + refHtml + '</td><td class="tx-desc">' + h(tx.description||'-') + '</td><td class="tx-bal">' + fmt(tx.balance_after || 0) + '</td><td class="tx-date">' + h((tx.created_at||'').slice(0,16).replace('T',' ')) + '</td><td style="white-space:nowrap">' + (tx.voided_at ? '' : '<button class="tr-action-btn rcpt" onclick="showReceiptAjax(\'' + h(tx.transaction_id) + '\')" title="View receipt"><i class="fas fa-receipt"></i></button>' + voidBtn) + '</td></tr>';
+          }).join('') + '</tbody></table>'}
+        <div class="load-more-wrap" id="loadMoreWrap" style="display:none"><button class="load-more-btn" id="loadMoreBtn" onclick="loadMoreTx()">Load More</button></div>
       </div>
     </div>
 
   </div>
   `}
 
-  ${receipt ? receiptHtml(receipt) : '<div class="receipt-overlay" id="receiptOverlay"><div class="receipt-modal" id="rinline"><div class="rm-header"><div class="rm-title">LABCOOP PASSBOOK</div><div class="rm-sub">Official Transaction Receipt</div></div><div class="rm-body"><div class="rm-row"><span class="rm-label">TRN#</span><span class="rm-value">-</span></div><div class="rm-row"><span class="rm-label">Date</span><span class="rm-value">-</span></div><div class="rm-row"><span class="rm-label">Member</span><span class="rm-value">-</span></div><div class="rm-divider"></div><div class="rm-row"><span class="rm-label">Transaction</span><span class="rm-value">-</span></div><div class="rm-row"><span class="rm-label">Amount</span><span class="rm-value">-</span></div><div class="rm-row"><span class="rm-label">Description</span><span class="rm-value">-</span></div><div class="rm-divider"></div><div class="rm-row"><span class="rm-label">Balance Before</span><span class="rm-value">-</span></div><div class="rm-row"><span class="rm-label">Balance After</span><span class="rm-value">-</span></div></div><div class="rm-footer"><button data-action="print-receipt" class="btn btn-sm" style="background:var(--accent);color:#fff;padding:8px 20px;border:none;border-radius:8px;font-weight:600;cursor:pointer"><i class="fas fa-print"></i> Print</button><button data-action="close-receipt" class="btn btn-sm btn-outline" style="padding:8px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;cursor:pointer;font-weight:600"><i class="fas fa-times"></i> Close</button></div></div></div>'}
+  <!-- ── Confirm Transaction Modal ── -->
+  <div class="confirm-overlay" id="confirmOverlay" onclick="if(event.target===this)closeConfirm()">
+    <div class="confirm-modal">
+      <div class="cm-icon" id="cmIcon">&#x1F4B5;</div>
+      <h3 id="cmTitle">Confirm Transaction</h3>
+      <p class="cm-sub" id="cmSub">Please review the details below before processing.</p>
+      <div class="cm-detail">
+        <div class="cm-row"><span class="cm-label">Member</span><span class="cm-value" id="cmMember">-</span></div>
+        <div class="cm-row"><span class="cm-label">Type</span><span class="cm-value" id="cmType">-</span></div>
+        <div class="cm-amount" id="cmAmount">&#x20B1;0.00</div>
+        <div class="cm-row"><span class="cm-label">Description</span><span class="cm-value" id="cmDesc">-</span></div>
+        <div class="cm-divider" style="border-top:1px solid var(--border);margin:6px 0"></div>
+        <div class="cm-row"><span class="cm-label">Balance After</span><span class="cm-value" id="cmBalanceAfter">-</span></div>
+      </div>
+      <div class="cm-balance-after" id="cmNote"></div>
+      <div class="cm-actions">
+        <button class="cm-cancel" onclick="closeConfirm()">Cancel</button>
+        <button class="cm-confirm cm-green" id="cmConfirmBtn" onclick="executeTransaction()"><i class="fas fa-check-circle"></i> Confirm</button>
+      </div>
+    </div>
+  </div>
 
-  <!-- Print Prompt Modal -->
+  <!-- ── Receipt Overlay ── -->
+  <div class="receipt-overlay" id="receiptOverlay">
+    <div class="receipt-modal" id="rinline">
+      <div class="rm-void-banner" id="rmVoidBanner" style="display:none"><i class="fas fa-ban"></i> VOIDED</div>
+      <div class="rm-header">
+        <div class="rm-title">LABCOOP PASSBOOK</div>
+        <div class="rm-sub">Official Transaction Receipt</div>
+      </div>
+      <div class="rm-body" id="rmBody">
+        <div class="rm-row"><span class="rm-label">TRN#</span><span class="rm-value" id="rmTrn">-</span></div>
+        <div class="rm-row"><span class="rm-label">Date</span><span class="rm-value" id="rmDate">-</span></div>
+        <div class="rm-row"><span class="rm-label">Member</span><span class="rm-value" id="rmMember">-</span></div>
+        <div class="rm-divider"></div>
+        <div class="rm-row"><span class="rm-label">Transaction</span><span class="rm-value" id="rmTxType" style="text-transform:uppercase">-</span></div>
+        <div class="rm-row"><span class="rm-label">Amount</span><span class="rm-value" id="rmAmount">-</span></div>
+        <div class="rm-row"><span class="rm-label">Description</span><span class="rm-value" id="rmDesc">-</span></div>
+        <div class="rm-divider"></div>
+        <div class="rm-row"><span class="rm-label">Balance Before</span><span class="rm-value" id="rmBalBefore">-</span></div>
+        <div class="rm-row"><span class="rm-label">Balance After</span><span class="rm-value" id="rmBalAfter">-</span></div>
+        <div class="rm-row" id="rmExtRefRow" style="display:none"><span class="rm-label">Ext. Ref</span><span class="rm-value" id="rmExtRef" style="font-size:10px">-</span></div>
+      </div>
+      <div class="rm-footer">
+        <button onclick="doPrint()" class="btn btn-sm" style="background:var(--accent);color:#fff;padding:8px 20px;border:none;border-radius:8px;font-weight:600;cursor:pointer"><i class="fas fa-print"></i> Print</button>
+        <button onclick="closeReceipt()" class="btn btn-sm btn-outline" style="padding:8px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;cursor:pointer;font-weight:600"><i class="fas fa-times"></i> Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Print Prompt ── -->
   <div class="pp-overlay" id="ppOverlay" onclick="if(event.target===this)closePrintPrompt()">
     <div class="pp-modal">
       <div class="pp-icon">&#x2705;</div>
@@ -3961,23 +4204,23 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
     </div>
   </div>
 
-  <!-- Void Modal -->
+  <!-- ── Void Modal ── -->
   <div class="void-overlay" id="voidOverlay" onclick="if(event.target===this)closeVoidModal()">
     <div class="void-modal">
       <h3><i class="fas fa-ban"></i> Void Transaction</h3>
-      <div style="background:#fef2f2;padding:14px;border-radius:10px;margin-bottom:16px">
+      <div style="background:#fef2f2;padding:14px;border-radius:10px;margin-bottom:14px">
         <div style="font-size:14px"><b>Transaction:</b> <span id="voidTxType"></span></div>
         <div style="font-size:14px"><b>Amount:</b> &#x20B1; <span id="voidTxAmount"></span></div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:6px">This will reverse the transaction, post reversing GL entries, and restore the account balance.</div>
       </div>
-      <form method="post" action="/admin/teller/void/PLACEHOLDER" id="voidForm">
-        <div style="margin-bottom:14px">
-          <label style="font-weight:600;display:block;margin-bottom:4px;font-size:13px">Reason for void <span style="color:#dc2626">*</span></label>
-          <textarea name="reason" id="voidReason" required minlength="5" style="width:100%;padding:10px;border:2px solid var(--border);border-radius:8px;min-height:70px;font-size:14px;outline:none" placeholder="Explain why this transaction is being voided (min 5 characters)"></textarea>
+      <form id="voidForm" data-txid="">
+        <div style="margin-bottom:12px">
+          <label style="font-weight:600;display:block;margin-bottom:4px;font-size:12px">Reason for void <span style="color:#dc2626">*</span></label>
+          <textarea name="reason" id="voidReason" required minlength="5" style="width:100%;padding:10px;border:2px solid var(--border);border-radius:8px;min-height:60px;font-size:13px;outline:none;box-sizing:border-box" placeholder="Explain why this transaction is being voided (min 5 characters)"></textarea>
         </div>
-        <div style="margin-bottom:18px">
-          <label style="font-weight:600;display:block;margin-bottom:4px;font-size:13px">Your password <span style="color:#dc2626">*</span></label>
-          <input type="password" name="password" id="voidPassword" required style="width:100%;padding:10px;border:2px solid var(--border);border-radius:8px;font-size:14px;outline:none" placeholder="Enter your admin password to authorize">
+        <div style="margin-bottom:16px">
+          <label style="font-weight:600;display:block;margin-bottom:4px;font-size:12px">Your password <span style="color:#dc2626">*</span></label>
+          <input type="password" name="password" id="voidPassword" required style="width:100%;padding:10px;border:2px solid var(--border);border-radius:8px;font-size:13px;outline:none;box-sizing:border-box" placeholder="Enter your admin password to authorize">
         </div>
         <div style="display:flex;gap:8px">
           <button type="submit" class="btn btn-danger" style="flex:1;padding:12px;font-size:14px;font-weight:700"><i class="fas fa-ban"></i> Confirm Void</button>
@@ -3988,6 +4231,51 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   </div>
 
   <script>
+  // ═══════════════════════════════════════════════════════════════
+  // ENHANCED TELLER JAVASCRIPT
+  // ═══════════════════════════════════════════════════════════════
+
+  var currentPage = 1;
+  var currentFilter = 'all';
+  var totalPages = 1;
+  var selectedAccountId = '${selectedAccount ? selectedAccount.account_id : ''}';
+  var pendingTransaction = null;
+  var adminRole = ${adminRole};
+
+  // ── Live Search ──
+  var searchInput = document.getElementById('tellerSearch');
+  var liveResults = document.getElementById('liveResults');
+  var searchSpinner = document.getElementById('searchSpinner');
+  var searchTimer = null;
+
+  if (searchInput) {
+    searchInput.addEventListener('input', function() {
+      var q = this.value.trim();
+      clearTimeout(searchTimer);
+      if (q.length < 1) { liveResults.classList.remove('open'); return; }
+      searchSpinner.classList.add('active');
+      searchTimer = setTimeout(function() {
+        fetch('/admin/teller-search?q=' + encodeURIComponent(q))
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            searchSpinner.classList.remove('active');
+            if (!data.accounts || data.accounts.length === 0) {
+              liveResults.innerHTML = '<div class="lr-empty">No members found for "' + h(q) + '"</div>';
+            } else {
+              liveResults.innerHTML = data.accounts.map(function(a) {
+                var av = a.profile_pic_url ? '<img src="' + h(a.profile_pic_url) + '" style="width:34px;height:34px;border-radius:50%;object-fit:cover">' : '<div class="lr-avatar">' + h((a.child_name || '?')[0].toUpperCase()) + '</div>';
+                return '<a href="/admin/teller?account=' + encodeURIComponent(a.account_id) + (q ? '&q=' + encodeURIComponent(q) : '') + '" class="lr-item" onclick="document.body.style.cursor=\'wait\'">' + av + '<div><div class="lr-name">' + h(a.child_name) + '</div><div class="lr-mid">' + h(a.member_id || '---') + '</div></div><div class="lr-bal">' + fmt(a.actual_balance) + '</div></a>';
+              }).join('');
+            }
+            liveResults.classList.add('open');
+          })
+          .catch(function() { searchSpinner.classList.remove('active'); });
+      }, 300);
+    });
+    searchInput.addEventListener('blur', function() { setTimeout(function() { liveResults.classList.remove('open'); }, 200); });
+    searchInput.addEventListener('focus', function() { if (this.value.trim()) { liveResults.classList.add('open'); } });
+  }
+
   // ── Keypad buttons ──
   document.querySelectorAll('.keypad').forEach(function(grid) {
     var targetId = grid.getAttribute('data-target');
@@ -4001,7 +4289,56 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
         grid.querySelectorAll('.keypad-btn').forEach(function(b) { b.classList.remove('selected'); });
         if (val !== '') this.classList.add('selected');
         input.dispatchEvent(new Event('input', { bubbles: true }));
+        // Enable/disable submit button
+        updateProcBtn(input);
       });
+    });
+  });
+
+  // ── Enable/disable process buttons based on amount ──
+  function updateProcBtn(input) {
+    var form = input.closest('form');
+    if (!form) return;
+    var btn = form.querySelector('.proc-btn');
+    var val = parseFloat(input.value);
+    if (btn) btn.disabled = !val || val <= 0;
+  }
+  document.querySelectorAll('.amt-input').forEach(function(inp) {
+    inp.addEventListener('input', function() { updateProcBtn(this); });
+    updateProcBtn(inp);
+  });
+
+  // ── Cash Breakdown (Deposit only) ──
+  function toggleBreakdown(id) {
+    var el = document.getElementById(id);
+    var icon = document.getElementById(id.replace('Breakdown','BrIcon'));
+    if (!el) return;
+    el.classList.toggle('open');
+    if (icon) icon.style.transform = el.classList.contains('open') ? 'rotate(90deg)' : '';
+  }
+  document.querySelectorAll('.cb-qty').forEach(function(inp) {
+    inp.addEventListener('input', function() {
+      var total = 0;
+      document.querySelectorAll('#depBreakdown .cb-qty').forEach(function(q) {
+        total += parseInt(q.value || 0) * parseInt(q.getAttribute('data-denom'));
+      });
+      var totalEl = document.getElementById('depBrTotal');
+      if (totalEl) totalEl.innerHTML = 'Breakdown: &#x20B1;' + total.toFixed(2) + ' <span class="cb-diff">' + (total > 0 ? '(fills amount)' : '') + '</span>';
+      if (total > 0) {
+        var amtInput = document.getElementById('depAmt');
+        if (amtInput && !amtInput.value) amtInput.value = total;
+      }
+    });
+  });
+  // Reset breakdown when switching tabs
+  document.querySelectorAll('.action-tab').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      var bd = document.getElementById('depBreakdown');
+      if (bd) bd.classList.remove('open');
+      var cbInputs = document.querySelectorAll('.cb-qty');
+      cbInputs.forEach(function(i) { i.value = '0'; });
+      var totalEl = document.getElementById('depBrTotal');
+      if (totalEl) totalEl.innerHTML = 'Breakdown: &#x20B1;0.00';
     });
   });
 
@@ -4018,7 +4355,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
     btn.addEventListener('click', function() { switchTab(this.getAttribute('data-tab')); });
   });
 
-  // ── Full-screen toggle ──
+  // ── Full-screen & Auto-print toggles ──
   var fsCheck = document.getElementById('fullScreenCheck');
   if (fsCheck) {
     if (localStorage.getItem('tellerFullScreen') === '1') { fsCheck.checked = true; document.body.classList.add('teller-fs'); }
@@ -4027,38 +4364,279 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
       localStorage.setItem('tellerFullScreen', this.checked ? '1' : '0');
     });
   }
+  var autoPrintCheck = document.getElementById('autoPrintCheck');
+  if (autoPrintCheck) {
+    if (localStorage.getItem('tellerAutoPrint') === '1') autoPrintCheck.checked = true;
+    autoPrintCheck.addEventListener('change', function() {
+      localStorage.setItem('tellerAutoPrint', this.checked ? '1' : '0');
+    });
+  }
 
-  // ── Clean URL params so refresh doesn't re-show toasts/receipt ──
-  if (window.history && window.history.replaceState) {
-    var clean = window.location.href.replace(/[?&](deposited|withdrawn|loanpaid|voided|error|receipt)=[^&]*/g, '').replace(/[?&]$/, '');
-    if (clean !== window.location.href) {
-      window.history.replaceState({}, document.title, clean);
+  // ── AJAX Form Submission with Confirmation ──
+  document.querySelectorAll('.action-panel form').forEach(function(form) {
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      var formData = new FormData(this);
+      var action = this.getAttribute('data-action');
+      var csrf = formData.get('_csrf');
+      var amount = formData.get('amount');
+      var desc = formData.get('description') || '';
+      var type = this.id.replace('Form','');
+      var memberName = document.getElementById('heroName') ? document.getElementById('heroName').textContent : '';
+      var memberId = document.getElementById('heroMemberId') ? document.getElementById('heroMemberId').textContent : '';
+      var currentBal = parseFloat(document.getElementById('balanceActual') ? document.getElementById('balanceActual').textContent.replace(/[^0-9.-]/g,'') : 0);
+      var balanceAfter = type === 'deposit' ? currentBal + parseFloat(amount) : currentBal - parseFloat(amount);
+      var loanSelect = form.querySelector('select[name="loan_id"]');
+      var loanId = loanSelect ? loanSelect.value : '';
+
+      // Validate
+      if (!amount || parseFloat(amount) <= 0) { showToast('Please enter a valid amount', 'error'); return; }
+      if (type === 'withdraw' && parseFloat(amount) > currentBal) { showToast('Insufficient balance', 'error'); return; }
+      if (type === 'loan' && !loanId) { showToast('Please select a loan', 'error'); return; }
+
+      // Show confirmation
+      var iconMap = { deposit: '&#x1F4B5;', withdraw: '&#x1F4B8;', loan: '&#x1F3E6;' };
+      var typeLabel = type.charAt(0).toUpperCase() + type.slice(1);
+      var colorMap = { deposit: 'cm-green', withdraw: 'cm-orange', loan: 'cm-blue' };
+      document.getElementById('cmIcon').innerHTML = iconMap[type] || '&#x1F504;';
+      document.getElementById('cmTitle').textContent = 'Confirm ' + typeLabel;
+      document.getElementById('cmSub').textContent = 'Please review the details below before processing.';
+      document.getElementById('cmMember').textContent = memberName + ' (' + memberId + ')';
+      document.getElementById('cmType').textContent = type === 'loan' ? 'Loan Payment' : typeLabel;
+      document.getElementById('cmAmount').innerHTML = '&#x20B1;' + parseFloat(amount).toFixed(2);
+      document.getElementById('cmAmount').style.color = type === 'deposit' ? '#16a34a' : type === 'withdraw' ? '#ea580c' : '#2563eb';
+      document.getElementById('cmDesc').textContent = desc || (type === 'loan' ? 'Loan payment' : 'Counter ' + type);
+      document.getElementById('cmBalanceAfter').textContent = '&#x20B1;' + balanceAfter.toFixed(2);
+      document.getElementById('cmBalanceAfter').style.color = balanceAfter >= 0 ? '#16a34a' : '#dc2626';
+      document.getElementById('cmNote').textContent = balanceAfter < 100 ? '&#x26A0; Balance will be low after this transaction' : '';
+
+      var confirmBtn = document.getElementById('cmConfirmBtn');
+      confirmBtn.className = 'cm-confirm ' + (colorMap[type] || 'cm-green');
+      confirmBtn.innerHTML = '<i class="fas fa-check-circle"></i> Confirm ' + typeLabel;
+
+      // Store pending transaction
+      pendingTransaction = {
+        action: action + '?_csrf=' + encodeURIComponent(csrf) + '&q=' + encodeURIComponent(formData.get('q') || ''),
+        data: formData,
+        accountId: selectedAccountId
+      };
+      document.getElementById('confirmOverlay').classList.add('show');
+    });
+  });
+
+  // ── Execute confirmed transaction ──
+  function executeTransaction() {
+    if (!pendingTransaction) return;
+    var url = pendingTransaction.action;
+    var formData = pendingTransaction.data;
+    var btn = document.getElementById('cmConfirmBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-spinner" style="display:inline-block;margin-right:6px"></span> Processing...';
+    closeConfirm();
+
+    // Submit via fetch
+    fetch(url, {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+      body: formData
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(result) {
+      if (result.error) { showToast(result.error, 'error'); return; }
+      if (result.success) {
+        handleTransactionSuccess(result, formData);
+      } else if (result.redirect) {
+        window.location.href = result.redirect;
+      }
+    })
+    .catch(function(err) {
+      showToast('Network error: ' + err.message, 'error');
+    })
+    .finally(function() { pendingTransaction = null; });
+  }
+
+  // ── Handle successful transaction ──
+  function handleTransactionSuccess(result, formData) {
+    var tx = result.transaction || {};
+    var type = result.type || '';
+
+    // Show success toast
+    showToast((type === 'deposit' ? 'Deposit' : type === 'withdrawal' ? 'Withdrawal' : 'Loan payment') + ' successful!', 'success');
+
+    // Update balances
+    if (tx.actual_balance !== undefined) {
+      updateBalanceDisplay(tx.actual_balance, tx.unallocated_balance);
+    } else if (tx.balance_after !== undefined) {
+      var balEl = document.getElementById('balanceActual');
+      if (balEl) balEl.textContent = '&#x20B1;' + Number(tx.balance_after).toFixed(2);
+    }
+
+    // Show receipt
+    showReceiptAjax(tx.transaction_id);
+
+    // Reset form
+    var form = formData ? document.getElementById(type === 'loan_payment' ? 'loanForm' : type + 'Form') : null;
+    if (form) { form.reset(); }
+
+    // Reload activity
+    reloadActivity(1);
+
+    // Auto-print
+    if (autoPrintCheck && autoPrintCheck.checked) {
+      setTimeout(function() { window.print(); }, 500);
     }
   }
 
-  // ── Print prompt on NEW receipt only (not when viewing past receipts) ──
-  (function() {
-    var ol = document.getElementById('receiptOverlay');
-    if (ol && ol.classList.contains('show') && document.querySelector('.toast')) {
-      setTimeout(function() {
-        document.getElementById('ppOverlay').classList.add('show');
-      }, 400);
+  // ── Update balance display ──
+  function updateBalanceDisplay(actual, unallocated) {
+    var actualEl = document.getElementById('balanceActual');
+    var availEl = document.getElementById('balanceAvailable');
+    var saveEl = document.getElementById('balanceSavings');
+    if (actualEl) actualEl.textContent = fmt(actual);
+    if (availEl) availEl.textContent = fmt(unallocated);
+    if (saveEl && actualEl && availEl) saveEl.textContent = fmt(Number(actual) - Number(unallocated));
+
+    // Update balance bar
+    var pct = 0;
+    if (Number(actual) > 0) {
+      var saved = Number(actual) - Number(unallocated);
+      pct = Math.round((saved / Number(actual)) * 100);
     }
-  })();
-  function closePrintPrompt() { document.getElementById('ppOverlay').classList.remove('show'); }
+    var fill = document.getElementById('balanceBarFill');
+    if (fill) {
+      fill.style.width = Math.min(pct, 100) + '%';
+      fill.className = 'balance-bar-fill ' + (pct > 90 ? 'danger' : pct > 70 ? 'warning' : '');
+    }
+    var warn = document.getElementById('lowBalanceWarning');
+    if (warn) warn.style.display = Number(actual) < 100 ? 'block' : 'none';
+  }
+
+  // ── Activity: filter and reload ──
+  document.querySelectorAll('.tr-filter').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('.tr-filter').forEach(function(b) { b.classList.remove('active'); });
+      this.classList.add('active');
+      currentFilter = this.getAttribute('data-type');
+      currentPage = 1;
+      reloadActivity(1);
+    });
+  });
+
+  function reloadActivity(page) {
+    if (!selectedAccountId) return;
+    currentPage = page || 1;
+    var url = '/admin/teller/activity/' + encodeURIComponent(selectedAccountId) + '?page=' + currentPage + '&limit=20';
+    if (currentFilter !== 'all') url += '&type=' + encodeURIComponent(currentFilter);
+    var body = document.getElementById('txBody');
+    if (!body) return;
+    body.style.opacity = '0.5';
+
+    fetch(url)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        body.style.opacity = '1';
+        var table = document.getElementById('txTable');
+        var empty = document.getElementById('emptyState');
+        var content = document.getElementById('txBodyContent');
+        var countEl = document.getElementById('txCount');
+        var loadMore = document.getElementById('loadMoreWrap');
+
+        if (countEl) countEl.textContent = data.total;
+        totalPages = data.pages;
+
+        if (data.transactions.length === 0) {
+          if (table) table.style.display = 'none';
+          if (empty) empty.style.display = 'block';
+          if (loadMore) loadMore.style.display = 'none';
+          return;
+        }
+
+        if (empty) empty.style.display = 'none';
+        if (!content) return;
+        if (!table) return;
+        table.style.display = '';
+
+        content.innerHTML = data.transactions.map(function(tx) {
+          var isCredit = tx.type === 'deposit' || tx.type === 'loan_disbursement' || tx.type === 'interest' || tx.type === 'interest_credit';
+          var tc = tx.voided_at ? 'voided' : ({deposit:'deposit',withdrawal:'withdrawal',loan_payment:'loan_payment',loan_disbursement:'loan_disbursement',interest:'interest',interest_credit:'interest',allocation:'allocation',fee:'fee'})[tx.type] || 'deposit';
+          var sign = isCredit ? '+' : '-';
+          var col = isCredit ? '#16a34a' : '#dc2626';
+          var voidLabel = tx.voided_at ? ' <span style="font-size:8px;color:#dc2626;display:block">Voided</span>' : '';
+          var rowClass = tx.voided_at ? 'tx-row-voided' : 'tx-row-' + tx.type;
+          var voidBtn = (!tx.voided_at && adminRole >= 3 && ['deposit','withdrawal','loan_payment','interest','interest_credit','auto_save','fee','penalty'].includes(tx.type)) ? ' <button class="tr-action-btn void" onclick="openVoidModal(\'' + h(tx.transaction_id) + '\',\'' + h(tx.type.replace(/_/g,' ')) + '\',\'' + Number(tx.amount).toFixed(2) + '\')" title="Void"><i class="fas fa-ban"></i></button>' : '';
+          return '<tr class="' + rowClass + '"><td><span class="tx-badge ' + tc + '">' + (tx.voided_at ? '<i class="fas fa-ban"></i>' : '') + h(tx.type.replace(/_/g,' ')) + '</span>' + voidLabel + '</td><td class="tx-amt" style="color:' + col + '">' + sign + fmt(tx.amount) + '</td><td class="tx-desc">' + h(tx.description||'-') + '</td><td class="tx-bal">' + fmt(tx.balance_after || 0) + '</td><td class="tx-date">' + h((tx.created_at||'').slice(0,16).replace('T',' ')) + '</td><td style="white-space:nowrap">' + (tx.voided_at ? '' : '<button class="tr-action-btn rcpt" onclick="showReceiptAjax(\'' + h(tx.transaction_id) + '\')" title="View receipt"><i class="fas fa-receipt"></i></button>' + voidBtn) + '</td></tr>';
+        }).join('');
+
+        // Load more
+        if (loadMore) {
+          if (currentPage < totalPages) {
+            loadMore.style.display = 'block';
+            document.getElementById('loadMoreBtn').textContent = 'Load More (' + (data.total - (currentPage * 20)) + ' remaining)';
+          } else {
+            loadMore.style.display = 'none';
+          }
+        }
+      })
+      .catch(function() { body.style.opacity = '1'; });
+  }
+
+  function loadMoreTx() {
+    reloadActivity(currentPage + 1);
+  }
+
+  // ── Receipt via AJAX ──
+  var receiptData = null;
+  function showReceiptAjax(txId) {
+    if (!txId) return;
+    // Fetch receipt data via the existing receipt query param
+    fetch('/admin/teller/activity/' + encodeURIComponent(selectedAccountId) + '?page=1&limit=1')
+      .then(function(r) { return r.json(); })
+      .then(function() {
+        // Open a new window with receipt view for now
+        var w = window.open('/admin/teller?account=' + encodeURIComponent(selectedAccountId) + '&receipt=' + txId, '_blank');
+        if (w) w.focus();
+      })
+      .catch(function() {});
+  }
+
+  function closeReceipt() {
+    var ol = document.getElementById('receiptOverlay');
+    if (ol) { ol.classList.remove('show'); ol.style.display = 'none'; }
+    var pp = document.getElementById('ppOverlay');
+    if (pp && pp.classList.contains('show')) pp.classList.remove('show');
+  }
+
+  // ── Print ──
   function doPrint() {
     closePrintPrompt();
     setTimeout(function() { window.print(); }, 200);
+  }
+  function closePrintPrompt() {
+    var pp = document.getElementById('ppOverlay');
+    if (pp) pp.classList.remove('show');
+  }
+
+  // ── Toast notifications ──
+  function showToast(msg, type) {
+    type = type || 'success';
+    var existing = document.querySelector('.tx-toast');
+    if (existing) existing.remove();
+    var toast = document.createElement('div');
+    toast.className = 'tx-toast ' + type;
+    toast.innerHTML = '<span class="tt-icon">' + (type === 'success' ? '&#x2705;' : '&#x274C;') + '</span>' + msg;
+    document.body.appendChild(toast);
+    setTimeout(function() { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(function() { toast.remove(); }, 300); }, 3000);
   }
 
   // ── Void modal ──
   function openVoidModal(txId, type, amount) {
     document.getElementById('voidTxType').textContent = type;
     document.getElementById('voidTxAmount').textContent = amount;
-    document.getElementById('voidForm').action = '/admin/teller/void/' + txId;
+    document.getElementById('voidForm').setAttribute('data-txid', txId);
     document.getElementById('voidReason').value = '';
     document.getElementById('voidPassword').value = '';
     document.getElementById('voidOverlay').classList.add('show');
+    document.getElementById('voidOverlay').style.display = '';
     setTimeout(function() { document.getElementById('voidReason').focus(); }, 100);
   }
   function closeVoidModal() {
@@ -4069,32 +4647,77 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   }
   var voidOvr = document.getElementById('voidOverlay');
   if (voidOvr) voidOvr.addEventListener('click', function(e) { if (e.target === this) closeVoidModal(); });
+
+  // ── Void form AJAX submit ──
+  var voidForm = document.getElementById('voidForm');
+  if (voidForm) {
+    voidForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      var txId = this.getAttribute('data-txid');
+      var reason = document.getElementById('voidReason').value.trim();
+      var password = document.getElementById('voidPassword').value;
+      if (!reason || reason.length < 5) { showToast('Reason must be at least 5 characters', 'error'); return; }
+      if (!password) { showToast('Password required', 'error'); return; }
+      if (!txId) { showToast('No transaction selected', 'error'); return; }
+
+      var formData = new FormData();
+      formData.append('reason', reason);
+      formData.append('password', password);
+      formData.append('_csrf', '${res.locals.csrfToken}');
+
+      fetch('/admin/teller/void/' + txId, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+        body: formData
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(result) {
+        if (result.error) { showToast(result.error, 'error'); return; }
+        if (result.success) {
+          showToast('Transaction voided successfully', 'success');
+          closeVoidModal();
+          reloadActivity(1);
+        } else if (result.redirect) {
+          window.location.href = result.redirect;
+        }
+      })
+      .catch(function(err) { showToast('Error: ' + err.message, 'error'); });
+    });
+  }
+
+  // ── Confirm modal ──
+  function closeConfirm() {
+    var co = document.getElementById('confirmOverlay');
+    if (co) co.classList.remove('show');
+  }
+
+  // ── Clean URL params ──
+  if (window.history && window.history.replaceState) {
+    var clean = window.location.href.replace(/[?&](deposited|withdrawn|loanpaid|voided|error|receipt)=[^&]*/g, '').replace(/[?&]$/, '');
+    if (clean !== window.location.href) {
+      window.history.replaceState({}, document.title, clean);
+    }
+  }
+
+  // ── Print prompt on page load (legacy support) ──
+  (function() {
+    var ol = document.getElementById('receiptOverlay');
+    if (ol && ol.classList.contains('show') && document.querySelector('.toast')) {
+      setTimeout(function() {
+        document.getElementById('ppOverlay').classList.add('show');
+      }, 400);
+    }
+  })();
+
+  // ── Escape key ──
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
+      var confirmOvr = document.getElementById('confirmOverlay');
+      if (confirmOvr && confirmOvr.classList.contains('show')) { closeConfirm(); e.preventDefault(); return; }
       if (voidOvr && voidOvr.classList.contains('show')) { closeVoidModal(); e.preventDefault(); return; }
+      var receiptOvr = document.getElementById('receiptOverlay');
       if (receiptOvr && receiptOvr.classList.contains('show')) { closeReceipt(); e.preventDefault(); return; }
     }
-  });
-
-  // ── Receipt modal ──
-  var receiptOvr = document.getElementById('receiptOverlay');
-  function showReceipt(txId) {
-    window.location.href = '?account=${encodeURIComponent(selectedId)}&receipt=' + txId + (${JSON.stringify(searchQ)} ? '&q=' + encodeURIComponent(${JSON.stringify(searchQ)}) : '');
-  }
-  function closeReceipt() {
-    if (!receiptOvr) return;
-    receiptOvr.classList.remove('show');
-    receiptOvr.style.display = 'none';
-  }
-  if (receiptOvr) receiptOvr.addEventListener('click', function(e) { if (e.target === this) closeReceipt(); });
-
-  // ── Receipt action buttons ──
-  document.addEventListener('click', function(e) {
-    var btn = e.target.closest('[data-action]');
-    if (!btn) return;
-    var action = btn.getAttribute('data-action');
-    if (action === 'print-receipt') { window.print(); }
-    else if (action === 'close-receipt') { closeReceipt(); }
   });
 
   // ── Keyboard shortcuts ──
@@ -4112,6 +4735,16 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
       case 'F11': if (fsCheck) { fsCheck.checked = !fsCheck.checked; fsCheck.dispatchEvent(new Event('change')); } break;
     }
   });
+
+  // ── Low balance check on load ──
+  (function() {
+    var actual = document.getElementById('balanceActual');
+    if (actual) {
+      var val = parseFloat(actual.textContent.replace(/[^0-9.-]/g,''));
+      var warn = document.getElementById('lowBalanceWarning');
+      if (warn) warn.style.display = val < 100 ? 'block' : 'none';
+    }
+  })();
   </script>
   `;
 
@@ -4121,11 +4754,17 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   res.type('html').send(layout('Teller Counter', 'teller', tellerContent, { toast: toast || undefined }));
 }));
 
+function isAjax(req) { return req.accepts('json') || req.xhr || (req.headers['x-requested-with'] === 'XMLHttpRequest'); }
+function redirectOrJson(req, res, url) {
+  if (isAjax(req)) return res.json({ redirect: url });
+  res.redirect(url);
+}
+
 router.post('/teller/deposit/:id', requireRole(2), asyncHandler(async (req, res) => {
   try {
     const { amount, description } = req.body;
     const val = Number(amount);
-    if (!val || val <= 0) return res.redirect('/admin/teller?error=Invalid+amount');
+    if (!val || val <= 0) return redirectOrJson(req, res, '/admin/teller?error=Invalid+amount');
 
     const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
     if (!account) return res.redirect('/admin/teller?error=Account+not+found');
@@ -4155,8 +4794,10 @@ router.post('/teller/deposit/:id', requireRole(2), asyncHandler(async (req, res)
     await store.query('UPDATE gl_entries SET transaction_id = $1 WHERE entry_id = $2', [txId, glTxId]).catch(() => {});
     await audit.log(req, 'TELLER_DEPOSIT', 'account', req.params.id, { amount: val, txId, desc: description || 'Counter deposit' });
     const sq = req.body.q ? '&q=' + encodeURIComponent(req.body.q) : '';
+    if (isAjax(req)) return res.json({ success: true, type: 'deposit', transaction: { transaction_id: txId, amount: val, type: 'deposit', description: description || 'Counter deposit', balance_after: newBalance, balance_before: Number(account.actual_balance), child_name: account.child_name, member_id: account.member_id, created_at: new Date().toISOString() } });
     res.redirect(`/admin/teller?deposited=ok&receipt=${txId}&account=${req.params.id}${sq}`);
   } catch (err) {
+    if (isAjax(req)) return res.json({ error: err.message });
     res.redirect(`/admin/teller?error=${encodeURIComponent(err.message)}`);
   }
 }));
@@ -4165,14 +4806,14 @@ router.post('/teller/withdraw/:id', requireRole(2), asyncHandler(async (req, res
   try {
     const { amount, description } = req.body;
     const val = Number(amount);
-    if (!val || val <= 0) return res.redirect('/admin/teller?error=Invalid+amount');
+    if (!val || val <= 0) return redirectOrJson(req, res, '/admin/teller?error=Invalid+amount');
 
     const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
-    if (!account) return res.redirect('/admin/teller?error=Account+not+found');
-    if (Number(account.actual_balance) < val) return res.redirect('/admin/teller?error=Insufficient+balance');
+    if (!account) return redirectOrJson(req, res, '/admin/teller?error=Account+not+found');
+    if (Number(account.actual_balance) < val) return redirectOrJson(req, res, '/admin/teller?error=Insufficient+balance');
     const maintainingBalance = Number(account.maintaining_balance || 0);
     if (Number(account.actual_balance) - val < maintainingBalance) {
-      return res.redirect(`/admin/teller?error=Cannot+withdraw+below+maintaining+balance+of+%E2%82%B1${maintainingBalance.toFixed(2)}`);
+      return redirectOrJson(req, res, `/admin/teller?error=Cannot+withdraw+below+maintaining+balance+of+%E2%82%B1${maintainingBalance.toFixed(2)}`);
     }
     const newBalance = Math.round((Number(account.actual_balance) - val) * 100) / 100;
     const newUnallocated = Math.round((Number(account.unallocated_balance) - val) * 100) / 100;
@@ -4200,8 +4841,10 @@ router.post('/teller/withdraw/:id', requireRole(2), asyncHandler(async (req, res
     await store.query('UPDATE gl_entries SET transaction_id = $1 WHERE entry_id = $2', [txId, glTxId]).catch(() => {});
     await audit.log(req, 'TELLER_WITHDRAWAL', 'account', req.params.id, { amount: val, txId, desc: description || 'Counter withdrawal' });
     const sq = req.body.q ? '&q=' + encodeURIComponent(req.body.q) : '';
+    if (isAjax(req)) return res.json({ success: true, type: 'withdrawal', transaction: { transaction_id: txId, amount: val, type: 'withdrawal', description: description || 'Counter withdrawal', balance_after: newBalance, balance_before: Number(account.actual_balance), child_name: account.child_name, member_id: account.member_id, created_at: new Date().toISOString(), actual_balance: newBalance, unallocated_balance: Math.max(0, newUnallocated) } });
     res.redirect(`/admin/teller?withdrawn=ok&receipt=${txId}&account=${req.params.id}${sq}`);
   } catch (err) {
+    if (isAjax(req)) return res.json({ error: err.message });
     res.redirect(`/admin/teller?error=${encodeURIComponent(err.message)}`);
   }
 }));
@@ -4210,15 +4853,15 @@ router.post('/teller/loan-pay/:id', requireRole(2), asyncHandler(async (req, res
   try {
     const { loan_id, amount } = req.body;
     const val = Number(amount);
-    if (!val || val <= 0) return res.redirect('/admin/teller?error=Invalid+amount');
+    if (!val || val <= 0) return redirectOrJson(req, res, '/admin/teller?error=Invalid+amount');
     const accountId = req.params.id;
 
     const loan = await one('SELECT * FROM loans WHERE loan_id = $1', [loan_id]);
-    if (!loan) return res.redirect(`/admin/teller?error=Loan+not+found&account=${accountId}`);
-    if (loan.status !== 'active') return res.redirect(`/admin/teller?error=Loan+is+not+active&account=${accountId}`);
+    if (!loan) return redirectOrJson(req, res, `/admin/teller?error=Loan+not+found&account=${accountId}`);
+    if (loan.status !== 'active') return redirectOrJson(req, res, `/admin/teller?error=Loan+is+not+active&account=${accountId}`);
 
     const account = await one('SELECT * FROM accounts WHERE account_id = $1', [accountId]);
-    if (!account) return res.redirect(`/admin/teller?error=Account+not+found&account=${accountId}`);
+    if (!account) return redirectOrJson(req, res, `/admin/teller?error=Account+not+found&account=${accountId}`);
 
     // Calculate interest portion
     const interestService = require('../services/interest');
@@ -4283,8 +4926,10 @@ router.post('/teller/loan-pay/:id', requireRole(2), asyncHandler(async (req, res
     await store.query('UPDATE gl_entries SET transaction_id = $1 WHERE entry_id = $2', [txId, glTxId]).catch(() => {});
     await audit.log(req, 'TELLER_LOAN_PAYMENT', 'loan', loan_id, { amount: val, principalPortion, interestPortion, txId });
     const sq = req.body.q ? '&q=' + encodeURIComponent(req.body.q) : '';
+    if (isAjax(req)) return res.json({ success: true, type: 'loan_payment', transaction: { transaction_id: txId, amount: val, type: 'loan_payment', description: 'Loan payment (counter): ' + (loan.purpose || 'Loan'), balance_after: newAccountBalance, balance_before: Number(account.actual_balance), child_name: account.child_name, member_id: account.member_id, created_at: new Date().toISOString() }, loan: { remaining_balance: newRemainingBalance, status: newStatus } });
     res.redirect(`/admin/teller?loanpaid=ok&receipt=${txId}&account=${accountId}${sq}`);
   } catch (err) {
+    if (isAjax(req)) return res.json({ error: err.message });
     res.redirect(`/admin/teller?error=${encodeURIComponent(err.message)}`);
   }
 }));
@@ -4297,29 +4942,29 @@ router.post('/teller/void/:txId', requireRole(3), asyncHandler(async (req, res) 
   try {
     const txId = req.params.txId;
     const { reason, password } = req.body;
-    if (!reason || reason.trim().length < 5) return res.redirect('/admin/teller?error=Void+reason+must+be+at+least+5+characters');
-    if (!password) return res.redirect('/admin/teller?error=Password+required');
+    const errRedirect = e => '/admin/teller?error=' + encodeURIComponent(e);
+    if (!reason || reason.trim().length < 5) return redirectOrJson(req, res, errRedirect('Void+reason+must+be+at+least+5+characters'));
+    if (!password) return redirectOrJson(req, res, errRedirect('Password+required'));
 
     // Verify admin password
     const admin = await one('SELECT * FROM admin_users WHERE admin_id = $1', [req.session.adminId]);
-    if (!admin) return res.redirect('/admin/teller?error=Admin+not+found');
-    const bcrypt = require('bcryptjs');
-    if (!bcrypt.compareSync(password, admin.password_hash)) return res.redirect('/admin/teller?error=Invalid+password');
+    if (!admin) return redirectOrJson(req, res, errRedirect('Admin+not+found'));
+    if (!bcrypt.compareSync(password, admin.password_hash)) return redirectOrJson(req, res, errRedirect('Invalid+password'));
 
     // Fetch original transaction
     const tx = await one('SELECT * FROM transactions WHERE transaction_id = $1', [txId]);
-    if (!tx) return res.redirect('/admin/teller?error=Transaction+not+found');
+    if (!tx) return redirectOrJson(req, res, errRedirect('Transaction+not+found'));
 
     // Validate not already voided
-    if (tx.voided_at) return res.redirect('/admin/teller?error=Transaction+already+voided');
+    if (tx.voided_at) return redirectOrJson(req, res, errRedirect('Transaction+already+voided'));
 
     // Validate voidable type
-    if (!VOIDABLE_TYPES.includes(tx.type)) return res.redirect('/admin/teller?error=Cannot+void+'+ tx.type + '+transactions');
+    if (!VOIDABLE_TYPES.includes(tx.type)) return redirectOrJson(req, res, errRedirect('Cannot+void+'+ tx.type + '+transactions'));
 
     // Check age limit (30 days)
     const txDate = new Date(tx.created_at);
     const daysSince = (Date.now() - txDate.getTime()) / (1000 * 60 * 60 * 24);
-    if (daysSince > 30) return res.redirect('/admin/teller?error=Cannot+void+transactions+older+than+30+days');
+    if (daysSince > 30) return redirectOrJson(req, res, errRedirect('Cannot+void+transactions+older+than+30+days'));
 
     // Fetch account
     const account = await one('SELECT * FROM accounts WHERE account_id = $1', [tx.account_id]);
@@ -4338,7 +4983,7 @@ router.post('/teller/void/:txId', requireRole(3), asyncHandler(async (req, res) 
       // Original subtracted from balance — add back to reverse
       reversedBalance = Math.round((reversedBalance + val) * 100) / 100;
     }
-    if (reversedBalance < 0) return res.redirect('/admin/teller?error=Void+would+cause+negative+balance');
+    if (reversedBalance < 0) return redirectOrJson(req, res, '/admin/teller?error=Void+would+cause+negative+balance');
 
     // ── Post reversing GL entries FIRST ──
     const gl = require('../services/gl');
@@ -4422,10 +5067,45 @@ router.post('/teller/void/:txId', requireRole(3), asyncHandler(async (req, res) 
     });
 
     const sq = req.body.q ? '&q=' + encodeURIComponent(req.body.q) : '';
+    if (isAjax(req)) return res.json({ success: true, type: 'void', transaction: { voidedTxId: txId, reversalTxId: revTxId, amount: tx.amount, type: 'void', description: voidDesc, account_id: tx.account_id } });
     res.redirect(`/admin/teller?voided=ok&receipt=${revTxId}&account=${tx.account_id}${sq}`);
   } catch (err) {
+    if (isAjax(req)) return res.json({ error: err.message });
     res.redirect(`/admin/teller?error=${encodeURIComponent(err.message)}`);
   }
+}));
+
+// ── AJAX JSON endpoints for Enhanced Teller ──
+
+router.get('/teller-search', requireRole(1), asyncHandler(async (req, res) => {
+  const q = (req.query.q || '').trim().toLowerCase();
+  let accounts = await sql('SELECT account_id, child_name, member_id, profile_pic_url, actual_balance FROM accounts ORDER BY child_name ASC');
+  if (q) {
+    accounts = accounts.filter(a =>
+      (a.child_name || '').toLowerCase().indexOf(q) !== -1 ||
+      (a.member_id || '').toLowerCase().indexOf(q) !== -1
+    );
+  }
+  accounts = accounts.slice(0, 20);
+  res.json({ accounts });
+}));
+
+router.get('/teller/activity/:id', requireRole(1), asyncHandler(async (req, res) => {
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(50, parseInt(req.query.limit) || 20);
+  const typeFilter = req.query.type || '';
+  const offset = (page - 1) * limit;
+  let where = 'account_id = $1';
+  let params = [req.params.id];
+  if (typeFilter && typeFilter !== 'all') {
+    where += ' AND type = $2';
+    params.push(typeFilter);
+  }
+  const total = await one(`SELECT COUNT(*) as cnt FROM transactions WHERE ${where}`, params);
+  params.push(limit, offset);
+  const txs = await sql(`SELECT * FROM transactions WHERE ${where} ORDER BY created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`, params);
+  const totalCount = parseInt(total?.cnt || 0);
+  res.json({ transactions: txs, total: totalCount, page, limit, pages: Math.ceil(totalCount / limit) });
 }));
 
 // ── Audit Reports ──

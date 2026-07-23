@@ -4201,23 +4201,9 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
 
   ${receipt ? `<script>
     setTimeout(function() {
-      var pp = document.getElementById('ppOverlay');
-      if (pp) pp.classList.add('show');
+      showReceiptAjax('${receipt.transaction_id}');
     }, 300);
   <\/script>` : ''}
-
-  <!-- ── Print Prompt ── -->
-  <div class="pp-overlay" id="ppOverlay" onclick="if(event.target===this)closePrintPrompt()">
-    <div class="pp-modal">
-      <div class="pp-icon">&#x2705;</div>
-      <h3>Transaction Successful!</h3>
-      <p>Would you like to print the receipt?</p>
-      <div class="pp-actions">
-        <button class="pp-skip" onclick="closePrintPrompt()">Skip</button>
-        <button class="pp-print" onclick="doPrint()"><i class="fas fa-print"></i> Print</button>
-      </div>
-    </div>
-  </div>
 
   <!-- ── Void Modal ── -->
   <div class="void-overlay" id="voidOverlay" onclick="if(event.target===this)closeVoidModal()">
@@ -4489,11 +4475,8 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
       if (balEl) balEl.textContent = '\u20B1' + Number(tx.balance_after).toFixed(2);
     }
 
-    // Show print prompt (unless auto-print is on)
-    setTimeout(function() {
-      var pp = document.getElementById('ppOverlay');
-      if (pp && !(autoPrintCheck && autoPrintCheck.checked)) pp.classList.add('show');
-    }, 600);
+    // Show receipt overlay
+    showReceiptAjax(tx.transaction_id);
 
     // Reset form
     var form = formData ? document.getElementById(type === 'loan_payment' ? 'loanForm' : type + 'Form') : null;
@@ -4637,18 +4620,11 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   function closeReceipt() {
     var ol = document.getElementById('receiptOverlay');
     if (ol) { ol.classList.remove('show'); ol.style.display = 'none'; }
-    var pp = document.getElementById('ppOverlay');
-    if (pp && pp.classList.contains('show')) pp.classList.remove('show');
   }
 
   // ── Print ──
   function doPrint() {
-    closePrintPrompt();
     setTimeout(function() { window.print(); }, 200);
-  }
-  function closePrintPrompt() {
-    var pp = document.getElementById('ppOverlay');
-    if (pp) pp.classList.remove('show');
   }
 
   // ── Toast notifications ──

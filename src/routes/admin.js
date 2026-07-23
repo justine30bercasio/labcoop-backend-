@@ -4455,10 +4455,11 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
     if (!pendingTransaction) return;
     var url = pendingTransaction.action;
     var formData = pendingTransaction.data;
-    var btn = document.getElementById('cmConfirmBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="btn-spinner" style="display:inline-block;margin-right:6px"></span> Processing...';
-    closeConfirm();
+    var ovr = document.getElementById('confirmOverlay');
+    var modal = ovr ? ovr.querySelector('.confirm-modal') : null;
+    if (modal) {
+      modal.innerHTML = '<div style="text-align:center;padding:30px"><i class="fas fa-circle-notch fa-spin" style="font-size:40px;color:var(--accent);margin:0 auto 16px;display:block"></i><div style="font-size:16px;font-weight:600;color:var(--text)">Processing Transaction...</div><div style="font-size:13px;color:var(--text-muted);margin-top:6px">Please wait while we complete your request</div></div>';
+    }
 
     // Submit via fetch
     fetch(url, {
@@ -4468,14 +4469,16 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
     })
     .then(function(r) { return r.json(); })
     .then(function(result) {
-      if (result.error) { showToast(result.error, 'error'); return; }
+      if (result.error) { closeConfirm(); showToast(result.error, 'error'); return; }
       if (result.success) {
+        closeConfirm();
         handleTransactionSuccess(result, formData);
       } else if (result.redirect) {
         window.location.href = result.redirect;
       }
     })
     .catch(function(err) {
+      closeConfirm();
       showToast('Network error: ' + err.message, 'error');
     })
     .finally(function() { pendingTransaction = null; });

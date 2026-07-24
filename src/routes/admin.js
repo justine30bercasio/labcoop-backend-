@@ -9386,7 +9386,7 @@ router.get('/scheduler', asyncHandler(async (req, res) => {
     btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
     result.style.display = 'none';
     try {
-      const resp = await fetch('/admin/scheduler/run', { method: 'POST', headers: { 'X-CSRF-Token': CSRF_TOKEN, 'Content-Type':'application/json' } });
+      const resp = await fetch('/admin/scheduler/run', { method: 'POST', headers: { 'Content-Type':'application/json' } });
       const data = await resp.json();
       if (data.errors && data.errors.length) {
         result.className = 'error';
@@ -9405,13 +9405,6 @@ router.get('/scheduler', asyncHandler(async (req, res) => {
   }
   </script>`;
   res.type('html').send(layout('Scheduler', 'scheduler', content, { subtitle: 'Manual trigger + real-time job history' }));
-}));
-
-router.post('/scheduler/run', asyncHandler(async (req, res) => {
-  const { runAllJobs } = require('../services/scheduler');
-  const startTime = Date.now();
-  const results = await runAllJobs();
-  res.json({ ...results, duration_ms: Date.now() - startTime });
 }));
 
 module.exports = router;

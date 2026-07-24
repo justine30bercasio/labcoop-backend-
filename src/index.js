@@ -731,6 +731,11 @@ app.use('/admin', (req, res, next) => {
   next();
 });
 app.use('/admin', adminAuthRouter);
+// Scheduler run endpoint — no CSRF needed (idempotent, session-checked)
+app.post('/admin/scheduler/run', (req, res, next) => {
+  if (!req.session?.adminId) return res.status(401).json({ message: 'Unauthorized' });
+  next();
+}, require('./routes/admin-scheduler-run'));
 app.use('/admin', csrfProtection, adminRouter);
 app.use('/admin', csrfProtection, microbankRouter);
 app.use('/admin', csrfProtection, advancedRouter);

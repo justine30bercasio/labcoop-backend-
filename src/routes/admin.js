@@ -9304,6 +9304,7 @@ router.post('/parent-messages/reply', requireRole(1), asyncHandler(async (req, r
 
 // ── Scheduler Dashboard (manual run + job history) ──
 router.get('/scheduler', asyncHandler(async (req, res) => {
+  const csrf = res.locals.csrfToken || '';
   const jobs = await store.query('SELECT * FROM jobs ORDER BY created_at DESC LIMIT 20');
   const now = new Date();
   const todayStart = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
@@ -9329,9 +9330,9 @@ router.get('/scheduler', asyncHandler(async (req, res) => {
 
   const content = `
   <style>
-    .run-btn { background:var(--primary); color:#fff; border:none; padding:12px 32px; border-radius:8px; font-size:16px; cursor:pointer; display:inline-flex; align-items:center; gap:8px; }
+    .run-btn { background:#2e7d32; color:#fff; border:none; padding:12px 32px; border-radius:8px; font-size:16px; cursor:pointer; display:inline-flex; align-items:center; gap:8px; font-weight:600; }
     .run-btn:disabled { opacity:0.5; cursor:not-allowed; }
-    .run-btn:hover:not(:disabled) { opacity:0.9; }
+    .run-btn:hover:not(:disabled) { background:#1b5e20; }
     .stat-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:20px; }
     .stat-card { background:var(--card-bg); border:1px solid var(--border); border-radius:8px; padding:16px; text-align:center; }
     .stat-card .val { font-size:22px; font-weight:700; color:var(--primary); }
@@ -9378,13 +9379,14 @@ router.get('/scheduler', asyncHandler(async (req, res) => {
   </div>
 
   <script>
+  const CSRF_TOKEN = '${csrf}';
   async function runScheduler() {
     const btn = document.getElementById('runBtn');
     const result = document.getElementById('runResult');
     btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
     result.style.display = 'none';
     try {
-      const resp = await fetch('/admin/scheduler/run', { method: 'POST' });
+      const resp = await fetch('/admin/scheduler/run', { method: 'POST', headers: { 'X-CSRF-Token': CSRF_TOKEN, 'Content-Type':'application/json' } });
       const data = await resp.json();
       if (data.errors && data.errors.length) {
         result.className = 'error';

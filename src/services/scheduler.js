@@ -1,25 +1,24 @@
+const logger = require('./logger');
+const { runDatabaseBackup, cleanupOldBackups } = require('./backup');
+
 async function runAllJobs() {
   const { store } = require('../db');
   const sql = (q, p) => store.query(q, p || []).then(r => r.rows);
   const one = (q, p) => store.query(q, p || []).then(r => r.rows[0]);
 
-  const lockCheck = await one("SELECT value FROM settings WHERE key = 'scheduler_lock'");
-  if (lockCheck && lockCheck.value === '1') {
-    const lockAge = await one("SELECT created_at FROM settings WHERE key = 'scheduler_lock_updated'");
-    if (lockAge && (Date.now() - new Date(lockAge.created_at).getTime()) < 7200000) {
-      return { skipped: true, reason: 'Lock held by another instance (< 2h old)' };
-    }
-  }
-  await store.setSetting('scheduler_lock', '1');
-  await store.setSetting('scheduler_lock_updated', new Date().toISOString());
-
-  const results = { interest: 0, standingOrders: 0, accrual: false, errors: [] };
+  const now = new Date();
+  const results = { interest: 0, standingOrders: 0, accrual: false, backup: false, errors: [] };
+  let jobId = null;
 
   try {
-    const accounts = await sql('SELECT * FROM accounts');
-    const now = new Date();
+    jobId = await store.createJob('scheduler_hourly');
+  } catch (e) {
+    logger.error('[Scheduler] Failed to create job record', { error: e.message });
+  }
 
+  try {
     // ── Interest Credits ──
+    const accounts = await sql('SELECT * FROM accounts');
     for (const account of accounts) {
       if (account.actual_balance <= 0) continue;
       const product = account.savings_product_id
@@ -145,11 +144,43 @@ async function runAllJobs() {
         ], { postedBy: 'scheduler', referenceType: 'accrual', referenceNumber: 'TD-ACR-' + period });
       }
       await store.setSetting('last_accrual_run', period);
+      results.accrual = true;
+    }
+
+    // ── Database Backup (6:00 AM daily) ──
+    if (now.getHours() === 6 && now.getMinutes() >= 0 && now.getMinutes() < 30) {
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const lastBackup = await store.getSetting('last_backup_date') || '';
+      if (lastBackup !== todayStr) {
+        const bkResult = await runDatabaseBackup();
+        if (bkResult.success) {
+          results.backup = true;
+          await store.setSetting('last_backup_date', todayStr);
+          await cleanupOldBackups();
+        } else {
+          results.errors.push('Backup failed: ' + (bkResult.reason || 'unknown'));
+        }
+      }
     }
   } catch (err) {
     results.errors.push('Unhandled: ' + err.message);
-  } finally {
-    await store.setSetting('scheduler_lock', '0');
+    logger.error('[Scheduler] Unhandled error', { error: err.message, stack: err.stack });
+  }
+
+  // ── Update job record ──
+  if (jobId) {
+    const completedAt = new Date().toISOString();
+    const status = results.errors.length > 0 ? 'failed' : 'success';
+    try {
+      await store.updateJob(jobId, {
+        status,
+        completed_at: completedAt,
+        result_summary: JSON.stringify(results),
+        failed_reason: results.errors.length > 0 ? results.errors.join('; ') : null,
+      });
+    } catch (e) {
+      logger.error('[Scheduler] Failed to update job record', { error: e.message });
+    }
   }
 
   return results;
@@ -158,13 +189,13 @@ async function runAllJobs() {
 function startScheduler() {
   setInterval(async () => {
     const results = await runAllJobs().catch(e => ({ errors: [e.message] }));
-    if (results?.skipped) return;
-    if (results?.interest) console.log(`[Scheduler] Credited ${results.interest} accounts`);
-    if (results?.standingOrders) console.log(`[Scheduler] Processed ${results.standingOrders} standing orders`);
-    if (results?.accrual) console.log('[Scheduler] Accrual accounting complete');
-    if (results?.errors?.length) console.error('[Scheduler] Errors:', results.errors.join('; '));
+    if (results?.interest) logger.info('[Scheduler] Interest credited', { count: results.interest });
+    if (results?.standingOrders) logger.info('[Scheduler] Standing orders processed', { count: results.standingOrders });
+    if (results?.accrual) logger.info('[Scheduler] Accrual accounting complete');
+    if (results?.backup) logger.info('[Scheduler] Database backup completed');
+    if (results?.errors?.length) logger.error('[Scheduler] Errors', { errors: results.errors });
   }, 60 * 60 * 1000);
-  console.log('[Scheduler] Started (hourly, dev-mode setInterval)');
+  logger.info('[Scheduler] Started (hourly, dev-mode setInterval)');
 }
 
 module.exports = { startScheduler, runAllJobs };

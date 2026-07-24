@@ -597,6 +597,22 @@ class PgStore {
     await this.pool.query("ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS parent_read INTEGER DEFAULT 0").catch(() => {});
       await this.pool.query(`CREATE TABLE IF NOT EXISTS typing_status (account_id TEXT PRIMARY KEY, is_typing INTEGER DEFAULT 0, last_heartbeat TEXT)`).catch(() => {});
       await this.pool.query(`CREATE TABLE IF NOT EXISTS daily_spins (account_id TEXT PRIMARY KEY, last_spin_date TEXT, spin_count INTEGER DEFAULT 0)`).catch(() => {});
+      await this.pool.query(`
+        CREATE TABLE IF NOT EXISTS jobs (
+          job_id TEXT PRIMARY KEY,
+          type TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','running','success','failed')),
+          started_at TEXT,
+          completed_at TEXT,
+          duration_ms INTEGER,
+          failed_reason TEXT,
+          attempts INTEGER DEFAULT 1,
+          result_summary TEXT,
+          created_at TEXT
+        )
+      `);
+      await this.pool.query('CREATE INDEX IF NOT EXISTS idx_jobs_type_status ON jobs(type, status)');
+      await this.pool.query('CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at)');
       await this._seedGlAccounts();
 
     // --- Performance Indexes ---
@@ -1666,6 +1682,38 @@ class PgStore {
       'INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2',
       [key, value]
     );
+  }
+
+  async createJob(type) {
+    const { v4: uuidv4 } = require('uuid');
+    const jobId = uuidv4();
+    const now = new Date().toISOString();
+    await this.query(
+      'INSERT INTO jobs (job_id, type, status, started_at, created_at) VALUES ($1, $2, $3, $4, $5)',
+      [jobId, type, 'running', now, now]
+    );
+    return jobId;
+  }
+
+  async updateJob(jobId, updates) {
+    const fields = [];
+    const values = [];
+    let idx = 1;
+    for (const [key, value] of Object.entries(updates)) {
+      fields.push(`${key} = $${idx++}`);
+      values.push(value);
+    }
+    if (!fields.length) return;
+    values.push(jobId);
+    await this.query(`UPDATE jobs SET ${fields.join(', ')} WHERE job_id = $${idx}`, values);
+  }
+
+  async getLatestJob(type) {
+    const res = await this.query(
+      'SELECT * FROM jobs WHERE type = $1 ORDER BY created_at DESC LIMIT 1',
+      [type]
+    );
+    return res.rows[0] || null;
   }
 
   getPool() {

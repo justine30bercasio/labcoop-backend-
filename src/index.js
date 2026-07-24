@@ -9,17 +9,30 @@ const morgan = require('morgan');
 const session = require('express-session');
 const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcryptjs');
+const Sentry = require('@sentry/node');
 
 const { store, isPostgres } = require('./db');
 const { initSocket } = require('./services/socket');
 const fileStorage = require('./services/file-storage');
+const logger = require('./services/logger');
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN || '',
+  environment: process.env.NODE_ENV || 'development',
+  sampleRate: 1.0,
+  tracesSampleRate: 0.1,
+  integrations: [],
+});
+
+const sentryRequestHandler = (req, res, next) => next();
+const sentryErrorHandler = Sentry.expressErrorHandler || ((err, req, res, next) => next(err));
 
 async function ensureDb() {
   if (isPostgres) return; // skip seed on PG — user will create accounts via admin
   try {
     const count = await store.query('SELECT COUNT(*) as c FROM accounts');
     if (parseInt(count.rows[0]?.c || '0', 10) > 0) {
-      console.log('Seed data already exists.');
+      logger.info('Seed data already exists.');
       return;
     }
 
@@ -192,12 +205,12 @@ async function ensureDb() {
       const existing = await store.query("SELECT * FROM settings WHERE key = 'default_maintaining_balance'");
       if (!existing.rows.length) {
         await store.query("INSERT INTO settings (key, value) VALUES ('default_maintaining_balance', '100')");
-        console.log('Default maintaining balance set to PHP 100');
+        logger.info('Default maintaining balance set to PHP 100');
       }
     } catch (_) {}
-    console.log('Seed data ensured.');
+    logger.info('Seed data ensured.');
   } catch (err) {
-    console.error('Seed failed:', err.message);
+    logger.error('Seed failed', { error: err.message });
     process.exit(1);
   }
 }
@@ -210,7 +223,7 @@ async function ensureAdmin() {
       if (process.env.NODE_ENV === 'production') {
         console.log(`[SEED] Admin account created. Username: admin / Temporary password: ${adminPass} — CHANGE IMMEDIATELY AFTER LOGIN`);
       } else {
-        console.log('[SEED] Admin account created with default password. Change on first login.');
+        logger.info('Admin account created with default password. Change on first login.');
       }
     const hash = bcrypt.hashSync(adminPass, 10);
       await store.query(
@@ -219,7 +232,7 @@ async function ensureAdmin() {
       );
     }
   } catch (err) {
-    console.error('Admin seed failed (non-fatal):', err.message);
+    logger.error('Admin seed failed (non-fatal)', { error: err.message });
   }
 }
 
@@ -232,10 +245,10 @@ async function ensureSavingsProduct() {
          VALUES ('sp_regular', 'Regular Savings', 'Default savings account with automatic interest', 0.02, 'yearly', 0, 1, $1)`,
         [new Date().toISOString()]
       );
-      console.log('Default savings product created: sp_regular (2% yearly)');
+      logger.info('Default savings product created: sp_regular (2% yearly)');
     }
   } catch (err) {
-    console.error('Savings product seed failed (non-fatal):', err.message);
+    logger.error('Savings product seed failed (non-fatal)', { error: err.message });
   }
   // Seed default maintaining balance setting
   try {
@@ -269,27 +282,27 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 if (isProduction) {
   if (!JWT_SECRET || JWT_SECRET === 'change-this-to-a-secure-random-string-in-production') {
-    console.error('FATAL: JWT_SECRET must be set in production. Generate one: openssl rand -hex 32');
+    logger.error('FATAL: JWT_SECRET must be set in production. Generate one: openssl rand -hex 32');
     process.exit(1);
   }
   if (!SESSION_SECRET || SESSION_SECRET === 'labcoop-session-secret-2026') {
-    console.error('FATAL: SESSION_SECRET must be set in production. Generate one: openssl rand -hex 32');
+    logger.error('FATAL: SESSION_SECRET must be set in production. Generate one: openssl rand -hex 32');
     process.exit(1);
   }
 } else {
   if (!JWT_SECRET || JWT_SECRET === 'change-this-to-a-secure-random-string-in-production') {
     const generated = crypto.randomBytes(32).toString('hex');
     process.env.JWT_SECRET = generated;
-    console.warn('WARN: JWT_SECRET not configured. Generated a temporary random secret (will change on restart).');
+    logger.warn('JWT_SECRET not configured. Generated temporary random secret (will change on restart).');
   }
   if (!SESSION_SECRET || SESSION_SECRET === 'labcoop-session-secret-2026') {
     const generated = crypto.randomBytes(32).toString('hex');
     process.env.SESSION_SECRET = generated;
-    console.warn('WARN: SESSION_SECRET not configured. Generated a temporary random secret (will change on restart).');
+    logger.warn('SESSION_SECRET not configured. Generated temporary random secret (will change on restart).');
   }
 }
 if (!process.env.PORT) {
-  console.warn('PORT not set, defaulting to 3000');
+  logger.warn('PORT not set, defaulting to 3000');
 }
 
 function startServer() {
@@ -321,7 +334,35 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
-app.use(morgan('dev'));
+morgan.token('req-body', (req) => {
+  if (!req.body || req.method === 'GET') return '';
+  const safe = {};
+  for (const k of Object.keys(req.body)) {
+    if (['password', 'pin', 'token', 'secret', 'authorization'].includes(k.toLowerCase())) {
+      safe[k] = '***';
+    } else {
+      safe[k] = req.body[k];
+    }
+  }
+  return ' ' + JSON.stringify(safe);
+});
+app.use(morgan((tokens, req, res) => {
+  const log = {
+    method: tokens.method(req, res),
+    url: tokens.url(req, res),
+    status: Number(tokens.status(req, res)),
+    responseTime: tokens['response-time'](req, res) + 'ms',
+    contentLength: tokens.res(req, res, 'content-length') || '0',
+  };
+  if (process.env.NODE_ENV === 'production') {
+    logger.info('HTTP', log);
+  } else {
+    console.log(`${log.method} ${log.url} ${log.status} ${log.responseTime} ${log.contentLength}b`);
+  }
+  return null;
+}));
+
+app.use(sentryRequestHandler);
 
 let sessionStore;
 if (isPostgres) {
@@ -540,14 +581,14 @@ apiRouter.get('/messages/admin-typing/:accountId', require('./routes/messages').
 apiRouter.get('/messages/typing/:accountId', require('./routes/messages').childTypingGet);
 apiRouter.use('/messages', authMiddleware, messagesRouter);
 
+// ── Scheduler tick endpoint (called by QStash in production) — MUST be before /api catch-all auth ──
+app.use('/api/scheduler', require('./routes/scheduler-tick'));
+
 // Mount: public first (health/auth handled here), then authenticated routes
 app.use('/api', publicRouter);
 app.use('/api/v1', publicRouter);
 app.use('/api', apiRouter);
 app.use('/api/v1', apiRouter);
-
-// ── Scheduler tick endpoint (called by QStash in production) ──
-app.use('/api/scheduler', require('./routes/scheduler-tick'));
 
 // Uploaded files (KYC, registration) are served via authenticated route only — see /api/files/*
 // NEVER use express.static for user-uploaded content — it bypasses auth
@@ -722,8 +763,12 @@ try {
 </body></html>`);
 });
 
+if (typeof sentryErrorHandler === 'function') {
+  app.use(sentryErrorHandler);
+}
+
 app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err.message, err.stack?.split('\n')[1] || '');
+  logger.error('Unhandled error', { message: err.message, stack: err.stack?.split('\n').slice(0, 3).join(' | ') });
   if (process.env.NODE_ENV === 'production') {
     res.status(500).json({ message: 'Internal server error' });
   } else {
@@ -744,25 +789,25 @@ const server = http.createServer(app);
 initSocket(server, sessionMiddleware);
 
 server.listen(PORT, () => {
-  console.log(`LabCoop API server running on port ${PORT}`);
+  logger.info(`LabCoop API server running on port ${PORT}`);
   if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON && !process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
-    console.warn('WARN: FIREBASE_SERVICE_ACCOUNT_JSON (or FIREBASE_SERVICE_ACCOUNT_PATH) not set — push notifications disabled.');
-    console.warn('WARN: Easiest fix: paste your Firebase Admin SDK JSON as FIREBASE_SERVICE_ACCOUNT_JSON in Render env vars.');
+    logger.warn('Firebase not configured — push notifications disabled', { hint: 'Set FIREBASE_SERVICE_ACCOUNT_JSON in Render env vars' });
   } else if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-    console.log('Firebase Admin configured via FIREBASE_SERVICE_ACCOUNT_JSON env var');
+    logger.info('Firebase Admin configured via env var');
   } else {
     try {
       const fp = path.resolve(process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
-      if (!fs.existsSync(fp)) console.warn('WARN: Firebase service account file not found at ' + fp + ' — push notifications will fail.');
-      else console.log('Firebase configured: ' + fp);
+      if (!fs.existsSync(fp)) logger.warn('Firebase service account file not found', { path: fp });
+      else logger.info('Firebase configured', { path: fp });
     } catch (_) {
-      console.warn('WARN: Firebase service account path invalid — push notifications disabled.');
+      logger.warn('Firebase service account path invalid — notifications disabled');
     }
   }
   if (process.env.NODE_ENV !== 'production') {
     startScheduler();
+    logger.info('Scheduler started in dev mode (setInterval)');
   } else {
-    console.log('[Scheduler] Production mode — setInterval disabled. Configure QStash to POST /api/scheduler/tick');
+    logger.info('Production mode — setInterval disabled. Configure QStash to POST /api/scheduler/tick');
   }
 });
 

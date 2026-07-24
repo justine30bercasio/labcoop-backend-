@@ -25,5 +25,9 @@ android/key.properties
 android/upload-keystore.jks
 *.jks
 
+# Auto-generated Flutter plugin files (local absolute paths)
+.flutter-plugins
+.flutter-plugins-dependencies
+
 # opencode agent files
 .opencode/

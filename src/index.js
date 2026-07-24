@@ -668,7 +668,7 @@ for (const sub of ['shop', 'board', 'profiles', 'kyc', 'registration', 'parents'
 // ── Serve uploaded files from R2 public URL ──
 // /uploads/shop/abc.jpg → {R2_PUBLIC_URL}/shop/abc.jpg (302 redirect)
 // Public dirs (shop, board, parents): no auth.  Sensitive dirs (kyc, profiles, registration): auth required.
-const PUBLIC_UPLOAD_DIRS = ['shop', 'board', 'parents'];
+const PUBLIC_UPLOAD_DIRS = ['shop', 'board', 'parents', 'profiles'];
 app.use('/uploads/:dir/:file', (req, res, next) => {
   const { dir, file } = req.params;
   if (!dir || !file) return next();

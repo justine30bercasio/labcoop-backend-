@@ -240,8 +240,21 @@ Flutter app data disappeared on logout/refresh because:
 - Flutter `master` pushed: `6df2b21`
 
 =====
-### Session 2026-07-09 — Bug fixes for login, CSRF, OTP/SendGrid, forgot PIN, security
-- **SMTP → SendGrid**: Render free tier blocks outbound SMTP (ports 465, 587 timeout). Switched OTP delivery to `@sendgrid/mail` (HTTPS API via port 443). `SENDGRID_API_KEY` set on Render. From email: `itsmejus10its@gmail.com` (verified Single Sender, name: `MYCOOPPIGGY`).
+### Session 2026-07-24 — Migrated SendGrid → Resend (credit limit exceeded)
+
+- **SendGrid exhausted credits** ("Maximum credits exceeded"), could not send OTP emails
+- **Migrated all 5 email paths to Resend** (`resend` npm package):
+  - `parent.js`: send-otp, forgot-pin send-otp, debug-smtp
+  - `auth.js`: consent email, child forgot-pin send-otp
+  - `admin-auth.js`: admin login OTP
+  - `parental-consent.js`: parental consent email
+- **Env vars changed**: `SENDGRID_API_KEY` → `RESEND_API_KEY`, `SENDGRID_FROM_EMAIL` → `RESEND_FROM_EMAIL`
+- **From address fallback**: `onboarding@resend.dev` (Resend's default verified sender)
+- **From format**: `"Name <email>"` string (Resend API) instead of `{email, name}` object (SendGrid API)
+- **Uninstalled**: `@sendgrid/mail` (removed 12 packages)
+- **Render env vars need update**: Add `RESEND_API_KEY` with the user's key `re_BmW5AXje_H3uroKFC2VHKkMSKy57YHhDV`; remove `SENDGRID_API_KEY` and `SENDGRID_FROM_EMAIL`
+
+### Session 2026-07-09 — Bug fixes for login, CSRF, OTP, forgot PIN, security
 - **Root/jailbreak detection disabled**: `SecurityService.isDeviceCompromised()` body commented out for emulator testing.
 - **Admin parent page 500 fix**: `a.birthdate` → `a.birthday as birthdate` in child query (`admin.js:6875`).
 - **parent.js syntax error**: Removed unclosed `try` block in login route.

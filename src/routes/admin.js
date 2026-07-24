@@ -8223,11 +8223,9 @@ router.get('/pending-approvals', requireRole(2), asyncHandler(async (req, res) =
         <td>${new Date(c.created_at).toLocaleString()}</td>
         <td>
           <form method="POST" action="/admin/pending-approvals/approve-consent/${c.id}" style="display:inline" onsubmit="return confirm('Approve this consent request?')">
-            <input type="hidden" name="_csrf" value="${h(req.session?.csrf || '')}">
             <button class="btn btn-sm btn-success">Approve</button>
           </form>
           <form method="POST" action="/admin/pending-approvals/reject-consent/${c.id}" style="display:inline" onsubmit="return confirm('Reject this consent request?')">
-            <input type="hidden" name="_csrf" value="${h(req.session?.csrf || '')}">
             <button class="btn btn-sm btn-danger">Reject</button>
           </form>
         </td>
@@ -8251,11 +8249,9 @@ router.get('/pending-approvals', requireRole(2), asyncHandler(async (req, res) =
         <td>${new Date(w.created_at).toLocaleString()}</td>
         <td>
           <form method="POST" action="/admin/pending-approvals/approve-withdrawal/${w.id}" style="display:inline" onsubmit="return confirm('Approve this withdrawal?')">
-            <input type="hidden" name="_csrf" value="${h(req.session?.csrf || '')}">
             <button class="btn btn-sm btn-success">Approve</button>
           </form>
           <form method="POST" action="/admin/pending-approvals/reject-withdrawal/${w.id}" style="display:inline" onsubmit="return confirm('Reject this withdrawal?')">
-            <input type="hidden" name="_csrf" value="${h(req.session?.csrf || '')}">
             <button class="btn btn-sm btn-danger">Reject</button>
           </form>
         </td>
@@ -8279,11 +8275,9 @@ router.get('/pending-approvals', requireRole(2), asyncHandler(async (req, res) =
         <td>${new Date(d.created_at).toLocaleString()}</td>
         <td>
           <form method="POST" action="/admin/pending-approvals/approve-deletion/${d.id}" style="display:inline" onsubmit="return confirm('Approve account deletion? This cannot be undone.')">
-            <input type="hidden" name="_csrf" value="${h(req.session?.csrf || '')}">
             <button class="btn btn-sm btn-success">Approve</button>
           </form>
           <form method="POST" action="/admin/pending-approvals/reject-deletion/${d.id}" style="display:inline" onsubmit="return confirm('Reject this deletion request?')">
-            <input type="hidden" name="_csrf" value="${h(req.session?.csrf || '')}">
             <button class="btn btn-sm btn-danger">Reject</button>
           </form>
         </td>

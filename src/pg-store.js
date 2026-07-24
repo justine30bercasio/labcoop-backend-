@@ -614,8 +614,8 @@ class PgStore {
       `);
       await this.pool.query('CREATE INDEX IF NOT EXISTS idx_jobs_type_status ON jobs(type, status)');
       await this.pool.query('CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at)');
-      await this.pool.query('CREATE INDEX IF NOT EXISTS idx_jobs_execution ON jobs(type, execution_key, status)');
       try { await this.pool.query("ALTER TABLE jobs ADD COLUMN execution_key TEXT"); } catch (_) {}
+      await this.pool.query('CREATE INDEX IF NOT EXISTS idx_jobs_execution ON jobs(type, execution_key, status)');
       await this._seedGlAccounts();
 
     // --- Performance Indexes ---

@@ -9,7 +9,7 @@ const express = require('express');
 const router = express.Router();
 const { store } = require('../db');
 const { asyncHandler } = require('../async-handler');
-const { layout, printLayout, h, reportTable, reportSection, reportStats, fmt, fmtTrn, ROLE_LEVELS, ORG_TEMPLATE_URL, ORG_LOGO_URL } = require('./admin-lib');
+const { layout, printLayout, h, phTime, phDate, reportTable, reportSection, reportStats, fmt, fmtTrn, ROLE_LEVELS, ORG_TEMPLATE_URL, ORG_LOGO_URL } = require('./admin-lib');
 
 const requireRole = (minLevel) => (req, res, next) => {
   if (!req.session || !req.session.adminId) return res.redirect('/admin/login');
@@ -238,7 +238,7 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
     if (isBalanceCredit) runningBalance += amt;
     else if (isBalanceDebit) runningBalance -= amt;
     const typeLabel = t.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-    const dateStr = (t.created_at || '').slice(0, 10);
+    const dateStr = phDate(t.created_at);
     const refStr = t.trn_number ? 'TXN-' + (t.created_at || '').slice(0,4) + '-' + String(t.trn_number).padStart(6,'0') : t.reference_id ? (t.reference_id).slice(0, 8).toUpperCase() : '-';
     return `<tr>
       <td class="mono">${dateStr}</td>

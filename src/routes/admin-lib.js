@@ -1165,6 +1165,16 @@ function fmtTrn(v) {
   return (n >= 0 ? '+' : '') + '₱' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function phTime(d) {
+  if (!d) return '-';
+  try { return new Date(d).toLocaleString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).replace(',', ''); } catch { return '-'; }
+}
+
+function phDate(d) {
+  if (!d) return '-';
+  try { return new Date(d).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).replace(',', ''); } catch { return '-'; }
+}
+
 function printLayout(title, content, opts = {}) {
   const {
     subtitle = '',
@@ -1414,4 +1424,4 @@ function reportStats(items) {
   return `<div class="stats-grid-print">${items.map(i => `<div><div class="val">${i.value}</div><div>${i.label}</div></div>`).join('')}</div>`;
 }
 
-module.exports = { layout, printLayout, h, fmt, fmtTrn, reportTable, reportSection, reportStats, setRoleLevel, ROLE_LEVELS, ORG_TEMPLATE_URL, ORG_LOGO_URL };
+module.exports = { layout, printLayout, h, fmt, fmtTrn, phTime, phDate, reportTable, reportSection, reportStats, setRoleLevel, ROLE_LEVELS, ORG_TEMPLATE_URL, ORG_LOGO_URL };

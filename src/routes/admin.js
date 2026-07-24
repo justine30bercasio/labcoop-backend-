@@ -9,7 +9,7 @@ const bcrypt = require('bcryptjs');
 const { store, isPostgres } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const fileStorage = require('../services/file-storage');
-const { layout, printLayout, h, fmt, fmtTrn, reportTable, reportSection, reportStats } = require('./admin-lib');
+const { layout, printLayout, h, fmt, fmtTrn, phTime, phDate, reportTable, reportSection, reportStats } = require('./admin-lib');
 const notifs = require('../services/notifications');
 
 const _p = (...p) => p.length === 1 && Array.isArray(p[0]) ? p[0] : p;
@@ -406,7 +406,7 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
       <div class="card-body dash-table-wrap">
       ${transactions.length === 0 ? '<div class="no-data">No transactions</div>' : `<table><tr><th>Child</th><th>Type</th><th>Amount</th><th>Date</th></tr>
       ${transactions.slice(0, 8).map(t => {
-        const dateStr = t.created_at ? t.created_at.slice(0, 10) : '';
+        const dateStr = phDate(t.created_at);
         const badgeCls = ({deposit:'badge-green',withdrawal:'badge-red',loan_disbursement:'badge-amber',loan_payment:'badge-blue',interest_credit:'badge-purple',interest:'badge-purple',allocation:'badge-purple'})[t.type] || 'badge-gray';
         const isInflow = ['deposit','loan_disbursement','interest_credit','interest','interest_income','td_maturity','reward'].includes(t.type);
         return `<tr>
@@ -497,7 +497,7 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
 
   const msg = req.query.msg;
   res.type('html').send(layout('Dashboard', 'dashboard', chartDataScript + content, {
-    subtitle: now.toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+        subtitle: new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila', weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
     headerActions: '<a href="/admin/gl/trial-balance" class="btn btn-outline btn-sm"><i class="fas fa-scale-balanced"></i> Trial Balance</a><a href="/api/excel/export/all" class="btn btn-secondary btn-sm"><i class="fas fa-download"></i> Export</a>',
     toast: msg ? `success:${msg}` : undefined,
   }));
@@ -1153,7 +1153,7 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
   const statusLabel = statusNum === 1 ? 'Active' : statusNum === 0 ? 'Inactive' : 'Closed';
   const statusBadge = statusNum === 1 ? 'badge-green' : statusNum === 0 ? 'badge-gray' : 'badge-red';
 
-  const dateFmt = (d) => d ? String(d).slice(0, 10) : '-';
+  const dateFmt = (d) => phDate(d);
   const initial = (account.child_name || '?')[0].toUpperCase();
 
   const txRows = transactions.length === 0
@@ -1169,7 +1169,7 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
           <td class="mono" style="text-align:right;color:var(--red);font-weight:600">${isInflow ? '' : fmt(t.amount)}</td>
           <td class="mono" style="text-align:right;color:var(--accent);font-weight:600">${isInflow ? fmt(t.amount) : ''}</td>
           <td class="mono" style="font-size:12px;text-align:right;font-weight:500">${t.balance_after ? fmt(t.balance_after) : '-'}</td>
-          <td style="text-align:center"><button class="btn btn-xs btn-outline" onclick="showTxDetail('${t.transaction_id}','${t.type}','${fmt(t.amount)}','${isInflow ? '+' : '-'}','${t.balance_before ? fmt(t.balance_before) : '-'}','${t.balance_after ? fmt(t.balance_after) : '-'}','${dateFmt(t.created_at)}','${String(t.created_at||'').slice(11,19)}','${(t.description||'-').replace(/'/g,"\\'")}','${t.reference_type||'-'}','${t.reference_id||'-'}','${t.goal_title||''}','${t.transaction_id}')">View</button></td>
+          <td style="text-align:center"><button class="btn btn-xs btn-outline" onclick="showTxDetail('${t.transaction_id}','${t.type}','${fmt(t.amount)}','${isInflow ? '+' : '-'}','${t.balance_before ? fmt(t.balance_before) : '-'}','${t.balance_after ? fmt(t.balance_after) : '-'}','${dateFmt(t.created_at)}','${phTime(t.created_at).slice(11,19)}','${(t.description||'-').replace(/'/g,"\\'")}','${t.reference_type||'-'}','${t.reference_id||'-'}','${t.goal_title||''}','${t.transaction_id}')">View</button></td>
         </tr>`;
       }).join('');
 
@@ -1981,7 +1981,7 @@ router.get('/badges', requireRole(1), asyncHandler(async (req, res) => {
       <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${b.description || '-'}</td>
       <td class="num">${b.required_xp} <span class="badge badge-purple">XP</span></td>
       <td><span class="badge ${b.is_unlocked ? 'badge-green' : 'badge-red'}">${b.is_unlocked ? 'Unlocked' : 'Locked'}</span></td>
-      <td class="mono">${b.unlocked_at ? b.unlocked_at.slice(0, 19).replace('T', ' ') : '-'}</td>
+      <td class="mono">${b.unlocked_at ? phTime(b.unlocked_at) : '-'}</td>
       <td><div style="display:flex;gap:4px">
         <a href="#edit-${b.badge_id}" class="btn btn-secondary btn-xs">&#x270F;</a>
         <form class="inline" method="post" action="/admin/badges/toggle/${b.badge_id}">
@@ -2188,7 +2188,7 @@ router.get('/loans', requireRole(1), asyncHandler(async (req, res) => {
         <td class="num">${fmt(l.amount_paid)}</td>
         <td class="num">${fmt(l.remaining_balance)}</td>
         <td><span class="badge ${statusColors[l.status] || 'badge-gray'}">${statusLabels[l.status] || l.status}</span></td>
-        <td class="mono">${(l.created_at || '').slice(0, 10)}</td>
+        <td class="mono">${phDate(l.created_at)}</td>
         <td><div class="actions-cell">
           ${l.status === 'pending' ? `
             <form method="post" action="/admin/loans/approve/${l.loan_id}" style="display:inline">
@@ -2383,7 +2383,7 @@ router.get('/transactions', requireRole(1), asyncHandler(async (req, res) => {
       <td><span class="badge ${t.type === 'deposit' ? 'badge-green' : t.type === 'allocation' ? 'badge-purple' : t.type === 'withdrawal' ? 'badge-red' : t.type === 'purchase' ? 'badge-amber' : t.type === 'reward' ? 'badge-blue' : 'badge-gray'}">${t.type}</span></td>
       <td class="num">${fmt(t.amount)}</td>
       <td>${t.description || '-'}</td>
-      <td class="mono">${(t.created_at || '').slice(0, 19).replace('T', ' ')}</td>
+      <td class="mono">${phTime(t.created_at)}</td>
     </tr>`).join('')}
     </table>
     ${totalPages > 1 ? `
@@ -3374,10 +3374,10 @@ router.get('/online-deposits', requireRole(1), asyncHandler(async (req, res) => 
   let rows = '';
   for (const d of filtered) {
     const statusClass = d.status === 'approved' ? 'badge-green' : d.status === 'rejected' ? 'badge-red' : 'badge-yellow';
-    const resolved = d.resolved_at ? new Date(d.resolved_at).toLocaleDateString() : '—';
+    const resolved = d.resolved_at ? phDate(d.resolved_at) : '—';
     rows += `
     <tr>
-      <td><span class="date-cell">${new Date(d.created_at).toLocaleDateString()}</span></td>
+      <td><span class="date-cell">${phDate(d.created_at)}</span></td>
       <td>${d.child_name || '—'}</td>
       <td>₱${Number(d.amount).toFixed(2)}</td>
       <td>${d.reference_number || '—'}</td>
@@ -3962,8 +3962,8 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
     var isVoided = r.voided_at ? true : false;
     var extRef = r.reference_id ? (r.reference_type ? r.reference_type + ':' : '') + r.reference_id : '-';
     var voidBanner = isVoided ? '<div class="rm-void-banner"><i class="fas fa-ban"></i> VOIDED — ' + h(r.void_reason || '') + '</div>' : '';
-    var voidRow = isVoided ? '<div class="rm-divider"></div><div class="rm-row"><span class="rm-label">Voided By</span><span class="rm-value" style="color:#dc2626">' + h(r.voided_by || '') + ' on ' + (r.voided_at || '').slice(0,10) + '</span></div>' : '';
-    return '<div class="receipt-overlay show" id="receiptOverlay"><div class="receipt-modal" id="rinline">' + voidBanner + '<div class="rm-header"><div class="rm-title">LABCOOP PASSBOOK</div><div class="rm-sub">Official Transaction Receipt</div></div><div class="rm-body"><div class="rm-row"><span class="rm-label">TRN#</span><span class="rm-value">' + (r.trn_number ? fmtRef(r) : 'TXN-' + (r.transaction_id || '').slice(0,8).toUpperCase()) + '</span></div><div class="rm-row"><span class="rm-label">Date</span><span class="rm-value">' + (r.created_at || '').slice(0,19).replace('T',' ') + '</span></div><div class="rm-row"><span class="rm-label">Member</span><span class="rm-value">' + h(r.child_name||'N/A') + ' (' + h(r.member_id||'---') + ')</span></div><div class="rm-divider"></div><div class="rm-row"><span class="rm-label">Transaction</span><span class="rm-value" style="text-transform:uppercase">' + h(r.type.replace(/_/g,' ')) + '</span></div><div class="rm-row"><span class="rm-label">Amount</span><span class="rm-value ' + (isCredit ? 'rm-credit' : 'rm-debit') + '">' + (isCredit ? '+' : '-') + ' \u20B1' + Number(r.amount).toFixed(2) + '</span></div><div class="rm-row"><span class="rm-label">Description</span><span class="rm-value">' + h(r.description||'-') + '</span></div>' + voidRow + '<div class="rm-divider"></div><div class="rm-row"><span class="rm-label">Balance Before</span><span class="rm-value">\u20B1' + Number(r.balance_before || 0).toFixed(2) + '</span></div><div class="rm-row"><span class="rm-label">Balance After</span><span class="rm-value">\u20B1' + Number(r.balance_after || 0).toFixed(2) + '</span></div><div class="rm-row"><span class="rm-label">Ext. Ref</span><span class="rm-value" style="font-size:10px">' + extRef + '</span></div></div><div class="rm-footer"><button onclick="doPrint()" class="btn btn-sm" style="background:var(--accent);color:#fff;padding:8px 20px;border:none;border-radius:8px;font-weight:600;cursor:pointer"><i class="fas fa-print"></i> Print</button><button onclick="closeReceipt()" class="btn btn-sm btn-outline" style="padding:8px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;cursor:pointer;font-weight:600"><i class="fas fa-times"></i> Close</button></div></div></div>';
+    var voidRow = isVoided ? '<div class="rm-divider"></div><div class="rm-row"><span class="rm-label">Voided By</span><span class="rm-value" style="color:#dc2626">' + h(r.voided_by || '') + ' on ' + (r.voided_at ? new Date(r.voided_at).toLocaleString('en-PH',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).replace(',','') : '-') + '</span></div>' : '';
+    return '<div class="receipt-overlay show" id="receiptOverlay"><div class="receipt-modal" id="rinline">' + voidBanner + '<div class="rm-header"><div class="rm-title">LABCOOP PASSBOOK</div><div class="rm-sub">Official Transaction Receipt</div></div><div class="rm-body"><div class="rm-row"><span class="rm-label">TRN#</span><span class="rm-value">' + (r.trn_number ? fmtRef(r) : 'TXN-' + (r.transaction_id || '').slice(0,8).toUpperCase()) + '</span></div><div class="rm-row"><span class="rm-label">Date</span><span class="rm-value">' + (r.created_at ? new Date(r.created_at).toLocaleString('en-PH',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).replace(',','') : '-') + '</span></div><div class="rm-row"><span class="rm-label">Member</span><span class="rm-value">' + h(r.child_name||'N/A') + ' (' + h(r.member_id||'---') + ')</span></div><div class="rm-divider"></div><div class="rm-row"><span class="rm-label">Transaction</span><span class="rm-value" style="text-transform:uppercase">' + h(r.type.replace(/_/g,' ')) + '</span></div><div class="rm-row"><span class="rm-label">Amount</span><span class="rm-value ' + (isCredit ? 'rm-credit' : 'rm-debit') + '">' + (isCredit ? '+' : '-') + ' \u20B1' + Number(r.amount).toFixed(2) + '</span></div><div class="rm-row"><span class="rm-label">Description</span><span class="rm-value">' + h(r.description||'-') + '</span></div>' + voidRow + '<div class="rm-divider"></div><div class="rm-row"><span class="rm-label">Balance Before</span><span class="rm-value">\u20B1' + Number(r.balance_before || 0).toFixed(2) + '</span></div><div class="rm-row"><span class="rm-label">Balance After</span><span class="rm-value">\u20B1' + Number(r.balance_after || 0).toFixed(2) + '</span></div><div class="rm-row"><span class="rm-label">Ext. Ref</span><span class="rm-value" style="font-size:10px">' + extRef + '</span></div></div><div class="rm-footer"><button onclick="doPrint()" class="btn btn-sm" style="background:var(--accent);color:#fff;padding:8px 20px;border:none;border-radius:8px;font-weight:600;cursor:pointer"><i class="fas fa-print"></i> Print</button><button onclick="closeReceipt()" class="btn btn-sm btn-outline" style="padding:8px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;cursor:pointer;font-weight:600"><i class="fas fa-times"></i> Close</button></div></div></div>';
   }
 
   function searchResultItem(a) {
@@ -8220,7 +8220,7 @@ router.get('/pending-approvals', requireRole(2), asyncHandler(async (req, res) =
       content += `<tr>
         <td><strong>${h(c.child_name)}</strong> <span style="color:#6b7280;font-size:12px">(${h(c.member_id || '—')})</span></td>
         <td style="font-family:monospace;font-size:12px">${h(c.account_id.slice(0,8))}…</td>
-        <td>${new Date(c.created_at).toLocaleString()}</td>
+        <td>${phTime(c.created_at)}</td>
         <td>
           <form method="POST" action="/admin/pending-approvals/approve-consent/${c.id}" style="display:inline" onsubmit="return confirm('Approve this consent request?')">
             <button class="btn btn-sm btn-success">Approve</button>
@@ -8246,7 +8246,7 @@ router.get('/pending-approvals', requireRole(2), asyncHandler(async (req, res) =
       content += `<tr>
         <td><strong>${h(w.child_name)}</strong> <span style="color:#6b7280;font-size:12px">(${h(w.member_id || '—')})</span></td>
         <td>$${Number(w.amount).toFixed(2)}</td>
-        <td>${new Date(w.created_at).toLocaleString()}</td>
+        <td>${phTime(w.created_at)}</td>
         <td>
           <form method="POST" action="/admin/pending-approvals/approve-withdrawal/${w.id}" style="display:inline" onsubmit="return confirm('Approve this withdrawal?')">
             <button class="btn btn-sm btn-success">Approve</button>
@@ -8272,7 +8272,7 @@ router.get('/pending-approvals', requireRole(2), asyncHandler(async (req, res) =
       content += `<tr>
         <td><strong>${h(d.child_name)}</strong> <span style="color:#6b7280;font-size:12px">(${h(d.member_id || '—')})</span></td>
         <td style="max-width:300px;white-space:normal">${h(d.reason || '—')}</td>
-        <td>${new Date(d.created_at).toLocaleString()}</td>
+        <td>${phTime(d.created_at)}</td> 
         <td>
           <form method="POST" action="/admin/pending-approvals/approve-deletion/${d.id}" style="display:inline" onsubmit="return confirm('Approve account deletion? This cannot be undone.')">
             <button class="btn btn-sm btn-success">Approve</button>
@@ -8477,7 +8477,7 @@ router.get('/parents', requireRole(3,4), asyncHandler(async (req, res) => {
             <div class="pending-header">
               <h4>${h(p.display_name || 'Unnamed Parent')}</h4>
               <span style="font-size:13px;color:#92400e">${h(p.email)}</span>
-              <span style="font-size:12px;color:#b45309;display:block;margin-top:4px">Registered ${new Date(p.created_at).toLocaleDateString()}</span>
+              <span style="font-size:12px;color:#b45309;display:block;margin-top:4px">Registered ${phDate(p.created_at)}</span>
             </div>
             <div class="pending-body">
               <div class="photo-grid">
@@ -8547,7 +8547,7 @@ router.get('/parents', requireRole(3,4), asyncHandler(async (req, res) => {
               <div class="parent-info">
                 <div class="name">${h(p.display_name || 'Unnamed')}</div>
                 <div class="email">${h(p.email)}</div>
-                <div class="meta">${h(p.id_type || 'ID')}: ${h(p.id_number || 'N/A')} &middot; Registered ${new Date(p.created_at).toLocaleDateString()}${p.phone ? ' &middot; Phone: '+h(p.phone) : ''}</div>
+                <div class="meta">${h(p.id_type || 'ID')}: ${h(p.id_number || 'N/A')} &middot; Registered ${phDate(p.created_at)}${p.phone ? ' &middot; Phone: '+h(p.phone) : ''}</div>
               </div>
               <span class="count-badge">${childCount} child${childCount !== 1 ? 'ren' : ''}</span>
               <i class="fas fa-chevron-right collapse-icon"></i>
@@ -8575,7 +8575,7 @@ router.get('/parents', requireRole(3,4), asyncHandler(async (req, res) => {
                     <td><span class="badge ${c.kyc_status === 'approved' ? 'badge-active' : c.kyc_status === 'pending' ? 'badge-pending' : 'badge-rejected'}">${h(c.kyc_status || 'none')}</span></td>
                     <td><span class="badge ${c.consent_status === 'approved' ? 'badge-active' : c.consent_status === 'pending' ? 'badge-pending' : 'badge-rejected'}">${h(c.consent_status || 'none')}</span></td>
                     <td><span class="badge badge-active">${h(c.link_status)}</span></td>
-                    <td style="color:#6b7280;font-size:12px">${new Date(c.linked_at).toLocaleDateString()}</td>
+                    <td style="color:#6b7280;font-size:12px">${phDate(c.linked_at)}</td>
                   </tr>
                   `).join('')}
                 </tbody>

@@ -2,7 +2,7 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const { store, isPostgres } = require('../db');
 const { asyncHandler } = require('../async-handler');
-const { layout, printLayout, reportTable, reportSection, reportStats } = require('./admin-lib');
+const { layout, printLayout, phTime, phDate, reportTable, reportSection, reportStats } = require('./admin-lib');
 
 const _p = (...p) => p.length === 1 && Array.isArray(p[0]) ? p[0] : p;
 const sql = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows);

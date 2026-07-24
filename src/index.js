@@ -546,6 +546,9 @@ app.use('/api/v1', publicRouter);
 app.use('/api', apiRouter);
 app.use('/api/v1', apiRouter);
 
+// ── Scheduler tick endpoint (called by QStash in production) ──
+app.use('/api/scheduler', require('./routes/scheduler-tick'));
+
 // Uploaded files (KYC, registration) are served via authenticated route only — see /api/files/*
 // NEVER use express.static for user-uploaded content — it bypasses auth
 app.use(express.static(path.join(__dirname, 'public')));
@@ -756,7 +759,11 @@ server.listen(PORT, () => {
       console.warn('WARN: Firebase service account path invalid — push notifications disabled.');
     }
   }
-  startScheduler();
+  if (process.env.NODE_ENV !== 'production') {
+    startScheduler();
+  } else {
+    console.log('[Scheduler] Production mode — setInterval disabled. Configure QStash to POST /api/scheduler/tick');
+  }
 });
 
 module.exports = app;

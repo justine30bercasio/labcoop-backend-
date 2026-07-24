@@ -1,248 +1,170 @@
-function startScheduler() {
+async function runAllJobs() {
   const { store } = require('../db');
+  const sql = (q, p) => store.query(q, p || []).then(r => r.rows);
+  const one = (q, p) => store.query(q, p || []).then(r => r.rows[0]);
 
-  setInterval(async () => {
-    try {
-      const sql = (q, p) => store.query(q, p || []).then(r => r.rows);
-      const one = (q, p) => store.query(q, p || []).then(r => r.rows[0]);
+  const lockCheck = await one("SELECT value FROM settings WHERE key = 'scheduler_lock'");
+  if (lockCheck && lockCheck.value === '1') {
+    const lockAge = await one("SELECT created_at FROM settings WHERE key = 'scheduler_lock_updated'");
+    if (lockAge && (Date.now() - new Date(lockAge.created_at).getTime()) < 7200000) {
+      return { skipped: true, reason: 'Lock held by another instance (< 2h old)' };
+    }
+  }
+  await store.setSetting('scheduler_lock', '1');
+  await store.setSetting('scheduler_lock_updated', new Date().toISOString());
 
-      // ── Persistent Lock Check ──
-      const lockCheck = await one("SELECT value FROM settings WHERE key = 'scheduler_lock'");
-      if (lockCheck && lockCheck.value === '1') {
-        const lockAge = await one("SELECT created_at FROM settings WHERE key = 'scheduler_lock_updated'");
-        if (lockAge && (Date.now() - new Date(lockAge.created_at).getTime()) < 7200000) {
-          return; // Another instance is running, lock is fresh (< 2 hours old)
+  const results = { interest: 0, standingOrders: 0, accrual: false, errors: [] };
+
+  try {
+    const accounts = await sql('SELECT * FROM accounts');
+    const now = new Date();
+
+    // ── Interest Credits ──
+    for (const account of accounts) {
+      if (account.actual_balance <= 0) continue;
+      const product = account.savings_product_id
+        ? await one('SELECT * FROM savings_products WHERE product_id = $1', [account.savings_product_id])
+        : await one("SELECT * FROM savings_products WHERE product_id = 'sp_regular'");
+      if (!product) continue;
+      let rate = product.interest_rate;
+      let shouldApply = false;
+      if (product.interest_frequency === 'daily') {
+        rate = rate / 365; shouldApply = true;
+      } else if (product.interest_frequency === 'monthly') {
+        const lastInterest = await one("SELECT created_at FROM transactions WHERE account_id = $1 AND (type = 'interest_credit' OR type = 'interest') ORDER BY created_at DESC LIMIT 1", [account.account_id]);
+        if (!lastInterest) {
+          const created = new Date(account.created_at);
+          shouldApply = created.getMonth() !== now.getMonth() || created.getFullYear() !== now.getFullYear();
+        } else {
+          const lastDate = new Date(lastInterest.created_at);
+          shouldApply = lastDate.getMonth() !== now.getMonth() || lastDate.getFullYear() !== now.getFullYear();
         }
-        // Lock is stale; we'll overwrite it
-      }
-      // Acquire lock
-      await store.setSetting('scheduler_lock', '1');
-      await store.setSetting('scheduler_lock_updated', new Date().toISOString());
-
-    try {
-      const accounts = await sql('SELECT * FROM accounts');
-      const now = new Date();
-
-      // ── Interest Credits ──
-      for (const account of accounts) {
-        if (account.actual_balance <= 0) continue;
-
-        const product = account.savings_product_id
-          ? await one('SELECT * FROM savings_products WHERE product_id = $1', [account.savings_product_id])
-          : await one("SELECT * FROM savings_products WHERE product_id = 'sp_regular'");
-
-        if (!product) continue;
-
-        let rate = product.interest_rate;
-        let shouldApply = false;
-
-        if (product.interest_frequency === 'daily') {
-          rate = rate / 365;
-          shouldApply = true;
-        } else if (product.interest_frequency === 'monthly') {
-          const lastInterest = await one(
-            "SELECT created_at FROM transactions WHERE account_id = $1 AND (type = 'interest_credit' OR type = 'interest') ORDER BY created_at DESC LIMIT 1",
-            [account.account_id]
-          );
-
-          if (!lastInterest) {
-            const created = new Date(account.created_at);
-            shouldApply = created.getMonth() !== now.getMonth() || created.getFullYear() !== now.getFullYear();
-          } else {
-            const lastDate = new Date(lastInterest.created_at);
-            shouldApply = lastDate.getMonth() !== now.getMonth() || lastDate.getFullYear() !== now.getFullYear();
-          }
-        } else if (product.interest_frequency === 'yearly') {
-          const lastInterest = await one(
-            "SELECT created_at FROM transactions WHERE account_id = $1 AND (type = 'interest_credit' OR type = 'interest') ORDER BY created_at DESC LIMIT 1",
-            [account.account_id]
-          );
-
-          if (!lastInterest) {
-            const created = new Date(account.created_at);
-            shouldApply = created.getFullYear() !== now.getFullYear();
-          } else {
-            const lastDate = new Date(lastInterest.created_at);
-            shouldApply = lastDate.getFullYear() !== now.getFullYear();
-          }
-        }
-
-        if (shouldApply && rate > 0) {
-          const grossInterest = Math.round(account.actual_balance * rate * 100) / 100;
-          if (grossInterest > 0) {
-            // Withholding tax (20% on interest per tax_config)
-            const taxConfig = await one("SELECT * FROM tax_config WHERE applies_to = 'interest' AND is_active = 1 LIMIT 1");
-            const taxRate = taxConfig ? Number(taxConfig.rate) / 100 : 0;
-            const taxAmount = Math.round(grossInterest * taxRate * 100) / 100;
-            const netInterest = Math.round((grossInterest - taxAmount) * 100) / 100;
-
-            const txRecord = await store.creditInterest(account.account_id, netInterest);
-            try {
-              const gl = require('./gl');
-              const txId = txRecord?.transaction_id || '';
-              if (txId) {
-                await gl.postDoubleEntry(txId, [
-                  { account_code: '5000', debit: grossInterest, description: 'Interest expense (gross): ' + account.child_name },
-                  { account_code: '2400', credit: taxAmount, description: 'Interest withholding tax: ' + account.child_name },
-                  { account_code: '2000', credit: netInterest, description: 'Interest credited (net): ' + account.child_name },
-                ], { postedBy: 'system', referenceType: 'interest', referenceNumber: txId });
-              }
-            } catch (glErr) {
-              console.error('[Scheduler] GL post for interest failed account_id=' + account.account_id + ': ' + glErr.message);
-            }
-            console.log(`[Scheduler] Credited PHP ${netInterest} (net of ${taxAmount} withholding) to ${account.child_name}`);
-          }
+      } else if (product.interest_frequency === 'yearly') {
+        const lastInterest = await one("SELECT created_at FROM transactions WHERE account_id = $1 AND (type = 'interest_credit' OR type = 'interest') ORDER BY created_at DESC LIMIT 1", [account.account_id]);
+        if (!lastInterest) {
+          shouldApply = new Date(account.created_at).getFullYear() !== now.getFullYear();
+        } else {
+          shouldApply = new Date(lastInterest.created_at).getFullYear() !== now.getFullYear();
         }
       }
-
-      // ── Standing Orders Processing ──
-      const dueOrders = await sql(
-        "SELECT so.*, a.child_name, a.actual_balance, a.unallocated_balance FROM standing_orders so LEFT JOIN accounts a ON so.account_id = a.account_id WHERE so.is_active = 1 AND so.next_run <= CURRENT_TIMESTAMP"
-      );
-
-      for (const order of dueOrders) {
-        try {
-          const amount = Number(order.amount);
-          if (Number(order.actual_balance) < amount) {
-            console.log(`[Scheduler] Skipping standing order ${order.order_id} for ${order.child_name}: insufficient balance`);
-            continue;
-          }
-          // Check maintaining balance (from ACCOUNT, not order)
-          const accountForOrder = await one('SELECT * FROM accounts WHERE account_id = $1', [order.account_id]);
-          const maintainingBalance = Number(accountForOrder?.maintaining_balance || 0);
-          if (Number(order.actual_balance) - amount < maintainingBalance) {
-            console.log(`[Scheduler] Skipping standing order ${order.order_id} for ${order.child_name}: would drop below maintaining balance of ₱${maintainingBalance.toFixed(2)}`);
-            continue;
-          }
-
-          if (order.target_goal_id) {
-            // Transfer to goal
-            const goal = await one('SELECT * FROM goal_jars WHERE goal_id = $1', [order.target_goal_id]);
-            if (goal) {
-              const newAllocated = Math.round((Number(goal.current_allocated) + amount) * 100) / 100;
-              await store.query("UPDATE goal_jars SET current_allocated = $1, updated_at = CURRENT_TIMESTAMP WHERE goal_id = $2", [newAllocated, order.target_goal_id]);
-            }
-          }
-
-          // Deduct from account balance
-          const newBalance = Math.round((Number(order.actual_balance) - amount) * 100) / 100;
-          const newUnallocated = Math.round((Number(order.unallocated_balance) - amount) * 100) / 100;
-          await store.query("UPDATE accounts SET actual_balance = $1, unallocated_balance = $2, updated_at = CURRENT_TIMESTAMP WHERE account_id = $3", [newBalance, Math.max(0, newUnallocated), order.account_id]);
-
-          const soTxRecord = await store.addTransaction({
-            account_id: order.account_id,
-            type: 'auto_save',
-            amount: amount,
-            description: order.description || 'Auto-save transfer',
-            balance_before: Number(order.actual_balance),
-            balance_after: newBalance,
-          });
-
-          // Post double-entry GL for standing order (auto-save)
+      if (shouldApply && rate > 0) {
+        const grossInterest = Math.round(account.actual_balance * rate * 100) / 100;
+        if (grossInterest > 0) {
+          const taxConfig = await one("SELECT * FROM tax_config WHERE applies_to = 'interest' AND is_active = 1 LIMIT 1");
+          const taxRate = taxConfig ? Number(taxConfig.rate) / 100 : 0;
+          const taxAmount = Math.round(grossInterest * taxRate * 100) / 100;
+          const netInterest = Math.round((grossInterest - taxAmount) * 100) / 100;
+          const txRecord = await store.creditInterest(account.account_id, netInterest);
           try {
             const gl = require('./gl');
-            await gl.postDoubleEntry(soTxRecord.transaction_id, [
-              { account_code: '5100', debit: amount, description: `Auto-save transfer: ${order.child_name} — ${order.description || 'Auto-save'}` },
-              { account_code: '1000', credit: amount, description: `Auto-save transfer: ${order.child_name} — ${order.description || 'Auto-save'}` },
-            ], { postedBy: 'system', referenceType: 'auto_save', referenceNumber: order.order_id });
+            const txId = txRecord?.transaction_id || '';
+            if (txId) {
+              await gl.postDoubleEntry(txId, [
+                { account_code: '5000', debit: grossInterest, description: 'Interest expense (gross): ' + account.child_name },
+                { account_code: '2400', credit: taxAmount, description: 'Interest withholding tax: ' + account.child_name },
+                { account_code: '2000', credit: netInterest, description: 'Interest credited (net): ' + account.child_name },
+              ], { postedBy: 'system', referenceType: 'interest', referenceNumber: txId });
+            }
           } catch (glErr) {
-            console.error('[Scheduler] GL post for auto-save failed:', glErr.message);
+            results.errors.push('GL interest post failed account_id=' + account.account_id + ': ' + glErr.message);
           }
-
-          // Update next_run
-          const nextRun = new Date();
-          switch (order.frequency) {
-            case 'daily': nextRun.setDate(nextRun.getDate() + 1); break;
-            case 'weekly': nextRun.setDate(nextRun.getDate() + 7); break;
-            case 'monthly': nextRun.setMonth(nextRun.getMonth() + 1); break;
-          }
-          await store.query("UPDATE standing_orders SET next_run = $1, updated_at = CURRENT_TIMESTAMP WHERE order_id = $2", [nextRun.toISOString(), order.order_id]);
-
-          console.log(`[Scheduler] Auto-save PHP ${amount} for ${order.child_name} (${order.frequency})`);
-        } catch (err) {
-          console.error(`[Scheduler] Standing order ${order.order_id} error:`, err.message);
+          results.interest++;
         }
       }
+    }
 
-      // ── Monthly Accrual Accounting ──
-      const nowDate = new Date();
-      if (nowDate.getDate() === 1 && nowDate.getHours() === 3 && nowDate.getMinutes() >= 15 && nowDate.getMinutes() < 30) {
-        const log = (msg) => { const ts = nowDate.toISOString(); console.log(`[Scheduler ${ts}] ${msg}`); };
+    // ── Standing Orders Processing ──
+    const dueOrders = await sql("SELECT so.*, a.child_name, a.actual_balance, a.unallocated_balance FROM standing_orders so LEFT JOIN accounts a ON so.account_id = a.account_id WHERE so.is_active = 1 AND so.next_run <= CURRENT_TIMESTAMP");
+    for (const order of dueOrders) {
+      try {
+        const amount = Number(order.amount);
+        if (Number(order.actual_balance) < amount) continue;
+        const accountForOrder = await one('SELECT * FROM accounts WHERE account_id = $1', [order.account_id]);
+        const maintainingBalance = Number(accountForOrder?.maintaining_balance || 0);
+        if (Number(order.actual_balance) - amount < maintainingBalance) continue;
+        if (order.target_goal_id) {
+          const goal = await one('SELECT * FROM goal_jars WHERE goal_id = $1', [order.target_goal_id]);
+          if (goal) {
+            const newAllocated = Math.round((Number(goal.current_allocated) + amount) * 100) / 100;
+            await store.query("UPDATE goal_jars SET current_allocated = $1, updated_at = CURRENT_TIMESTAMP WHERE goal_id = $2", [newAllocated, order.target_goal_id]);
+          }
+        }
+        const newBalance = Math.round((Number(order.actual_balance) - amount) * 100) / 100;
+        const newUnallocated = Math.round((Number(order.unallocated_balance) - amount) * 100) / 100;
+        await store.query("UPDATE accounts SET actual_balance = $1, unallocated_balance = $2, updated_at = CURRENT_TIMESTAMP WHERE account_id = $3", [newBalance, Math.max(0, newUnallocated), order.account_id]);
+        const soTxRecord = await store.addTransaction({ account_id: order.account_id, type: 'auto_save', amount, description: order.description || 'Auto-save transfer', balance_before: Number(order.actual_balance), balance_after: newBalance });
         try {
-          log('Starting monthly accrual accounting...');
           const gl = require('./gl');
-          const period = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}`;
+          await gl.postDoubleEntry(soTxRecord.transaction_id, [
+            { account_code: '5100', debit: amount, description: `Auto-save transfer: ${order.child_name} — ${order.description || 'Auto-save'}` },
+            { account_code: '1000', credit: amount, description: `Auto-save transfer: ${order.child_name} — ${order.description || 'Auto-save'}` },
+          ], { postedBy: 'system', referenceType: 'auto_save', referenceNumber: order.order_id });
+        } catch (glErr) { results.errors.push('GL auto-save failed: ' + glErr.message); }
+        const nextRun = new Date();
+        switch (order.frequency) { case 'daily': nextRun.setDate(nextRun.getDate() + 1); break; case 'weekly': nextRun.setDate(nextRun.getDate() + 7); break; case 'monthly': nextRun.setMonth(nextRun.getMonth() + 1); break; }
+        await store.query("UPDATE standing_orders SET next_run = $1, updated_at = CURRENT_TIMESTAMP WHERE order_id = $2", [nextRun.toISOString(), order.order_id]);
+        results.standingOrders++;
+      } catch (err) { results.errors.push('Standing order ' + order.order_id + ': ' + err.message); }
+    }
 
-          // Check if period is already closed
-          const p = await one("SELECT * FROM accounting_periods WHERE period_id=$1", [period]);
-          if (p && p.is_closed) { log(`Period ${period} is closed — skipping accrual`); return; }
-
-          // Skip if already run this month
-          const lastAccrual = await store.getSetting('last_accrual_run') || '';
-          if (lastAccrual === period) { log(`Accrual already ran for ${period} — skipping`); return; }
-
-          // 1. Accrue interest receivable on outstanding loans
-          const loans = await sql("SELECT l.loan_id, l.account_id, l.principal, l.interest_rate, a.child_name AS name FROM loans l JOIN accounts a ON l.account_id = a.account_id WHERE l.status='active' AND l.principal > 0");
-          let accIntCount = 0;
-          for (const loan of loans) {
-            const monthlyInt = Math.round(Number(loan.principal) * Number(loan.interest_rate) / 100 / 12 * 100) / 100;
-            if (monthlyInt <= 0) continue;
-            const { v4: uuidv4 } = require('uuid');
-            const entryId = uuidv4();
-            await gl.postDoubleEntry(entryId, [
-              { account_code: '1300', debit: monthlyInt, description: `Accrued interest receivable — ${loan.name}` },
-              { account_code: '4000', credit: monthlyInt, description: `Interest income accrual — ${loan.name}` }
-            ], { postedBy: 'scheduler', referenceType: 'accrual', referenceNumber: `ACR-${period}-${loan.loan_id.slice(0,8)}` });
-            accIntCount++;
-          }
-
-          // 2. Accrue interest payable on savings deposits
-          const savings = await sql("SELECT account_id, actual_balance FROM accounts WHERE type='savings' AND actual_balance > 0");
-          const savingsRate = await store.getSetting('savings_interest_rate') || '2';
-          const sRate = Number(savingsRate) / 100 / 12;
-          let accIntPayCount = 0;
-          for (const s of savings) {
-            const monthlyInt = Math.round(Number(s.actual_balance) * sRate * 100) / 100;
-            if (monthlyInt <= 0) continue;
-            const { v4: uuidv4 } = require('uuid');
-            const entryId = uuidv4();
-            await gl.postDoubleEntry(entryId, [
-              { account_code: '5000', debit: monthlyInt, description: `Interest expense accrual — savings` },
-              { account_code: '2500', credit: monthlyInt, description: `Accrued interest payable — savings` }
-            ], { postedBy: 'scheduler', referenceType: 'accrual', referenceNumber: `ACP-${period}-${s.account_id.slice(0,8)}` });
-            accIntPayCount++;
-          }
-
-          // 3. Accrue interest on active term deposits
-          const activeTDs = await sql("SELECT * FROM term_deposits WHERE status='active'");
-          let accTDCount = 0;
-          for (const td of activeTDs) {
-            const monthlyInt = Math.round(Number(td.amount) * Number(td.interest_rate) / 100 / 12 * 100) / 100;
-            if (monthlyInt <= 0) continue;
-            const { v4: uuidv4 } = require('uuid');
-            const entryId = uuidv4();
-            await gl.postDoubleEntry(entryId, [
-              { account_code: '5000', debit: monthlyInt, description: 'TD interest accrual ' + (td.td_number || td.td_id.slice(0,8)) },
-              { account_code: '2500', credit: monthlyInt, description: 'Accrued interest - TD ' + (td.td_number || td.td_id.slice(0,8)) }
-            ], { postedBy: 'scheduler', referenceType: 'accrual', referenceNumber: 'TD-ACR-' + period });
-            accTDCount++;
-          }
-
-          await store.setSetting('last_accrual_run', period);
-          log(`Accrual complete: ${accIntCount} loans, ${accIntPayCount} savings, ${accTDCount} term deposits — ${period}`);
-        } catch (err) {
-          console.error('[Scheduler] Accrual error:', err.message);
-        }
+    // ── Monthly Accrual Accounting ──
+    if (now.getDate() === 1 && now.getHours() === 3 && now.getMinutes() >= 0 && now.getMinutes() < 30) {
+      results.accrual = true;
+      const gl = require('./gl');
+      const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const p = await one("SELECT * FROM accounting_periods WHERE period_id=$1", [period]);
+      if (p && p.is_closed) return results;
+      const lastAccrual = await store.getSetting('last_accrual_run') || '';
+      if (lastAccrual === period) return results;
+      const loans = await sql("SELECT l.loan_id, l.principal, l.interest_rate, a.child_name AS name FROM loans l JOIN accounts a ON l.account_id = a.account_id WHERE l.status='active' AND l.principal > 0");
+      for (const loan of loans) {
+        const monthlyInt = Math.round(Number(loan.principal) * Number(loan.interest_rate) / 100 / 12 * 100) / 100;
+        if (monthlyInt <= 0) continue;
+        await gl.postDoubleEntry(require('uuid').v4(), [
+          { account_code: '1300', debit: monthlyInt, description: `Accrued interest receivable — ${loan.name}` },
+          { account_code: '4000', credit: monthlyInt, description: `Interest income accrual — ${loan.name}` }
+        ], { postedBy: 'scheduler', referenceType: 'accrual', referenceNumber: `ACR-${period}-${loan.loan_id.slice(0,8)}` });
       }
-    } catch (err) {
-      console.error('[Scheduler] Error:', err.message);
+      const savings = await sql("SELECT account_id, actual_balance FROM accounts WHERE actual_balance > 0");
+      const savingsRate = Number(await store.getSetting('savings_interest_rate') || '2') / 100 / 12;
+      for (const s of savings) {
+        const monthlyInt = Math.round(Number(s.actual_balance) * savingsRate * 100) / 100;
+        if (monthlyInt <= 0) continue;
+        await gl.postDoubleEntry(require('uuid').v4(), [
+          { account_code: '5000', debit: monthlyInt, description: `Interest expense accrual — savings` },
+          { account_code: '2500', credit: monthlyInt, description: `Accrued interest payable — savings` }
+        ], { postedBy: 'scheduler', referenceType: 'accrual', referenceNumber: `ACP-${period}-${s.account_id.slice(0,8)}` });
+      }
+      const activeTDs = await sql("SELECT * FROM term_deposits WHERE status='active'");
+      for (const td of activeTDs) {
+        const monthlyInt = Math.round(Number(td.amount) * Number(td.interest_rate) / 100 / 12 * 100) / 100;
+        if (monthlyInt <= 0) continue;
+        await gl.postDoubleEntry(require('uuid').v4(), [
+          { account_code: '5000', debit: monthlyInt, description: 'TD interest accrual ' + (td.td_number || td.td_id.slice(0,8)) },
+          { account_code: '2500', credit: monthlyInt, description: 'Accrued interest - TD ' + (td.td_number || td.td_id.slice(0,8)) }
+        ], { postedBy: 'scheduler', referenceType: 'accrual', referenceNumber: 'TD-ACR-' + period });
+      }
+      await store.setSetting('last_accrual_run', period);
     }
-    } finally {
-      await store.setSetting('scheduler_lock', '0');
-    }
-  }, 60 * 60 * 1000);
+  } catch (err) {
+    results.errors.push('Unhandled: ' + err.message);
+  } finally {
+    await store.setSetting('scheduler_lock', '0');
+  }
 
-  console.log('[Scheduler] Started (interest + standing orders, hourly)');
+  return results;
 }
 
-module.exports = { startScheduler };
+function startScheduler() {
+  setInterval(async () => {
+    const results = await runAllJobs().catch(e => ({ errors: [e.message] }));
+    if (results?.skipped) return;
+    if (results?.interest) console.log(`[Scheduler] Credited ${results.interest} accounts`);
+    if (results?.standingOrders) console.log(`[Scheduler] Processed ${results.standingOrders} standing orders`);
+    if (results?.accrual) console.log('[Scheduler] Accrual accounting complete');
+    if (results?.errors?.length) console.error('[Scheduler] Errors:', results.errors.join('; '));
+  }, 60 * 60 * 1000);
+  console.log('[Scheduler] Started (hourly, dev-mode setInterval)');
+}
+
+module.exports = { startScheduler, runAllJobs };

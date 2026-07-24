@@ -51,7 +51,7 @@ router.get('/debug-smtp', asyncHandler(async (req, res) => {
       sgMail.setApiKey(process.env.SENDGRID_API_KEY);
       await sgMail.send({
         to: 'test@example.com',
-        from: (process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || 'noreply@labcoop.app').replace(/^"|"$/g, ''),
+        from: (process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || 'itsmejus10its@gmail.com').replace(/^"|"$/g, ''),
         subject: 'SendGrid Test',
         text: 'SendGrid configured correctly.',
       });
@@ -84,7 +84,7 @@ router.post('/send-otp', asyncHandler(async (req, res) => {
   } else {
     try {
       sgMail.setApiKey(apiKey);
-      const fromEmail = (process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || 'noreply@labcoop.app').replace(/^"|"$/g, '');
+      const fromEmail = (process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || 'itsmejus10its@gmail.com').replace(/^"|"$/g, '');
       const fromName = process.env.MAIL_FROM_NAME || 'MySYS';
       await sgMail.send({
         to: normalEmail,
@@ -302,7 +302,7 @@ router.post('/forgot-pin', asyncHandler(async (req, res) => {
   if (apiKey) {
     try {
       sgMail.setApiKey(apiKey);
-      const fromEmail = (process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || 'noreply@labcoop.app').replace(/^"|"$/g, '');
+      const fromEmail = (process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || 'itsmejus10its@gmail.com').replace(/^"|"$/g, '');
       const fromName = process.env.MAIL_FROM_NAME || 'MYCOOPPIGGY';
       await sgMail.send({
         to: normalEmail,

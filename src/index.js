@@ -731,8 +731,10 @@ app.use('/admin', (req, res, next) => {
   next();
 });
 app.use('/admin', adminAuthRouter);
-// Scheduler run endpoint — no CSRF needed (idempotent, session-checked)
-app.post('/admin/scheduler/run', (req, res, next) => {
+// Scheduler run endpoint — no CSRF (idempotent, session-checked)
+// Must use app.use (not app.post) so Express strips the /admin/scheduler/run prefix for the sub-router
+app.use('/admin/scheduler/run', (req, res, next) => {
+  if (req.method !== 'POST') return next();
   if (!req.session?.adminId) return res.status(401).json({ message: 'Unauthorized' });
   next();
 }, require('./routes/admin-scheduler-run'));

@@ -1067,7 +1067,7 @@ clone.querySelectorAll('a,button').forEach(function(el) {
     menu.classList.add('open');
   });
   $(document).on('click', function(e) {
-    if (activeDD && !activeDD.contains(e.target) && !$(e.target).closest('.action-menu summary').length) {
+    if (activeDD && !activeDD.contains(e.target) && !$(e.target).closest('.action-menu summary').length && !$(e.target).closest('#confirm-modal').length) {
       activeDD.remove(); activeDD = null;
       document.querySelectorAll('.action-menu.open').forEach(function(m) { m.classList.remove('open'); });
     }

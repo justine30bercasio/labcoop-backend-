@@ -70,16 +70,21 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Future<void> _loadProfile() async {
     final avatar = await _source.getAvatar();
-    final imgBytes = await _source.getProfileImageBytes();
     final token = await FlutterSecureStorage().read(key: 'auth_token');
     final state = context.read<SavingsBloc>().state;
     final picUrl = state is SavingsLoaded ? state.account.profilePicUrl : '';
     if (mounted) setState(() {
       _avatar = avatar;
-      _profileImageBytes = imgBytes;
       _profilePicUrl = picUrl;
       _authToken = token ?? '';
     });
+    // Load local bytes only if no server URL (offline fallback) — avoid showing another account's photo
+    if (picUrl.isEmpty) {
+      _profileImageBytes = null;
+    } else {
+      final bytes = await _source.getProfileImageBytes();
+      if (mounted) setState(() => _profileImageBytes = bytes);
+    }
   }
 
   @override
@@ -547,18 +552,10 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildAvatar({double size = 72, String profilePicUrl = ''}) {
-    final hasLocal = _profileImageBytes != null;
-    final picUrl = _profilePicUrl.isNotEmpty ? _profilePicUrl : profilePicUrl;
+    final picUrl = profilePicUrl.isNotEmpty ? profilePicUrl : _profilePicUrl;
+    final hasLocal = _profileImageBytes != null && picUrl.isEmpty;
     final emoji = Center(
         child: Text(_avatar, style: TextStyle(fontSize: size * 0.55)));
-
-    if (hasLocal) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(size / 2),
-        child: Image.memory(_profileImageBytes!,
-            width: size, height: size, fit: BoxFit.cover),
-      );
-    }
 
     if (picUrl.isNotEmpty) {
       final fullUrl = picUrl.startsWith('http')
@@ -584,6 +581,14 @@ class _DashboardPageState extends State<DashboardPage> {
             child: emoji,
           ),
         ),
+      );
+    }
+
+    if (hasLocal) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(size / 2),
+        child: Image.memory(_profileImageBytes!,
+            width: size, height: size, fit: BoxFit.cover),
       );
     }
 

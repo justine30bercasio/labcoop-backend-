@@ -69,9 +69,10 @@ class _ProfilePageState extends State<ProfilePage>
     final coins = await _source.getCoins();
     final streak = await _source.getStreakData();
     final borderId = await _source.getAvatarBorder();
-    final imgBytes = await _source.getProfileImageBytes();
     final state = context.read<SavingsBloc>().state;
     final picUrl = state is SavingsLoaded ? state.account.profilePicUrl : '';
+    // Load local bytes only if no server URL — avoid showing another account's cached photo
+    final imgBytes = picUrl.isEmpty ? null : await _source.getProfileImageBytes();
     final token = await FlutterSecureStorage().read(key: 'auth_token');
     List<BorderItem> borders = fallbackBorderItems;
     try {

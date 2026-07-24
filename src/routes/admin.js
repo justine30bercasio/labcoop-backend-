@@ -9312,13 +9312,19 @@ router.get('/scheduler', asyncHandler(async (req, res) => {
   const lastAccrual = await store.getSetting('last_accrual_run') || 'never';
   const lockVal = await store.getSetting('scheduler_lock') || '0';
 
+  const phTime = (d) => d ? new Date(d).toLocaleString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).replace(',', '') : '-';
+  const phNow = new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hour12: false });
+  const phHour = parseInt(phNow.split(':')[0], 10);
+  const nextTickHour = phHour >= 23 ? 0 : phHour + 1;
+  const nextTickLabel = nextTickHour === 0 && phHour >= 23 ? 'midnight' : 'next hour';
+  const nextTick = String(nextTickHour).padStart(2, '0') + ':00 PH (' + nextTickLabel + ')';
   const rows = jobs.rows.map(j => {
     const summary = (() => { try { return JSON.parse(j.result_summary || '{}'); } catch { return {}; } })();
     const dur = j.duration_ms || (j.completed_at && j.started_at ? new Date(j.completed_at) - new Date(j.started_at) : null);
     return `<tr>
       <td>${h(j.type)}</td>
       <td><span class="badge badge-${j.status === 'success' ? 'success' : j.status === 'running' ? 'warning' : 'danger'}">${j.status}</span></td>
-      <td>${j.started_at ? new Date(j.started_at).toLocaleString() : '-'}</td>
+      <td>${phTime(j.started_at)}</td>
       <td>${dur !== null ? dur + 'ms' : '-'}</td>
       <td>${summary.interest || 0}</td>
       <td>${summary.standingOrders || 0}</td>
@@ -9355,10 +9361,10 @@ router.get('/scheduler', asyncHandler(async (req, res) => {
       <div class="stat-grid">
         <div class="stat-card"><div class="val">${jobs.rows.filter(j => j.status === 'success').length}</div><div class="lbl">Successful Runs</div></div>
         <div class="stat-card"><div class="val">${jobs.rows.filter(j => j.status === 'failed').length}</div><div class="lbl">Failed Runs</div></div>
-        <div class="stat-card"><div class="val">${lastBackup}</div><div class="lbl">Last Backup</div></div>
-        <div class="stat-card"><div class="val">${lastAccrual}</div><div class="lbl">Last Accrual</div></div>
+        <div class="stat-card"><div class="val">${lastBackup === 'never' ? 'never' : phTime(lastBackup)}</div><div class="lbl">Last Backup</div></div>
+        <div class="stat-card"><div class="val">${lastAccrual === 'never' ? 'never' : phTime(lastAccrual)}</div><div class="lbl">Last Accrual</div></div>
         <div class="stat-card"><div class="val">${lockVal === '1' ? '🔒 Locked' : '🔓 Free'}</div><div class="lbl">Scheduler Lock</div></div>
-        <div class="stat-card"><div class="val">${now.getHours()}:00</div><div class="lbl">Next QStash Tick (Hourly)</div></div>
+        <div class="stat-card"><div class="val">${nextTick}</div><div class="lbl">Next QStash Tick</div></div>
       </div>
 
       <div id="runResult"></div>

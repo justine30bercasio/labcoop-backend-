@@ -314,7 +314,7 @@ router.post('/register', regUpload.fields([
       const sgMail = require('@sendgrid/mail');
       if (process.env.SENDGRID_API_KEY) {
         sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-        const fromEmail = process.env.SENDGRID_FROM_EMAIL || 'labcoopcooperative@gmail.com';
+        const fromEmail = process.env.SENDGRID_FROM_EMAIL || 'itsmejus10its@gmail.com';
         await sgMail.send({
           to: parentEmail,
           from: fromEmail,
@@ -527,7 +527,7 @@ router.post('/forgot-pin-send-otp', asyncHandler(async (req, res) => {
   if (apiKey) {
     try {
       sgMail.setApiKey(apiKey);
-      const fromEmail = (process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || 'noreply@labcoop.app').replace(/^"|"$/g, '');
+      const fromEmail = (process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || 'itsmejus10its@gmail.com').replace(/^"|"$/g, '');
       const fromName = process.env.MAIL_FROM_NAME || 'MYCOOPPIGGY';
       await sgMail.send({
         to: parentEmail,

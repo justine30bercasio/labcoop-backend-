@@ -7085,12 +7085,44 @@ router.post('/reset-database', requireRole(4), asyncHandler(async (req, res) => 
       try { store.query(`DELETE FROM ${t}`); } catch (_) {}
     }
   }
-  // Clean up uploaded KYC files
-  const kycDir = path.join(__dirname, '..', 'uploads', 'kyc');
-  if (fs.existsSync(kycDir)) {
-    const files = fs.readdirSync(kycDir);
-    for (const f of files) {
-      try { fs.unlinkSync(path.join(kycDir, f)); } catch (_) {}
+  // Clean up uploaded R2 files
+  if (fileStorage.isConfigured()) {
+    const { ListObjectsV2Command, DeleteObjectsCommand } = require('@aws-sdk/client-s3');
+    try {
+      const bucket = process.env.R2_BUCKET_NAME || 'labcoop';
+      const listed = await store.query("SELECT account_id FROM accounts WHERE profile_pic_url != '' AND profile_pic_url IS NOT NULL");
+      // Delete all objects in the bucket by listing and batch-deleting
+      let continuationToken;
+      do {
+        const listCmd = new ListObjectsV2Command({
+          Bucket: bucket,
+          ...(continuationToken ? { ContinuationToken: continuationToken } : {}),
+        });
+        const listResult = await fileStorage._s3.send(listCmd);
+        if (listResult.Contents?.length > 0) {
+          const objects = listResult.Contents.map(o => ({ Key: o.Key }));
+          await fileStorage._s3.send(new DeleteObjectsCommand({
+            Bucket: bucket,
+            Delete: { Objects: objects },
+          }));
+        }
+        continuationToken = listResult.NextContinuationToken;
+      } while (continuationToken);
+      console.log('[RESET] R2 bucket cleared');
+    } catch (e) {
+      console.error('[RESET] R2 cleanup error:', e.message);
+    }
+  }
+  // Clean up local temp files (backup restores, excel imports)
+  const uploadsDir = path.join(__dirname, '..', 'uploads');
+  if (fs.existsSync(uploadsDir)) {
+    for (const sub of ['kyc', 'profiles', 'registration', 'parents', 'shop', 'board']) {
+      const d = path.join(uploadsDir, sub);
+      if (fs.existsSync(d)) {
+        for (const f of fs.readdirSync(d)) {
+          try { fs.unlinkSync(path.join(d, f)); } catch (_) {}
+        }
+      }
     }
   }
   res.redirect('/admin?msg=Database+reset+successful');

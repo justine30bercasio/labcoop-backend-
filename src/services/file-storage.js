@@ -59,4 +59,4 @@ function keyFromUrl(url) {
   return null;
 }
 
-module.exports = { uploadFile, deleteFile, getPublicUrl, keyFromUrl, isConfigured };
+module.exports = { uploadFile, deleteFile, getPublicUrl, keyFromUrl, isConfigured, _s3: s3 };

@@ -6,25 +6,27 @@ const { authMiddleware } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Send consent email via SendGrid
+// Send consent email via Resend
 async function sendConsentEmail(parentEmail, childName, consentLink) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.warn('[PARENTAL CONSENT] RESEND_API_KEY not set — email not sent. Link:', consentLink);
+    return false;
+  }
   try {
-    const sgMail = require('@sendgrid/mail');
-    const apiKey = process.env.SENDGRID_API_KEY;
-    const fromEmail = process.env.SENDGRID_FROM_EMAIL || 'labcoopcooperative@gmail.com';
-    if (!apiKey) {
-      console.warn('[PARENTAL CONSENT] SENDGRID_API_KEY not set — email not sent. Link:', consentLink);
-      return false;
-    }
-    sgMail.setApiKey(apiKey);
-    const msg = {
+    const { Resend } = require('resend');
+    const resend = new Resend(apiKey);
+    const fromAddr = process.env.RESEND_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || 'onboarding@resend.dev';
+    const fromName = process.env.MAIL_FROM_NAME || 'LabCoop';
+    const from = fromName ? `${fromName} <${fromAddr}>` : fromAddr;
+    await resend.emails.send({
+      from,
       to: parentEmail,
-      from: fromEmail,
       subject: `LabCoop: Parental Consent Request for ${childName}`,
       html: `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 520px; margin: 0 auto; background: #f0fdf4; border-radius: 16px; overflow: hidden; border: 1px solid #86efac;">
           <div style="background: #166534; padding: 24px; text-align: center;">
-            <h1 style="color: #fff; margin: 0; font-size: 22px; letter-spacing: -0.5px;">🐷 LabCoop</h1>
+            <h1 style="color: #fff; margin: 0; font-size: 22px; letter-spacing: -0.5px;">LabCoop</h1>
             <p style="color: #bbf7d0; margin: 4px 0 0; font-size: 14px;">Children's Cooperative Savings</p>
           </div>
           <div style="padding: 32px 24px;">
@@ -36,13 +38,13 @@ async function sendConsentEmail(parentEmail, childName, consentLink) {
             </p>
             <div style="background: #e6f7ec; border-radius: 12px; padding: 20px; margin: 20px 0;">
               <p style="margin: 0 0 8px; color: #374151; font-size: 14px;">
-                ✅ <strong>Track savings goals in real-time</strong><br>
-                ✅ <strong>Learn financial literacy through fun quizzes</strong><br>
-                ✅ <strong>Virtual pet piggy that grows with savings</strong><br>
-                ✅ <strong>All data is encrypted and secure</strong>
+                <strong>Track savings goals in real-time</strong><br>
+                <strong>Learn financial literacy through fun quizzes</strong><br>
+                <strong>Virtual pet piggy that grows with savings</strong><br>
+                <strong>All data is encrypted and secure</strong>
               </p>
             </div>
-            <a href="${consentLink}" style="display: block; background: #16a34a; color: #fff; text-align: center; padding: 16px 24px; border-radius: 12px; text-decoration: none; font-size: 18px; font-weight: 600; margin: 24px 0;">✅ Approve Consent</a>
+            <a href="${consentLink}" style="display: block; background: #16a34a; color: #fff; text-align: center; padding: 16px 24px; border-radius: 12px; text-decoration: none; font-size: 18px; font-weight: 600; margin: 24px 0;">Approve Consent</a>
             <p style="color: #64748b; font-size: 13px; line-height: 1.5; margin: 16px 0 0;">
               By clicking approve, you confirm that you are the parent or legal guardian of ${childName}
               and consent to their participation in the LabCoop cooperative savings program.
@@ -56,13 +58,11 @@ async function sendConsentEmail(parentEmail, childName, consentLink) {
           </div>
         </div>
       `,
-    };
-    await sgMail.send(msg);
+    });
     console.log(`[PARENTAL CONSENT] Email sent to ${parentEmail} for ${childName}`);
     return true;
   } catch (err) {
     console.error('[PARENTAL CONSENT] Failed to send email:', err.message);
-    // Continue even if email fails — admin can manually verify
     return false;
   }
 }
@@ -101,7 +101,7 @@ router.post('/request', authMiddleware, asyncHandler(async (req, res) => {
   const consentLink = `https://labcoop-backend.onrender.com/api/parental-consent/approve?token=${token}`;
   const emailSent = await sendConsentEmail(parentEmail, account.child_name, consentLink);
   res.json({
-    message: emailSent ? 'Consent request sent to parent email' : 'Consent request created (email delivery pending — check SendGrid config)',
+    message: emailSent ? 'Consent request sent to parent email' : 'Consent request created (email delivery pending — check Resend config)',
     consent_status: 'pending',
   });
 }));

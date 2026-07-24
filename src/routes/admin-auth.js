@@ -1,16 +1,12 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const sgMail = require('@sendgrid/mail');
+const { Resend } = require('resend');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const { store } = require('../db');
 const { log } = require('../services/audit');
 
 const router = express.Router();
-
-if (process.env.SENDGRID_API_KEY) {
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-}
 
 const otpStore = new Map();
 const otpRateLimit = new Map(); // email → count per window
@@ -153,9 +149,13 @@ input:focus { border-color:#2E7D32; }
 }
 
 function sendOtpEmail(email, otp) {
-  if (!process.env.SENDGRID_API_KEY) return false;
-  sgMail.send({
-    from: { email: 'itsmejus10its@gmail.com', name: 'MYCOOPPIGGY Admin' },
+  if (!process.env.RESEND_API_KEY) return false;
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const fromAddr = process.env.RESEND_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || 'onboarding@resend.dev';
+  const fromName = process.env.MAIL_FROM_NAME || 'MYCOOPPIGGY Admin';
+  const from = fromName ? `${fromName} <${fromAddr}>` : fromAddr;
+  resend.emails.send({
+    from,
     to: email,
     subject: 'Your LabCoop Admin OTP Code',
     html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto">
@@ -166,7 +166,7 @@ function sendOtpEmail(email, otp) {
       <hr style="border:none;border-top:1px solid #eee;margin:20px 0">
       <p style="color:#999;font-size:12px">If you didn't request this, you can ignore this email.</p>
     </div>`,
-  }).catch(e => console.error('[AdminAuth] SendGrid OTP error:', e.message));
+  }).catch(e => console.error('[AdminAuth] Resend error:', e.message));
   return true;
 }
 

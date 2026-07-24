@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const multer = require('multer');
-const sgMail = require('@sendgrid/mail');
+const { Resend } = require('resend');
 const rateLimit = require('express-rate-limit');
 const { store } = require('../db');
 const { asyncHandler } = require('../async-handler');
@@ -42,20 +42,23 @@ const otpStore = new Map();
 // ── Debug email config ──
 router.get('/debug-smtp', asyncHandler(async (req, res) => {
   const info = {
-    hasSendGridKey: process.env.SENDGRID_API_KEY ? '✓ set' : '(not set)',
-    fromEmail: process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || '(not set)',
+    hasResendKey: process.env.RESEND_API_KEY ? '✓ set' : '(not set)',
+    fromEmail: process.env.RESEND_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || '(not set)',
     fromName: process.env.MAIL_FROM_NAME || '(not set)',
   };
-  if (process.env.SENDGRID_API_KEY) {
+  if (process.env.RESEND_API_KEY) {
     try {
-      sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-      await sgMail.send({
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      const fromAddr = process.env.RESEND_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || 'onboarding@resend.dev';
+      const fromName = process.env.MAIL_FROM_NAME || '';
+      const from = fromName ? `${fromName} <${fromAddr}>` : fromAddr;
+      await resend.emails.send({
+        from,
         to: 'test@example.com',
-        from: (process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || 'itsmejus10its@gmail.com').replace(/^"|"$/g, ''),
-        subject: 'SendGrid Test',
-        text: 'SendGrid configured correctly.',
+        subject: 'Resend Test',
+        html: '<p>Resend configured correctly.</p>',
       });
-      info.verifyResult = '✓ SendGrid OK';
+      info.verifyResult = '✓ Resend OK';
     } catch (e) {
       info.verifyResult = '✗ ' + e.message;
       if (e.response?.body) info.verifyResult += ' | ' + JSON.stringify(e.response.body);
@@ -64,7 +67,7 @@ router.get('/debug-smtp', asyncHandler(async (req, res) => {
   res.json(info);
 }));
 
-// ── Send OTP via SendGrid HTTPS API (port 443 — works on Render free tier) ──
+// ── Send OTP via Resend HTTPS API ──
 router.post('/send-otp', asyncHandler(async (req, res) => {
   const { email } = req.body;
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -78,17 +81,18 @@ router.post('/send-otp', asyncHandler(async (req, res) => {
   }
   const otp = crypto.randomInt(100000, 999999).toString();
   otpStore.set(normalEmail, { otp, expires: now + 600000, attempts: (existing?.attempts || 0) + 1 });
-  const apiKey = process.env.SENDGRID_API_KEY;
+  const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    console.warn('SENDGRID_API_KEY not set — OTP would be:', otp);
+    console.warn('RESEND_API_KEY not set — OTP would be:', otp);
   } else {
     try {
-      sgMail.setApiKey(apiKey);
-      const fromEmail = (process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || 'itsmejus10its@gmail.com').replace(/^"|"$/g, '');
+      const resend = new Resend(apiKey);
+      const fromAddr = (process.env.RESEND_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || 'onboarding@resend.dev').replace(/^"|"$/g, '');
       const fromName = process.env.MAIL_FROM_NAME || 'MySYS';
-      await sgMail.send({
+      const from = fromName ? `${fromName} <${fromAddr}>` : fromAddr;
+      await resend.emails.send({
+        from,
         to: normalEmail,
-        from: { email: fromEmail, name: fromName },
         subject: 'LabCoop Parent Portal — Email Verification Code',
         html: `<div style="font-family:Arial;max-width:480px;margin:0 auto">
           <h2 style="color:#1a237e">Email Verification</h2>
@@ -101,7 +105,7 @@ router.post('/send-otp', asyncHandler(async (req, res) => {
       });
       console.log('OTP email sent to', normalEmail);
     } catch (e) {
-      const errMsg = 'SendGrid error: ' + e.message + (e.response?.body ? ' | ' + JSON.stringify(e.response.body) : '');
+      const errMsg = 'Resend error: ' + e.message + (e.response?.body ? ' | ' + JSON.stringify(e.response.body) : '');
       console.error('Failed to send OTP email to', normalEmail, ':', errMsg);
       return res.status(502).json({ message: 'Failed to send OTP. Try again later.', error: errMsg, sent: false });
     }
@@ -297,16 +301,17 @@ router.post('/forgot-pin', asyncHandler(async (req, res) => {
   }
   const otp = crypto.randomInt(100000, 999999).toString();
   otpStore.set(normalEmail + '_forgot', { otp, expires: now + 600000, attempts: attempts + 1 });
-  // Send OTP via SendGrid
-  const apiKey = process.env.SENDGRID_API_KEY;
+  // Send OTP via Resend
+  const apiKey = process.env.RESEND_API_KEY;
   if (apiKey) {
     try {
-      sgMail.setApiKey(apiKey);
-      const fromEmail = (process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || 'itsmejus10its@gmail.com').replace(/^"|"$/g, '');
+      const resend = new Resend(apiKey);
+      const fromAddr = (process.env.RESEND_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || 'onboarding@resend.dev').replace(/^"|"$/g, '');
       const fromName = process.env.MAIL_FROM_NAME || 'MYCOOPPIGGY';
-      await sgMail.send({
+      const from = fromName ? `${fromName} <${fromAddr}>` : fromAddr;
+      await resend.emails.send({
+        from,
         to: normalEmail,
-        from: { email: fromEmail, name: fromName },
         subject: 'MySYS — Parent PIN Reset Code',
         html: `<div style="font-family:Arial;max-width:480px;margin:0 auto">
           <h2 style="color:#1a237e">Reset Your PIN</h2>
@@ -317,12 +322,14 @@ router.post('/forgot-pin', asyncHandler(async (req, res) => {
           <p style="color:#999;font-size:11px">MySYS Cooperative</p>
         </div>`,
       });
+      console.log('[parent/forgot-pin] OTP sent to', normalEmail);
     } catch (e) {
-      console.error('[parent/forgot-pin] SendGrid error:', e.message);
-      return res.status(500).json({ message: 'Failed to send OTP. Try again later.' });
+      const errMsg = 'Resend error: ' + e.message + (e.response?.body ? ' | ' + JSON.stringify(e.response.body) : '');
+      console.error('[parent/forgot-pin]', errMsg);
+      return res.status(502).json({ message: 'Failed to send OTP. Try again later.' });
     }
   } else {
-    console.warn('[parent/forgot-pin] SENDGRID_API_KEY not set. OTP would be:', otp);
+    console.warn('[parent/forgot-pin] RESEND_API_KEY not set. OTP would be:', otp);
   }
   res.json({ message: 'If this email is registered, an OTP has been sent.' });
 }));

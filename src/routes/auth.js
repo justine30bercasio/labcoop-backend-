@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const path = require('path');
 const multer = require('multer');
 const rateLimit = require('express-rate-limit');
-const sgMail = require('@sendgrid/mail');
+const { Resend } = require('resend');
 const { store } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const fileStorage = require('../services/file-storage');
@@ -311,18 +311,19 @@ router.post('/register', regUpload.fields([
     // Try to send consent email
     const consentLink = `https://labcoop-backend.onrender.com/api/parental-consent/approve?token=${consentToken}`;
     try {
-      const sgMail = require('@sendgrid/mail');
-      if (process.env.SENDGRID_API_KEY) {
-        sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-        const fromEmail = process.env.SENDGRID_FROM_EMAIL || 'itsmejus10its@gmail.com';
-        await sgMail.send({
+      if (process.env.RESEND_API_KEY) {
+        const resend = new Resend(process.env.RESEND_API_KEY);
+        const fromAddr = process.env.RESEND_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || 'onboarding@resend.dev';
+        const fromName = process.env.MAIL_FROM_NAME || 'LabCoop';
+        const from = fromName ? `${fromName} <${fromAddr}>` : fromAddr;
+        await resend.emails.send({
+          from,
           to: parentEmail,
-          from: fromEmail,
           subject: `LabCoop: Parental Consent Request for ${displayName}`,
           html: `
             <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:520px;margin:0 auto;background:#f0fdf4;border-radius:16px;overflow:hidden;border:1px solid #86efac;">
               <div style="background:#166534;padding:24px;text-align:center;">
-                <h1 style="color:#fff;margin:0;font-size:22px;">🐷 LabCoop</h1>
+                <h1 style="color:#fff;margin:0;font-size:22px;">LabCoop</h1>
                 <p style="color:#bbf7d0;margin:4px 0 0;font-size:14px;">Children's Cooperative Savings</p>
               </div>
               <div style="padding:32px 24px;">
@@ -331,7 +332,7 @@ router.post('/register', regUpload.fields([
                   Your child <strong>${displayName}</strong> has registered for a LabCoop savings account.
                   To activate their account, we need your consent.
                 </p>
-                <a href="${consentLink}" style="display:block;background:#16a34a;color:#fff;text-align:center;padding:16px 24px;border-radius:12px;text-decoration:none;font-size:18px;font-weight:600;margin:24px 0;">✅ Approve Consent</a>
+                <a href="${consentLink}" style="display:block;background:#16a34a;color:#fff;text-align:center;padding:16px 24px;border-radius:12px;text-decoration:none;font-size:18px;font-weight:600;margin:24px 0;">Approve Consent</a>
                 <p style="color:#64748b;font-size:13px;line-height:1.5;margin:16px 0 0;">
                   By clicking approve, you confirm you are the parent or legal guardian of ${displayName}.
                   You may revoke consent at any time.
@@ -341,7 +342,7 @@ router.post('/register', regUpload.fields([
         });
         console.log(`[REGISTER] Consent email sent to ${parentEmail}`);
       } else {
-        console.log(`[REGISTER] SENDGRID_API_KEY not set. Consent link: ${consentLink}`);
+        console.log(`[REGISTER] RESEND_API_KEY not set. Consent link: ${consentLink}`);
       }
     } catch (emailErr) {
       console.error('[REGISTER] Failed to send consent email:', emailErr.message);
@@ -523,15 +524,16 @@ router.post('/forgot-pin-send-otp', asyncHandler(async (req, res) => {
   const otp = crypto.randomInt(100000, 999999).toString();
   otpStore.set(key, { otp, expires: now + 600000, attempts: (existing?.attempts || 0) + 1, parentEmail });
   // Send OTP to parent email
-  const apiKey = process.env.SENDGRID_API_KEY;
+  const apiKey = process.env.RESEND_API_KEY;
   if (apiKey) {
     try {
-      sgMail.setApiKey(apiKey);
-      const fromEmail = (process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || 'itsmejus10its@gmail.com').replace(/^"|"$/g, '');
+      const resend = new Resend(apiKey);
+      const fromAddr = (process.env.RESEND_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || 'onboarding@resend.dev').replace(/^"|"$/g, '');
       const fromName = process.env.MAIL_FROM_NAME || 'MYCOOPPIGGY';
-      await sgMail.send({
+      const from = fromName ? `${fromName} <${fromAddr}>` : fromAddr;
+      await resend.emails.send({
+        from,
         to: parentEmail,
-        from: { email: fromEmail, name: fromName },
         subject: 'MySYS — Child PIN Reset Request',
         html: `<div style="font-family:Arial;max-width:480px;margin:0 auto">
           <h2 style="color:#1a237e">Child PIN Reset</h2>
@@ -545,11 +547,12 @@ router.post('/forgot-pin-send-otp', asyncHandler(async (req, res) => {
       });
       console.log('[child/forgot-pin] OTP sent to parent:', parentEmail);
     } catch (e) {
-      console.error('[child/forgot-pin] SendGrid error:', e.message);
-      return res.status(500).json({ message: 'Failed to send OTP. Try again later.' });
+      const errMsg = 'Resend error: ' + e.message + (e.response?.body ? ' | ' + JSON.stringify(e.response.body) : '');
+      console.error('[child/forgot-pin]', errMsg);
+      return res.status(502).json({ message: 'Failed to send OTP. Try again later.' });
     }
   } else {
-    console.warn('[child/forgot-pin] SENDGRID_API_KEY not set. OTP:', otp);
+    console.warn('[child/forgot-pin] RESEND_API_KEY not set. OTP:', otp);
   }
   res.json({ message: 'If the account exists, an OTP has been sent to the parent email.', accountId: account.account_id });
 }));

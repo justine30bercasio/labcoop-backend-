@@ -101,8 +101,9 @@ router.post('/send-otp', asyncHandler(async (req, res) => {
       });
       console.log('OTP email sent to', normalEmail);
     } catch (e) {
-      console.error('Failed to send OTP email to', normalEmail, ':', e.message);
-      if (e.response?.body) console.error('SendGrid response:', JSON.stringify(e.response.body));
+      const errMsg = 'SendGrid error: ' + e.message + (e.response?.body ? ' | ' + JSON.stringify(e.response.body) : '');
+      console.error('Failed to send OTP email to', normalEmail, ':', errMsg);
+      return res.status(502).json({ message: 'Failed to send OTP. Try again later.', error: errMsg, sent: false });
     }
   }
   res.json({ message: 'If this email is registered, an OTP has been sent.', sent: true });

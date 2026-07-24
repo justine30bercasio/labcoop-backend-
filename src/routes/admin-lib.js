@@ -101,6 +101,7 @@ function layout(title, active, content, opts = {}) {
       { minRole: 2, icon: '<i class="fas fa-check-double"></i>', label: 'Pending Approvals', href: '/admin/pending-approvals', key: 'pending-approvals' },
       { minRole: 3, icon: '<i class="fas fa-family"></i>', label: 'Parent Management', href: '/admin/parents', key: 'parents' },
       { minRole: 3, icon: '<i class="fas fa-database"></i>', label: 'Backup & Restore', href: '/admin/backup', key: 'backup' },
+      { minRole: 2, icon: '<i class="fas fa-clock"></i>', label: 'Scheduler', href: '/admin/scheduler', key: 'scheduler' },
       { minRole: 3, icon: '<i class="fas fa-gear"></i>', label: 'Settings', href: '/admin/settings', key: 'settings' },
     ]},
   ];

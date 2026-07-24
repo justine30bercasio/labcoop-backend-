@@ -9302,4 +9302,114 @@ router.post('/parent-messages/reply', requireRole(1), asyncHandler(async (req, r
   res.json({ message: 'Sent', messageId: msgId });
 }));
 
+// ── Scheduler Dashboard (manual run + job history) ──
+router.get('/scheduler', asyncHandler(async (req, res) => {
+  const jobs = await store.query('SELECT * FROM jobs ORDER BY created_at DESC LIMIT 20');
+  const now = new Date();
+  const todayStart = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const lastBackup = await store.getSetting('last_backup_date') || 'never';
+  const lastAccrual = await store.getSetting('last_accrual_run') || 'never';
+  const lockVal = await store.getSetting('scheduler_lock') || '0';
+
+  const rows = jobs.rows.map(j => {
+    const summary = (() => { try { return JSON.parse(j.result_summary || '{}'); } catch { return {}; } })();
+    const dur = j.duration_ms || (j.completed_at && j.started_at ? new Date(j.completed_at) - new Date(j.started_at) : null);
+    return `<tr>
+      <td>${h(j.type)}</td>
+      <td><span class="badge badge-${j.status === 'success' ? 'success' : j.status === 'running' ? 'warning' : 'danger'}">${j.status}</span></td>
+      <td>${j.started_at ? new Date(j.started_at).toLocaleString() : '-'}</td>
+      <td>${dur !== null ? dur + 'ms' : '-'}</td>
+      <td>${summary.interest || 0}</td>
+      <td>${summary.standingOrders || 0}</td>
+      <td>${summary.accrual ? 'Yes' : 'No'}</td>
+      <td>${summary.backup ? 'Yes' : 'No'}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${j.failed_reason ? '<span style="color:var(--danger)">' + h(j.failed_reason) + '</span>' : '-'}</td>
+    </tr>`;
+  }).join('');
+
+  const content = `
+  <style>
+    .run-btn { background:var(--primary); color:#fff; border:none; padding:12px 32px; border-radius:8px; font-size:16px; cursor:pointer; display:inline-flex; align-items:center; gap:8px; }
+    .run-btn:disabled { opacity:0.5; cursor:not-allowed; }
+    .run-btn:hover:not(:disabled) { opacity:0.9; }
+    .stat-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:20px; }
+    .stat-card { background:var(--card-bg); border:1px solid var(--border); border-radius:8px; padding:16px; text-align:center; }
+    .stat-card .val { font-size:22px; font-weight:700; color:var(--primary); }
+    .stat-card .lbl { font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-top:4px; }
+    #runResult { margin-top:12px; padding:12px; border-radius:6px; display:none; }
+    #runResult.success { display:block; background:var(--success-bg, #e8f5e9); color:var(--success, #2e7d32); }
+    #runResult.error { display:block; background:var(--danger-bg, #ffebee); color:var(--danger, #c62828); }
+  </style>
+
+  <div class="card">
+    <div class="card-body-padded">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px">
+        <div>
+          <h3 style="margin:0">Scheduler Control</h3>
+          <p style="margin:4px 0 0;color:var(--text-muted);font-size:13px">Manual trigger and job history</p>
+        </div>
+        <button class="run-btn" id="runBtn" onclick="runScheduler()"><i class="fas fa-play"></i> Run All Jobs Now</button>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-card"><div class="val">${jobs.rows.filter(j => j.status === 'success').length}</div><div class="lbl">Successful Runs</div></div>
+        <div class="stat-card"><div class="val">${jobs.rows.filter(j => j.status === 'failed').length}</div><div class="lbl">Failed Runs</div></div>
+        <div class="stat-card"><div class="val">${lastBackup}</div><div class="lbl">Last Backup</div></div>
+        <div class="stat-card"><div class="val">${lastAccrual}</div><div class="lbl">Last Accrual</div></div>
+        <div class="stat-card"><div class="val">${lockVal === '1' ? '🔒 Locked' : '🔓 Free'}</div><div class="lbl">Scheduler Lock</div></div>
+        <div class="stat-card"><div class="val">${now.getHours()}:00</div><div class="lbl">Next QStash Tick (Hourly)</div></div>
+      </div>
+
+      <div id="runResult"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><i class="fas fa-history"></i> Job History (Last 20)</div>
+    <div class="table-container">
+      <table>
+        <thead><tr>
+          <th>Type</th><th>Status</th><th>Started</th><th>Duration</th>
+          <th>Interest</th><th>Orders</th><th>Accrual</th><th>Backup</th><th>Errors</th>
+        </tr></thead>
+        <tbody>${rows || '<tr><td colspan="9" style="text-align:center;color:var(--text-muted)">No jobs recorded yet</td></tr>'}</tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+  async function runScheduler() {
+    const btn = document.getElementById('runBtn');
+    const result = document.getElementById('runResult');
+    btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
+    result.style.display = 'none';
+    try {
+      const resp = await fetch('/admin/scheduler/run', { method: 'POST' });
+      const data = await resp.json();
+      if (data.errors && data.errors.length) {
+        result.className = 'error';
+        result.innerHTML = '<strong>Completed with errors:</strong> ' + data.errors.join('; ');
+      } else {
+        result.className = 'success';
+        result.innerHTML = '<strong>Success!</strong> Interest: ' + (data.interest || 0) + ' | Orders: ' + (data.standingOrders || 0) + ' | Accrual: ' + (data.accrual ? 'Yes' : 'No') + ' | Backup: ' + (data.backup ? 'Yes' : 'No') + ' | Duration: ' + (data.duration_ms || 'N/A') + 'ms';
+      }
+    } catch(e) {
+      result.className = 'error';
+      result.innerHTML = 'Request failed: ' + e.message;
+    } finally {
+      btn.disabled = false; btn.innerHTML = '<i class="fas fa-play"></i> Run All Jobs Now';
+      setTimeout(() => { result.style.display = 'none'; }, 10000);
+    }
+  }
+  </script>`;
+  res.type('html').send(layout('Scheduler', 'scheduler', content, { subtitle: 'Manual trigger + real-time job history' }));
+}));
+
+router.post('/scheduler/run', asyncHandler(async (req, res) => {
+  const { runAllJobs } = require('../services/scheduler');
+  const startTime = Date.now();
+  const results = await runAllJobs();
+  res.json({ ...results, duration_ms: Date.now() - startTime });
+}));
+
 module.exports = router;

@@ -17,16 +17,16 @@ router.post('/tick', asyncHandler(async (req, res) => {
     nextSigningKey: process.env.QSTASH_NEXT_SIGNING_KEY || '',
   });
 
-  const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
-  const isValid = await r.verify({
-    signature,
-    body,
-    url: req.protocol + '://' + req.get('host') + req.originalUrl,
-  }).catch(() => false);
+  // req.rawBody is set by express.json() verify callback — keeps the exact raw bytes QStash signed
+  const body = req.rawBody || '';
+  const url = req.protocol + '://' + req.get('host') + req.originalUrl;
+  const isValid = await r.verify({ signature, body, url }).catch(() => false);
 
-  if (!isValid && process.env.NODE_ENV === 'production') {
-    logger.warn('[SchedulerTick] Invalid QStash signature');
-    return res.status(401).json({ error: 'Invalid Upstash signature' });
+  if (!isValid) {
+    logger.warn('[SchedulerTick] Invalid QStash signature', { url, bodyLen: body.length, hasSig: !!signature });
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(401).json({ error: 'Invalid Upstash signature' });
+    }
   }
 
   const startTime = Date.now();

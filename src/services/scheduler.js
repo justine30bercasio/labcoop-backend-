@@ -73,7 +73,7 @@ async function runAllJobs() {
     }
 
     // ── Standing Orders Processing ──
-    const dueOrders = await sql("SELECT so.*, a.child_name, a.actual_balance, a.unallocated_balance FROM standing_orders so LEFT JOIN accounts a ON so.account_id = a.account_id WHERE so.is_active = 1 AND so.next_run <= CURRENT_TIMESTAMP");
+    const dueOrders = await sql("SELECT so.*, a.child_name, a.actual_balance, a.unallocated_balance FROM standing_orders so LEFT JOIN accounts a ON so.account_id = a.account_id WHERE so.is_active = 1 AND so.next_run <= datetime('now')");
     for (const order of dueOrders) {
       try {
         const amount = Number(order.amount);

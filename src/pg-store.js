@@ -693,7 +693,7 @@ class PgStore {
         let idx = 1;
         sql = sql.replace(/\?/g, () => `$${idx++}`);
       }
-      sql = sql.replace(/datetime\('now'\)/gi, 'CURRENT_TIMESTAMP');
+      sql = sql.replace(/datetime\('now'\)/gi, "CURRENT_TIMESTAMP::text");
       sql = sql.replace(/\bDATE\((\w+(?:\.\w+)?)\)/gi, 'DATE($1::timestamp)');
       const result = await client.query(sql, params);
       return result;

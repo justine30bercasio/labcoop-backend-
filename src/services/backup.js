@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { spawn, execSync } = require('child_process');
+const { execSync } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
 const logger = require('./logger');
 
@@ -8,6 +8,47 @@ const fileStorage = require('./file-storage');
 const { store, isPostgres } = require('../db');
 
 const BACKUP_DIR = path.join(__dirname, '..', '..', 'backups');
+
+function phTimestamp() {
+  const d = new Date();
+  const parts = d.toLocaleString('en-CA', { timeZone: 'Asia/Manila', hour12: false }).replace(',', '').split(' ');
+  const datePart = parts[0];
+  const timePart = parts[1] || '00-00-00';
+  return `${datePart}_${timePart.replace(/:/g, '-')}`;
+}
+
+function pgDumpAvailable() {
+  try {
+    execSync('pg_dump --version', { stdio: 'pipe', timeout: 5000 });
+    return true;
+  } catch { return false; }
+}
+
+async function pgDumpBackup(filepath) {
+  const dbUrl = process.env.DATABASE_URL || '';
+  execSync(
+    `pg_dump "${dbUrl}" --format=custom --file="${filepath}" --no-owner --no-acl`,
+    { timeout: 300000, stdio: 'pipe' }
+  );
+}
+
+async function nodePgDumpBackup(filepath) {
+  const { Pool } = require('pg');
+  const dbUrl = process.env.DATABASE_URL || '';
+  const pool = new Pool({ connectionString: dbUrl, connectionTimeoutMillis: 10000 });
+  try {
+    const tablesRes = await pool.query("SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public' ORDER BY tablename");
+    const dump = {};
+    for (const row of tablesRes.rows) {
+      const tableName = row.tablename;
+      const dataRes = await pool.query(`SELECT * FROM "${tableName}"`);
+      dump[tableName] = dataRes.rows;
+    }
+    fs.writeFileSync(filepath, JSON.stringify(dump, null, 2), 'utf8');
+  } finally {
+    await pool.end();
+  }
+}
 
 async function runDatabaseBackup() {
   if (!fileStorage.isConfigured()) {
@@ -19,42 +60,40 @@ async function runDatabaseBackup() {
     fs.mkdirSync(BACKUP_DIR, { recursive: true });
   }
 
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const filename = `labcoop-backup-${timestamp}.dump`;
-  const filepath = path.join(BACKUP_DIR, filename);
+  const timestamp = phTimestamp();
+  let filename, filepath, backupType, stats;
 
-  let backupType;
   try {
     if (isPostgres) {
-      backupType = 'pg_dump';
-      const dbUrl = process.env.DATABASE_URL || '';
-      execSync(
-        `pg_dump "${dbUrl}" --format=custom --file="${filepath}" --no-owner --no-acl`,
-        { timeout: 300000, stdio: 'pipe' }
-      );
-      const stats = fs.statSync(filepath);
-      logger.info('[Backup] pg_dump completed', { size: stats.size, filename });
+      if (pgDumpAvailable()) {
+        backupType = 'pg_dump';
+        filename = `labcoop-backup-${timestamp}.pgdump`;
+        filepath = path.join(BACKUP_DIR, filename);
+        await pgDumpBackup(filepath);
+      } else {
+        backupType = 'node_dump';
+        filename = `labcoop-backup-${timestamp}.json`;
+        filepath = path.join(BACKUP_DIR, filename);
+        await nodePgDumpBackup(filepath);
+      }
     } else {
       backupType = 'sqlite_copy';
+      filename = `labcoop-backup-${timestamp}.db`;
+      filepath = path.join(BACKUP_DIR, filename);
       const sqlitePath = path.join(__dirname, '..', 'labcoop.db');
       if (!fs.existsSync(sqlitePath)) {
         throw new Error('SQLite database file not found at ' + sqlitePath);
       }
-
       const walPath = sqlitePath + '-wal';
       const shmPath = sqlitePath + '-shm';
-
-      if (fs.existsSync(walPath)) {
-        try { fs.unlinkSync(walPath); } catch {}
-      }
-      if (fs.existsSync(shmPath)) {
-        try { fs.unlinkSync(shmPath); } catch {}
-      }
-
+      if (fs.existsSync(walPath)) { try { fs.unlinkSync(walPath); } catch {} }
+      if (fs.existsSync(shmPath)) { try { fs.unlinkSync(shmPath); } catch {} }
       fs.copyFileSync(sqlitePath, filepath);
-      const stats = fs.statSync(filepath);
-      logger.info('[Backup] SQLite copy completed', { size: stats.size, filename });
     }
+
+    stats = fs.statSync(filepath);
+    if (stats.size === 0) throw new Error('Backup file is empty (0 bytes)');
+    logger.info('[Backup] Dump completed', { type: backupType, size: stats.size, filename });
   } catch (err) {
     logger.error('[Backup] Dump failed', { error: err.message });
     try { if (fs.existsSync(filepath)) fs.unlinkSync(filepath); } catch {}
@@ -64,7 +103,7 @@ async function runDatabaseBackup() {
   const r2Key = `backups/${filename}`;
   try {
     const content = fs.readFileSync(filepath);
-    await fileStorage.uploadFile(content, r2Key, 'application/octet-stream');
+    await fileStorage.uploadFile(content, r2Key, backupType === 'node_dump' ? 'application/json' : 'application/octet-stream');
     logger.info('[Backup] Uploaded to R2', { key: r2Key, size: content.length });
   } catch (err) {
     logger.error('[Backup] R2 upload failed', { error: err.message });
@@ -79,7 +118,7 @@ async function runDatabaseBackup() {
     const r2Url = fileStorage.getPublicUrl(r2Key);
     await store.query(
       'INSERT INTO backup_logs (backup_id, filename, file_size, status, notes, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
-      [backupId, filename, 0, 'completed', JSON.stringify({ r2_url: r2Url, type: backupType }), new Date().toISOString()]
+      [backupId, filename, stats.size, 'completed', JSON.stringify({ r2_url: r2Url, type: backupType }), new Date().toISOString()]
     );
   } catch (logErr) {
     logger.warn('[Backup] Failed to log backup', { error: logErr.message });

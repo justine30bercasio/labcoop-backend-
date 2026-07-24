@@ -156,9 +156,11 @@ function getDb() {
       console.log('[SQLite Migration] Error:', e.message);
     }
     try { db.exec("CREATE TABLE IF NOT EXISTS typing_status (account_id TEXT PRIMARY KEY, is_typing INTEGER DEFAULT 0, last_heartbeat TEXT)"); } catch (_) {}
-    try { db.exec("CREATE TABLE IF NOT EXISTS jobs (job_id TEXT PRIMARY KEY, type TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','running','success','failed')), started_at TEXT, completed_at TEXT, duration_ms INTEGER, failed_reason TEXT, attempts INTEGER DEFAULT 1, result_summary TEXT, created_at TEXT)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS jobs (job_id TEXT PRIMARY KEY, type TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','running','success','failed')), started_at TEXT, completed_at TEXT, duration_ms INTEGER, failed_reason TEXT, attempts INTEGER DEFAULT 1, result_summary TEXT, execution_key TEXT, created_at TEXT)"); } catch (_) {}
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_jobs_type_status ON jobs(type, status)"); } catch (_) {}
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at)"); } catch (_) {}
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_jobs_execution ON jobs(type, execution_key, status)"); } catch (_) {}
+    try { db.exec("ALTER TABLE jobs ADD COLUMN execution_key TEXT"); } catch (_) {}
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON refresh_tokens(token_hash)"); } catch (_) {}
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_account ON refresh_tokens(account_id)"); } catch (_) {}
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_transactions_account_created ON transactions(account_id, created_at DESC)"); } catch (_) {}
@@ -904,10 +906,10 @@ function setSetting(key, value) {
   getDb().prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value);
 }
 
-function createJob(type) {
+function createJob(type, executionKey) {
   const jobId = uuidv4();
   const now = new Date().toISOString();
-  getDb().prepare('INSERT INTO jobs (job_id, type, status, started_at, created_at) VALUES (?, ?, ?, ?, ?)').run(jobId, type, 'running', now, now);
+  getDb().prepare('INSERT INTO jobs (job_id, type, status, started_at, created_at, execution_key) VALUES (?, ?, ?, ?, ?, ?)').run(jobId, type, 'running', now, now, executionKey || null);
   return jobId;
 }
 
@@ -922,6 +924,10 @@ function updateJob(jobId, updates) {
 
 function getLatestJob(type) {
   return getDb().prepare('SELECT * FROM jobs WHERE type = ? ORDER BY created_at DESC LIMIT 1').get(type) || null;
+}
+
+function getSuccessfulJob(type, executionKey) {
+  return getDb().prepare("SELECT * FROM jobs WHERE type = ? AND execution_key = ? AND status = 'success' LIMIT 1").get(type, executionKey) || null;
 }
 
 function getFcmToken(accountId) {
@@ -1231,6 +1237,7 @@ module.exports = {
   createJob,
   updateJob,
   getLatestJob,
+  getSuccessfulJob,
   getFcmToken,
   getFcmTokens,
   registerFcmToken,

@@ -1,6 +1,6 @@
 const express = require('express');
 const { asyncHandler } = require('../async-handler');
-const { runAllJobs } = require('../services/scheduler');
+const { runAll, runNamed } = require('../scheduler/dispatcher');
 const logger = require('../services/logger');
 
 const router = express.Router();
@@ -17,7 +17,6 @@ router.post('/tick', asyncHandler(async (req, res) => {
     nextSigningKey: process.env.QSTASH_NEXT_SIGNING_KEY || '',
   });
 
-  // req.rawBody is set by express.json() verify callback — keeps the exact raw bytes QStash signed
   const body = req.rawBody || '';
   const url = req.protocol + '://' + req.get('host') + req.originalUrl;
   const isValid = await r.verify({ signature, body, url }).catch(() => false);
@@ -30,11 +29,13 @@ router.post('/tick', asyncHandler(async (req, res) => {
   }
 
   const startTime = Date.now();
-  const results = await runAllJobs();
+  const jobNames = req.query.jobs ? req.query.jobs.split(',').map(s => s.trim()) : null;
+  const results = jobNames ? await runNamed(jobNames) : await runAll();
   const duration = Date.now() - startTime;
 
   logger.info('[SchedulerTick] Run completed', {
     duration_ms: duration,
+    jobs: jobNames || 'all',
     interest: results.interest,
     standingOrders: results.standingOrders,
     accrual: results.accrual,
@@ -46,6 +47,16 @@ router.post('/tick', asyncHandler(async (req, res) => {
     return res.status(200).json({ ...results, duration_ms: duration, warning: 'Partial errors' });
   }
   res.json({ ...results, duration_ms: duration });
+}));
+
+router.post('/job/:name', asyncHandler(async (req, res) => {
+  const { runSingle } = require('../scheduler/dispatcher');
+  try {
+    const result = await runSingle(req.params.name);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 }));
 
 module.exports = router;

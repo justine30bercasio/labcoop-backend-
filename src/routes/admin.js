@@ -9326,10 +9326,10 @@ router.get('/scheduler', asyncHandler(async (req, res) => {
       <td><span class="badge badge-${j.status === 'success' ? 'success' : j.status === 'running' ? 'warning' : 'danger'}">${j.status}</span></td>
       <td>${phTime(j.started_at)}</td>
       <td>${dur !== null ? dur + 'ms' : '-'}</td>
-      <td>${summary.interest || 0}</td>
-      <td>${summary.standingOrders || 0}</td>
-      <td>${summary.accrual ? 'Yes' : 'No'}</td>
-      <td>${summary.backup ? 'Yes' : 'No'}</td>
+      <td>${summary.interest !== undefined ? summary.interest : (summary.skipped ? '⏭ skip' : '-')}</td>
+      <td>${summary.standingOrders !== undefined ? summary.standingOrders : (summary.skipped ? '' : '-')}</td>
+      <td>${summary.accrual ? 'Yes' : (summary.skipped ? '' : '-')}</td>
+      <td>${summary.backup ? 'Yes' : (summary.skipped ? '' : '-')}</td>
       <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${j.failed_reason ? '<span style="color:var(--danger)">' + h(j.failed_reason) + '</span>' : '-'}</td>
     </tr>`;
   }).join('');

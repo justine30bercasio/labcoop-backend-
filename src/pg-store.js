@@ -608,11 +608,14 @@ class PgStore {
           failed_reason TEXT,
           attempts INTEGER DEFAULT 1,
           result_summary TEXT,
+          execution_key TEXT,
           created_at TEXT
         )
       `);
       await this.pool.query('CREATE INDEX IF NOT EXISTS idx_jobs_type_status ON jobs(type, status)');
       await this.pool.query('CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at)');
+      await this.pool.query('CREATE INDEX IF NOT EXISTS idx_jobs_execution ON jobs(type, execution_key, status)');
+      try { await this.pool.query("ALTER TABLE jobs ADD COLUMN execution_key TEXT"); } catch (_) {}
       await this._seedGlAccounts();
 
     // --- Performance Indexes ---
@@ -1684,13 +1687,13 @@ class PgStore {
     );
   }
 
-  async createJob(type) {
+  async createJob(type, executionKey) {
     const { v4: uuidv4 } = require('uuid');
     const jobId = uuidv4();
     const now = new Date().toISOString();
     await this.query(
-      'INSERT INTO jobs (job_id, type, status, started_at, created_at) VALUES ($1, $2, $3, $4, $5)',
-      [jobId, type, 'running', now, now]
+      'INSERT INTO jobs (job_id, type, status, started_at, created_at, execution_key) VALUES ($1, $2, $3, $4, $5, $6)',
+      [jobId, type, 'running', now, now, executionKey || null]
     );
     return jobId;
   }
@@ -1712,6 +1715,14 @@ class PgStore {
     const res = await this.query(
       'SELECT * FROM jobs WHERE type = $1 ORDER BY created_at DESC LIMIT 1',
       [type]
+    );
+    return res.rows[0] || null;
+  }
+
+  async getSuccessfulJob(type, executionKey) {
+    const res = await this.query(
+      "SELECT * FROM jobs WHERE type = $1 AND execution_key = $2 AND status = 'success' LIMIT 1",
+      [type, executionKey]
     );
     return res.rows[0] || null;
   }

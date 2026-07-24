@@ -109,8 +109,12 @@ class _ParentLoginPageState extends State<ParentLoginPage>
     }
     setState(() { _loading = true; _error = null; });
     try {
-      await BankingApiService.parentSendOtp(email);
+      final result = await BankingApiService.parentSendOtp(email);
       if (!mounted) return;
+      if (result == null || result['sent'] != true) {
+        setState(() { _error = (result?['message'] as String?) ?? 'Failed to send OTP'; _loading = false; });
+        return;
+      }
       setState(() {
         _otpSent = true;
         _loading = false;

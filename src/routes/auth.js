@@ -3,12 +3,12 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const path = require('path');
-const fs = require('fs');
 const multer = require('multer');
 const rateLimit = require('express-rate-limit');
 const sgMail = require('@sendgrid/mail');
 const { store } = require('../db');
 const { asyncHandler } = require('../async-handler');
+const fileStorage = require('../services/file-storage');
 const otpStore = new Map();
 
 const router = express.Router();
@@ -46,20 +46,8 @@ const pinLoginLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-const UPLOAD_DIR = path.join(__dirname, '..', 'uploads', 'registration');
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-}
-
 const regUpload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-    filename: (req, file, cb) => {
-      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-      const ext = path.extname(file.originalname);
-      cb(null, file.fieldname + '-' + uniqueSuffix + ext);
-    },
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.pdf'];
@@ -254,9 +242,17 @@ router.post('/register', regUpload.fields([
   }
 
   const files = req.files || {};
-  const photo2x2Url = files.photo_2x2 ? '/uploads/registration/' + files.photo_2x2[0].filename : '';
-  const birthCertUrl = files.birth_cert ? '/uploads/registration/' + files.birth_cert[0].filename : '';
-  const idPhotoUrl = files.id_photo ? '/uploads/registration/' + files.id_photo[0].filename : '';
+  const uploadField = async (field, prefix) => {
+    if (!files[field]?.[0]) return '';
+    const f = files[field][0];
+    const ext = path.extname(f.originalname);
+    const filename = field + '-' + Date.now() + '-' + Math.round(Math.random() * 1E9) + ext;
+    await fileStorage.uploadFile(f.buffer, 'registration/' + filename, f.mimetype);
+    return '/uploads/registration/' + filename;
+  };
+  const photo2x2Url = await uploadField('photo_2x2');
+  const birthCertUrl = await uploadField('birth_cert');
+  const idPhotoUrl = await uploadField('id_photo');
 
   // Get default maintaining balance from settings
   const defaultMaintaining = await store.getSetting('default_maintaining_balance');

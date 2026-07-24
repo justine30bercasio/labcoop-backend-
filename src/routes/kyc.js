@@ -2,25 +2,14 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 const { store } = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 const { asyncHandler } = require('../async-handler');
 const notifs = require('../services/notifications');
-
-const KYC_DIR = path.join(__dirname, '..', 'uploads', 'kyc');
-if (!fs.existsSync(KYC_DIR)) {
-  fs.mkdirSync(KYC_DIR, { recursive: true });
-}
+const fileStorage = require('../services/file-storage');
 
 const kycUpload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, KYC_DIR),
-    filename: (req, file, cb) => {
-      const prefix = file.fieldname === 'selfie' ? 'selfie' : 'birth_cert';
-      cb(null, `${prefix}_${req.accountId}_${Date.now()}${path.extname(file.originalname)}`);
-    }
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowed = ['.jpg', '.jpeg', '.png'];
@@ -45,8 +34,18 @@ router.post('/submit', authMiddleware, (req, res) => {
       if (!account) return res.status(404).json({ message: 'Account not found' });
 
       const updates = { kyc_status: 'pending', kyc_submitted_at: new Date().toISOString() };
-      if (req.files?.selfie?.[0]) updates.selfie_url = '/uploads/kyc/' + req.files.selfie[0].filename;
-      if (req.files?.birth_cert?.[0]) updates.birth_cert_url = '/uploads/kyc/' + req.files.birth_cert[0].filename;
+      if (req.files?.selfie?.[0]) {
+        const f = req.files.selfie[0];
+        const fn = `selfie_${accountId}_${Date.now()}${path.extname(f.originalname)}`;
+        await fileStorage.uploadFile(f.buffer, 'kyc/' + fn, f.mimetype);
+        updates.selfie_url = '/uploads/kyc/' + fn;
+      }
+      if (req.files?.birth_cert?.[0]) {
+        const f = req.files.birth_cert[0];
+        const fn = `birth_cert_${accountId}_${Date.now()}${path.extname(f.originalname)}`;
+        await fileStorage.uploadFile(f.buffer, 'kyc/' + fn, f.mimetype);
+        updates.birth_cert_url = '/uploads/kyc/' + fn;
+      }
       if (!updates.selfie_url) {
         return res.status(400).json({ message: 'Selfie image is required for face verification' });
       }

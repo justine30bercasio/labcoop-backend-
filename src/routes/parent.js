@@ -4,7 +4,6 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
-const fs = require('fs');
 const multer = require('multer');
 const sgMail = require('@sendgrid/mail');
 const rateLimit = require('express-rate-limit');
@@ -12,23 +11,14 @@ const { store } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const notifs = require('../services/notifications');
 const { authMiddleware, requireRole } = require('../middleware/auth');
+const fileStorage = require('../services/file-storage');
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET;
 const ACCESS_TOKEN_EXPIRY = '24h';
 
-// ── Upload dirs ──
-const PARENT_PHOTO_DIR = path.join(__dirname, '..', 'uploads', 'parents');
-if (!fs.existsSync(PARENT_PHOTO_DIR)) fs.mkdirSync(PARENT_PHOTO_DIR, { recursive: true });
-
 const parentPhotoUpload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, PARENT_PHOTO_DIR),
-    filename: (_req, file, cb) => {
-      const ext = path.extname(file.originalname) || '.jpg';
-      cb(null, `parent_${uuidv4().slice(0, 8)}${ext}`);
-    },
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (!file.mimetype.startsWith('image/')) return cb(new Error('Only image files allowed'));
@@ -198,8 +188,16 @@ router.post('/register', parentPhotoUpload.fields([
   }
   const parentId = uuidv4();
   const pinHash = bcrypt.hashSync(pin, 10);
-  const photoUrl = req.files?.photo?.[0] ? '/uploads/parents/' + req.files.photo[0].filename : '';
-  const idPhotoUrl = req.files?.idPhoto?.[0] ? '/uploads/parents/' + req.files.idPhoto[0].filename : '';
+  const uploadField = async (fieldName) => {
+    const f = req.files?.[fieldName]?.[0];
+    if (!f) return '';
+    const ext = path.extname(f.originalname) || '.jpg';
+    const fn = `parent_${uuidv4().slice(0, 8)}${ext}`;
+    await fileStorage.uploadFile(f.buffer, 'parents/' + fn, f.mimetype);
+    return '/uploads/parents/' + fn;
+  };
+  const photoUrl = await uploadField('photo');
+  const idPhotoUrl = await uploadField('idPhoto');
   await store.query(
     `INSERT INTO parents (parent_id, email, pin_hash, display_name, phone, photo_url, id_type, id_number, id_photo_url, status, created_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', $10)`,
@@ -363,7 +361,10 @@ router.post('/reset-pin', asyncHandler(async (req, res) => {
 // ── Upload parent photo (update after registration) ──
 router.post('/upload-photo', parentAuth, parentPhotoUpload.single('photo'), asyncHandler(async (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
-  const url = '/uploads/parents/' + req.file.filename;
+  const ext = path.extname(req.file.originalname) || '.jpg';
+  const fn = `parent_${uuidv4().slice(0, 8)}${ext}`;
+  await fileStorage.uploadFile(req.file.buffer, 'parents/' + fn, req.file.mimetype);
+  const url = '/uploads/parents/' + fn;
   await store.query('UPDATE parents SET photo_url = $1 WHERE parent_id = $2', [url, req.parentId]);
   res.json({ photo_url: url });
 }));
@@ -371,7 +372,10 @@ router.post('/upload-photo', parentAuth, parentPhotoUpload.single('photo'), asyn
 // ── Upload ID photo (update after registration) ──
 router.post('/upload-id-photo', parentAuth, parentPhotoUpload.single('idPhoto'), asyncHandler(async (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
-  const url = '/uploads/parents/' + req.file.filename;
+  const ext = path.extname(req.file.originalname) || '.jpg';
+  const fn = `parent_${uuidv4().slice(0, 8)}${ext}`;
+  await fileStorage.uploadFile(req.file.buffer, 'parents/' + fn, req.file.mimetype);
+  const url = '/uploads/parents/' + fn;
   await store.query('UPDATE parents SET id_photo_url = $1 WHERE parent_id = $2', [url, req.parentId]);
   res.json({ id_photo_url: url });
 }));

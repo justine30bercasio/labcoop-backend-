@@ -12,6 +12,7 @@ const bcrypt = require('bcryptjs');
 
 const { store, isPostgres } = require('./db');
 const { initSocket } = require('./services/socket');
+const fileStorage = require('./services/file-storage');
 
 async function ensureDb() {
   if (isPostgres) return; // skip seed on PG — user will create accounts via admin
@@ -614,41 +615,33 @@ app.get('/orglogo.jpg', (req, res) => {
   res.sendFile(filePath);
 });
 
-// ── Ensure upload directories exist (Render's ephemeral fs wipes them on deploy) ──
+// ── Ensure upload directories exist (for legacy temp files like backup restore) ──
 for (const sub of ['shop', 'board', 'profiles', 'kyc', 'registration', 'parents']) {
   const d = path.join(__dirname, 'uploads', sub);
   if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
 }
 
-// ── Public uploads: shop/board/parents images — no auth needed ──
-// Return 404 for missing files instead of falling through to auth-gated /uploads (which returns 401)
-for (const dir of ['shop', 'board', 'parents']) {
-  app.use(`/uploads/${dir}`, express.static(path.join(__dirname, 'uploads', dir), {
-    dotfiles: 'deny',
-    index: false,
-    fallthrough: true,
-    setHeaders: (res) => {
-      res.set('X-Content-Type-Options', 'nosniff');
-      res.set('Cache-Control', 'public, max-age=86400');
-    },
-  }));
-  app.use(`/uploads/${dir}`, (req, res) => {
-    if (req.method === 'GET' || req.method === 'HEAD') {
-      res.status(404).type('text').send('Not found');
-    }
-  });
-}
-// ── Authenticated file serving for sensitive uploads (KYC, profiles) ──
-app.use('/uploads', authMiddleware, (req, res, next) => {
-  express.static(path.join(__dirname, 'uploads'), {
-    dotfiles: 'deny',
-    index: false,
-    setHeaders: (res) => {
-      res.set('X-Content-Type-Options', 'nosniff');
-      res.set('Cache-Control', 'private, max-age=3600');
-    },
-  })(req, res, next);
+// ── Serve uploaded files from R2 public URL ──
+// /uploads/shop/abc.jpg → {R2_PUBLIC_URL}/shop/abc.jpg (302 redirect)
+// Public dirs (shop, board, parents): no auth.  Sensitive dirs (kyc, profiles, registration): auth required.
+const PUBLIC_UPLOAD_DIRS = ['shop', 'board', 'parents'];
+app.use('/uploads/:dir/:file', (req, res, next) => {
+  const { dir, file } = req.params;
+  if (!dir || !file) return next();
+  if (!PUBLIC_UPLOAD_DIRS.includes(dir)) {
+    return authMiddleware(req, res, () => redirectToR2(req, res, dir, file));
+  }
+  redirectToR2(req, res, dir, file);
 });
+app.use('/uploads', (req, res) => {
+  if (req.method === 'GET' || req.method === 'HEAD') res.status(404).type('text').send('Not found');
+});
+
+function redirectToR2(req, res, dir, file) {
+  const url = fileStorage.getPublicUrl(dir + '/' + file);
+  if (!url) return res.status(503).type('text').send('File storage not configured');
+  res.redirect(302, url);
+}
 // ── CSRF protection for admin session routes ──
 function csrfProtection(req, res, next) {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();

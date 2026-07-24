@@ -8,6 +8,7 @@ const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 const { store, isPostgres } = require('../db');
 const { asyncHandler } = require('../async-handler');
+const fileStorage = require('../services/file-storage');
 const { layout, printLayout, h, fmt, fmtTrn, reportTable, reportSection, reportStats } = require('./admin-lib');
 const notifs = require('../services/notifications');
 
@@ -629,7 +630,7 @@ ${uploadModals}
 }));
 
 const shopUpload = require('multer')({
-  dest: require('path').join(__dirname, '..', 'uploads', 'shop'),
+  storage: require('multer').memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
@@ -653,8 +654,7 @@ router.post('/shop/create', requireRole(2), shopUpload.single('image'), asyncHan
     if (req.file) {
       const ext = require('path').extname(req.file.originalname).toLowerCase();
       const filename = `${Date.now()}-${uuidv4().slice(0, 8)}${ext}`;
-      const dest = require('path').join(__dirname, '..', 'uploads', 'shop', filename);
-      require('fs').renameSync(req.file.path, dest);
+      await fileStorage.uploadFile(req.file.buffer, 'shop/' + filename, req.file.mimetype);
       const imageUrl = '/uploads/shop/' + filename;
       await store.query("UPDATE shop_items SET image_url=$1 WHERE id=$2", [imageUrl, id]);
     }
@@ -691,10 +691,8 @@ router.post('/shop/delete/:id', requireRole(3), asyncHandler(async (req, res) =>
 
     const existing = await one('SELECT * FROM shop_items WHERE id = $1', [req.params.id]);
     if (!existing) return res.redirect('/admin/shop?error=Item+not+found');
-    if (existing.image_url && existing.image_url.startsWith('/uploads/')) {
-      const filePath = require('path').join(__dirname, '..', existing.image_url);
-      if (require('fs').existsSync(filePath)) require('fs').unlinkSync(filePath);
-    }
+    const oldKey = fileStorage.keyFromUrl(existing.image_url);
+    if (oldKey) await fileStorage.deleteFile(oldKey);
     await store.query('DELETE FROM shop_items WHERE id = $1', [req.params.id]);
     res.redirect('/admin/shop?deleted=ok');
   } catch (err) {
@@ -711,18 +709,14 @@ router.post('/shop/upload/:id', requireRole(2), shopUpload.single('image'), asyn
     const ext = require('path').extname(req.file.originalname).toLowerCase();
     const allowedExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
     if (!allowedExts.includes(ext)) {
-      require('fs').unlinkSync(req.file.path);
       return res.redirect('/admin/shop?error=Invalid+file+type');
     }
     const { v4: uuidv4 } = require('uuid');
     const filename = `${Date.now()}-${uuidv4().slice(0, 8)}${ext}`;
-    const dest = require('path').join(__dirname, '..', 'uploads', 'shop', filename);
-    require('fs').renameSync(req.file.path, dest);
+    await fileStorage.uploadFile(req.file.buffer, 'shop/' + filename, req.file.mimetype);
     const imageUrl = '/uploads/shop/' + filename;
-    if (existing.image_url && existing.image_url.startsWith('/uploads/')) {
-      const oldFile = require('path').join(__dirname, '..', existing.image_url);
-      if (require('fs').existsSync(oldFile)) require('fs').unlinkSync(oldFile);
-    }
+    const oldKey = fileStorage.keyFromUrl(existing.image_url);
+    if (oldKey) await fileStorage.deleteFile(oldKey);
     await store.query("UPDATE shop_items SET image_url=$1, updated_at=CURRENT_TIMESTAMP WHERE id=$2", [imageUrl, req.params.id]);
     res.redirect('/admin/shop?uploaded=ok');
   } catch (err) {
@@ -1706,10 +1700,8 @@ router.post('/accounts/delete/:id', requireRole(4), asyncHandler(async (req, res
   }
 }));
 
-const profilesDir = require('path').join(__dirname, '..', 'uploads', 'profiles');
-if (!fs.existsSync(profilesDir)) fs.mkdirSync(profilesDir, { recursive: true });
 const profileUpload = require('multer')({
-  dest: profilesDir,
+  storage: require('multer').memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
@@ -1727,18 +1719,14 @@ router.post('/accounts/upload-photo/:id', requireRole(2), profileUpload.single('
     const ext = require('path').extname(req.file.originalname).toLowerCase();
     const allowedExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
     if (!allowedExts.includes(ext)) {
-      require('fs').unlinkSync(req.file.path);
       return res.redirect(`/admin/accounts?error=Invalid+file+type`);
     }
     const { v4: uuidv4 } = require('uuid');
     const filename = `${Date.now()}-${uuidv4().slice(0,8)}${ext}`;
-    const dest = require('path').join(__dirname, '..', 'uploads', 'profiles', filename);
-    require('fs').renameSync(req.file.path, dest);
+    await fileStorage.uploadFile(req.file.buffer, 'profiles/' + filename, req.file.mimetype);
     const imageUrl = '/uploads/profiles/' + filename;
-    if (account.profile_pic_url && account.profile_pic_url.startsWith('/uploads/')) {
-      const oldFile = require('path').join(__dirname, '..', account.profile_pic_url);
-      if (require('fs').existsSync(oldFile)) require('fs').unlinkSync(oldFile);
-    }
+    const oldKey = fileStorage.keyFromUrl(account.profile_pic_url);
+    if (oldKey) await fileStorage.deleteFile(oldKey);
     await store.updateAccount(req.params.id, { profile_pic_url: imageUrl });
     res.redirect(`/admin/accounts?updated=ok#edit-${req.params.id}`);
   } catch (err) {
@@ -7789,7 +7777,7 @@ router.post('/users/update/:id', requireRole(4), asyncHandler(async (req, res) =
 // ── Board of Directors Management (Advanced UI) ──
 
 const _boardUpload = multer({
-  dest: path.join(__dirname, '..', 'uploads', 'board'),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
@@ -8108,8 +8096,7 @@ router.post('/board/add', requireRole(2), _boardUpload.single('photo'), asyncHan
   if (req.file) {
     const ext = path.extname(req.file.originalname) || '.jpg';
     const filename = 'board-' + id + ext;
-    const dest = path.join(__dirname, '..', 'uploads', 'board', filename);
-    try { fs.renameSync(req.file.path, dest); } catch (_) { fs.copyFileSync(req.file.path, dest); }
+    await fileStorage.uploadFile(req.file.buffer, 'board/' + filename, req.file.mimetype);
     imageUrl = '/uploads/board/' + filename;
   }
   await store.query('INSERT INTO board_members (id, name, position, image_url, sort_order, created_at) VALUES ($1,$2,$3,$4,$5,$6)',
@@ -8125,12 +8112,10 @@ router.post('/board/edit/:id', requireRole(2), _boardUpload.single('photo'), asy
   if (req.file) {
     const ext = path.extname(req.file.originalname) || '.jpg';
     const filename = 'board-' + req.params.id + ext;
-    const dest = path.join(__dirname, '..', 'uploads', 'board', filename);
-    try { fs.renameSync(req.file.path, dest); } catch (_) { fs.copyFileSync(req.file.path, dest); }
+    await fileStorage.uploadFile(req.file.buffer, 'board/' + filename, req.file.mimetype);
     imageUrl = '/uploads/board/' + filename;
-    if (m.image_url && m.image_url.startsWith('/uploads/')) {
-      try { fs.unlinkSync(path.join(__dirname, '..', m.image_url.replace(/^\//, ''))); } catch (_) {}
-    }
+    const oldKey = fileStorage.keyFromUrl(m.image_url);
+    if (oldKey) await fileStorage.deleteFile(oldKey);
   }
   await store.query('UPDATE board_members SET name=$1, position=$2, image_url=$3, sort_order=$4 WHERE id=$5',
     [name || m.name, position || m.position, imageUrl, parseInt(sort_order || '0', 10), req.params.id]);
@@ -8139,9 +8124,8 @@ router.post('/board/edit/:id', requireRole(2), _boardUpload.single('photo'), asy
 
 router.post('/board/delete/:id', requireRole(3), asyncHandler(async (req, res) => {
   const m = await one('SELECT * FROM board_members WHERE id = $1', [req.params.id]);
-  if (m && m.image_url && m.image_url.startsWith('/uploads/')) {
-    try { fs.unlinkSync(path.join(__dirname, '..', m.image_url.replace(/^\//, ''))); } catch (_) {}
-  }
+  const oldKey = fileStorage.keyFromUrl(m?.image_url);
+  if (oldKey) await fileStorage.deleteFile(oldKey);
   await store.query('DELETE FROM board_members WHERE id = $1', [req.params.id]);
   res.redirect('/admin/board?deleted=ok');
 }));

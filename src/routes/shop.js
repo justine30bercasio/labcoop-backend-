@@ -1,27 +1,15 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { store } = require('../db');
 const { asyncHandler } = require('../async-handler');
+const fileStorage = require('../services/file-storage');
 
 const router = express.Router();
 
-const uploadsDir = path.join(__dirname, '..', 'uploads', 'shop');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadsDir),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
-  },
-});
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
     if ('.png,.jpg,.jpeg,.gif,.webp,.svg'.includes(ext)) {
@@ -94,10 +82,8 @@ router.delete('/items/:id', asyncHandler(async (req, res) => {
   const existingResult = await store.query('SELECT * FROM shop_items WHERE id = $1', [req.params.id]);
   const existing = existingResult.rows[0];
   if (!existing) return res.status(404).json({ message: 'Shop item not found' });
-  if (existing.image_url && existing.image_url.startsWith('/uploads/')) {
-    const filePath = path.join(__dirname, '..', existing.image_url);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-  }
+  const oldKey = fileStorage.keyFromUrl(existing.image_url);
+  if (oldKey) await fileStorage.deleteFile(oldKey);
   await store.query('DELETE FROM shop_items WHERE id = $1', [req.params.id]);
   res.json({ message: 'Shop item deleted' });
 }));
@@ -107,11 +93,12 @@ router.post('/items/:id/upload', upload.single('image'), asyncHandler(async (req
   const existing = existingResult.rows[0];
   if (!existing) return res.status(404).json({ message: 'Shop item not found' });
   if (!req.file) return res.status(400).json({ message: 'No image file uploaded' });
-  const imageUrl = '/uploads/shop/' + req.file.filename;
-  if (existing.image_url && existing.image_url.startsWith('/uploads/')) {
-    const oldFile = path.join(__dirname, '..', existing.image_url);
-    if (fs.existsSync(oldFile)) fs.unlinkSync(oldFile);
-  }
+  const ext = path.extname(req.file.originalname).toLowerCase();
+  const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
+  await fileStorage.uploadFile(req.file.buffer, 'shop/' + filename, req.file.mimetype);
+  const imageUrl = '/uploads/shop/' + filename;
+  const oldKey = fileStorage.keyFromUrl(existing.image_url);
+  if (oldKey) await fileStorage.deleteFile(oldKey);
   await store.query("UPDATE shop_items SET image_url=$1, updated_at=NOW() WHERE id=$2", [imageUrl, req.params.id]);
   const result = await store.query('SELECT * FROM shop_items WHERE id = $1', [req.params.id]);
   res.json(shopItemRow(result.rows[0]));

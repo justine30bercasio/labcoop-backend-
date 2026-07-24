@@ -3,23 +3,14 @@ const { body, param, validationResult } = require('express-validator');
 const rateLimit = require('express-rate-limit');
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { store, isPostgres } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const { requireConsent } = require('../middleware/auth');
-
-const PROFILE_DIR = path.join(__dirname, '..', 'uploads', 'profiles');
-if (!fs.existsSync(PROFILE_DIR)) fs.mkdirSync(PROFILE_DIR, { recursive: true });
+const fileStorage = require('../services/file-storage');
 
 const profileUpload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, PROFILE_DIR),
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname) || '.jpg';
-      cb(null, `profile-${req.params.accountId}-${Date.now()}${ext}`);
-    },
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowed = ['.jpg', '.jpeg', '.png', '.gif'];
@@ -152,7 +143,15 @@ router.post('/:accountId/profile-photo',
   profileUpload.single('file'),
   asyncHandler(async (req, res) => {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
-    const url = `/uploads/profiles/${req.file.filename}`;
+    const ext = path.extname(req.file.originalname) || '.jpg';
+    const filename = `profile-${req.params.accountId}-${Date.now()}${ext}`;
+    await fileStorage.uploadFile(req.file.buffer, 'profiles/' + filename, req.file.mimetype);
+    const oldAccount = await store.getAccount(req.params.accountId);
+    if (oldAccount && oldAccount.profile_pic_url) {
+      const oldKey = fileStorage.keyFromUrl(oldAccount.profile_pic_url);
+      if (oldKey) fileStorage.deleteFile(oldKey);
+    }
+    const url = '/uploads/profiles/' + filename;
     await store.updateAccount(req.params.accountId, { profile_pic_url: url });
     res.json({ profile_pic_url: url });
   })

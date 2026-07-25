@@ -71,6 +71,12 @@ async function sendConsentEmail(parentEmail, childName, consentLink) {
 router.post('/request', authMiddleware, asyncHandler(async (req, res) => {
   const account = await store.getAccount(req.accountId);
   if (!account) return res.status(404).json({ message: 'Account not found' });
+
+  const linkResult = await store.query('SELECT * FROM parent_child_links WHERE child_account_id = $1 AND status = $2', [req.accountId, 'active']);
+  if (linkResult.rows.length === 0) {
+    return res.status(400).json({ message: 'No parent linked to your account. Ask your parent to link you from their Parent Dashboard first.' });
+  }
+
   const parentEmail = account.parent_email || req.body.parentEmail;
   if (!parentEmail) {
     return res.status(400).json({ message: 'No parent email on file. Please set a parent email in Settings first.' });

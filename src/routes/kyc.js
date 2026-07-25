@@ -106,6 +106,16 @@ router.post('/request-consent', authMiddleware, asyncHandler(async (req, res) =>
   if (account.consent_status === 'approved') {
     return res.json({ message: 'Consent already approved.', consent_status: 'approved' });
   }
+
+  // Check parent link first
+  const links = await store.query(
+    'SELECT parent_id FROM parent_child_links WHERE child_account_id = $1 AND status = $2',
+    [req.accountId, 'active']
+  );
+  if (links.rows.length === 0) {
+    return res.status(400).json({ message: 'No parent linked to your account. Ask your parent to link you from their Parent Dashboard first.', consent_status: 'none', noParentLinked: true });
+  }
+
   try {
     const existing = await store.query(
       "SELECT * FROM parental_consent WHERE account_id = $1 AND status = 'pending' ORDER BY created_at DESC LIMIT 1",
@@ -127,35 +137,24 @@ router.post('/request-consent', authMiddleware, asyncHandler(async (req, res) =>
     console.error('Failed to create/update consent record:', e);
     return res.status(500).json({ message: 'Failed to process consent request.' });
   }
+
   // Notify linked parents
   let notifiedCount = 0;
-  try {
-    const links = await store.query(
-      'SELECT parent_id FROM parent_child_links WHERE child_account_id = $1 AND status = $2',
-      [req.accountId, 'active']
-    );
-    for (const link of links.rows) {
+  for (const link of links.rows) {
+    try {
+      await store.createParentNotification({
+        parentId: link.parent_id,
+        title: `${account.child_name} needs your consent`,
+        body: 'Review and approve so they can submit KYC documents.',
+        type: 'consent_request',
+      });
       try {
-        await store.createParentNotification({
-          parentId: link.parent_id,
-          title: `${account.child_name} needs your consent`,
-          body: 'Review and approve so they can submit KYC documents.',
-          type: 'consent_request',
-        });
-        // Send FCM push to parent
-        try {
-          await notifs.sendParentPush(link.parent_id, `${account.child_name} needs your consent`, 'Review and approve so they can submit KYC documents.', { type: 'consent_request', childAccountId: req.accountId });
-        } catch (_) {}
-        notifiedCount++;
-      } catch (e) {
-        console.error('Failed to create parent notification:', e);
-      }
+        await notifs.sendParentPush(link.parent_id, `${account.child_name} needs your consent`, 'Review and approve so they can submit KYC documents.', { type: 'consent_request', childAccountId: req.accountId });
+      } catch (_) {}
+      notifiedCount++;
+    } catch (e) {
+      console.error('Failed to create parent notification:', e);
     }
-  } catch (e) {
-    console.error('Failed to query parent links:', e);
-  }
-  if (notifiedCount === 0) {
-    return res.json({ message: 'No parent linked yet. Go to Settings → Link Parent first.', consent_status: 'pending', noParentLinked: true });
   }
   res.json({ message: 'Consent request sent to parent.', consent_status: 'pending' });
 }));

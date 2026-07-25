@@ -287,12 +287,20 @@ router.get('/kyc', requireRole(1), asyncHandler(async (req, res) => {
             : a.kyc_status === 'pending' ? '<span class="badge badge-warning">Pending</span>'
             : a.kyc_status === 'verified' ? '<span class="badge badge-green">Verified</span>'
             : '<span class="badge badge-red">Rejected</span>';
-          const selfieHtml = a.selfie_url
-            ? `<a href="${a.selfie_url}" target="_blank"><img src="${a.selfie_url}" style="width:50px;height:50px;border-radius:50%;object-fit:cover;border:2px solid var(--border)" alt="selfie"></a>`
+          const imgModal = (url, label) => url ? `
+            <div style="display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer" onclick="document.getElementById('lightbox-${a.account_id}-${label}').style.display='flex'">
+              <img src="${url}" style="width:80px;height:80px;border-radius:${label==='selfie'?'50%':'6px'};object-fit:cover;border:2px solid var(--border);transition:transform .15s" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+              <span style="font-size:10px;color:var(--text-muted)">&#x1F50D; View</span>
+            </div>
+            <div id="lightbox-${a.account_id}-${label}" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:9999;align-items:center;justify-content:center" onclick="this.style.display='none'">
+              <div style="position:relative;max-width:90vw;max-height:90vh" onclick="event.stopPropagation()">
+                <img src="${url}" style="max-width:90vw;max-height:85vh;border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,0.5)">
+                <div style="position:absolute;top:-32px;right:0;color:#fff;font-size:13px;cursor:pointer" onclick="document.getElementById('lightbox-${a.account_id}-${label}').style.display='none'">&#x2716; Close</div>
+              </div>
+            </div>`
             : '<span style="color:var(--text-muted)">--</span>';
-          const birthHtml = a.birth_cert_url
-            ? `<a href="${a.birth_cert_url}" target="_blank"><img src="${a.birth_cert_url}" style="width:50px;height:50px;border-radius:4px;object-fit:cover;border:2px solid var(--border)" alt="birth cert"></a>`
-            : '<span style="color:var(--text-muted)">--</span>';
+          const selfieHtml = imgModal(a.selfie_url, 'selfie');
+          const birthHtml = imgModal(a.birth_cert_url, 'birth');
           const submittedDate = a.kyc_submitted_at ? new Date(a.kyc_submitted_at).toLocaleDateString() : '-';
           const rejectReason = a.kyc_rejected_reason ? `<div style="font-size:11px;color:var(--danger);margin-top:4px">${a.kyc_rejected_reason}</div>` : '';
 

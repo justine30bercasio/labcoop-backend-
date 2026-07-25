@@ -615,10 +615,17 @@ for (const sub of ['shop', 'board', 'profiles', 'kyc', 'registration', 'parents'
 // /uploads/shop/abc.jpg → {R2_PUBLIC_URL}/shop/abc.jpg (302 redirect)
 // Public dirs (shop, board, parents): no auth.  Sensitive dirs (kyc, profiles, registration): auth required.
 const PUBLIC_UPLOAD_DIRS = ['shop', 'board', 'parents', 'profiles'];
+
+// Helper: check if request has a valid admin session
+function hasAdminSession(req) {
+  return req.session && req.session.adminId;
+}
+
 app.use('/uploads/:dir/:file', (req, res, next) => {
   const { dir, file } = req.params;
   if (!dir || !file) return next();
-  if (!PUBLIC_UPLOAD_DIRS.includes(dir)) {
+  // KYC images need auth — allow if admin session or JWT token present
+  if (!PUBLIC_UPLOAD_DIRS.includes(dir) && !hasAdminSession(req)) {
     return authMiddleware(req, res, () => redirectToR2(req, res, dir, file));
   }
   redirectToR2(req, res, dir, file);

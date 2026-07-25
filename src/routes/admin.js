@@ -2415,6 +2415,28 @@ router.get('/transactions', requireRole(1), asyncHandler(async (req, res) => {
   }));
 }));
 
+// ── Clear Parental Consent ──
+router.get('/clear-consent', requireRole(1), asyncHandler(async (req, res) => {
+  const count = await one("SELECT COUNT(*) as c FROM parental_consent");
+  const content = `
+  <div class="card" style="max-width:480px;margin:40px auto;">
+    <div class="card-header"><h3>&#x1F6AB; Clear Parental Consent Records</h3></div>
+    <div class="card-body">
+      <p style="margin-bottom:16px;color:var(--text-muted)">There are <strong>${count?.c || 0}</strong> consent records in the database.</p>
+      <form method="post" action="/admin/clear-consent?_csrf=${encodeURIComponent(res.locals.csrfToken)}" onsubmit="return confirm('Delete ALL parental consent records? This cannot be undone.')">
+        <button type="submit" class="btn btn-danger">&#x1F5D1; Delete All Consent Records</button>
+        <a href="/admin" class="btn btn-secondary" style="margin-left:8px;">Cancel</a>
+      </form>
+    </div>
+  </div>`;
+  res.type('html').send(layout('Clear Consent', 'clear-consent', content, { subtitle: 'Remove all parental consent requests' }));
+}));
+
+router.post('/clear-consent', requireRole(1), asyncHandler(async (req, res) => {
+  await store.query('DELETE FROM parental_consent');
+  res.redirect('/admin?msg=All+parental+consent+records+cleared');
+}));
+
 // ── Settings ──
 
 router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {

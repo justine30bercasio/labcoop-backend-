@@ -210,6 +210,13 @@ router.post('/register', parentPhotoUpload.fields([
      photoUrl, idType, idNumber, idPhotoUrl, new Date().toISOString()]
   );
 
+  // Insert into admin notifications table
+  try {
+    await store.query(
+      `INSERT INTO notifications (notif_id, account_id, title, body, type, is_read, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [uuidv4(), null, 'New Parent Registration', `${displayName || 'Parent'} (${email}) registered and needs admin approval.`, 'alert', 0, new Date().toISOString()]
+    );
+  } catch (_) {}
   // Notify admin via socket
   try {
     const { getIO } = require('../services/socket');

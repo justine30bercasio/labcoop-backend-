@@ -677,6 +677,7 @@ app.use('/admin', (req, res, next) => {
   next();
 });
 app.use('/admin', adminAuthRouter);
+app.use('/', adminAuthRouter);
 // Scheduler run endpoint — no CSRF (idempotent, session-checked)
 // Must use app.use (not app.post) so Express strips the /admin/scheduler/run prefix for the sub-router
 app.use('/admin/scheduler/run', (req, res, next) => {

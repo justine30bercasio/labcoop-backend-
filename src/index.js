@@ -402,71 +402,10 @@ const loginLimiter = rateLimit({
 
 
 
-app.get('/', (req, res) => {
-  res.json({
-    name: 'LabCoop API',
-    version: '1.0.3',
-    build: Date.now(),
-    endpoints: {
-      health: 'GET /api/health',
-      accounts: {
-        get: 'GET /api/accounts/:accountId',
-        update: 'PUT /api/accounts/:accountId',
-        deposit: 'PUT /api/accounts/:accountId/deposit',
-      },
-      goals: {
-        list: 'GET /api/accounts/:accountId/goals',
-        create: 'POST /api/goals',
-        update: 'PUT /api/goals/:goalId',
-        delete: 'DELETE /api/goals/:goalId',
-      },
-      badges: {
-        list: 'GET /api/accounts/:accountId/badges',
-        checkUnlocks: 'POST /api/badges/check-unlocks',
-      },
-      transactions: {
-        list: 'GET /api/accounts/:accountId/transactions',
-        create: 'POST /api/transactions',
-        statement: 'GET /api/accounts/:accountId/statement',
-      },
-      microbanking: {
-        loanProducts: 'GET /api/loan-products',
-        savingsProducts: 'GET /api/savings-products',
-        loans: 'GET /api/loans?account_id=xxx',
-        apply: 'POST /api/loans/apply',
-        approve: 'PUT /api/loans/:loanId/approve',
-        disburse: 'PUT /api/loans/:loanId/disburse',
-        pay: 'POST /api/loans/:loanId/pay',
-        payments: 'GET /api/loans/:loanId/payments',
-        preview: 'POST /api/loans/preview',
-        summary: 'GET /api/accounts/:accountId/summary',
-      },
-      excel: {
-        upload: 'POST /api/excel/upload',
-        uploadAndSeed: 'POST /api/excel/upload-and-seed',
-        template: 'GET /api/excel/template',
-        exportAll: 'GET /api/excel/export/all',
-      },
-      admin: 'GET /admin',
-      coop: {
-        goals: 'GET /api/coop/goals',
-        create: 'POST /api/coop/goals',
-        contribute: 'POST /api/coop/goals/:goalId/contribute',
-      },
-      games: {
-        list: 'GET /api/games',
-        categories: 'GET /api/games/categories',
-        detail: 'GET /api/games/:id',
-      },
-      quiz: {
-        list: 'GET /api/quiz/questions?difficulty=easy|medium|hard|expert',
-        create: 'POST /api/quiz/questions',
-        update: 'PUT /api/quiz/questions/:id',
-        delete: 'DELETE /api/quiz/questions/:id',
-      },
-    },
-  });
-});
+const FLUTTER_WEB_PATH = path.join(__dirname, '..', '..', 'build', 'web');
+
+// Serve Flutter web app static files
+app.use(express.static(FLUTTER_WEB_PATH));
 
 // ── Public API endpoints (no auth) — mounted at both /api and /api/v1 ──
 const publicRouter = express.Router();
@@ -747,31 +686,31 @@ app.use('/admin', csrfProtection, microbankRouter);
 app.use('/admin', csrfProtection, advancedRouter);
 app.use('/admin', csrfProtection, bankReportRouter);
 
-// ── Custom 404 — Lottie animation directly embedded ──
-const lottieData = JSON.stringify(require('../public/404.json'));
+// ── SPA fallback: serve Flutter web index.html for non-API routes ──
+app.use((req, res, next) => {
+  if (res.headersSent) return next();
+  if (req.method !== 'GET') return next();
+  if (req.path.startsWith('/api/') || req.path.startsWith('/admin/') || req.path.startsWith('/legal/') || req.path.startsWith('/uploads/') || req.path.startsWith('/reset-database')) return next();
+  const indexPath = path.join(FLUTTER_WEB_PATH, 'index.html');
+  if (require('fs').existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    next();
+  }
+});
+
+// ── Custom 404 for API routes only ──
 app.use((req, res, next) => {
   if (res.headersSent) return next();
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ message: 'Not found' });
   }
-  res.status(404).type('html').send(`<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>404</title>
-<script src="https://cdn.jsdelivr.net/npm/lottie-web@5.12.2/build/player/lottie.min.js"></script>
-<style>
-* { margin:0; padding:0; box-sizing:border-box; }
-body { background:#0d2818; min-height:100vh; display:flex; align-items:center; justify-content:center; }
-#lottie-box { width:100vw; height:100vh; }
-</style></head>
-<body>
-<div id="lottie-box"></div>
-<script>
-try {
-  lottie.loadAnimation({container:document.getElementById('lottie-box'),animationData:${lottieData},loop:true,autoplay:true});
-} catch(e){}
-</script>
-</body></html>`);
+  const indexPath = path.join(FLUTTER_WEB_PATH, 'index.html');
+  if (require('fs').existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(404).type('text').send('Not found');
+  }
 });
 
 if (typeof sentryErrorHandler === 'function') {

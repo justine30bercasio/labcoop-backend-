@@ -83,7 +83,7 @@ router.post('/send-otp', asyncHandler(async (req, res) => {
   otpStore.set(normalEmail, { otp, expires: now + 600000, attempts: (existing?.attempts || 0) + 1 });
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    console.warn('RESEND_API_KEY not set — OTP would be:', otp);
+    console.warn('RESEND_API_KEY not set - OTP would be sent via email');
   } else {
     try {
       const resend = new Resend(apiKey);
@@ -322,14 +322,14 @@ router.post('/forgot-pin', asyncHandler(async (req, res) => {
           <p style="color:#999;font-size:11px">MySYS Cooperative</p>
         </div>`,
       });
-      console.log('[parent/forgot-pin] OTP sent to', normalEmail);
+      console.log('[parent/forgot-pin] OTP sent to parent email');
     } catch (e) {
-      const errMsg = 'Resend error: ' + e.message + (e.response?.body ? ' | ' + JSON.stringify(e.response.body) : '');
+      const errMsg = 'Resend error: ' + e.message;
       console.error('[parent/forgot-pin]', errMsg);
       return res.status(502).json({ message: 'Failed to send OTP. Try again later.' });
     }
   } else {
-    console.warn('[parent/forgot-pin] RESEND_API_KEY not set. OTP would be:', otp);
+    console.warn('[parent/forgot-pin] RESEND_API_KEY not set. OTP would be sent via email');
   }
   res.json({ message: 'If this email is registered, an OTP has been sent.' });
 }));

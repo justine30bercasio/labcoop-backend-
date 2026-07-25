@@ -4801,7 +4801,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
     if (existing) existing.remove();
     var toast = document.createElement('div');
     toast.className = 'tx-toast ' + type;
-    toast.innerHTML = '<span class="tt-icon">' + (type === 'success' ? '&#x2705;' : '&#x274C;') + '</span>' + msg;
+    toast.innerHTML = '<span class="tt-icon">' + (type === 'success' ? '&#x2705;' : '&#x274C;') + '</span>' + h(msg);
     document.body.appendChild(toast);
     setTimeout(function() { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(function() { toast.remove(); }, 300); }, 3000);
   }
@@ -9396,14 +9396,14 @@ router.get('/scheduler', asyncHandler(async (req, res) => {
       const data = await resp.json();
       if (data.errors && data.errors.length) {
         result.className = 'error';
-        result.innerHTML = '<strong>Completed with errors:</strong> ' + data.errors.join('; ');
+        result.textContent = 'Completed with errors: ' + data.errors.join('; ');
       } else {
         result.className = 'success';
-        result.innerHTML = '<strong>Success!</strong> Interest: ' + (data.interest || 0) + ' | Orders: ' + (data.standingOrders || 0) + ' | Accrual: ' + (data.accrual ? 'Yes' : 'No') + ' | Backup: ' + (data.backup ? 'Yes' : 'No') + ' | Duration: ' + (data.duration_ms || 'N/A') + 'ms';
+        result.textContent = 'Success! Interest: ' + (data.interest || 0) + ' | Orders: ' + (data.standingOrders || 0) + ' | Accrual: ' + (data.accrual ? 'Yes' : 'No') + ' | Backup: ' + (data.backup ? 'Yes' : 'No') + ' | Duration: ' + (data.duration_ms || 'N/A') + 'ms';
       }
     } catch(e) {
       result.className = 'error';
-      result.innerHTML = 'Request failed: ' + e.message;
+      result.textContent = 'Request failed: ' + e.message;
     } finally {
       btn.disabled = false; btn.innerHTML = '<i class="fas fa-play"></i> Run All Jobs Now';
       setTimeout(() => { result.style.display = 'none'; }, 10000);

@@ -23,9 +23,7 @@ router.post('/tick', asyncHandler(async (req, res) => {
 
   if (!isValid) {
     logger.warn('[SchedulerTick] Invalid QStash signature', { url, bodyLen: body.length, hasSig: !!signature });
-    if (process.env.NODE_ENV === 'production') {
-      return res.status(401).json({ error: 'Invalid Upstash signature' });
-    }
+    return res.status(401).json({ error: 'Invalid Upstash signature' });
   }
 
   const startTime = Date.now();

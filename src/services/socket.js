@@ -5,7 +5,7 @@ let io = null;
 
 function initSocket(httpServer, sessionMiddleware) {
   io = new Server(httpServer, {
-    cors: { origin: '*', methods: ['GET', 'POST'] },
+    cors: { origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : ['http://localhost:3000', 'https://labcoop-backend.onrender.com'], methods: ['GET', 'POST'] },
     transports: ['websocket', 'polling'],
   });
 
@@ -27,7 +27,7 @@ function initSocket(httpServer, sessionMiddleware) {
     if (token) {
       try {
         const jwt = require('jsonwebtoken');
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
         if (decoded.parentId) {
           socket.data.role = 'parent';
           socket.data.parentId = decoded.parentId;

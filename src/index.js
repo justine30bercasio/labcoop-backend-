@@ -368,6 +368,10 @@ let sessionStore;
 if (isPostgres) {
   const pgSession = require('connect-pg-simple')(session);
   sessionStore = new pgSession({ pool: store.getPool(), tableName: 'session', createTableIfMissing: true });
+} else {
+  const SqliteStore = require('better-sqlite3-session-store')(session);
+  const db = store.getDb();
+  sessionStore = new SqliteStore({ client: db, expired: { clear: true, intervalMs: 900000 } });
 }
 const sessionConfig = {
   secret: SESSION_SECRET,

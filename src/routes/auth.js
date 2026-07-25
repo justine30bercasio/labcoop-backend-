@@ -17,6 +17,15 @@ const JWT_SECRET = process.env.JWT_SECRET;
 const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY_DAYS = 7;
 
+// Rate limiter for registration: 5 attempts per 15 minutes per IP
+const regLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { message: 'Too many registration attempts. Try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Rate limiter for change-pin: 10 attempts per 15 minutes per account
 const changePinLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -192,7 +201,7 @@ router.post('/login', pinLoginLimiter, asyncHandler(async (req, res) => {
   });
 }));
 
-router.post('/register', regUpload.fields([
+router.post('/register', regLimiter, regUpload.fields([
   { name: 'photo_2x2', maxCount: 1 },
   { name: 'birth_cert', maxCount: 1 },
   { name: 'id_photo', maxCount: 1 },
@@ -545,14 +554,14 @@ router.post('/forgot-pin-send-otp', asyncHandler(async (req, res) => {
           <p style="color:#999;font-size:11px">MySYS Cooperative</p>
         </div>`,
       });
-      console.log('[child/forgot-pin] OTP sent to parent:', parentEmail);
+      console.log('[child/forgot-pin] OTP sent to parent email');
     } catch (e) {
       const errMsg = 'Resend error: ' + e.message + (e.response?.body ? ' | ' + JSON.stringify(e.response.body) : '');
       console.error('[child/forgot-pin]', errMsg);
       return res.status(502).json({ message: 'Failed to send OTP. Try again later.' });
     }
   } else {
-    console.warn('[child/forgot-pin] RESEND_API_KEY not set. OTP:', otp);
+    console.warn('[child/forgot-pin] RESEND_API_KEY not set. OTP would be sent via email');
   }
   res.json({ message: 'If the account exists, an OTP has been sent to the parent email.', accountId: account.account_id });
 }));

@@ -2814,7 +2814,7 @@ router.get('/reset-data/confirm', requireRole(4), asyncHandler(async (req, res) 
       <p style="margin-bottom:16px">Enter your password to confirm this destructive action.</p>
       ${err ? `<p style="color:var(--danger);font-weight:600;margin-bottom:12px">&#x274C; ${err}</p>` : ''}
       <form method="post" action="/admin/reset-data?_csrf=${encodeURIComponent(res.locals.csrfToken)}" style="display:flex;flex-direction:column;gap:12px">
-        <div class="field"><label>Your Password</label><input type="password" name="password" required></div>
+        <div class="field"><label>Your Password</label><div style="position:relative"><input type="password" name="password" id="resetPw" required style="padding-right:36px"><span onclick="var i=document.getElementById('resetPw');i.type=i.type==='password'?'text':'password'" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#94a3b8;font-size:16px">&#x1F441;</span></div></div>
         <div style="display:flex;gap:8px">
           <button type="submit" class="btn btn-danger">&#x26A0;&#xFE0F; Confirm Reset All Data</button>
           <a href="/admin/settings" class="btn btn-cancel">Cancel</a>
@@ -4383,7 +4383,10 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
         </div>
         <div style="margin-bottom:16px">
           <label style="font-weight:600;display:block;margin-bottom:4px;font-size:12px">Your password <span style="color:#dc2626">*</span></label>
-          <input type="password" name="password" id="voidPassword" required style="width:100%;padding:10px;border:2px solid var(--border);border-radius:8px;font-size:13px;outline:none;box-sizing:border-box" placeholder="Enter your admin password to authorize">
+          <div style="position:relative">
+            <input type="password" name="password" id="voidPassword" required style="width:100%;padding:10px 36px 10px 10px;border:2px solid var(--border);border-radius:8px;font-size:13px;outline:none;box-sizing:border-box" placeholder="Enter your admin password to authorize">
+            <span onclick="var i=document.getElementById('voidPassword');i.type=i.type==='password'?'text':'password'" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#94a3b8;font-size:16px">&#x1F441;</span>
+          </div>
         </div>
         <div style="display:flex;gap:8px">
           <button type="submit" class="btn btn-danger" style="flex:1;padding:12px;font-size:14px;font-weight:700"><i class="fas fa-ban"></i> Confirm Void</button>
@@ -7000,7 +7003,7 @@ router.get('/reset-database/confirm', requireRole(4), asyncHandler(async (req, r
       <p style="margin-bottom:16px">Enter your password to confirm this destructive action.</p>
       ${err ? `<p style="color:var(--danger);font-weight:600;margin-bottom:12px">&#x274C; ${err}</p>` : ''}
       <form method="post" action="/admin/reset-database?_csrf=${encodeURIComponent(res.locals.csrfToken)}" style="display:flex;flex-direction:column;gap:12px">
-        <div class="field"><label>Your Password</label><input type="password" name="password" required></div>
+        <div class="field"><label>Your Password</label><div style="position:relative"><input type="password" name="password" id="resetDbPw" required style="padding-right:36px"><span onclick="var i=document.getElementById('resetDbPw');i.type=i.type==='password'?'text':'password'" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#94a3b8;font-size:16px">&#x1F441;</span></div></div>
         <div style="display:flex;gap:8px">
           <button type="submit" class="btn btn-danger">&#x26A0;&#xFE0F; Confirm Reset Database</button>
           <a href="/admin/settings" class="btn btn-cancel">Cancel</a>
@@ -7715,7 +7718,7 @@ router.get('/users', requireRole(4), asyncHandler(async (req, res) => {
       <div class="field"><label>Username</label><input type="text" name="username" placeholder="e.g. teller1" required></div>
       <div class="field"><label>Display Name</label><input type="text" name="display_name" placeholder="e.g. Juan Dela Cruz"></div>
       <div class="field"><label>Email</label><input type="email" name="email" placeholder="e.g. teller@labcoop.app"></div>
-      <div class="field"><label>Password</label><input type="text" name="password" placeholder="Min 4 characters" required minlength="4"></div>
+      <div class="field"><label>Password</label><div style="position:relative"><input type="password" name="password" id="createAdminPw" placeholder="Min 4 characters" required minlength="4" style="padding-right:36px"><span onclick="var i=document.getElementById('createAdminPw');i.type=i.type==='password'?'text':'password'" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#94a3b8;font-size:16px">&#x1F441;</span></div></div>
       <div class="field"><label>Role</label>
         <select name="role">
           <option value="teller">Teller (counter ops)</option>
@@ -7767,7 +7770,7 @@ router.get('/users/edit/:id', requireRole(4), asyncHandler(async (req, res) => {
         <div class="field"><label>Username</label><input type="text" name="username" value="${h(u.username)}" required></div>
         <div class="field"><label>Display Name</label><input type="text" name="display_name" value="${h(u.display_name || '')}"></div>
         <div class="field"><label>Email</label><input type="email" name="email" value="${h(u.email || '')}"></div>
-        <div class="field"><label>New Password (leave blank to keep)</label><input type="password" name="password" placeholder="Min 4 characters" minlength="4"></div>
+        <div class="field"><label>New Password (leave blank to keep)</label><div style="position:relative"><input type="password" name="password" id="editAdminPw" placeholder="Min 4 characters" minlength="4" style="padding-right:36px"><span onclick="var i=document.getElementById('editAdminPw');i.type=i.type==='password'?'text':'password'" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#94a3b8;font-size:16px">&#x1F441;</span></div></div>
         <div class="field"><label>Role</label>
           <select name="role">
             ${roleOptions.map(r => `<option value="${h(r)}" ${u.role === r ? 'selected' : ''}>${h(r.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()))}</option>`).join('')}

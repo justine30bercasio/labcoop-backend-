@@ -17,47 +17,320 @@ function loginPage(error) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LabCoop — Admin Login</title>
+<title>LabCoop — Sign In</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0d2818; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
-.bg-pattern { position:fixed; top:0; left:0; right:0; bottom:0; background:radial-gradient(ellipse at 20% 50%, rgba(46,125,50,0.15) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(46,125,50,0.08) 0%, transparent 50%); pointer-events:none; z-index:0; }
-.card { position:relative; z-index:1; background:#fff; border-radius:20px; padding:40px; width:100%; max-width:400px; box-shadow:0 8px 40px rgba(0,0,0,0.3); animation:fadeUp 0.5s ease; }
-@keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
-.logo { width:52px; height:52px; background:linear-gradient(135deg,#2E7D32,#1B5E20); border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:26px; margin-bottom:16px; }
-h1 { font-size:20px; font-weight:700; color:#1e293b; }
-.sub { color:#64748b; font-size:13px; margin-bottom:24px; }
-label { display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:4px; margin-top:14px; }
-input[type=text], input[type=password] { width:100%; padding:10px 14px; border:2px solid #e2e8f0; border-radius:10px; font-size:14px; outline:none; transition:border-color 0.2s; font-family:inherit; }
-input:focus { border-color:#2E7D32; }
-.btn { width:100%; padding:12px; background:#2E7D32; color:#fff; border:none; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; margin-top:20px; transition:background 0.2s; }
-.btn:hover { background:#1B5E20; }
-.error { background:#fce4ec; color:#b71c1c; padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:16px; }
-.success { background:#e8f5e9; color:#1B5E20; padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:16px; }
-.alt-link { text-align:center; margin-top:16px; font-size:13px; }
-.alt-link a { color:#2E7D32; text-decoration:none; font-weight:500; }
-.alt-link a:hover { text-decoration:underline; }
-.footer { text-align:center; margin-top:20px; font-size:11px; color:#64748b; }
+html, body { height:100%; }
+body {
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:linear-gradient(135deg,#0a1f12 0%,#0d2818 30%,#0f3320 60%,#0a1f12 100%);
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+  position:relative;
+  overflow:hidden;
+}
+/* Abstract background shapes */
+.bg-shape-1 {
+  position:fixed;
+  top:-20%; left:-10%;
+  width:60vw; height:60vw;
+  background:radial-gradient(circle,rgba(46,125,50,0.12) 0%,transparent 70%);
+  border-radius:50%;
+  pointer-events:none;
+  z-index:0;
+}
+.bg-shape-2 {
+  position:fixed;
+  bottom:-15%; right:-10%;
+  width:50vw; height:50vw;
+  background:radial-gradient(circle,rgba(27,94,32,0.15) 0%,transparent 70%);
+  border-radius:50%;
+  pointer-events:none;
+  z-index:0;
+}
+.bg-shape-3 {
+  position:fixed;
+  top:40%; left:50%;
+  transform:translate(-50%,-50%);
+  width:40vw; height:40vw;
+  background:radial-gradient(circle,rgba(56,142,60,0.06) 0%,transparent 70%);
+  border-radius:50%;
+  filter:blur(60px);
+  pointer-events:none;
+  z-index:0;
+}
+.card {
+  position:relative;
+  z-index:1;
+  background:#fff;
+  border-radius:24px;
+  padding:44px 40px 36px;
+  width:100%;
+  max-width:420px;
+  box-shadow:0 25px 80px rgba(0,0,0,0.35),0 8px 24px rgba(0,0,0,0.15);
+  animation:fadeUp 0.6s cubic-bezier(0.16,1,0.3,1);
+}
+@keyframes fadeUp { from{opacity:0;transform:translateY(24px) scale(0.98)} to{opacity:1;transform:translateY(0) scale(1)} }
+/* Logo */
+.logo-wrap {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  margin-bottom:20px;
+}
+.logo {
+  width:56px; height:56px;
+  background:linear-gradient(135deg,#2E7D32,#1B5E20);
+  border-radius:16px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:28px;
+  box-shadow:0 4px 12px rgba(46,125,50,0.3);
+}
+/* Typography */
+h1 {
+  font-size:24px;
+  font-weight:800;
+  color:#0f172a;
+  text-align:center;
+  letter-spacing:-0.3px;
+}
+.sub {
+  color:#64748b;
+  font-size:14px;
+  text-align:center;
+  margin-top:6px;
+  margin-bottom:28px;
+  line-height:1.5;
+}
+/* Messages */
+.error {
+  background:#fef2f2;
+  color:#b91c1c;
+  padding:12px 16px;
+  border-radius:12px;
+  font-size:13px;
+  margin-bottom:20px;
+  border-left:3px solid #ef4444;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.error::before { content:'\\F33F'; font-family:'bootstrap-icons'; font-size:16px; }
+.success {
+  background:#f0fdf4;
+  color:#166534;
+  padding:12px 16px;
+  border-radius:12px;
+  font-size:13px;
+  margin-bottom:20px;
+  border-left:3px solid #22c55e;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.success::before { content:'\\F26E'; font-family:'bootstrap-icons'; font-size:16px; color:#22c55e; }
+/* Form fields */
+.field-group {
+  position:relative;
+  margin-bottom:18px;
+}
+.field-group .icon {
+  position:absolute;
+  left:14px;
+  top:50%;
+  transform:translateY(-50%);
+  color:#94a3b8;
+  font-size:18px;
+  transition:color 0.25s;
+  pointer-events:none;
+  z-index:2;
+}
+.field-group input {
+  width:100%;
+  padding:14px 14px 14px 46px;
+  border:2px solid #e2e8f0;
+  border-radius:14px;
+  font-size:14px;
+  font-family:inherit;
+  outline:none;
+  transition:border-color 0.25s, box-shadow 0.25s;
+  background:#f8fafc;
+  color:#0f172a;
+}
+.field-group input::placeholder { color:#94a3b8; font-weight:400; }
+.field-group input:focus {
+  border-color:#2E7D32;
+  box-shadow:0 0 0 4px rgba(46,125,50,0.1);
+  background:#fff;
+}
+.field-group input:focus + .icon,
+.field-group input:focus ~ .icon { color:#2E7D32; }
+.field-group .toggle-pw {
+  position:absolute;
+  right:14px;
+  top:50%;
+  transform:translateY(-50%);
+  color:#94a3b8;
+  font-size:18px;
+  cursor:pointer;
+  transition:color 0.2s;
+  z-index:2;
+  background:transparent;
+  border:none;
+  padding:4px;
+}
+.field-group .toggle-pw:hover { color:#475569; }
+/* Button */
+.btn {
+  width:100%;
+  padding:14px;
+  background:linear-gradient(135deg,#2E7D32,#1B5E20);
+  color:#fff;
+  border:none;
+  border-radius:14px;
+  font-size:15px;
+  font-weight:600;
+  font-family:inherit;
+  cursor:pointer;
+  margin-top:6px;
+  transition:transform 0.15s, box-shadow 0.2s, opacity 0.2s;
+  box-shadow:0 4px 16px rgba(46,125,50,0.3);
+  position:relative;
+  overflow:hidden;
+}
+.btn:hover {
+  transform:translateY(-1px);
+  box-shadow:0 6px 24px rgba(46,125,50,0.4);
+}
+.btn:active {
+  transform:translateY(0);
+  box-shadow:0 2px 8px rgba(46,125,50,0.3);
+}
+.btn:disabled {
+  opacity:0.7;
+  cursor:not-allowed;
+  transform:none;
+}
+.btn .spinner {
+  display:none;
+  width:20px; height:20px;
+  border:2.5px solid rgba(255,255,255,0.3);
+  border-top-color:#fff;
+  border-radius:50%;
+  animation:spin 0.6s linear infinite;
+  position:absolute;
+  left:50%; top:50%;
+  margin:-10px 0 0 -10px;
+}
+.btn.loading { color:transparent; }
+.btn.loading .spinner { display:block; }
+@keyframes spin { to{transform:rotate(360deg)} }
+/* Links */
+.alt-link {
+  text-align:center;
+  margin-top:18px;
+}
+.alt-link a {
+  color:#64748b;
+  text-decoration:none;
+  font-size:13px;
+  font-weight:500;
+  transition:color 0.2s;
+}
+.alt-link a:hover { color:#2E7D32; }
+/* Security indicator */
+.security-badge {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  margin-top:22px;
+  padding-top:18px;
+  border-top:1px solid #f1f5f9;
+  font-size:12px;
+  color:#94a3b8;
+}
+.security-badge .lock { font-size:14px; }
+/* Footer */
+.footer {
+  text-align:center;
+  margin-top:18px;
+  font-size:11px;
+  color:#94a3b8;
+  line-height:1.7;
+}
+.footer a { color:#94a3b8; text-decoration:none; }
+.footer a:hover { color:#64748b; }
+/* Responsive */
+@media (max-width:480px) {
+  .card { padding:32px 24px 28px; border-radius:20px; }
+  h1 { font-size:21px; }
+  .bg-shape-1, .bg-shape-2, .bg-shape-3 { opacity:0.5; }
+}
 </style>
 </head>
 <body>
-<div class="bg-pattern"></div>
+<div class="bg-shape-1"></div>
+<div class="bg-shape-2"></div>
+<div class="bg-shape-3"></div>
 <div class="card">
-  <div class="logo">&#x1F3E6;</div>
-  <h1>LabCoop Admin</h1>
-  <p class="sub">${error && error.startsWith('otp:') ? 'Check your email for the OTP code' : 'Sign in to manage your application'}</p>
+  <div class="logo-wrap"><div class="logo">&#x1F3E6;</div></div>
+  <h1>LabCoop</h1>
+  <p class="sub">${error && error.startsWith('otp:') ? 'Check your email for the OTP code' : 'Sign in to access the Labcoop Bank Management.'}</p>
   ${error && !error.startsWith('otp:') ? `<div class="error">${error}</div>` : ''}
   ${error && error.startsWith('otp:') ? `<div class="success">OTP sent to ${error.slice(4)}</div>` : ''}
-  <form method="post" action="/admin/login">
-    <label for="username">Username</label>
-    <input type="text" id="username" name="username" placeholder="admin" required autocomplete="username">
-    <label for="password">Password</label>
-    <input type="password" id="password" name="password" placeholder="Enter your password" required autocomplete="current-password">
-    <button type="submit" class="btn">Sign In</button>
+  <form method="post" action="/admin/login" id="loginForm">
+    <div class="field-group">
+      <input type="text" id="username" name="username" placeholder="Username" required autocomplete="username">
+      <i class="bi bi-person icon"></i>
+    </div>
+    <div class="field-group">
+      <input type="password" id="password" name="password" placeholder="Password" required autocomplete="current-password">
+      <i class="bi bi-lock icon"></i>
+      <button type="button" class="toggle-pw" id="togglePw" aria-label="Toggle password visibility"><i class="bi bi-eye"></i></button>
+    </div>
+    <button type="submit" class="btn" id="signInBtn">Sign In<div class="spinner"></div></button>
   </form>
   <div class="alt-link"><a href="/admin/login/forgot">Forgot password?</a></div>
-  <div class="footer">LabCoop v1.0 &middot; Admin Dashboard</div>
+  <div class="security-badge"><span class="lock">&#x1F512;</span> Secure Login &middot; Your connection is encrypted</div>
+  <div class="footer">
+    LabCoop &copy; 2026<br>
+    Developed By CodeCraft Software Sulotion<br>
+    Version 1.0
+  </div>
 </div>
+<script>
+(function() {
+  // Password toggle
+  var pwInput = document.getElementById('password');
+  var toggleBtn = document.getElementById('togglePw');
+  if (pwInput && toggleBtn) {
+    toggleBtn.addEventListener('click', function() {
+      var isPw = pwInput.getAttribute('type') === 'password';
+      pwInput.setAttribute('type', isPw ? 'text' : 'password');
+      this.querySelector('i').className = isPw ? 'bi bi-eye-slash' : 'bi bi-eye';
+    });
+  }
+  // Loading state on submit
+  var form = document.getElementById('loginForm');
+  var btn = document.getElementById('signInBtn');
+  if (form && btn) {
+    form.addEventListener('submit', function() {
+      btn.classList.add('loading');
+      btn.disabled = true;
+    });
+  }
+})();
+</script>
 </body>
 </html>`;
 }
@@ -69,38 +342,223 @@ function forgotPage(msg) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LabCoop — Forgot Password</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0d2818; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
-.bg-pattern { position:fixed; top:0; left:0; right:0; bottom:0; background:radial-gradient(ellipse at 20% 50%, rgba(46,125,50,0.15) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(46,125,50,0.08) 0%, transparent 50%); pointer-events:none; z-index:0; }
-.card { position:relative; z-index:1; background:#fff; border-radius:20px; padding:40px; width:100%; max-width:400px; box-shadow:0 8px 40px rgba(0,0,0,0.3); animation:fadeUp 0.5s ease; }
-@keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
-h1 { font-size:20px; font-weight:700; color:#1e293b; margin-bottom:4px; }
-.sub { color:#64748b; font-size:13px; margin-bottom:24px; }
-label { display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:4px; margin-top:14px; }
-input[type=email], input[type=text] { width:100%; padding:10px 14px; border:2px solid #e2e8f0; border-radius:10px; font-size:14px; outline:none; font-family:inherit; transition:border-color 0.2s; }
-input:focus { border-color:#2E7D32; }
-.btn { width:100%; padding:12px; background:#2E7D32; color:#fff; border:none; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; margin-top:20px; transition:background 0.2s; }
-.btn:hover { background:#1B5E20; }
-.msg { background:#e8f5e9; color:#1B5E20; padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:16px; }
-.error { background:#fce4ec; color:#b71c1c; padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:16px; }
-.alt-link { text-align:center; margin-top:16px; font-size:13px; }
-.alt-link a { color:#2E7D32; text-decoration:none; font-weight:500; }
-.alt-link a:hover { text-decoration:underline; }
+html, body { height:100%; }
+body {
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:linear-gradient(135deg,#0a1f12 0%,#0d2818 30%,#0f3320 60%,#0a1f12 100%);
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+  position:relative;
+  overflow:hidden;
+}
+.bg-shape-1 {
+  position:fixed;
+  top:-20%; left:-10%;
+  width:60vw; height:60vw;
+  background:radial-gradient(circle,rgba(46,125,50,0.12) 0%,transparent 70%);
+  border-radius:50%;
+  pointer-events:none;
+  z-index:0;
+}
+.bg-shape-2 {
+  position:fixed;
+  bottom:-15%; right:-10%;
+  width:50vw; height:50vw;
+  background:radial-gradient(circle,rgba(27,94,32,0.15) 0%,transparent 70%);
+  border-radius:50%;
+  pointer-events:none;
+  z-index:0;
+}
+.bg-shape-3 {
+  position:fixed;
+  top:40%; left:50%;
+  transform:translate(-50%,-50%);
+  width:40vw; height:40vw;
+  background:radial-gradient(circle,rgba(56,142,60,0.06) 0%,transparent 70%);
+  border-radius:50%;
+  filter:blur(60px);
+  pointer-events:none;
+  z-index:0;
+}
+.card {
+  position:relative;
+  z-index:1;
+  background:#fff;
+  border-radius:24px;
+  padding:44px 40px 36px;
+  width:100%;
+  max-width:420px;
+  box-shadow:0 25px 80px rgba(0,0,0,0.35),0 8px 24px rgba(0,0,0,0.15);
+  animation:fadeUp 0.6s cubic-bezier(0.16,1,0.3,1);
+}
+@keyframes fadeUp { from{opacity:0;transform:translateY(24px) scale(0.98)} to{opacity:1;transform:translateY(0) scale(1)} }
+.logo-wrap {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  margin-bottom:20px;
+}
+.logo {
+  width:56px; height:56px;
+  background:linear-gradient(135deg,#2E7D32,#1B5E20);
+  border-radius:16px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:28px;
+  box-shadow:0 4px 12px rgba(46,125,50,0.3);
+}
+h1 {
+  font-size:24px;
+  font-weight:800;
+  color:#0f172a;
+  text-align:center;
+  letter-spacing:-0.3px;
+}
+.sub {
+  color:#64748b;
+  font-size:14px;
+  text-align:center;
+  margin-top:6px;
+  margin-bottom:28px;
+  line-height:1.5;
+}
+.msg {
+  background:#f0fdf4;
+  color:#166534;
+  padding:12px 16px;
+  border-radius:12px;
+  font-size:13px;
+  margin-bottom:20px;
+  border-left:3px solid #22c55e;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.msg::before { content:'\\F26E'; font-family:'bootstrap-icons'; font-size:16px; color:#22c55e; }
+.error {
+  background:#fef2f2;
+  color:#b91c1c;
+  padding:12px 16px;
+  border-radius:12px;
+  font-size:13px;
+  margin-bottom:20px;
+  border-left:3px solid #ef4444;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.error::before { content:'\\F33F'; font-family:'bootstrap-icons'; font-size:16px; }
+.field-group {
+  position:relative;
+  margin-bottom:18px;
+}
+.field-group .icon {
+  position:absolute;
+  left:14px;
+  top:50%;
+  transform:translateY(-50%);
+  color:#94a3b8;
+  font-size:18px;
+  pointer-events:none;
+  z-index:2;
+}
+.field-group input {
+  width:100%;
+  padding:14px 14px 14px 46px;
+  border:2px solid #e2e8f0;
+  border-radius:14px;
+  font-size:14px;
+  font-family:inherit;
+  outline:none;
+  transition:border-color 0.25s, box-shadow 0.25s;
+  background:#f8fafc;
+  color:#0f172a;
+}
+.field-group input::placeholder { color:#94a3b8; font-weight:400; }
+.field-group input:focus {
+  border-color:#2E7D32;
+  box-shadow:0 0 0 4px rgba(46,125,50,0.1);
+  background:#fff;
+}
+.btn {
+  width:100%;
+  padding:14px;
+  background:linear-gradient(135deg,#2E7D32,#1B5E20);
+  color:#fff;
+  border:none;
+  border-radius:14px;
+  font-size:15px;
+  font-weight:600;
+  font-family:inherit;
+  cursor:pointer;
+  margin-top:6px;
+  transition:transform 0.15s, box-shadow 0.2s;
+  box-shadow:0 4px 16px rgba(46,125,50,0.3);
+  position:relative;
+  overflow:hidden;
+}
+.btn:hover {
+  transform:translateY(-1px);
+  box-shadow:0 6px 24px rgba(46,125,50,0.4);
+}
+.btn:active {
+  transform:translateY(0);
+  box-shadow:0 2px 8px rgba(46,125,50,0.3);
+}
+.alt-link {
+  text-align:center;
+  margin-top:20px;
+}
+.alt-link a {
+  color:#64748b;
+  text-decoration:none;
+  font-size:13px;
+  font-weight:500;
+  transition:color 0.2s;
+}
+.alt-link a:hover { color:#2E7D32; }
+.footer {
+  text-align:center;
+  margin-top:18px;
+  font-size:11px;
+  color:#94a3b8;
+  line-height:1.7;
+}
+@media (max-width:480px) {
+  .card { padding:32px 24px 28px; border-radius:20px; }
+  h1 { font-size:21px; }
+  .bg-shape-1, .bg-shape-2, .bg-shape-3 { opacity:0.5; }
+}
 </style>
 </head>
 <body>
-<div class="bg-pattern"></div>
+<div class="bg-shape-1"></div>
+<div class="bg-shape-2"></div>
+<div class="bg-shape-3"></div>
 <div class="card">
-  <h1>&#x1F511; Reset Password</h1>
+  <div class="logo-wrap"><div class="logo">&#x1F511;</div></div>
+  <h1>Reset Password</h1>
   <p class="sub">Enter your username to receive a reset OTP at the registered email</p>
   ${msg ? (msg.startsWith('err:') ? `<div class="error">${msg.slice(4)}</div>` : `<div class="msg">${msg}</div>`) : ''}
   <form method="post" action="/admin/login/forgot">
-    <label for="email">Username</label>
-    <input type="text" id="email" name="email" placeholder="admin" required>
+    <div class="field-group">
+      <input type="text" id="email" name="email" placeholder="Username" required>
+      <i class="bi bi-person icon"></i>
+    </div>
     <button type="submit" class="btn">Send OTP</button>
   </form>
-  <div class="alt-link"><a href="/admin/login">Back to Sign In</a></div>
+  <div class="alt-link"><a href="/admin/login"><i class="bi bi-arrow-left"></i> Back to Sign In</a></div>
+  <div class="footer">LabCoop &copy; 2026 &middot; Version 1.0</div>
 </div>
 </body>
 </html>`;
@@ -113,37 +571,209 @@ function showOtpPage(email) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LabCoop — Verify OTP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0d2818; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
-.bg-pattern { position:fixed; top:0; left:0; right:0; bottom:0; background:radial-gradient(ellipse at 20% 50%, rgba(46,125,50,0.15) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(46,125,50,0.08) 0%, transparent 50%); pointer-events:none; z-index:0; }
-.card { position:relative; z-index:1; background:#fff; border-radius:20px; padding:40px; width:100%; max-width:400px; box-shadow:0 8px 40px rgba(0,0,0,0.3); animation:fadeUp 0.5s ease; text-align:center; }
-@keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
-h1 { font-size:20px; font-weight:700; color:#1e293b; margin-bottom:4px; }
-.sub { color:#64748b; font-size:13px; margin-bottom:24px; }
-label { display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:4px; }
-input[type=text] { width:100%; padding:12px; border:2px solid #e2e8f0; border-radius:10px; font-size:26px; text-align:center; letter-spacing:10px; outline:none; font-family:monospace; transition:border-color 0.2s; }
-input:focus { border-color:#2E7D32; }
-.btn { width:100%; padding:12px; background:#2E7D32; color:#fff; border:none; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; margin-top:20px; transition:background 0.2s; }
-.btn:hover { background:#1B5E20; }
-.alt-link { margin-top:16px; font-size:13px; }
-.alt-link a { color:#2E7D32; text-decoration:none; font-weight:500; }
-.alt-link a:hover { text-decoration:underline; }
+html, body { height:100%; }
+body {
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:linear-gradient(135deg,#0a1f12 0%,#0d2818 30%,#0f3320 60%,#0a1f12 100%);
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+  position:relative;
+  overflow:hidden;
+}
+.bg-shape-1 {
+  position:fixed;
+  top:-20%; left:-10%;
+  width:60vw; height:60vw;
+  background:radial-gradient(circle,rgba(46,125,50,0.12) 0%,transparent 70%);
+  border-radius:50%;
+  pointer-events:none;
+  z-index:0;
+}
+.bg-shape-2 {
+  position:fixed;
+  bottom:-15%; right:-10%;
+  width:50vw; height:50vw;
+  background:radial-gradient(circle,rgba(27,94,32,0.15) 0%,transparent 70%);
+  border-radius:50%;
+  pointer-events:none;
+  z-index:0;
+}
+.bg-shape-3 {
+  position:fixed;
+  top:40%; left:50%;
+  transform:translate(-50%,-50%);
+  width:40vw; height:40vw;
+  background:radial-gradient(circle,rgba(56,142,60,0.06) 0%,transparent 70%);
+  border-radius:50%;
+  filter:blur(60px);
+  pointer-events:none;
+  z-index:0;
+}
+.card {
+  position:relative;
+  z-index:1;
+  background:#fff;
+  border-radius:24px;
+  padding:44px 40px 36px;
+  width:100%;
+  max-width:420px;
+  box-shadow:0 25px 80px rgba(0,0,0,0.35),0 8px 24px rgba(0,0,0,0.15);
+  animation:fadeUp 0.6s cubic-bezier(0.16,1,0.3,1);
+  text-align:center;
+}
+@keyframes fadeUp { from{opacity:0;transform:translateY(24px) scale(0.98)} to{opacity:1;transform:translateY(0) scale(1)} }
+.logo-wrap {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  margin-bottom:20px;
+}
+.logo {
+  width:56px; height:56px;
+  background:linear-gradient(135deg,#2E7D32,#1B5E20);
+  border-radius:16px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:28px;
+  box-shadow:0 4px 12px rgba(46,125,50,0.3);
+}
+h1 {
+  font-size:24px;
+  font-weight:800;
+  color:#0f172a;
+  text-align:center;
+  letter-spacing:-0.3px;
+}
+.sub {
+  color:#64748b;
+  font-size:14px;
+  text-align:center;
+  margin-top:6px;
+  margin-bottom:28px;
+  line-height:1.5;
+  word-break:break-word;
+}
+.field-group {
+  position:relative;
+  margin-bottom:18px;
+}
+.field-group input {
+  width:100%;
+  padding:16px 20px;
+  border:2px solid #e2e8f0;
+  border-radius:14px;
+  font-size:28px;
+  text-align:center;
+  letter-spacing:12px;
+  outline:none;
+  font-family:'Inter',monospace;
+  transition:border-color 0.25s, box-shadow 0.25s;
+  background:#f8fafc;
+  color:#0f172a;
+  font-weight:700;
+}
+.field-group input::placeholder { color:#cbd5e1; font-weight:400; font-size:20px; }
+.field-group input:focus {
+  border-color:#2E7D32;
+  box-shadow:0 0 0 4px rgba(46,125,50,0.1);
+  background:#fff;
+}
+.btn {
+  width:100%;
+  padding:14px;
+  background:linear-gradient(135deg,#2E7D32,#1B5E20);
+  color:#fff;
+  border:none;
+  border-radius:14px;
+  font-size:15px;
+  font-weight:600;
+  font-family:inherit;
+  cursor:pointer;
+  margin-top:6px;
+  transition:transform 0.15s, box-shadow 0.2s;
+  box-shadow:0 4px 16px rgba(46,125,50,0.3);
+  position:relative;
+  overflow:hidden;
+}
+.btn:hover {
+  transform:translateY(-1px);
+  box-shadow:0 6px 24px rgba(46,125,50,0.4);
+}
+.btn:active {
+  transform:translateY(0);
+  box-shadow:0 2px 8px rgba(46,125,50,0.3);
+}
+.btn:disabled {
+  opacity:0.7;
+  cursor:not-allowed;
+  transform:none;
+}
+.alt-link {
+  text-align:center;
+  margin-top:20px;
+}
+.alt-link a {
+  color:#64748b;
+  text-decoration:none;
+  font-size:13px;
+  font-weight:500;
+  transition:color 0.2s;
+}
+.alt-link a:hover { color:#2E7D32; }
+.footer {
+  text-align:center;
+  margin-top:18px;
+  font-size:11px;
+  color:#94a3b8;
+  line-height:1.7;
+}
+@media (max-width:480px) {
+  .card { padding:32px 24px 28px; border-radius:20px; }
+  h1 { font-size:21px; }
+  .bg-shape-1, .bg-shape-2, .bg-shape-3 { opacity:0.5; }
+}
 </style>
 </head>
 <body>
-<div class="bg-pattern"></div>
+<div class="bg-shape-1"></div>
+<div class="bg-shape-2"></div>
+<div class="bg-shape-3"></div>
 <div class="card">
-  <h1>&#x1F4E7; Verify OTP</h1>
+  <div class="logo-wrap"><div class="logo">&#x1F4E7;</div></div>
+  <h1>Verify OTP</h1>
   <p class="sub">Enter the 6-digit code sent to ${email}</p>
-  <form method="post" action="/admin/login/verify-otp">
+  <form method="post" action="/admin/login/verify-otp" id="otpForm">
     <input type="hidden" name="email" value="${email}">
-    <label for="otp">OTP Code</label>
-    <input type="text" id="otp" name="otp" placeholder="000000" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code" required>
-    <button type="submit" class="btn">Verify &amp; Sign In</button>
+    <div class="field-group">
+      <input type="text" id="otp" name="otp" placeholder="000000" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code" required>
+    </div>
+    <button type="submit" class="btn" id="otpBtn">Verify &amp; Sign In</button>
   </form>
-  <div class="alt-link"><a href="/admin/login">Back to Sign In</a></div>
+  <div class="alt-link"><a href="/admin/login"><i class="bi bi-arrow-left"></i> Back to Sign In</a></div>
+  <div class="footer">LabCoop &copy; 2026 &middot; Version 1.0</div>
 </div>
+<script>
+(function() {
+  var form = document.getElementById('otpForm');
+  var btn = document.getElementById('otpBtn');
+  if (form && btn) {
+    form.addEventListener('submit', function() {
+      btn.disabled = true;
+      btn.textContent = 'Verifying...';
+    });
+  }
+})();
+</script>
 </body>
 </html>`;
 }

@@ -2872,6 +2872,12 @@ router.post('/reset-data', requireRole(4), asyncHandler(async (req, res) => {
     'parents',
     'refresh_tokens',
     'coin_transactions',
+    'support_messages',
+    'daily_spins',
+    'audit_log',
+    'typing_status',
+    'jobs',
+    'backup_logs',
     'accounts',
   ];
   if (isPostgres) {
@@ -7061,6 +7067,12 @@ router.post('/reset-database', requireRole(4), asyncHandler(async (req, res) => 
     'parents',
     'refresh_tokens',
     'coin_transactions',
+    'support_messages',
+    'daily_spins',
+    'audit_log',
+    'typing_status',
+    'jobs',
+    'backup_logs',
     'accounts',
   ];
   if (isPostgres) {

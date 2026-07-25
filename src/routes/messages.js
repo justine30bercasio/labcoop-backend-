@@ -11,6 +11,11 @@ router.post('/send', asyncHandler(async (req, res) => {
   if (!content || !content.trim()) return res.status(400).json({ message: 'Content is required' });
   if (!accountId) return res.status(400).json({ message: 'Account ID is required' });
 
+  const linkResult = await store.query('SELECT * FROM parent_child_links WHERE child_account_id = $1 AND status = $2', [accountId, 'active']);
+  if (linkResult.rows.length === 0) {
+    return res.status(400).json({ message: 'No parent linked to your account. Please link a parent in Settings first.' });
+  }
+
   const msgId = uuidv4();
   const child = await store.query('SELECT child_name FROM accounts WHERE account_id = $1', [accountId]);
   const name = senderName || (child.rows[0]?.child_name || 'Child');

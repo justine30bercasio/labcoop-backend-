@@ -33,6 +33,11 @@ router.post('/submit', authMiddleware, (req, res) => {
       const account = acctResult.rows[0];
       if (!account) return res.status(404).json({ message: 'Account not found' });
 
+      const linkResult = await store.query('SELECT * FROM parent_child_links WHERE child_account_id = $1 AND status = $2', [accountId, 'active']);
+      if (linkResult.rows.length === 0) {
+        return res.status(400).json({ message: 'No parent linked to your account. Please link a parent in Settings first before submitting KYC.' });
+      }
+
       const updates = { kyc_status: 'pending', kyc_submitted_at: new Date().toISOString() };
       if (req.files?.selfie?.[0]) {
         const f = req.files.selfie[0];

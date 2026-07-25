@@ -550,7 +550,7 @@ app.post('/reset-database', async (req, res) => {
     await log(req, 'reset_database_denied', 'system', null, { reason: 'insufficient_role', role: req.session.adminRole });
     return res.status(403).json({ success: false, message: 'Only super_admin can reset the database' });
   }
-  const tables = ['parents','parent_child_links','parent_limits','parental_consent','parent_notifications','account_deletion_requests','gl_entries','loan_payments','transactions','badges','goal_jars','loans','withdrawal_requests','standing_orders','savings_applications','coop_contributions','coop_goals','accounts','support_messages','daily_spins'];
+  const tables = ['parents','parent_child_links','parent_limits','parental_consent','parent_notifications','account_deletion_requests','gl_entries','loan_payments','transactions','badges','goal_jars','loans','withdrawal_requests','standing_orders','savings_applications','coop_contributions','coop_goals','accounts','support_messages','daily_spins','audit_log','typing_status','jobs','backup_logs','fcm_tokens','notifications','coin_transactions','refresh_tokens'];
   try {
     if (isPostgres) {
       const existing = await store.query(

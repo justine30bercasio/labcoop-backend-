@@ -402,8 +402,8 @@ const loginLimiter = rateLimit({
 
 
 
-// Redirect root to admin login page
-app.get('/', (req, res) => res.redirect('/admin'));
+// Redirect root to login page
+app.get('/', (req, res) => res.redirect('/login'));
 
 const FLUTTER_WEB_PATH = path.join(__dirname, '..', '..', 'build', 'web');
 

@@ -34,7 +34,7 @@ Authorization: Bearer <jwt_token>
 ```
 
 Token expiry: **24 hours**. Refresh via `POST /api/auth/refresh`.
-
+ 
 ---
 
 ## 1. Authentication & Accounts

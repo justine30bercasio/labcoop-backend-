@@ -55,6 +55,9 @@ class _ParentLoginPageState extends State<ParentLoginPage>
   bool _loading = false;
   bool _registered = false;
   String? _error;
+  bool _pinObscure1 = true;
+  bool _pinObscure2 = true;
+  bool _pinObscureLogin = true;
 
   @override
   void initState() {
@@ -516,7 +519,12 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                               hint: 'Create 6-digit PIN',
                               icon: Icons.lock_outline,
                               isPin: true,
+                              obscureText: _pinObscure1,
                               textInputAction: TextInputAction.next,
+                              suffix: IconButton(
+                                icon: Icon(_pinObscure1 ? Icons.visibility_off : Icons.visibility, color: Colors.white.withValues(alpha: 0.6), size: 20),
+                                onPressed: () => setState(() => _pinObscure1 = !_pinObscure1),
+                              ),
                             ),
                             const SizedBox(height: 12),
                             _buildField(
@@ -525,7 +533,12 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                               hint: 'Confirm 6-digit PIN',
                               icon: Icons.lock_outline,
                               isPin: true,
+                              obscureText: _pinObscure2,
                               textInputAction: TextInputAction.done,
+                              suffix: IconButton(
+                                icon: Icon(_pinObscure2 ? Icons.visibility_off : Icons.visibility, color: Colors.white.withValues(alpha: 0.6), size: 20),
+                                onPressed: () => setState(() => _pinObscure2 = !_pinObscure2),
+                              ),
                             ),
                           ],
 
@@ -538,6 +551,7 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                               hint: '6-digit PIN',
                               icon: Icons.lock_outline,
                               isPin: true,
+                              obscureText: _pinObscureLogin,
                               textInputAction: TextInputAction.done,
                               onChanged: (v) {
                                 setState(() { _error = null; });
@@ -549,6 +563,10 @@ class _ParentLoginPageState extends State<ParentLoginPage>
                               onSubmitted: (_) {
                                 if (_pinController.text.length == 6 && !_loading) _doLogin();
                               },
+                              suffix: IconButton(
+                                icon: Icon(_pinObscureLogin ? Icons.visibility_off : Icons.visibility, color: Colors.white.withValues(alpha: 0.6), size: 20),
+                                onPressed: () => setState(() => _pinObscureLogin = !_pinObscureLogin),
+                              ),
                             ),
                           ],
 
@@ -625,7 +643,7 @@ class _ParentLoginPageState extends State<ParentLoginPage>
     return TextField(
       focusNode: focusNode,
       controller: controller,
-      obscureText: obscureText || isPin,
+      obscureText: obscureText,
       obscuringCharacter: '\u25CF',
       style: textStyle ?? TextStyle(
         color: Colors.white,

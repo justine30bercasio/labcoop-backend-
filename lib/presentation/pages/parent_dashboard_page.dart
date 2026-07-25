@@ -36,6 +36,9 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
   String? _linkError;
   String? _linkSuccess;
 
+  bool _pinObscureOld = true;
+  bool _pinObscureNew = true;
+
   final _limitControllers = <String, TextEditingController>{};
   final _limitApprovalTypes = <String, String>{};
 
@@ -1369,7 +1372,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
             const SizedBox(height: 12),
             TextField(
               controller: oldPinCtrl,
-              obscureText: true,
+              obscureText: _pinObscureOld,
               maxLength: 6,
               keyboardType: TextInputType.number,
               style: TextStyle(color: _teal, fontSize: 14),
@@ -1378,12 +1381,16 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                 labelStyle: TextStyle(color: Colors.grey.shade500),
                 filled: true, fillColor: Colors.grey.shade50,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+                suffixIcon: IconButton(
+                  icon: Icon(_pinObscureOld ? Icons.visibility_off : Icons.visibility, color: Colors.grey.shade500, size: 20),
+                  onPressed: () => setState(() => _pinObscureOld = !_pinObscureOld),
+                ),
               ),
             ),
             const SizedBox(height: 8),
             TextField(
               controller: newPinCtrl,
-              obscureText: true,
+              obscureText: _pinObscureNew,
               maxLength: 6,
               keyboardType: TextInputType.number,
               style: TextStyle(color: _teal, fontSize: 14),
@@ -1392,6 +1399,10 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                 labelStyle: TextStyle(color: Colors.grey.shade500),
                 filled: true, fillColor: Colors.grey.shade50,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+                suffixIcon: IconButton(
+                  icon: Icon(_pinObscureNew ? Icons.visibility_off : Icons.visibility, color: Colors.grey.shade500, size: 20),
+                  onPressed: () => setState(() => _pinObscureNew = !_pinObscureNew),
+                ),
               ),
             ),
             if (_pinMsg != null)

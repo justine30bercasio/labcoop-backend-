@@ -26,6 +26,7 @@ class _LoginPageState extends State<LoginPage>
   final _pinFocus = FocusNode();
   bool _loading = false;
   String? _error;
+  bool _pinObscure = true;
 
   @override
   void initState() {
@@ -129,6 +130,7 @@ class _LoginPageState extends State<LoginPage>
     required String hint,
     required IconData icon,
     required FocusNode focus,
+    Widget? suffix,
   }) {
     final isFocused = focus.hasFocus;
     return InputDecoration(
@@ -138,6 +140,7 @@ class _LoginPageState extends State<LoginPage>
         fontSize: 14,
       ),
       prefixIcon: Icon(icon, color: isFocused ? Colors.white : Colors.white.withValues(alpha: 0.5), size: 20),
+      suffixIcon: suffix,
       filled: true,
       fillColor: isFocused
           ? Colors.white.withValues(alpha: 0.2)
@@ -268,7 +271,7 @@ class _LoginPageState extends State<LoginPage>
                           TextField(
                             focusNode: _pinFocus,
                             controller: _pinController,
-                            obscureText: true,
+                            obscureText: _pinObscure,
                             obscuringCharacter: '●',
                             style: const TextStyle(color: Colors.white, fontSize: 20, letterSpacing: 8),
                             cursorColor: AppTheme.accentAmber,
@@ -290,6 +293,14 @@ class _LoginPageState extends State<LoginPage>
                               hint: '6-digit PIN',
                               icon: Icons.lock_outline,
                               focus: _pinFocus,
+                              suffix: IconButton(
+                                icon: Icon(
+                                  _pinObscure ? Icons.visibility_off : Icons.visibility,
+                                  color: Colors.white.withValues(alpha: 0.6),
+                                  size: 20,
+                                ),
+                                onPressed: () => setState(() => _pinObscure = !_pinObscure),
+                              ),
                             ),
                           ),
 

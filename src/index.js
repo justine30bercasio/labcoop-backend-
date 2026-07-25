@@ -402,6 +402,9 @@ const loginLimiter = rateLimit({
 
 
 
+// Redirect root to admin login page
+app.get('/', (req, res) => res.redirect('/admin'));
+
 const FLUTTER_WEB_PATH = path.join(__dirname, '..', '..', 'build', 'web');
 
 // Serve Flutter web app static files

@@ -8,14 +8,17 @@ const { asyncHandler } = require('../async-handler');
 const notifs = require('../services/notifications');
 const fileStorage = require('../services/file-storage');
 
+const KYC_ALLOWED_MIME = ['image/jpeg', 'image/png'];
+
 const kycUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const allowed = ['.jpg', '.jpeg', '.png'];
+    const allowedExts = ['.jpg', '.jpeg', '.png'];
     const ext = path.extname(file.originalname).toLowerCase();
-    if (allowed.includes(ext)) return cb(null, true);
-    cb(new Error('Only JPG and PNG files are allowed'));
+    if (!allowedExts.includes(ext)) return cb(new Error('Only JPG and PNG files are allowed'));
+    if (!KYC_ALLOWED_MIME.includes(file.mimetype)) return cb(new Error('Invalid file type. Only JPEG and PNG images are allowed.'));
+    cb(null, true);
   }
 });
 

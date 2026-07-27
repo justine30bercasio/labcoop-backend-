@@ -13,6 +13,8 @@ const otpStore = new Map();
 
 const router = express.Router();
 
+const { authMiddleware } = require('../middleware/auth');
+
 const JWT_SECRET = process.env.JWT_SECRET;
 const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY_DAYS = 7;
@@ -55,20 +57,25 @@ const pinLoginLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'application/pdf'];
+
 const regUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.pdf'];
+    const allowedExts = ['.jpg', '.jpeg', '.png', '.gif', '.pdf'];
     const ext = path.extname(file.originalname).toLowerCase();
-    if (!allowed.includes(ext)) {
+    if (!allowedExts.includes(ext)) {
       return cb(new Error('Only .jpg, .jpeg, .png, .gif, and .pdf files are allowed'));
+    }
+    if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+      return cb(new Error('Invalid file type. Only JPEG, PNG, GIF, and PDF are allowed.'));
     }
     cb(null, true);
   },
 });
 
-router.get('/accounts', asyncHandler(async (req, res) => {
+router.get('/accounts', authMiddleware, asyncHandler(async (req, res) => {
   const result = await store.query('SELECT account_id, member_id, child_name, created_at FROM accounts ORDER BY child_name ASC');
   res.json(result.rows || []);
 }));

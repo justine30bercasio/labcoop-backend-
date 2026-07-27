@@ -1,6 +1,7 @@
 const express = require('express');
 const { body, param, query, validationResult } = require('express-validator');
 const { v4: uuidv4 } = require('uuid');
+const rateLimit = require('express-rate-limit');
 const { store } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const { generateAmortizationSchedule } = require('../services/interest');
@@ -8,6 +9,16 @@ const { requireConsent } = require('../middleware/auth');
 const notifs = require('../services/notifications');
 
 const router = express.Router();
+
+// Rate limit withdrawal requests: 3 per hour per account
+const withdrawalLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  keyGenerator: (req) => req.body?.account_id || req.ip,
+  message: { message: 'Too many withdrawal requests. Maximum 3 per hour. Please wait and try again.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // ── Loan Amortization Schedule ──
 
@@ -153,6 +164,7 @@ router.delete('/standing-orders/:orderId',
 // ── Withdrawal Requests ──
 
 router.post('/withdrawals/request',
+  withdrawalLimiter,
   requireConsent,
   body('account_id').isString().notEmpty().trim(),
   body('amount').isFloat({ min: 1 }),

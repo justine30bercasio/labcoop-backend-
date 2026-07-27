@@ -9,13 +9,16 @@ const { asyncHandler } = require('../async-handler');
 const { requireConsent } = require('../middleware/auth');
 const fileStorage = require('../services/file-storage');
 
+const PROFILE_ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/gif'];
+
 const profileUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const allowed = ['.jpg', '.jpeg', '.png', '.gif'];
+    const allowedExts = ['.jpg', '.jpeg', '.png', '.gif'];
     const ext = path.extname(file.originalname).toLowerCase();
-    if (!allowed.includes(ext)) return cb(new Error('Only .jpg, .jpeg, .png, .gif allowed'));
+    if (!allowedExts.includes(ext)) return cb(new Error('Only .jpg, .jpeg, .png, .gif allowed'));
+    if (!PROFILE_ALLOWED_MIME.includes(file.mimetype)) return cb(new Error('Invalid file type. Only JPEG, PNG, and GIF images are allowed.'));
     cb(null, true);
   },
 });

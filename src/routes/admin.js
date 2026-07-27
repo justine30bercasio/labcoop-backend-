@@ -1418,7 +1418,7 @@ router.get('/member/:accountId', requireRole(1), asyncHandler(async (req, res) =
   </div>
 
   <script>
-  function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
   function showTxDetail(id,type,amount,sign,balBefore,balAfter,date,time,desc,refType,refId,goal,txid) {
     var typeLabel = type.replace(/_/g,' ');
     var colors = {deposit:'badge-green',withdrawal:'badge-red',loan_disbursement:'badge-amber',loan_payment:'badge-blue',interest_credit:'badge-purple',interest:'badge-purple',allocation:'badge-blue',td_placement:'badge-amber',td_maturity:'badge-blue',fee:'badge-amber',reward:'badge-green',purchase:'badge-gray'};
@@ -8225,7 +8225,7 @@ router.get('/pending-approvals', requireRole(2), asyncHandler(async (req, res) =
     `),
   ]);
 
-  const escHtml = (s) => { if (typeof s !== 'string') s = String(s ?? ''); return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+  const escHtml = (s) => { if (typeof s !== 'string') s = String(s ?? ''); return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); };
   const h = escHtml;
 
   let content = `<div style="max-width:1200px;margin:0 auto;padding:20px">
@@ -8520,11 +8520,11 @@ router.get('/parents', requireRole(3,4), asyncHandler(async (req, res) => {
               <div class="photo-grid">
                 <div class="photo-box">
                   <div class="photo-label">Photo</div>
-                  ${p.photo_url ? `<img src="${p.photo_url}" alt="Parent photo" onerror="this.parentElement.innerHTML='<div style=\\'padding:12px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#9ca3af\\'>No photo</div>'">` : '<div style="padding:40px 12px;background:#f3f4f6;border-radius:8px;text-align:center;font-size:12px;color:#9ca3af">No photo</div>'}
+                  ${p.photo_url ? `<img src="${h(p.photo_url)}" alt="Parent photo" onerror="this.alt='No photo';this.style.display='none';this.parentElement.className=this.parentElement.className;var fallback=document.createElement('div');fallback.style.cssText='padding:40px 12px;background:#f3f4f6;border-radius:8px;text-align:center;font-size:12px;color:#9ca3af';fallback.textContent='No photo';this.parentElement.insertBefore(fallback,this)">` : '<div style="padding:40px 12px;background:#f3f4f6;border-radius:8px;text-align:center;font-size:12px;color:#9ca3af">No photo</div>'}
                 </div>
                 <div class="photo-box">
                   <div class="photo-label">ID Photo</div>
-                  ${p.id_photo_url ? `<img src="${p.id_photo_url}" alt="ID photo" onerror="this.parentElement.innerHTML='<div style=\\'padding:12px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#9ca3af\\'>No photo</div>'">` : '<div style="padding:40px 12px;background:#f3f4f6;border-radius:8px;text-align:center;font-size:12px;color:#9ca3af">No ID photo</div>'}
+                  ${p.id_photo_url ? `<img src="${h(p.id_photo_url)}" alt="ID photo" onerror="this.alt='No photo';this.style.display='none';var fallback=document.createElement('div');fallback.style.cssText='padding:40px 12px;background:#f3f4f6;border-radius:8px;text-align:center;font-size:12px;color:#9ca3af';fallback.textContent='No ID photo';this.parentElement.insertBefore(fallback,this)">` : '<div style="padding:40px 12px;background:#f3f4f6;border-radius:8px;text-align:center;font-size:12px;color:#9ca3af">No ID photo</div>'}
                 </div>
               </div>
               <div class="id-details">
@@ -8579,7 +8579,7 @@ router.get('/parents', requireRole(3,4), asyncHandler(async (req, res) => {
           <div class="parent-card">
             <div class="parent-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.collapse-icon').classList.toggle('open')">
               <div class="avatar">
-                ${p.photo_url ? `<img src="${p.photo_url}" onerror="this.outerHTML='${initial}'">` : initial}
+                ${p.photo_url ? `<img src="${h(p.photo_url)}" alt="" onerror="this.outerHTML='<span style=\\'display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:#e5e7eb;color:#6b7280;font-weight:700;font-size:18px\\'>' + '${h(initial)}' + '</span>'">` : `<span style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:#e5e7eb;color:#6b7280;font-weight:700;font-size:18px">${h(initial)}</span>`}
               </div>
               <div class="parent-info">
                 <div class="name">${h(p.display_name || 'Unnamed')}</div>

@@ -323,13 +323,13 @@ app.use(helmet({
     },
   },
   frameguard: { action: 'deny' },
-  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  crossOriginResourcePolicy: { policy: 'same-origin' },
   referrerPolicy: { policy: 'same-origin' },
   strictTransportSecurity: process.env.NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
 }));
 app.set('trust proxy', 1);
 app.use(cors({
-  origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : ['http://localhost:3000', 'https://labcoop-backend.onrender.com'],
+  origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : ['http://localhost:3000', 'https://labcoop-backend.onrender.com', 'https://labcoop.online', 'https://www.labcoop.online'],
   credentials: true,
 }));
 app.use(express.json({ limit: '1mb', verify: (req, res, buf) => { req.rawBody = buf.toString(); } }));
@@ -423,20 +423,12 @@ publicRouter.get('/health', async (req, res) => {
     await store.query('SELECT 1');
     dbOk = true;
   } catch (_) {}
-  let firebaseStatus;
-  try {
-    const notifs = require('./services/notifications');
-    firebaseStatus = notifs.getDiagnostics();
-  } catch (_) {}
   res.json({
-    status: 'ok',
-    dbConnected: dbOk,
-    paymongoConfigured: !!process.env.PAYMONGO_SECRET,
-    firebase: firebaseStatus || { error: 'notifications module not loaded' },
+    status: dbOk ? 'ok' : 'degraded',
     timestamp: new Date().toISOString(),
   });
 });
-publicRouter.get('/test-paymongo-key', async (req, res) => {
+publicRouter.get('/test-paymongo-key', authMiddleware, async (req, res) => {
   const paymongo = require('./services/paymongo');
   if (!paymongo.isPaymongoConfigured()) {
     return res.json({ configured: false, message: 'PAYMONGO_SECRET not set' });

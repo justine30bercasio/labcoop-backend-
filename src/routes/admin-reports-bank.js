@@ -53,13 +53,15 @@ const BANK_REPORT_STYLE = `
   .br-member-panel .br-status-badge.inactive { background:#fef2f2; color:#dc2626; border:1px solid #fecaca; }
 
   /* ── SUMMARY CARDS ── */
-  .br-summary-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:24px; }
-  .br-summary-item { background:#fff; border:1px solid #dce8dc; border-radius:8px; padding:16px; text-align:center; }
+  .br-summary-grid { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:24px; }
+  .br-summary-item { flex:1; min-width:130px; background:#fff; border:1px solid #dce8dc; border-radius:8px; padding:16px; text-align:center; }
+  .br-summary-item .br-sum-icon { font-size:18px; margin-bottom:4px; }
   .br-summary-item .br-sum-label { font-size:8px; text-transform:uppercase; letter-spacing:0.4px; color:#888; font-weight:700; }
   .br-summary-item .br-sum-value { font-size:22px; font-weight:800; font-family:'Courier New',monospace; margin-top:3px; }
   .br-summary-item .br-sum-value.green { color:#16a34a; }
   .br-summary-item .br-sum-value.red { color:#dc2626; }
   .br-summary-item .br-sum-value.blue { color:#2563eb; }
+  .br-summary-item .br-sum-value.purple { color:#7c3aed; }
   .br-summary-item .br-sum-value.forest { color:var(--forest); }
 
   /* ── TRANSACTION TABLE ── */
@@ -190,14 +192,16 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
   let closingBalance = 0;
   let totalCredits = 0;
   let totalDebits = 0;
+  let totalFees = 0;
 
   if (memberId) {
     account = await one("SELECT * FROM accounts WHERE member_id = $1 AND is_active = 1", [memberId]);
     if (account) {
       // Get opening balance before the period
-      // Note: fee/penalty do NOT affect actual_balance (savings balance) — they are informational/income entries
+      // Includes fee/penalty as collected cash (same as deposits) so the statement
+      // shows total member cash position. Fees then act as debits in the running balance.
       const balBefore = await one(`
-        SELECT COALESCE(SUM(CASE WHEN type IN ('deposit','interest_credit','interest','loan_disbursement','td_maturity','reward') THEN amount
+        SELECT COALESCE(SUM(CASE WHEN type IN ('deposit','interest_credit','interest','loan_disbursement','td_maturity','reward','fee','penalty') THEN amount
           WHEN type IN ('withdrawal','loan_payment','auto_save','purchase','td_placement') THEN -amount ELSE 0 END), 0) as bal
         FROM transactions WHERE account_id = $1 AND DATE(created_at) < $2
       `, [account.account_id, fromDate]);
@@ -210,14 +214,34 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
         ORDER BY created_at ASC
       `, [account.account_id, fromDate, toDate]);
 
-      // Calculate totals — only include types that affect actual_balance (savings balance)
-      // fee/penalty do NOT deduct from savings — they are informational/income entries
+      // For new accounts opened during the period: include the total opening-day
+      // payment (fees + initial deposit) in the opening balance. Then fees show
+      // as debits during the period and the deposit is excluded (already in opening).
+      if (openingBalance === 0) {
+        const sameDayOpening = await one(`
+          SELECT COALESCE(SUM(CASE WHEN type IN ('fee','penalty') THEN amount
+                                   WHEN type IN ('deposit') THEN amount ELSE 0 END), 0) as bal
+          FROM transactions WHERE account_id = $1 AND DATE(created_at) = $2
+            AND type IN ('fee','penalty','deposit')
+        `, [account.account_id, fromDate]);
+        openingBalance += Number(sameDayOpening?.bal || 0);
+        // Remove opening-day deposits from period transactions to avoid double-count
+        const openingDateStr = fromDate;
+        transactions = transactions.filter(t =>
+          !(t.type === 'deposit' && (t.created_at || '').slice(0,10) === openingDateStr)
+        );
+      }
+
       totalCredits = transactions.filter(t =>
         ['deposit','interest_credit','interest'].includes(t.type)
       ).reduce((s, t) => s + Number(t.amount), 0);
 
       totalDebits = transactions.filter(t =>
-        ['withdrawal','loan_payment','auto_save','purchase','td_placement'].includes(t.type)
+        ['withdrawal','loan_payment','auto_save','purchase','td_placement','fee','penalty'].includes(t.type)
+      ).reduce((s, t) => s + Number(t.amount), 0);
+
+      totalFees = transactions.filter(t =>
+        ['fee','penalty'].includes(t.type)
       ).reduce((s, t) => s + Number(t.amount), 0);
 
       closingBalance = openingBalance + totalCredits - totalDebits;
@@ -225,34 +249,30 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
   }
 
   // Build transaction rows
-  // Credit = increases balance (deposit, interest)
-  // Debit = decreases balance (withdrawal, loan_payment, auto_save, purchase, td_placement)
-  // Fee/penalty shown as Debit but do NOT affect savings balance
+  // All types affect the running balance to show total member cash position.
+  // Opening balance includes fees collected before the period (including opening-day
+  // fees for new accounts). Fees are debits, deposits are credits.
   const CREDIT_TYPES = ['deposit','interest_credit','interest'];
-  const DEBIT_TYPES = ['withdrawal','loan_payment','auto_save','purchase','td_placement'];
-  const INFO_DEBIT_TYPES = ['fee','penalty'];
+  const DEBIT_TYPES = ['withdrawal','loan_payment','auto_save','purchase','td_placement','fee','penalty'];
   let runningBalance = openingBalance;
   const txRows = transactions.map(t => {
     const amt = Number(t.amount);
     const isCredit = CREDIT_TYPES.includes(t.type);
     const isDebit = DEBIT_TYPES.includes(t.type);
-    const isInfoDebit = INFO_DEBIT_TYPES.includes(t.type);
-    const affectsBalance = isCredit || isDebit;
     if (isCredit) runningBalance += amt;
     else if (isDebit) runningBalance -= amt;
     const typeLabel = t.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
     const dateStr = phDate(t.created_at);
     const refStr = t.trn_number ? 'TXN-' + (t.created_at || '').slice(0,4) + '-' + String(t.trn_number).padStart(6,'0') : t.reference_id ? (t.reference_id).slice(0, 8).toUpperCase() : '-';
-    const remark = isInfoDebit ? 'Informational (not in balance)' : '';
     return `<tr>
       <td class="mono">${dateStr}</td>
       <td class="mono">${refStr}</td>
       <td><span class="br-type-badge type-${t.type}">${typeLabel}</span></td>
       <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${h(t.description || typeLabel)}</td>
       <td class="right credit">${isCredit ? fmt(amt) : ''}</td>
-      <td class="right debit">${isDebit || isInfoDebit ? fmt(amt) : ''}</td>
-      <td class="right" style="font-weight:700">${affectsBalance ? fmt(runningBalance) : '—'}</td>
-      <td style="font-size:10px;color:var(--text-muted);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${remark}</td>
+      <td class="right debit">${isDebit ? fmt(amt) : ''}</td>
+      <td class="right" style="font-weight:700">${fmt(runningBalance)}</td>
+      <td style="font-size:10px;color:var(--text-muted);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></td>
     </tr>`;
   }).join('');
 
@@ -340,6 +360,12 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
             <div class="br-sum-label">Total Debits</div>
             <div class="br-sum-value red">−${fmt(totalDebits)}</div>
           </div>
+          ${totalFees > 0 ? `
+          <div class="br-summary-item purple">
+            <div class="br-sum-icon"><i class="fas fa-receipt"></i></div>
+            <div class="br-sum-label">Fees Collected</div>
+            <div class="br-sum-value purple">${fmt(totalFees)}</div>
+          </div>` : ''}
           <div class="br-summary-item gold">
             <div class="br-sum-icon"><i class="fas fa-landmark"></i></div>
             <div class="br-sum-label">Closing Balance</div>
@@ -408,22 +434,19 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
       const amt = Number(t.amount);
       const isCredit = CREDIT_TYPES.includes(t.type);
       const isDebit = DEBIT_TYPES.includes(t.type);
-      const isInfoDebit = INFO_DEBIT_TYPES.includes(t.type);
-      const affects = isCredit || isDebit;
       if (isCredit) rb += amt;
       else if (isDebit) rb -= amt;
       const typeLabel = t.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
       const refStr = t.trn_number ? 'TXN-' + (t.created_at || '').slice(0,4) + '-' + String(t.trn_number).padStart(6,'0') : t.reference_id ? t.reference_id.slice(0, 8).toUpperCase() : '-';
-      const remark = isInfoDebit ? 'Informational' : '';
       return `<tr>
         <td class="mono">${(t.created_at || '').slice(0, 10)}</td>
         <td class="mono">${refStr}</td>
         <td>${typeLabel}</td>
         <td style="max-width:130px">${h(t.description || typeLabel)}</td>
         <td class="right">${isCredit ? fmt(amt) : ''}</td>
-        <td class="right">${isDebit || isInfoDebit ? fmt(amt) : ''}</td>
-        <td class="right" style="font-weight:700">${affects ? fmt(rb) : '—'}</td>
-        <td style="font-size:6pt;color:#888">${remark}</td>
+        <td class="right">${isDebit ? fmt(amt) : ''}</td>
+        <td class="right" style="font-weight:700">${fmt(rb)}</td>
+        <td></td>
       </tr>`;
     }).join('');
 
@@ -434,6 +457,7 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
       .print-summary-strip { margin-bottom:1.5mm !important; gap:1mm !important; }
       .print-summary-item { padding:0.6mm 1mm !important; font-size:5.5pt !important; }
       .print-summary-item .val { font-size:7.5pt !important; }
+      .print-summary-item .val.purple { color:#7c3aed; }
       table { margin-bottom:1.5mm !important; }
       thead th { padding:0.8mm 1mm !important; font-size:6pt !important; }
       tbody td { padding:0.4mm 1mm !important; font-size:6.5pt !important; }
@@ -458,6 +482,7 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
       <div class="print-summary-item"><b>Opening Balance</b><div class="val blue">${fmt(openingBalance)}</div></div>
       <div class="print-summary-item"><b>Total Credits</b><div class="val green">+${fmt(totalCredits)}</div></div>
       <div class="print-summary-item"><b>Total Debits</b><div class="val red">−${fmt(totalDebits)}</div></div>
+      ${totalFees > 0 ? `<div class="print-summary-item"><b>Fees Collected</b><div class="val purple">${fmt(totalFees)}</div></div>` : ''}
       <div class="print-summary-item"><b>Closing Balance</b><div class="val gold">${fmt(closingBalance)}</div></div>
     </div>
     <table>
@@ -506,23 +531,20 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
   }
 
   if (req.query.format === 'csv' && account) {
-    let csv = 'Date,Ref#,Type,Description,Credit,Debit,Balance,Remarks\n';
+    let csv = 'Date,Ref#,Type,Description,Credit,Debit,Balance\n';
     let rb = openingBalance;
-    csv += `,,,Opening Balance,,,,${fmt(rb)}\n`;
+    csv += `,,,Opening Balance,,,${fmt(rb)}\n`;
     transactions.forEach(t => {
       const amt = Number(t.amount);
       const isCsvCredit = CREDIT_TYPES.includes(t.type);
       const isCsvDebit = DEBIT_TYPES.includes(t.type);
-      const isCsvInfoDebit = INFO_DEBIT_TYPES.includes(t.type);
-      const affectsBal = isCsvCredit || isCsvDebit;
       if (isCsvCredit) rb += amt;
       else if (isCsvDebit) rb -= amt;
       const typeLabel = t.type.replace(/_/g,' ');
       const csvRef = t.trn_number ? 'TXN-' + (t.created_at || '').slice(0,4) + '-' + String(t.trn_number).padStart(6,'0') : (t.reference_id || '-');
-      const csvRemark = isCsvInfoDebit ? 'Informational' : '';
-csv += `"${(t.created_at||'').slice(0,10)}","${csvRef}",${typeLabel},"${(t.description||'').replace(/"/g,'""')}",${isCsvCredit ? amt.toFixed(2) : ''},${isCsvDebit || isCsvInfoDebit ? amt.toFixed(2) : ''},${affectsBal ? fmt(rb) : '—'},"${csvRemark}"\n`;
+csv += `"${(t.created_at||'').slice(0,10)}","${csvRef}",${typeLabel},"${(t.description||'').replace(/"/g,'""')}",${isCsvCredit ? amt.toFixed(2) : ''},${isCsvDebit ? amt.toFixed(2) : ''},${fmt(rb)}\n`;
     });
-    csv += `,,,,${fmt(totalCredits)},${fmt(totalDebits)},${fmt(closingBalance)},\n`;
+    csv += `,,,TOTAL,,${fmt(totalCredits)},${fmt(totalDebits)},${fmt(closingBalance)}\n`;
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="bank_statement_' + (account.member_id || 'export') + '_' + fromDate + '_' + toDate + '.csv"');
     return res.send(csv);

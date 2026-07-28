@@ -747,4 +747,17 @@ return null;
       return (data['unread'] as int?) ?? 0;
     } on DioException { return 0; }
   }
+
+  static Future<Map<String, dynamic>?> getConfig() async {
+    try {
+      final resp = await Dio(BaseOptions(
+        baseUrl: AppConstants.baseUrl,
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+      )).get('/api/config');
+      return resp.data as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
 }

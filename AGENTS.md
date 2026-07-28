@@ -275,3 +275,18 @@ Flutter app data disappeared on logout/refresh because:
 - **Server verified**: `npm run dev` starts without re-seeding, 13 transactions returned via `/api/accounts/:id/transactions`, account balance confirmed.
 - **`labcoop_local.db`** kept as reference copy of clean import (delete and re-run `node _import.js` to refresh from production).
 - Flutter and backend branches unpushed.
+
+=====
+### Session 2026-07-28 — Feature Flag System (Kids Savings Mode)
+- **Feature flag system**: Admin can toggle banking features on/off via Settings page checkboxes (loans, term_deposits, share_capital, dividends, gcash, transfers, overdrafts, checks). All false = kids savings mode (deposit/withdraw/balance only).
+- **`GET /api/config` endpoint**: New `src/routes/config.js` — returns `{ feature_flags }` for Flutter to read at startup. Registered as public route (no auth) in `index.js`.
+- **Admin middleware**: `index.js` now reads `feature_flags` setting on every `/admin` request and calls `adminLib.setFeatureFlags()` — gates sidebar items dynamically.
+- **Settings checkboxes**: `/admin/settings` page now shows 8 feature flag toggles with save button. POST `/admin/feature-flags` saves to `settings` table and reloads via `adminLib.setFeatureFlags()`.
+- **Teller page gated**: Loan Pay tab, loan payment KPI, session summary loan row, activity filter, shortcuts bar F10, and quick-info active loans count all hidden when `loans` disabled.
+- **Sidebar gated**: Loans group, Term Deposits, Share Capital, Dividends, Overdrafts, Checks, Lending Groups, Loan Aging, Loan Portfolio — all hidden when disabled via existing `featureFlag` property in `admin-lib.js`.
+- **CRITICAL — Server-side feature gating**: `adminLib.requireFeature(flag)` middleware added to all loan mutation POST/PUT handlers (teller loan-pay, loan approve/reject/disburse, loan products, loan restructure, collateral, guarantors, credit scores, late fees). Returns 403 JSON or redirect when feature disabled. Also added to Flutter API routes in `loans.js` and `parent.js` (approve/reject loan) to prevent direct API bypass.
+- **Flutter `AppConfig`**: New `lib/core/config/app_config.dart` singleton reads `GET /api/config` at startup. Exposes `loansEnabled`, `gcashEnabled`, etc. Defaults `true` (safe offline fallback; server-side guards provide actual security boundary).
+- **Flutter banking page gated**: "Apply Loan", "My Loans", "Loan Products" chips hidden when `loansEnabled` is false.
+- **`adminLib` exports**: `getFeatureFlags()`, `requireFeature(flag)` middleware added.
+- `flutter analyze` — 0 errors, 0 warnings (16 info-level lint suggestions, all pre-existing). All backend files pass `node --check`.
+- Branches unpushed.

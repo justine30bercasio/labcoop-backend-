@@ -19,6 +19,7 @@ import 'statement_page.dart';
 import 'transaction_history_page.dart';
 import 'withdrawal_request_page.dart';
 import '../../core/helpers/number_helpers.dart';
+import '../../core/config/app_config.dart';
 import '../widgets/notification_bell.dart';
 import '../widgets/support_bell.dart';
 
@@ -526,15 +527,17 @@ class _BankingPageState extends State<BankingPage> {
             _ActionItem(Icons.article_outlined, 'Statement', AppTheme.xpPurple, () {
               Navigator.push(context, PageTransition.slideUp(StatementPage(accountId: widget.accountId)));
             }),
-            _ActionItem(Icons.request_page_outlined, 'Apply Loan', AppTheme.accentAmber, () {
-              Navigator.push(context, PageTransition.slideUp(const LoanApplyPage()));
-            }),
-            _ActionItem(Icons.account_balance_outlined, 'My Loans', AppTheme.waterBlue, () {
-              Navigator.push(context, PageTransition.slideUp(MyLoansPage(accountId: widget.accountId)));
-            }),
-            _ActionItem(Icons.store_outlined, 'Loan Products', AppTheme.coinGold, () {
-              Navigator.push(context, PageTransition.slideUp(const LoanProductsPage()));
-            }),
+            if (AppConfig().loansEnabled) ...[
+              _ActionItem(Icons.request_page_outlined, 'Apply Loan', AppTheme.accentAmber, () {
+                Navigator.push(context, PageTransition.slideUp(const LoanApplyPage()));
+              }),
+              _ActionItem(Icons.account_balance_outlined, 'My Loans', AppTheme.waterBlue, () {
+                Navigator.push(context, PageTransition.slideUp(MyLoansPage(accountId: widget.accountId)));
+              }),
+              _ActionItem(Icons.store_outlined, 'Loan Products', AppTheme.coinGold, () {
+                Navigator.push(context, PageTransition.slideUp(const LoanProductsPage()));
+              }),
+            ],
             _ActionItem(Icons.timer_outlined, 'Auto-Save', AppTheme.primaryGreen, () {
               Navigator.push(context, PageTransition.slideUp(AutoSavePage(accountId: widget.accountId)));
             }),

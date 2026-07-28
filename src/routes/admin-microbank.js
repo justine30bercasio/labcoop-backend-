@@ -8,6 +8,27 @@ const { asyncHandler } = require('../async-handler');
 const { layout, printLayout, phTime, phDate } = require('./admin-lib');
 const notifs = require('../services/notifications');
 const FCM_ENABLED = !!process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+const audit = require('../services/audit');
+const log = audit.log || (async () => {});
+
+async function sendAlertEmail(subject, bodyHtml) {
+  if (!process.env.RESEND_API_KEY) return;
+  try {
+    const admins = await store.query("SELECT email FROM admin_users WHERE role = 'super_admin' AND email != ''");
+    if (!admins.rows.length) return;
+    const { Resend } = require('resend');
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    const fromAddr = process.env.RESEND_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || 'onboarding@resend.dev';
+    const fromName = process.env.MAIL_FROM_NAME || 'LabCoop Security';
+    const from = fromName ? `${fromName} <${fromAddr}>` : fromAddr;
+    for (const admin of admins.rows) {
+      resend.emails.send({ from, to: admin.email, subject, html: bodyHtml })
+        .catch(e => console.error('[AlertEmail] Error sending to', admin.email, e.message));
+    }
+  } catch (e) {
+    console.error('[AlertEmail] Error:', e.message);
+  }
+}
 
 const _p = (...p) => p.length === 1 && Array.isArray(p[0]) ? p[0] : p;
 const sql = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows);
@@ -144,6 +165,19 @@ router.get('/teller-cash', requireRole(2), asyncHandler(async (req, res) => {
   const cashFunds = await sql(`SELECT tc.*, au.display_name as teller_name, b.name as branch_name
     FROM teller_cash tc LEFT JOIN admin_users au ON tc.teller_id = au.admin_id
     LEFT JOIN branches b ON tc.branch_id = b.branch_id ORDER BY tc.created_at DESC`);
+
+  // Fetch today's transaction totals per teller for open funds
+  const txTotals = {};
+  for (const f of cashFunds.filter(f => f.status === 'open')) {
+    const tx = await one(`SELECT
+      COALESCE(SUM(CASE WHEN type='deposit' THEN amount ELSE 0 END),0) as deposits,
+      COALESCE(SUM(CASE WHEN type='withdrawal' THEN amount ELSE 0 END),0) as withdrawals,
+      COALESCE(SUM(CASE WHEN type='loan_payment' THEN amount ELSE 0 END),0) as loan_payments,
+      COUNT(*) as tx_count
+      FROM transactions WHERE date(created_at) = $1`, [f.date || today]);
+    txTotals[f.cash_id] = tx;
+  }
+
   const openFunds = cashFunds.filter(f => f.status === 'open');
   const q = req.query;
   const toast = q.opened ? 'success:Cash fund opened.'
@@ -155,34 +189,64 @@ router.get('/teller-cash', requireRole(2), asyncHandler(async (req, res) => {
   .tf-balanced { color:#16a34a;font-weight:700 }
   .tf-short { color:#dc2626;font-weight:700 }
   .tf-over { color:#f59e0b;font-weight:700 }
+  .cash-summary { display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:16px }
+  .cash-summary .chip { display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--bg);border-radius:var(--radius-sm);border:1px solid var(--border) }
+  .cash-summary .chip .icon { font-size:20px }
+  .cash-summary .chip .info { display:flex;flex-direction:column }
+  .cash-summary .chip .info .val { font-weight:700;font-size:15px }
+  .cash-summary .chip .info .lbl { font-size:11px;color:var(--text-muted) }
   </style>
   <div class="stats-grid">
     <div class="stat-card"><div class="stat-icon">&#x1F3E6;</div><div class="stat-value">${openFunds.length}</div><div class="stat-label">Open Funds</div></div>
     <div class="stat-card"><div class="stat-icon">&#x1F4B0;</div><div class="stat-value">${fmt(openFunds.reduce((s,f) => s + Number(f.current_balance), 0))}</div><div class="stat-label">Total Cash</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4C5;</div><div class="stat-value">${today}</div><div class="stat-label">Date</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4CA;</div><div class="stat-value">${cashFunds.length}</div><div class="stat-label">Total Funds</div></div>
   </div>
 
   <div class="card">
     <div class="card-header"><h3>&#x1F4B0; Cash Funds</h3><div><a href="#open-fund" class="btn btn-primary btn-sm">&#x2795; Open Fund</a></div></div>
     <div class="card-body" style="padding:0">
+    <div style="overflow-x:auto">
     <table>
-      <tr><th>Teller</th><th>Branch</th><th>Date</th><th class="num">Opening</th><th class="num">Current</th><th>Status</th><th></th></tr>
-      ${cashFunds.length === 0 ? '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">No cash funds yet</td></tr>' :
+      <tr><th>Teller</th><th>Branch</th><th>Date</th><th class="num">Opening</th><th class="num">Deposits</th><th class="num">Withdrawals</th><th class="num">Loan Pays</th><th class="num">Current</th><th class="num">Diff</th><th>Status</th><th></th></tr>
+      ${cashFunds.length === 0 ? '<tr><td colspan="11" style="text-align:center;padding:24px;color:var(--text-muted)">No cash funds yet — open one to start tracking teller cash</td></tr>' :
         cashFunds.map(f => {
           const diff = Number(f.current_balance) - Number(f.opening_balance);
           const statusClass = diff === 0 ? 'tf-balanced' : diff < 0 ? 'tf-short' : 'tf-over';
+          const tx = txTotals[f.cash_id] || {};
+          const txCount = Number(tx.tx_count) || 0;
           return `<tr>
-            <td>${f.teller_name || f.teller_id.slice(0,8)}</td>
+            <td><b>${f.teller_name || f.teller_id.slice(0,8)}</b></td>
             <td>${f.branch_name || 'Main'}</td>
             <td class="mono" style="font-size:11px">${(f.date||'').slice(0,10)}</td>
             <td class="num mono">${fmt(f.opening_balance)}</td>
-            <td class="num mono">${fmt(f.current_balance)}</td>
-            <td><span class="badge ${f.status === 'open' ? 'badge-green' : 'badge-gray'}">${f.status}</span></td>
-            <td>${f.status === 'open' ? `<a href="/admin/teller-cash/close/${f.cash_id}" class="btn btn-sm btn-danger" data-confirm="Close this cash fund?">Close</a>` : `<span class="mono" style="font-size:10px;color:var(--text-muted);">${(f.closed_at||'').slice(0,16).replace('T',' ')}</span>`}</td>
+            <td class="num mono" style="color:#16a34a">${f.status === 'open' ? fmt(Number(tx.deposits) || 0) : '-'}</td>
+            <td class="num mono" style="color:#dc2626">${f.status === 'open' ? fmt(Number(tx.withdrawals) || 0) : '-'}</td>
+            <td class="num mono" style="color:#7c3aed">${f.status === 'open' ? fmt(Number(tx.loan_payments) || 0) : '-'}</td>
+            <td class="num mono"><b>${fmt(f.current_balance)}</b></td>
+            <td class="num mono ${statusClass}">${diff > 0 ? '+' : ''}${fmt(diff)}</td>
+            <td><span class="badge ${f.status === 'open' ? 'badge-green' : 'badge-gray'}">${f.status}</span>${f.status === 'open' && txCount > 0 ? `<br><span style="font-size:10px;color:var(--text-muted)">${txCount} tx</span>` : ''}</td>
+            <td>${f.status === 'open'
+              ? `<a href="#close-fund-${f.cash_id}" class="btn btn-sm btn-danger">Close</a>`
+              : `<span class="mono" style="font-size:10px;color:var(--text-muted);">${(f.closed_at||'').slice(0,16).replace('T',' ')}</span>`}</td>
           </tr>`;
         }).join('')}
-    </table></div>
+    </table></div></div>
   </div>
 
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-chart-pie"></i> Today's Cash Movement</h3></div>
+    <div class="card-body-padded">
+      <div class="cash-summary">
+        <div class="chip"><div class="icon">&#x1F4B5;</div><div class="info"><div class="val" style="color:#16a34a">${fmt(openFunds.reduce((s,f) => s + Number((txTotals[f.cash_id]||{}).deposits || 0), 0))}</div><div class="lbl">Total Deposits</div></div></div>
+        <div class="chip"><div class="icon">&#x1F4B8;</div><div class="info"><div class="val" style="color:#dc2626">${fmt(openFunds.reduce((s,f) => s + Number((txTotals[f.cash_id]||{}).withdrawals || 0), 0))}</div><div class="lbl">Total Withdrawals</div></div></div>
+        <div class="chip"><div class="icon">&#x1F4B3;</div><div class="info"><div class="val" style="color:#7c3aed">${fmt(openFunds.reduce((s,f) => s + Number((txTotals[f.cash_id]||{}).loan_payments || 0), 0))}</div><div class="lbl">Loan Collections</div></div></div>
+        <div class="chip"><div class="icon">&#x1F4CA;</div><div class="info"><div class="val">${openFunds.reduce((s,f) => s + Number((txTotals[f.cash_id]||{}).tx_count || 0), 0)}</div><div class="lbl">Total Transactions</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Open Fund Modal -->
   <div id="open-fund" class="modal-overlay">
   <div class="modal" style="max-width:420px">
   <a href="#" class="close">&times;</a>
@@ -204,7 +268,32 @@ router.get('/teller-cash', requireRole(2), asyncHandler(async (req, res) => {
     <button type="submit" class="btn btn-primary">&#x2795; Open Fund</button>
   </form>
   </div>
-  </div>`;
+  </div>
+
+  <!-- Close Fund Modals -->
+  ${cashFunds.filter(f => f.status === 'open').map(f => {
+    const tx = txTotals[f.cash_id] || {};
+    const expectedClose = Number(f.opening_balance) + Number(tx.deposits || 0) - Number(tx.withdrawals || 0) + Number(tx.loan_payments || 0);
+    return `<div id="close-fund-${f.cash_id}" class="modal-overlay">
+    <div class="modal" style="max-width:440px">
+    <a href="#" class="close">&times;</a>
+    <h2>&#x1F4B0; Close Fund &mdash; ${f.teller_name || f.teller_id.slice(0,8)}</h2>
+    <div style="background:var(--bg);border-radius:var(--radius-sm);padding:16px;margin:12px 0;font-size:14px">
+      <div style="display:flex;justify-content:space-between;padding:4px 0"><span>Opening Balance</span><span class="mono">${fmt(f.opening_balance)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;color:#16a34a"><span>+ Deposits</span><span class="mono">${fmt(Number(tx.deposits) || 0)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;color:#dc2626"><span>- Withdrawals</span><span class="mono">${fmt(Number(tx.withdrawals) || 0)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;color:#7c3aed"><span>+ Loan Collections</span><span class="mono">${fmt(Number(tx.loan_payments) || 0)}</span></div>
+      <hr style="border:none;border-top:2px solid var(--border);margin:8px 0">
+      <div style="display:flex;justify-content:space-between;padding:4px 0;font-weight:700;font-size:16px"><span>Expected Cash</span><span class="mono">${fmt(expectedClose)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0"><span>System Balance</span><span class="mono">${fmt(f.current_balance)}</span></div>
+    </div>
+    <form method="post" action="/admin/teller-cash/close/${f.cash_id}">
+      <div class="field"><label>Actual Cash Count (&#x20B1;)</label><input type="number" name="actual_close" step="0.01" value="${expectedClose}" required></div>
+      <div class="field"><label>Remarks</label><input type="text" name="notes" placeholder="Optional closing notes" value="${f.notes || ''}"></div>
+      <button type="submit" class="btn btn-danger">&#x1F4B0; Close Fund</button>
+    </form>
+    </div></div>`;
+  }).join('')}`;
   res.type('html').send(layout('Teller Cash Management', 'teller-cash', content, { subtitle: 'Per-teller cash fund tracking and balancing', toast }));
 }));
 
@@ -221,10 +310,28 @@ router.post('/teller-cash/open', requireRole(2), asyncHandler(async (req, res) =
   res.redirect('/admin/teller-cash?opened=ok');
 }));
 
-router.get('/teller-cash/close/:id', requireRole(2), asyncHandler(async (req, res) => {
+router.post('/teller-cash/close/:id', requireRole(2), asyncHandler(async (req, res) => {
   const fund = await one('SELECT * FROM teller_cash WHERE cash_id = $1', [req.params.id]);
   if (!fund) return res.redirect('/admin/teller-cash?error=Fund+not+found');
-  await store.query('UPDATE teller_cash SET status=$1, closed_at=$2 WHERE cash_id=$3', ['closed', new Date().toISOString(), req.params.id]);
+  if (fund.status !== 'open') return res.redirect('/admin/teller-cash?error=Fund+already+closed');
+  const actualClose = Number(req.body.actual_close) || Number(fund.current_balance);
+  const diff = Math.round((actualClose - Number(fund.current_balance)) * 100) / 100;
+  const notes = (fund.notes || '') + (req.body.notes ? ' | Close: ' + req.body.notes : '');
+  await store.query(
+    'UPDATE teller_cash SET status=$1, closed_at=$2, current_balance=$3, notes=$4 WHERE cash_id=$5',
+    ['closed', new Date().toISOString(), actualClose, notes, req.params.id]
+  );
+  await log(req, 'TELLER_CASH_CLOSE', 'teller_cash', req.params.id, {
+    teller: fund.teller_id, opening: Number(fund.opening_balance), expected: Number(fund.current_balance),
+    actual: actualClose, difference: diff
+  });
+  if (Math.abs(diff) > 0.01) {
+    await sendAlertEmail(
+      'Teller Cash Discrepancy',
+      `<p>Cash fund closed with a discrepancy of ${fmt(diff)}.</p>
+       <p>Teller: ${fund.teller_id}<br>Expected: ${fmt(fund.current_balance)}<br>Actual: ${fmt(actualClose)}<br>Date: ${fund.date}</p>`
+    );
+  }
   res.redirect('/admin/teller-cash?closed=ok');
 }));
 

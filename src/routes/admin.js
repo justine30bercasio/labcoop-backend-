@@ -5194,6 +5194,26 @@ function redirectOrJson(req, res, url) {
 
 const tellerFormParser = require('multer')().none();
 
+async function getOrCreateTellerCash(req) {
+  const today = new Date().toISOString().slice(0, 10);
+  const tellerId = req.session.adminId;
+  let fund = await one('SELECT * FROM teller_cash WHERE teller_id=$1 AND date=$2 AND status=$3', [tellerId, today, 'open']);
+  if (!fund) {
+    const cashId = uuidv4();
+    await store.query(
+      'INSERT INTO teller_cash (cash_id, teller_id, opening_balance, current_balance, date, status, notes, created_at) VALUES ($1,$2,0,0,$3,$4,$5,$6)',
+      [cashId, tellerId, today, 'open', 'Auto-opened on first transaction', new Date().toISOString()]
+    );
+    fund = { cash_id: cashId, current_balance: 0 };
+  }
+  return fund;
+}
+
+async function updateTellerCash(tellerCashId, delta, tx) {
+  const updater = tx ? tx : store;
+  await updater.query('UPDATE teller_cash SET current_balance = ROUND((current_balance + $1), 2) WHERE cash_id = $2', [delta, tellerCashId]);
+}
+
 router.post('/teller/deposit/:id', requireRole(2), tellerFormParser, asyncHandler(async (req, res) => {
   try {
     const { amount, description } = req.body;
@@ -5203,6 +5223,10 @@ router.post('/teller/deposit/:id', requireRole(2), tellerFormParser, asyncHandle
     const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
     if (!account) return res.redirect('/admin/teller?error=Account+not+found');
     const newBalance = Number(account.actual_balance) + val;
+
+    // Get/auto-create teller cash fund and update balance (deposit = teller receives cash)
+    const cashFund = await getOrCreateTellerCash(req);
+    await updateTellerCash(cashFund.cash_id, val);
 
     // Post GL FIRST — if this fails, nothing changes
     const gl = require('../services/gl');
@@ -5252,6 +5276,10 @@ router.post('/teller/withdraw/:id', requireRole(2), tellerFormParser, asyncHandl
     const newBalance = Math.round((Number(account.actual_balance) - val) * 100) / 100;
     const newUnallocated = Math.round((Number(account.unallocated_balance) - val) * 100) / 100;
 
+    // Get/auto-create teller cash fund and update balance (withdrawal = teller gives out cash)
+    const cashFund = await getOrCreateTellerCash(req);
+    await updateTellerCash(cashFund.cash_id, -val);
+
     // Post GL FIRST
     const gl = require('../services/gl');
     const audit = require('../services/audit');
@@ -5296,6 +5324,10 @@ router.post('/teller/loan-pay/:id', requireRole(2), tellerFormParser, asyncHandl
 
     const account = await one('SELECT * FROM accounts WHERE account_id = $1', [accountId]);
     if (!account) return redirectOrJson(req, res, `/admin/teller?error=Account+not+found&account=${accountId}`);
+
+    // Get/auto-create teller cash fund and update balance (loan payment = teller collects cash)
+    const cashFund = await getOrCreateTellerCash(req);
+    await updateTellerCash(cashFund.cash_id, val);
 
     // Calculate interest portion
     const interestService = require('../services/interest');
@@ -5506,6 +5538,14 @@ router.post('/teller/void/:txId', requireRole(3), tellerFormParser, asyncHandler
        <p>Amount: ₱${val}<br>Reason: ${reason}<br>Original TX: ${txId.slice(0,8)}<br>Account: ${account.child_name} (${account.member_id || account.account_id.slice(0,8)})</p>
        <p>IP: ${req.ip}<br>Time: ${new Date().toISOString()}</p>`
     );
+
+    // Reverse teller cash balance
+    const voidCashDelta = (tx.type === 'deposit' || tx.type === 'loan_payment') ? -val : (tx.type === 'withdrawal' ? val : 0);
+    if (voidCashDelta !== 0) {
+      const today = new Date().toISOString().slice(0, 10);
+      const voidFund = await one('SELECT * FROM teller_cash WHERE teller_id=$1 AND date=$2 AND status=$3', [req.session.adminId, today, 'open']);
+      if (voidFund) await updateTellerCash(voidFund.cash_id, voidCashDelta);
+    }
 
     const sq = req.body.q ? '&q=' + encodeURIComponent(req.body.q) : '';
     if (isAjax(req)) return res.json({ success: true, type: 'void', transaction: { voidedTxId: txId, reversalTxId: revTxId, amount: tx.amount, type: 'void', description: voidDesc, account_id: tx.account_id } });

@@ -214,22 +214,31 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
         ORDER BY created_at ASC
       `, [account.account_id, fromDate, toDate]);
 
-      // For new accounts opened during the period: include the total opening-day
+      // For accounts opened during this period: include the total opening-day
       // payment (fees + initial deposit) in the opening balance. Then fees show
-      // as debits during the period and the deposit is excluded (already in opening).
-      if (openingBalance === 0) {
-        const sameDayOpening = await one(`
-          SELECT COALESCE(SUM(CASE WHEN type IN ('fee','penalty') THEN amount
-                                   WHEN type IN ('deposit') THEN amount ELSE 0 END), 0) as bal
+      // as debits during the period and the initial deposit is excluded (already
+      // counted in opening).
+      const acctCreated = (account.created_at || '').slice(0, 10);
+      if (acctCreated >= fromDate && openingBalance === 0) {
+        const openingFees = await one(`
+          SELECT COALESCE(SUM(amount), 0) as bal
           FROM transactions WHERE account_id = $1 AND DATE(created_at) = $2
-            AND type IN ('fee','penalty','deposit')
-        `, [account.account_id, fromDate]);
-        openingBalance += Number(sameDayOpening?.bal || 0);
-        // Remove opening-day deposits from period transactions to avoid double-count
-        const openingDateStr = fromDate;
-        transactions = transactions.filter(t =>
-          !(t.type === 'deposit' && (t.created_at || '').slice(0,10) === openingDateStr)
-        );
+            AND type IN ('fee','penalty')
+        `, [account.account_id, acctCreated]);
+        const openingDep = await one(`
+          SELECT COALESCE(SUM(amount), 0) as bal
+          FROM transactions WHERE account_id = $1 AND DATE(created_at) = $2
+            AND type = 'deposit' AND description LIKE '%Initial%'
+        `, [account.account_id, acctCreated]);
+        openingBalance += Number(openingFees?.bal || 0) + Number(openingDep?.bal || 0);
+        // Remove the initial deposit from period to avoid double-count
+        const initDepIds = transactions
+          .filter(t => t.type === 'deposit' && (t.description || '').includes('Initial')
+            && (t.created_at || '').slice(0,10) === acctCreated)
+          .map(t => t.transaction_id);
+        if (initDepIds.length > 0) {
+          transactions = transactions.filter(t => !initDepIds.includes(t.transaction_id));
+        }
       }
 
       totalCredits = transactions.filter(t =>

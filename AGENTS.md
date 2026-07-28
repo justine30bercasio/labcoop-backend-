@@ -252,7 +252,9 @@ Flutter app data disappeared on logout/refresh because:
 - **From address fallback**: `onboarding@resend.dev` (Resend's default verified sender)
 - **From format**: `"Name <email>"` string (Resend API) instead of `{email, name}` object (SendGrid API)
 - **Uninstalled**: `@sendgrid/mail` (removed 12 packages)
-- **Render env vars need update**: Add `RESEND_API_KEY` with the user's key `re_BmW5AXje_H3uroKFC2VHKkMSKy57YHhDV`; remove `SENDGRID_API_KEY` and `SENDGRID_FROM_EMAIL`
+- **Render env vars need update**: Add `RESEND_API_KEY` (generate new key from Resend dashboard); remove `SENDGRID_API_KEY` and `SENDGRID_FROM_EMAIL`
+
+> ⚠️ **2026-07-28**: Previous Resend API key was revoked by Resend due to GitHub secret scanning alert. Generate a new key at https://resend.com/api-keys and update `RESEND_API_KEY` in Render env vars.
 
 ### Session 2026-07-09 — Bug fixes for login, CSRF, OTP, forgot PIN, security
 - **Root/jailbreak detection disabled**: `SecurityService.isDeviceCompromised()` body commented out for emulator testing.

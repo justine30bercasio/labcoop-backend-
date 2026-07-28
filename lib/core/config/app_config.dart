@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import '../network/banking_api_service.dart';
 
 class AppConfig {
@@ -5,14 +6,14 @@ class AppConfig {
   factory AppConfig() => _instance;
   AppConfig._();
 
-  bool loansEnabled = true;
-  bool termDepositsEnabled = true;
-  bool shareCapitalEnabled = true;
-  bool dividendsEnabled = true;
-  bool gcashEnabled = true;
-  bool transfersEnabled = true;
-  bool overdraftsEnabled = true;
-  bool checksEnabled = true;
+  bool loansEnabled = false;
+  bool termDepositsEnabled = false;
+  bool shareCapitalEnabled = false;
+  bool dividendsEnabled = false;
+  bool gcashEnabled = false;
+  bool transfersEnabled = false;
+  bool overdraftsEnabled = false;
+  bool checksEnabled = false;
 
   Future<void> load() async {
     try {
@@ -28,7 +29,14 @@ class AppConfig {
         overdraftsEnabled = f['overdrafts'] == true;
         checksEnabled = f['checks'] == true;
       }
-    } catch (_) {}
+      _printFlags();
+    } catch (e) {
+      debugPrint('[AppConfig] Failed to load config: $e');
+    }
+  }
+
+  void _printFlags() {
+    debugPrint('[AppConfig] Flags: loans=$loansEnabled td=$termDepositsEnabled sc=$shareCapitalEnabled div=$dividendsEnabled gcash=$gcashEnabled xfer=$transfersEnabled od=$overdraftsEnabled chk=$checksEnabled');
   }
 
   bool get isFullBanking =>

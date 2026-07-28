@@ -1596,6 +1596,14 @@ router.post('/accounts/create', requireRole(2), asyncHandler(async (req, res) =>
       } catch (e) { console.error('Savings deposit GL posting error', e); }
     }
 
+    // Teller cash: all cash collected at registration
+    if (totalPayment > 0 && req.session.adminId) {
+      try {
+        const cashFund = await getOrCreateTellerCash(req);
+        await updateTellerCash(cashFund.cash_id, totalPayment);
+      } catch (e) { console.error('Teller cash update error', e); }
+    }
+
     res.redirect(`/admin/accounts?added=ok&pin=${defaultPin}&member_id=${memberId}&child_name=${encodeURIComponent(displayName)}`);
   } catch (err) {
     res.redirect(`/admin/accounts?error=${encodeURIComponent(err.message)}`);

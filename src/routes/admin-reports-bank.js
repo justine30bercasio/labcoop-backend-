@@ -400,7 +400,8 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
             <tbody>
               <tr style="font-weight:700;background:var(--bg)">
                 <td colspan="4">Opening Balance</td>
-                <td></td><td></td>
+                <td class="right credit">${fmt(openingBalance)}</td>
+                <td></td>
                 <td class="right">${fmt(openingBalance)}</td>
                 <td></td>
               </tr>
@@ -510,7 +511,8 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
       <tbody>
         <tr style="font-weight:700;background:#f0f4f0">
           <td colspan="4">Opening Balance</td>
-          <td></td><td></td>
+          <td class="right">${fmt(openingBalance)}</td>
+          <td></td>
           <td class="right">${fmt(openingBalance)}</td>
           <td></td>
         </tr>
@@ -542,7 +544,7 @@ router.get('/reports/bank/statement', requireRole(1), asyncHandler(async (req, r
   if (req.query.format === 'csv' && account) {
     let csv = 'Date,Ref#,Type,Description,Credit,Debit,Balance\n';
     let rb = openingBalance;
-    csv += `,,,Opening Balance,,,${fmt(rb)}\n`;
+    csv += `,,,Opening Balance,${fmt(rb)},,${fmt(rb)}\n`;
     transactions.forEach(t => {
       const amt = Number(t.amount);
       const isCsvCredit = CREDIT_TYPES.includes(t.type);

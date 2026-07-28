@@ -3,7 +3,8 @@ const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 const { store, isPostgres } = require('../db');
 const { asyncHandler } = require('../async-handler');
-const { layout, printLayout, phTime, phDate, reportTable, reportSection, reportStats } = require('./admin-lib');
+const adminLib = require('./admin-lib');
+const { layout, printLayout, phTime, phDate, reportTable, reportSection, reportStats } = adminLib;
 const { log } = require('../services/audit');
 
 async function requirePassword(req, res, next) {
@@ -95,7 +96,7 @@ router.get('/loan-restructure', requireRole(3), asyncHandler(async (req, res) =>
   res.type('html').send(layout('Loan Restructuring', 'loan-restructure', content, { subtitle: 'Modify loan terms mid-life', toast }));
 }));
 
-router.post('/loan-restructure/create', requireRole(3), asyncHandler(async (req, res) => {
+router.post('/loan-restructure/create', requireRole(3), adminLib.requireFeature('loans'), asyncHandler(async (req, res) => {
   const { loan_id, new_principal, new_interest_rate, new_term_months, reason } = req.body;
   if (!loan_id || !new_principal) return res.redirect('/admin/loan-restructure?error=Missing+fields');
   const loan = await one('SELECT * FROM loans WHERE loan_id = $1', [loan_id]);
@@ -142,7 +143,7 @@ router.get('/collateral', requireRole(2), asyncHandler(async (req, res) => {
   res.type('html').send(layout('Collateral Management', 'collateral', content, { subtitle: 'Loan collateral registry', toast }));
 }));
 
-router.post('/collateral/create', requireRole(2), asyncHandler(async (req, res) => {
+router.post('/collateral/create', requireRole(2), adminLib.requireFeature('loans'), asyncHandler(async (req, res) => {
   const { loan_id, type, estimated_value, description } = req.body;
   if (!loan_id||!type) return res.redirect('/admin/collateral?error=Missing+fields');
   await store.query('INSERT INTO loan_collateral (collateral_id,loan_id,type,description,estimated_value,created_at) VALUES ($1,$2,$3,$4,$5,$6)',
@@ -187,7 +188,7 @@ router.get('/guarantors', requireRole(2), asyncHandler(async (req, res) => {
   res.type('html').send(layout('Guarantors', 'guarantors', content, { subtitle: 'Co-maker / guarantor tracking', toast }));
 }));
 
-router.post('/guarantors/create', requireRole(2), asyncHandler(async (req, res) => {
+router.post('/guarantors/create', requireRole(2), adminLib.requireFeature('loans'), asyncHandler(async (req, res) => {
   const { loan_id, name, relationship, contact_number, income, address } = req.body;
   if (!loan_id||!name) return res.redirect('/admin/guarantors?error=Missing+fields');
   await store.query('INSERT INTO loan_guarantors (guarantor_id,loan_id,name,relationship,contact_number,address,income,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
@@ -1303,7 +1304,7 @@ router.get('/credit-scores', requireRole(2), asyncHandler(async (req, res) => {
   res.type('html').send(layout('Credit Scoring', 'credit-scores', content, { subtitle: 'Member credit scoring and rating', toast }));
 }));
 
-router.post('/credit-scores/create', requireRole(2), asyncHandler(async (req, res) => {
+router.post('/credit-scores/create', requireRole(2), adminLib.requireFeature('loans'), asyncHandler(async (req, res) => {
   const { account_id, score, rating } = req.body;
   if (!account_id) return res.redirect('/admin/credit-scores?error=Missing+fields');
   const existing = await one('SELECT * FROM credit_scores WHERE account_id=$1', [account_id]);
@@ -1313,7 +1314,7 @@ router.post('/credit-scores/create', requireRole(2), asyncHandler(async (req, re
   res.redirect('/admin/credit-scores?updated=ok');
 }));
 
-router.post('/credit-scores/update/:id', requireRole(2), asyncHandler(async (req, res) => {
+router.post('/credit-scores/update/:id', requireRole(2), adminLib.requireFeature('loans'), asyncHandler(async (req, res) => {
   const { score, rating, total_loans, late_payments } = req.body;
   await store.query('UPDATE credit_scores SET score=$1, rating=$2, total_loans=$3, late_payments=$4, last_updated=$5 WHERE score_id=$6',
     [Number(score)||500, rating||'fair', Number(total_loans)||0, Number(late_payments)||0, new Date().toISOString(), req.params.id]);

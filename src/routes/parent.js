@@ -830,7 +830,12 @@ router.post('/reject-withdrawal/:requestId', parentAuth, asyncHandler(async (req
 }));
 
 // ── Approve Loan Application ──
-router.post('/approve-loan/:loanId', parentAuth, asyncHandler(async (req, res) => {
+router.post('/approve-loan/:loanId', parentAuth, asyncHandler(async (req, res, next) => {
+  // Check loans feature flag
+  try {
+    const raw = await require('../db').store.getSetting('feature_flags') || '{}';
+    if (!JSON.parse(raw).loans) return res.status(403).json({ message: 'Loans feature is disabled' });
+  } catch (_) { return res.status(403).json({ message: 'Loans feature is disabled' }); }
   const loanResult = await store.query('SELECT * FROM loans WHERE loan_id = $1', [req.params.loanId]);
   if (loanResult.rows.length === 0) return res.status(404).json({ message: 'Loan not found' });
   const loan = loanResult.rows[0];
@@ -848,6 +853,11 @@ router.post('/approve-loan/:loanId', parentAuth, asyncHandler(async (req, res) =
 
 // ── Reject Loan Application ──
 router.post('/reject-loan/:loanId', parentAuth, asyncHandler(async (req, res) => {
+  // Check loans feature flag
+  try {
+    const raw = await require('../db').store.getSetting('feature_flags') || '{}';
+    if (!JSON.parse(raw).loans) return res.status(403).json({ message: 'Loans feature is disabled' });
+  } catch (_) { return res.status(403).json({ message: 'Loans feature is disabled' }); }
   const loanResult = await store.query('SELECT * FROM loans WHERE loan_id = $1', [req.params.loanId]);
   if (loanResult.rows.length === 0) return res.status(404).json({ message: 'Loan not found' });
   const loan = loanResult.rows[0];

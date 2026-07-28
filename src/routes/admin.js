@@ -9,7 +9,8 @@ const bcrypt = require('bcryptjs');
 const { store, isPostgres } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const fileStorage = require('../services/file-storage');
-const { layout, printLayout, h, fmt, fmtTrn, phTime, phDate, reportTable, reportSection, reportStats } = require('./admin-lib');
+const adminLib = require('./admin-lib');
+const { layout, printLayout, h, fmt, fmtTrn, phTime, phDate, reportTable, reportSection, reportStats } = adminLib;
 const notifs = require('../services/notifications');
 
 const _p = (...p) => p.length === 1 && Array.isArray(p[0]) ? p[0] : p;
@@ -2278,7 +2279,7 @@ router.get('/loans', requireRole(1), asyncHandler(async (req, res) => {
   }));
 }));
 
-router.post('/loans/approve/:id', requireRole(3), asyncHandler(async (req, res) => {
+router.post('/loans/approve/:id', requireRole(3), adminLib.requireFeature('loans'), asyncHandler(async (req, res) => {
   try {
     const loan = await store.getLoan(req.params.id);
     if (!loan) return res.redirect('/admin/loans?error=Loan+not+found');
@@ -2291,7 +2292,7 @@ router.post('/loans/approve/:id', requireRole(3), asyncHandler(async (req, res) 
   }
 }));
 
-router.post('/loans/reject/:id', requireRole(3), asyncHandler(async (req, res) => {
+router.post('/loans/reject/:id', requireRole(3), adminLib.requireFeature('loans'), asyncHandler(async (req, res) => {
   try {
     const loan = await store.getLoan(req.params.id);
     if (!loan) return res.redirect('/admin/loans?error=Loan+not+found');
@@ -2304,7 +2305,7 @@ router.post('/loans/reject/:id', requireRole(3), asyncHandler(async (req, res) =
   }
 }));
 
-router.post('/loans/disburse/:id', requireRole(3), asyncHandler(async (req, res) => {
+router.post('/loans/disburse/:id', requireRole(3), adminLib.requireFeature('loans'), asyncHandler(async (req, res) => {
   try {
 
     const loan = await store.getLoan(req.params.id);
@@ -2513,6 +2514,9 @@ router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {
   const dbLabel = isPostgres ? 'PostgreSQL' : 'SQLite';
   const dbIcon = isPostgres ? 'server' : 'database';
 
+  const featureFlagsRaw = await store.getSetting('feature_flags') || '{}';
+  const featureFlags = JSON.parse(featureFlagsRaw);
+
   const content = `
   <style>
   .settings-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px }
@@ -2606,6 +2610,37 @@ router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {
 
   <div class="card">
     <div class="card-header">
+      <h3><i class="fas fa-flag"></i> Banking Features</h3>
+      <span class="count">toggle features for sidebar + teller + reports</span>
+    </div>
+    <div class="card-body-padded">
+      <form method="POST" action="/admin/feature-flags" enctype="application/x-www-form-urlencoded">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">
+          ${[
+            { key: 'loans', label: 'Loans', desc: 'Loan applications, amortization, pay' },
+            { key: 'term_deposits', label: 'Term Deposits', desc: 'Time deposit placement & maturity' },
+            { key: 'share_capital', label: 'Share Capital', desc: 'Share subscription & dividends' },
+            { key: 'dividends', label: 'Dividends', desc: 'Dividend declaration & payout' },
+            { key: 'gcash', label: 'GCash', desc: 'GCash deposit & withdrawal' },
+            { key: 'transfers', label: 'Transfers', desc: 'Inter-account transfers' },
+            { key: 'overdrafts', label: 'Overdrafts', desc: 'Overdraft facility' },
+            { key: 'checks', label: 'Checks', desc: 'Check issuance & clearing' },
+          ].map(f => `
+          <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;transition:border var(--transition)">
+            <input type="checkbox" name="${f.key}" value="1" ${featureFlags[f.key] ? 'checked' : ''} style="width:18px;height:18px;accent-color:var(--accent);cursor:pointer">
+            <div><div style="font-weight:500;font-size:13px">${f.label}</div><div style="font-size:11px;color:var(--text-muted)">${f.desc}</div></div>
+          </label>`).join('')}
+        </div>
+        <div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Features</button>
+          <span style="font-size:12px;color:var(--text-muted)"><i class="fas fa-info-circle"></i> Uncheck all = kids savings mode (deposit/withdraw/balance only)</span>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
       <h3><i class="fas fa-tools"></i> Actions</h3>
       <span class="count">utility tools</span>
     </div>
@@ -2661,6 +2696,18 @@ router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {
   res.type('html').send(layout('Settings', 'settings', content, {
     subtitle: 'System information and configuration',
   }));
+}));
+
+// ── Feature Flags (Banking Features toggle) ──
+router.post('/feature-flags', requireRole(1), asyncHandler(async (req, res) => {
+  const keys = ['loans','term_deposits','share_capital','dividends','gcash','transfers','overdrafts','checks'];
+  const flags = {};
+  for (const k of keys) flags[k] = req.body[k] === '1';
+  await store.setSetting('feature_flags', JSON.stringify(flags));
+  // Reload flags for subsequent requests
+  adminLib.setFeatureFlags(flags);
+  const toast = encodeURIComponent(`Banking features saved: ${keys.filter(k => flags[k]).join(', ') || 'none (kids savings mode)'}`);
+  res.redirect('/admin/settings?toast=' + toast);
 }));
 
 // ── Security Settings (2FA, Password Change) ──
@@ -3279,7 +3326,7 @@ router.get('/loan-products', requireRole(1), asyncHandler(async (req, res) => {
   }));
 }));
 
-router.post('/loan-products/create', requireRole(3), asyncHandler(async (req, res) => {
+router.post('/loan-products/create', requireRole(3), adminLib.requireFeature('loans'), asyncHandler(async (req, res) => {
   try {
     const { name, description, interest_rate, interest_type, min_amount, max_amount, min_term, max_term } = req.body;
     if (!name) return res.redirect('/admin/loan-products?error=Name+required');
@@ -3299,7 +3346,7 @@ router.post('/loan-products/create', requireRole(3), asyncHandler(async (req, re
   }
 }));
 
-router.post('/loan-products/update/:id', requireRole(3), asyncHandler(async (req, res) => {
+router.post('/loan-products/update/:id', requireRole(3), adminLib.requireFeature('loans'), asyncHandler(async (req, res) => {
   try {
     const { name, description, interest_rate, interest_type, min_amount, max_amount, min_term, max_term } = req.body;
     await store.updateLoanProduct(req.params.id, {
@@ -3318,7 +3365,7 @@ router.post('/loan-products/update/:id', requireRole(3), asyncHandler(async (req
   }
 }));
 
-router.post('/loan-products/toggle/:id', requireRole(3), asyncHandler(async (req, res) => {
+router.post('/loan-products/toggle/:id', requireRole(3), adminLib.requireFeature('loans'), asyncHandler(async (req, res) => {
   try {
     const product = await store.getLoanProduct(req.params.id);
     if (!product) return res.redirect('/admin/loan-products?error=Product+not+found');
@@ -3796,6 +3843,8 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   const qry = req.query;
   const selectedId = qry.account || '';
   const searchQ = (qry.q || '').trim().toLowerCase();
+  const ff = adminLib.getFeatureFlags();
+  const loansEnabled = ff.loans;
 
   let accounts = await sql('SELECT * FROM accounts ORDER BY child_name ASC');
   if (searchQ) {
@@ -4244,7 +4293,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
     ssHtml = '<div class="session-summary" id="sessionSummary">' +
       '<div class="ss-item ss-deposit"><span class="ss-icon">&#x1F4B5;</span><div class="ss-info"><span class="ss-label">Deposits Today</span><span class="ss-value">' + sessionSummary.deposits.count + ' (' + fmt(sessionSummary.deposits.total) + ')</span></div></div>' +
       '<div class="ss-item ss-withdraw"><span class="ss-icon">&#x1F4B8;</span><div class="ss-info"><span class="ss-label">Withdrawals Today</span><span class="ss-value">' + sessionSummary.withdrawals.count + ' (' + fmt(sessionSummary.withdrawals.total) + ')</span></div></div>' +
-      '<div class="ss-item ss-loan"><span class="ss-icon">&#x1F3E6;</span><div class="ss-info"><span class="ss-label">Loan Payments Today</span><span class="ss-value">' + sessionSummary.loanPayments.count + ' (' + fmt(sessionSummary.loanPayments.total) + ')</span></div></div>' +
+      (loansEnabled ? '<div class="ss-item ss-loan"><span class="ss-icon">&#x1F3E6;</span><div class="ss-info"><span class="ss-label">Loan Payments Today</span><span class="ss-value">' + sessionSummary.loanPayments.count + ' (' + fmt(sessionSummary.loanPayments.total) + ')</span></div></div>' : '') +
     '</div>';
   }
 
@@ -4253,7 +4302,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
   var kycClass = selectedAccount ? ('qi-' + (selectedAccount.kyc_status || 'pending')) : '';
   var lastTxLabel = lastTransaction ? (lastTransaction.slice(0,16).replace('T',' ')) : 'Never';
   var quickInfoHtml = selectedAccount ? '<div class="quick-info" id="quickInfo">' +
-    '<div class="qi-item qi-loans"><div class="qi-value">' + activeLoansCount + '</div><div class="qi-label">Active Loans</div></div>' +
+    (loansEnabled ? '<div class="qi-item qi-loans"><div class="qi-value">' + activeLoansCount + '</div><div class="qi-label">Active Loans</div></div>' : '') +
     '<div class="qi-item qi-last"><div class="qi-value">' + lastTxLabel + '</div><div class="qi-label">Last Transaction</div></div>' +
     '<div class="qi-item qi-kyc"><div class="qi-value ' + kycClass + '">' + kycStatus.toUpperCase() + '</div><div class="qi-label">KYC Status</div></div>' +
   '</div>' : '';
@@ -4284,7 +4333,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
         ${selectedAccount ? '<span class="customer-chip" id="customerChip">' + (selectedAccount.profile_pic_url ? '<img src="' + h(selectedAccount.profile_pic_url) + '">' : '<span class="chip-avatar">' + h((selectedAccount.child_name || '?')[0].toUpperCase()) + '</span>') + h(selectedAccount.child_name) + ' (' + h(selectedAccount.member_id || '---') + ')</span>' : ''}
       </div>
     </div>
-    <div class="shortcuts-bar"><kbd>F5</kbd> Search <span class="sep">|</span> <kbd>F8</kbd> Deposit <kbd>F9</kbd> Withdraw <kbd>F10</kbd> Loan Pay <span class="sep">|</span> <kbd>F11</kbd> Fullscreen <kbd>Esc</kbd> Close</div>
+    <div class="shortcuts-bar"><kbd>F5</kbd> Search <span class="sep">|</span> <kbd>F8</kbd> Deposit <kbd>F9</kbd> Withdraw${loansEnabled ? ' <kbd>F10</kbd> Loan Pay' : ''} <span class="sep">|</span> <kbd>F11</kbd> Fullscreen <kbd>Esc</kbd> Close</div>
   </div>
 
   ${ssHtml}
@@ -4311,13 +4360,13 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
           <div class="kpi-label">Withdrawals <span class="kpi-count">(${dashboardTotals.withdrawals.count} txns)</span></div>
         </div>
       </div>
-      <div class="td-kpi td-kpi-loan">
+      ${loansEnabled ? `<div class="td-kpi td-kpi-loan">
         <div class="kpi-icon"><i class="fas fa-hand-holding-usd"></i></div>
         <div class="kpi-body">
           <div class="kpi-val">${fmt(dashboardTotals.loanPayments.total)}</div>
           <div class="kpi-label">Loan Payments <span class="kpi-count">(${dashboardTotals.loanPayments.count} txns)</span></div>
         </div>
-      </div>
+      </div>` : ''}
       <div class="td-kpi td-kpi-members">
         <div class="kpi-icon"><i class="fas fa-users"></i></div>
         <div class="kpi-body">
@@ -4434,7 +4483,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
         <div class="action-tabs">
           <button class="action-tab active" data-tab="deposit" id="tab-deposit"><span class="tab-icon">&#x1F4B5;</span> Deposit</button>
           <button class="action-tab" data-tab="withdraw" id="tab-withdraw"><span class="tab-icon">&#x1F4B8;</span> Withdraw</button>
-          <button class="action-tab" data-tab="loan" id="tab-loan"><span class="tab-icon">&#x1F3E6;</span> Loan Pay</button>
+          ${loansEnabled ? '<button class="action-tab" data-tab="loan" id="tab-loan"><span class="tab-icon">&#x1F3E6;</span> Loan Pay</button>' : ''}
         </div>
 
         <!-- ── Deposit Panel ── -->
@@ -4506,7 +4555,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
           </form>
         </div>
 
-        <!-- ── Loan Pay Panel ── -->
+        ${loansEnabled ? `<!-- ── Loan Pay Panel ── -->
         <div class="action-panel" id="panel-loan">
           <form id="loanForm" data-action="/admin/teller/loan-pay/${selectedAccount.account_id}">
             <input type="hidden" name="_csrf" value="${res.locals.csrfToken}">
@@ -4534,7 +4583,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
             </div>
             <button type="submit" class="proc-btn proc-blue" id="loanBtn"><span class="btn-spinner"></span><span class="btn-text"><i class="fas fa-check-circle"></i> Process Payment</span></button>
           </form>
-        </div>
+        </div>` : ''}
 
       </div>
     </div>
@@ -4549,7 +4598,7 @@ router.get('/teller', requireRole(1), asyncHandler(async (req, res) => {
         <button class="tr-filter active" data-type="all">All</button>
         <button class="tr-filter" data-type="deposit">Deposits</button>
         <button class="tr-filter" data-type="withdrawal">Withdrawals</button>
-        <button class="tr-filter" data-type="loan_payment">Loan Pays</button>
+        ${loansEnabled ? '<button class="tr-filter" data-type="loan_payment">Loan Pays</button>' : ''}
       </div>
       <div class="tr-body" id="txBody">
         ${recentTxs.length === 0 ? '<div class="empty-state" id="emptyState"><div class="es-icon"><i class="fas fa-inbox"></i></div><h3>No transactions yet</h3><p>Complete a transaction above to see it here.</p></div>' : '<table class="activity-table" id="txTable"><thead><tr><th>Type</th><th style="text-align:right">Amount</th><th>Description</th><th style="text-align:right">Balance</th><th>Date</th><th></th></tr></thead><tbody id="txBodyContent">' + recentTxs.map(function(tx) {
@@ -5319,7 +5368,7 @@ router.post('/teller/withdraw/:id', requireRole(2), tellerFormParser, asyncHandl
   }
 }));
 
-router.post('/teller/loan-pay/:id', requireRole(2), tellerFormParser, asyncHandler(async (req, res) => {
+router.post('/teller/loan-pay/:id', requireRole(2), adminLib.requireFeature('loans'), tellerFormParser, asyncHandler(async (req, res) => {
   try {
     const { loan_id, amount } = req.body;
     const val = Number(amount);

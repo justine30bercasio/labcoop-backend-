@@ -9,6 +9,16 @@ const { requireConsent } = require('../middleware/auth');
 
 const router = express.Router();
 
+// ── Feature flag check for API mutation routes ──
+async function requireLoansFeature(req, res, next) {
+  try {
+    const raw = await store.getSetting('feature_flags') || '{}';
+    const flags = JSON.parse(raw);
+    if (flags.loans) return next();
+  } catch (_) {}
+  return res.status(403).json({ message: 'Loans feature is disabled' });
+}
+
 // ── Loan Products ──
 
 router.get('/loan-products', asyncHandler(async (req, res) => {
@@ -72,6 +82,7 @@ router.get('/loans/:loanId',
 );
 
 router.post('/loans/apply',
+  requireLoansFeature,
   requireConsent,
   body('account_id').isString().notEmpty().trim(),
   body('product_id').optional().isString(),
@@ -133,6 +144,7 @@ router.post('/loans/apply',
 );
 
 router.put('/loans/:loanId/approve',
+  requireLoansFeature,
   param('loanId').isString().notEmpty().trim(),
   body('approved_by').isString().notEmpty().trim(),
   asyncHandler(async (req, res) => {
@@ -159,6 +171,7 @@ router.put('/loans/:loanId/approve',
 );
 
 router.put('/loans/:loanId/reject',
+  requireLoansFeature,
   param('loanId').isString().notEmpty().trim(),
   asyncHandler(async (req, res) => {
     const loan = await store.getLoan(req.params.loanId);
@@ -177,6 +190,7 @@ router.put('/loans/:loanId/reject',
 );
 
 router.put('/loans/:loanId/disburse',
+  requireLoansFeature,
   param('loanId').isString().notEmpty().trim(),
   asyncHandler(async (req, res) => {
     const errors = validationResult(req);
@@ -241,6 +255,7 @@ router.put('/loans/:loanId/disburse',
 );
 
 router.post('/loans/:loanId/pay',
+  requireLoansFeature,
   param('loanId').isString().notEmpty().trim(),
   body('amount').isFloat({ min: 0.01 }),
   body('account_id').isString().notEmpty().trim(),

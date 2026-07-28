@@ -416,8 +416,10 @@ const publicRouter = express.Router();
 
 const authRouter = require('./routes/auth');
 const { webhookRouter } = require('./routes/paymongo');
+const configRouter = require('./routes/config');
 
 publicRouter.use('/auth', loginLimiter, authRouter);
+publicRouter.use('/config', configRouter);
 publicRouter.get('/health', async (req, res) => {
   let dbOk = false;
   try {
@@ -674,6 +676,14 @@ app.use('/admin', (req, res, next) => {
   const roleMap = adminLib.ROLE_LEVELS;
   const level = roleMap && req.session && req.session.adminRole ? (roleMap[req.session.adminRole] ?? 4) : 4;
   adminLib.setRoleLevel(level);
+  next();
+});
+// Set feature flags for sidebar gating
+app.use('/admin', async (req, res, next) => {
+  try {
+    const raw = await store.getSetting('feature_flags') || '{}';
+    adminLib.setFeatureFlags(JSON.parse(raw));
+  } catch (_) {}
   next();
 });
 app.use('/admin', adminAuthRouter);

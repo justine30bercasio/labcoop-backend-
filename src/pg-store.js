@@ -559,6 +559,12 @@ class PgStore {
     await this.pool.query("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS email TEXT DEFAULT ''").catch(() => {});
     await this.pool.query("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS branch_id TEXT").catch(() => {});
     await this.pool.query("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS branch_id TEXT").catch(() => {});
+    await this.pool.query("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS login_attempts INTEGER DEFAULT 0").catch(() => {});
+    await this.pool.query("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS locked_until TEXT").catch(() => {});
+    await this.pool.query("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS totp_secret TEXT DEFAULT ''").catch(() => {});
+    await this.pool.query("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS totp_enabled INTEGER DEFAULT 0").catch(() => {});
+    await this.pool.query("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS last_login_at TEXT").catch(() => {});
+    await this.pool.query("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS last_login_ip TEXT DEFAULT ''").catch(() => {});
     await this.pool.query("ALTER TABLE teller_cash ADD COLUMN IF NOT EXISTS branch_id TEXT").catch(() => {});
     await this.pool.query("ALTER TABLE loans ADD COLUMN IF NOT EXISTS asset_classification TEXT DEFAULT 'current'").catch(() => {});
     await this.pool.query("ALTER TABLE loans ADD COLUMN IF NOT EXISTS late_fee_accrued DECIMAL(12,2) DEFAULT 0").catch(() => {});

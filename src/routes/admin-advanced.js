@@ -1,8 +1,41 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
+const bcrypt = require('bcryptjs');
 const { store, isPostgres } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const { layout, printLayout, phTime, phDate, reportTable, reportSection, reportStats } = require('./admin-lib');
+const { log } = require('../services/audit');
+
+async function requirePassword(req, res, next) {
+  const password = req.body.password || req.body.confirmPassword;
+  if (!password) return res.redirect('back?error=Password+confirmation+required');
+  const one = (q, ...p) => store.query(q, p).then(r => r.rows[0]);
+  const admin = await one('SELECT * FROM admin_users WHERE admin_id = $1', [req.session.adminId]);
+  if (!admin || !bcrypt.compareSync(password, admin.password_hash)) {
+    await log(req, 'sensitive_action_password_failed', 'admin_user', req.session.adminId, { path: req.path });
+    return res.redirect('back?error=Incorrect+password');
+  }
+  next();
+}
+
+async function sendAlertEmail(subject, bodyHtml) {
+  if (!process.env.RESEND_API_KEY) return;
+  try {
+    const admins = await store.query("SELECT email FROM admin_users WHERE role = 'super_admin' AND email != ''");
+    if (!admins.rows.length) return;
+    const { Resend } = require('resend');
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    const fromAddr = process.env.RESEND_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || 'onboarding@resend.dev';
+    const fromName = process.env.MAIL_FROM_NAME || 'LabCoop Security';
+    const from = fromName ? `${fromName} <${fromAddr}>` : fromAddr;
+    for (const admin of admins.rows) {
+      resend.emails.send({ from, to: admin.email, subject, html: bodyHtml })
+        .catch(e => console.error('[AlertEmail] Error sending to', admin.email, e.message));
+    }
+  } catch (e) {
+    console.error('[AlertEmail] Error:', e.message);
+  }
+}
 
 const _p = (...p) => p.length === 1 && Array.isArray(p[0]) ? p[0] : p;
 const sql = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows);
@@ -458,16 +491,17 @@ router.get('/dividends', requireRole(3), asyncHandler(async (req, res) => {
   <div id="declare-dividend" class="modal-overlay"><div class="modal" style="max-width:420px"><a href="#" class="close">&times;</a>
   <h2>Declare Dividend</h2>
   <form method="post" action="/admin/dividends/declare">
-    <div class="form-row"><div><label>Year</label><input type="number" name="year" value="${new Date().getFullYear()}" required></div>
-      <div><label>Rate (%)</label><input type="number" name="rate" min="0" step="0.01" required></div></div>
-    <div class="form-row"><div><label>Total Amount</label><input type="number" name="total_amount" min="0" step="0.01" required></div>
-      <div><label>Per Share</label><input type="number" name="per_share" min="0" step="0.0001" required></div></div>
+    <div class="field"><label>Year</label><input type="number" name="year" value="${new Date().getFullYear()}" required></div>
+    <div class="field"><label>Rate (%)</label><input type="number" step="0.01" name="rate" placeholder="e.g. 5" required></div>
+    <div class="field"><label>Total Amount (&#x20B1;)</label><input type="number" step="0.01" name="total_amount" placeholder="0.00"></div>
+    <div class="field"><label>Per Share (&#x20B1;)</label><input type="number" step="0.0001" name="per_share" placeholder="0.0000"></div>
+    <div class="field"><label>Your Password</label><input type="password" name="password" required></div>
     <button type="submit" class="btn btn-primary">Declare Dividend</button>
   </form></div></div>`;
   res.type('html').send(layout('Dividends', 'dividends', content, { subtitle: 'Shareholder dividend computation and payout', toast }));
 }));
 
-router.post('/dividends/declare', requireRole(3), asyncHandler(async (req, res) => {
+router.post('/dividends/declare', requireRole(3), requirePassword, asyncHandler(async (req, res) => {
   const { year, rate, total_amount, per_share } = req.body;
   if (!year||!rate) return res.redirect('/admin/dividends?error=Missing+fields');
   const totalAmt = Number(total_amount) || 0;
@@ -484,6 +518,10 @@ router.post('/dividends/declare', requireRole(3), asyncHandler(async (req, res) 
     {account_code:'2400', credit: taxAmount, description:'Dividend withholding tax '+year},
     {account_code:'2300', credit: netDividend, description:'Dividend payable (net) '+year}
   ], { postedBy: req.session.adminName || 'admin', referenceType: 'dividend', referenceNumber: 'DIV-' + year });
+  await sendAlertEmail(
+    'Security Alert: Dividend Declared',
+    `<p>Dividend of ₱${totalAmt.toLocaleString()} (${rate}%) declared by <b>${req.session.adminName}</b>.</p><p>Year: ${year}<br>IP: ${req.ip}<br>Time: ${new Date().toISOString()}</p>`
+  );
   res.redirect('/admin/dividends?declared=ok');
 }));
 

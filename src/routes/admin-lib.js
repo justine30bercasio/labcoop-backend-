@@ -91,6 +91,7 @@ function layout(title, active, content, opts = {}) {
     ]},
     { minRole: 1, icon: '<i class="fas fa-clipboard-list"></i>', label: 'Administration', key: 'admin-group', children: [
       { minRole: 4, icon: '<i class="fas fa-user-shield"></i>', label: 'Admin Users', href: '/admin/users', key: 'users' },
+      { minRole: 1, icon: '<i class="fas fa-shield-alt"></i>', label: 'Security', href: '/admin/security', key: 'security' },
       { minRole: 3, icon: '<i class="fas fa-clipboard-list"></i>', label: 'Audit Log', href: '/admin/audit-log', key: 'audit-log' },
       { minRole: 3, icon: '<i class="fas fa-list"></i>', label: 'Enhanced Audit', href: '/admin/enhanced-audit', key: 'enhanced-audit' },
       { minRole: 1, icon: '<i class="fas fa-file-pen"></i>', label: 'Printable Forms', href: '/admin/forms', key: 'forms' },

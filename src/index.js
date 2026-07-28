@@ -378,7 +378,8 @@ const sessionConfig = {
   store: sessionStore,
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: process.env.NODE_ENV === 'production', httpOnly: true, maxAge: 86400000, sameSite: 'strict' },
+  rolling: true,
+  cookie: { secure: process.env.NODE_ENV === 'production', httpOnly: true, maxAge: 28800000, sameSite: 'strict' },
 };
 const sessionMiddleware = session(sessionConfig);
 app.use(sessionMiddleware);

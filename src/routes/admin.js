@@ -16,6 +16,25 @@ const _p = (...p) => p.length === 1 && Array.isArray(p[0]) ? p[0] : p;
 const sql = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows);
 const one = (q, ...p) => store.query(q, _p(...p)).then(r => r.rows[0]);
 
+async function sendAlertEmail(subject, bodyHtml) {
+  if (!process.env.RESEND_API_KEY) return;
+  try {
+    const admins = await store.query("SELECT email FROM admin_users WHERE role = 'super_admin' AND email != ''");
+    if (!admins.rows.length) return;
+    const { Resend } = require('resend');
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    const fromAddr = process.env.RESEND_FROM_EMAIL || process.env.MAIL_FROM_ADDRESS || 'onboarding@resend.dev';
+    const fromName = process.env.MAIL_FROM_NAME || 'LabCoop Security';
+    const from = fromName ? `${fromName} <${fromAddr}>` : fromAddr;
+    for (const admin of admins.rows) {
+      resend.emails.send({ from, to: admin.email, subject, html: bodyHtml })
+        .catch(e => console.error('[AlertEmail] Error sending to', admin.email, e.message));
+    }
+  } catch (e) {
+    console.error('[AlertEmail] Error:', e.message);
+  }
+}
+
 // Sanitize values for use in HTTP Content-Disposition headers — strip CRLF to prevent HTTP response splitting
 const safeHeader = v => String(v || '').replace(/[\r\n]/g, '').trim();
 // Sanitize values for CSV export — prevent formula injection
@@ -53,6 +72,21 @@ function requireRole(minLevel) {
     }
     next();
   };
+}
+
+async function requirePassword(req, res, next) {
+  const password = req.body.password || req.body.confirmPassword;
+  if (!password) {
+    if (req.accepts('json')) return res.status(400).json({ success: false, message: 'Password confirmation required for this action' });
+    return res.redirect('back?error=Password+confirmation+required');
+  }
+  const admin = await one('SELECT * FROM admin_users WHERE admin_id = $1', [req.session.adminId]);
+  if (!admin || !bcrypt.compareSync(password, admin.password_hash)) {
+    await log(req, 'sensitive_action_password_failed', 'admin_user', req.session.adminId, { path: req.path });
+    if (req.accepts('json')) return res.status(403).json({ success: false, message: 'Incorrect password' });
+    return res.redirect('back?error=Incorrect+password');
+  }
+  next();
 }
 
 const upload = multer({
@@ -2621,6 +2655,181 @@ router.get('/settings', requireRole(1), asyncHandler(async (req, res) => {
   }));
 }));
 
+// ── Security Settings (2FA, Password Change) ──
+
+router.get('/security', requireRole(1), asyncHandler(async (req, res) => {
+  const admin = await one('SELECT * FROM admin_users WHERE admin_id = $1', [req.session.adminId]);
+  const q = req.query;
+  const toast = q.setup === 'ok' ? 'success:2FA has been enabled successfully.'
+    : q.disabled === 'ok' ? 'success:2FA has been disabled.'
+    : q.password === 'ok' ? 'success:Password changed successfully.'
+    : q.error ? `error:${q.error}`
+    : '';
+  const content = `
+  <style>
+  .security-card { max-width:560px; margin-bottom:20px }
+  .security-card .status-badge { display:inline-flex; align-items:center; gap:6px; padding:4px 14px; border-radius:20px; font-size:13px; font-weight:600 }
+  .status-badge.enabled { background:#dcfce7; color:#15803d }
+  .status-badge.disabled { background:#f1f5f9; color:#64748b }
+  .totp-setup { display:none; margin-top:16px; padding:20px; background:var(--bg); border-radius:var(--radius-sm); border:1px solid var(--border); text-align:center }
+  .totp-setup.show { display:block }
+  .totp-setup img { max-width:200px; margin:16px auto; display:block }
+  .totp-setup code { display:inline-block; background:#f1f5f9; padding:6px 14px; border-radius:6px; font-size:13px; letter-spacing:1px; word-break:break-all }
+  .pw-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px }
+  .last-login { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px; padding:14px; background:var(--bg); border-radius:var(--radius-sm); font-size:13px }
+  .last-login .label { color:var(--text-muted); font-size:11px; text-transform:uppercase; letter-spacing:0.5px }
+  .last-login .val { font-weight:500; margin-top:2px }
+  </style>
+
+  <div class="card security-card">
+    <div class="card-header">
+      <h3><i class="fas fa-shield-alt"></i> Two-Factor Authentication</h3>
+      <span class="status-badge ${admin.totp_enabled ? 'enabled' : 'disabled'}">
+        <i class="fas ${admin.totp_enabled ? 'fa-lock' : 'fa-unlock'}"></i>
+        ${admin.totp_enabled ? 'Enabled' : 'Disabled'}
+      </span>
+    </div>
+    <div class="card-body-padded">
+      <p style="color:var(--text-muted);font-size:13px;margin-bottom:14px;line-height:1.5">
+        <i class="fas fa-info-circle"></i>
+        Two-factor authentication adds an extra layer of security by requiring a time-based code from your authenticator app (Google Authenticator, Authy, etc.) in addition to your password.
+      </p>
+      ${admin.totp_enabled ? `
+      <form method="post" action="/admin/security/disable-2fa?_csrf=${encodeURIComponent(res.locals.csrfToken)}" style="display:inline">
+        <button type="submit" class="btn btn-danger" onclick="return confirm('Disable 2FA? Your account will only require a password to log in.')">
+          <i class="fas fa-unlock"></i> Disable 2FA
+        </button>
+      </form>
+      ` : `
+      <button id="setup2faBtn" class="btn btn-secondary" onclick="start2faSetup()">
+        <i class="fas fa-qrcode"></i> Set Up 2FA
+      </button>
+
+      <div id="totpSetup" class="totp-setup">
+        <h4 style="margin-bottom:8px"><i class="fas fa-qrcode"></i> Scan QR Code</h4>
+        <p style="font-size:13px;color:var(--text-muted)">Scan this QR code with your authenticator app, then enter the 6-digit code to verify.</p>
+        <div id="qrcodeContainer"><i class="fas fa-spinner fa-spin" style="font-size:24px;color:var(--text-muted)"></i></div>
+        <p style="font-size:12px;color:var(--text-muted);margin:4px 0 12px">Or enter this key manually: <code id="manualKey">Loading...</code></p>
+        <form method="post" action="/admin/security/enable-2fa?_csrf=${encodeURIComponent(res.locals.csrfToken)}" style="max-width:280px;margin:0 auto">
+          <input type="hidden" name="secret" id="totpSecret">
+          <div class="field">
+            <label>Enter 6-digit code from app</label>
+            <input type="text" name="token" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" placeholder="000000" required style="text-align:center;font-size:24px;letter-spacing:8px;font-weight:700;font-family:monospace">
+          </div>
+          <button type="submit" class="btn btn-secondary" style="margin-top:0"><i class="fas fa-check"></i> Verify &amp; Enable</button>
+        </form>
+      </div>
+      <script>
+      async function start2faSetup() {
+        document.getElementById('setup2faBtn').disabled = true;
+        document.getElementById('setup2faBtn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+        try {
+          const r = await fetch('/admin/security/setup-2fa');
+          const data = await r.json();
+          document.getElementById('qrcodeContainer').innerHTML = '<img src="' + data.qrCode + '" alt="QR Code">';
+          document.getElementById('manualKey').textContent = data.secret;
+          document.getElementById('totpSecret').value = data.secret;
+          document.getElementById('totpSetup').classList.add('show');
+          document.getElementById('setup2faBtn').style.display = 'none';
+        } catch(e) {
+          alert('Failed to generate 2FA setup. Please refresh and try again.');
+          document.getElementById('setup2faBtn').disabled = false;
+          document.getElementById('setup2faBtn').innerHTML = '<i class="fas fa-qrcode"></i> Set Up 2FA';
+        }
+      }
+      </script>
+      `}
+    </div>
+  </div>
+
+  <div class="card security-card">
+    <div class="card-header">
+      <h3><i class="fas fa-key"></i> Change Password</h3>
+    </div>
+    <div class="card-body-padded">
+      <form method="post" action="/admin/security/change-password?_csrf=${encodeURIComponent(res.locals.csrfToken)}" class="pw-grid">
+        <div class="field"><label>Current Password</label>
+          <input type="password" name="currentPassword" required>
+        </div>
+        <div class="field"><label>New Password</label>
+          <input type="password" name="newPassword" required minlength="8" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).{8,}" title="Must contain uppercase, lowercase, and digit">
+        </div>
+        <div class="field"><label>Confirm New Password</label>
+          <input type="password" name="confirmPassword" required minlength="8">
+        </div>
+        <div style="display:flex;align-items:end">
+          <button type="submit" class="btn btn-secondary"><i class="fas fa-floppy-disk"></i> Change Password</button>
+        </div>
+      </form>
+      <p style="margin-top:10px;font-size:12px;color:var(--text-muted)">
+        <i class="fas fa-info-circle"></i> Password must be at least 8 characters with uppercase, lowercase, and a digit.
+      </p>
+    </div>
+  </div>
+
+  <div class="card security-card">
+    <div class="card-header"><h3><i class="fas fa-history"></i> Last Login</h3></div>
+    <div class="card-body-padded">
+      <div class="last-login">
+        <div><div class="label">Last Login</div><div class="val">${admin.last_login_at ? new Date(admin.last_login_at).toLocaleString() : 'N/A'}</div></div>
+        <div><div class="label">Last IP</div><div class="val mono">${admin.last_login_ip || 'N/A'}</div></div>
+      </div>
+      <div class="last-login">
+        <div><div class="label">Account Created</div><div class="val">${admin.created_at ? new Date(admin.created_at).toLocaleString() : 'N/A'}</div></div>
+        <div><div class="label">Role</div><div class="val"><span class="badge badge-blue">${admin.role}</span></div></div>
+      </div>
+    </div>
+  </div>`;
+  res.type('html').send(layout('Security Settings', 'settings', content, { subtitle: 'Manage 2FA and password', toast }));
+}));
+
+router.get('/security/setup-2fa', requireRole(1), asyncHandler(async (req, res) => {
+  const admin = await one('SELECT * FROM admin_users WHERE admin_id = $1', [req.session.adminId]);
+  const secret = speakeasy.generateSecret({ name: `LabCoop:${admin.username}` });
+  const qrCode = await qrcode.toDataURL(secret.otpauth_url);
+  res.json({ secret: secret.base32, qrCode });
+}));
+
+router.post('/security/enable-2fa', requireRole(1), asyncHandler(async (req, res) => {
+  const { secret, token } = req.body;
+  if (!secret || !token) return res.redirect('/admin/security?error=Missing+parameters');
+  const verified = speakeasy.totp.verify({ secret, encoding: 'base32', token: token.trim(), window: 1 });
+  if (!verified) return res.redirect('/admin/security?error=Invalid+code.+Please+try+again');
+  await store.query('UPDATE admin_users SET totp_secret = $1, totp_enabled = 1 WHERE admin_id = $2', [secret, req.session.adminId]);
+  await log(req, 'admin_2fa_enabled', 'admin_user', req.session.adminId, {});
+  res.redirect('/admin/security?setup=ok');
+}));
+
+router.post('/security/disable-2fa', requireRole(1), asyncHandler(async (req, res) => {
+  await store.query('UPDATE admin_users SET totp_secret = \'\', totp_enabled = 0 WHERE admin_id = $1', [req.session.adminId]);
+  await log(req, 'admin_2fa_disabled', 'admin_user', req.session.adminId, {});
+  res.redirect('/admin/security?disabled=ok');
+}));
+
+router.post('/security/change-password', requireRole(1), asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword, confirmPassword } = req.body;
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    return res.redirect('/admin/security?error=All+fields+required');
+  }
+  if (newPassword !== confirmPassword) return res.redirect('/admin/security?error=Passwords+do+not+match');
+  if (newPassword.length < 8) return res.redirect('/admin/security?error=Password+must+be+at+least+8+characters');
+  if (!/[A-Z]/.test(newPassword)) return res.redirect('/admin/security?error=Password+must+contain+an+uppercase+letter');
+  if (!/[a-z]/.test(newPassword)) return res.redirect('/admin/security?error=Password+must+contain+a+lowercase+letter');
+  if (!/[0-9]/.test(newPassword)) return res.redirect('/admin/security?error=Password+must+contain+a+digit');
+  const admin = await one('SELECT * FROM admin_users WHERE admin_id = $1', [req.session.adminId]);
+  if (!admin || !bcrypt.compareSync(currentPassword, admin.password_hash)) {
+    return res.redirect('/admin/security?error=Current+password+is+incorrect');
+  }
+  const hash = bcrypt.hashSync(newPassword, 10);
+  await store.query('UPDATE admin_users SET password_hash = $1 WHERE admin_id = $2', [hash, req.session.adminId]);
+  await log(req, 'admin_password_changed', 'admin_user', req.session.adminId, {});
+  await sendAlertEmail(
+    'Security Alert: Admin Password Changed',
+    `<p>Admin account <b>${admin.username}</b> has changed their password.</p><p>IP: ${req.ip}</p><p>Time: ${new Date().toISOString()}</p>`
+  );
+  res.redirect('/admin/security?password=ok');
+}));
+
 // ── Savings Settings (Interest Rate + Maintaining Balance + GCash) ──
 
 router.get('/savings-settings', requireRole(1), asyncHandler(async (req, res) => {
@@ -2717,43 +2926,47 @@ router.get('/savings-settings', requireRole(1), asyncHandler(async (req, res) =>
     document.body.appendChild(t);
     setTimeout(function(){t.style.opacity='0';t.style.transition='opacity 0.5s';setTimeout(function(){t.remove()},500)},4000);
   }
+  function sensitiveFetch(url, data, callback){
+    var pw = prompt('Enter your admin password to confirm this sensitive action:');
+    if(!pw) return;
+    data.password = pw;
+    fetch(url, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(data)
+    }).then(function(r){ return r.json(); }).then(function(d){
+      if(d.success === false && d.message && d.message.includes('Incorrect')){
+        showGcashToast('Incorrect password. Action cancelled.', true);
+        return;
+      }
+      callback(d);
+    }).catch(function(e){ showGcashToast(e.message, true); });
+  }
   document.getElementById('gcashForm').addEventListener('submit', function(e){
     e.preventDefault();
     var num = document.getElementById('gcashNumber').value.trim();
     var name = document.getElementById('gcashName').value.trim();
     if(!num || !name){ showGcashToast('Both fields required', true); return; }
-    fetch('/admin/settings/gcash', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ gcash_number: num, gcash_name: name })
-    }).then(function(r){ return r.json(); }).then(function(d){
+    sensitiveFetch('/admin/settings/gcash', { gcash_number: num, gcash_name: name }, function(d){
       showGcashToast(d.success ? 'GCash settings saved!' : d.message||'Error', !d.success);
-    }).catch(function(e){ showGcashToast(e.message, true); });
+    });
   });
   document.getElementById('maintainingBalanceForm').addEventListener('submit', function(e){
     e.preventDefault();
     var val = parseFloat(document.getElementById('defaultMaintaining').value);
     if(isNaN(val) || val < 0){ showGcashToast('Enter a valid amount', true); return; }
-    fetch('/admin/settings/maintaining-balance', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ amount: val })
-    }).then(function(r){ return r.json(); }).then(function(d){
+    sensitiveFetch('/admin/settings/maintaining-balance', { amount: val }, function(d){
       showGcashToast(d.success ? 'Maintaining balance saved!' : d.message||'Error', !d.success);
-    }).catch(function(e){ showGcashToast(e.message, true); });
+    });
   });
   document.getElementById('savingsRateForm').addEventListener('submit', function(e){
     e.preventDefault();
     var rate = parseFloat(document.getElementById('savingsRate').value);
     var freq = document.getElementById('savingsFrequency').value;
     if(isNaN(rate) || rate < 0){ showGcashToast('Enter a valid interest rate', true); return; }
-    fetch('/admin/settings/savings-rate', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ rate: rate / 100, frequency: freq })
-    }).then(function(r){ return r.json(); }).then(function(d){
+    sensitiveFetch('/admin/settings/savings-rate', { rate: rate / 100, frequency: freq }, function(d){
       showGcashToast(d.success ? 'Savings rate updated!' : d.message||'Error', !d.success);
-    }).catch(function(e){ showGcashToast(e.message, true); });
+    });
   });
   document.getElementById('openingFeesForm').addEventListener('submit', function(e){
     e.preventDefault();
@@ -2761,13 +2974,9 @@ router.get('/savings-settings', requireRole(1), asyncHandler(async (req, res) =>
     var ins = parseFloat(document.getElementById('insuranceFee').value);
     var sav = parseFloat(document.getElementById('initialSavings').value);
     if(isNaN(mf) || mf < 0 || isNaN(ins) || ins < 0 || isNaN(sav) || sav < 0){ showGcashToast('Enter valid amounts', true); return; }
-    fetch('/admin/settings/opening-fees', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ membership_fee: mf, insurance_fee: ins, initial_savings: sav })
-    }).then(function(r){ return r.json(); }).then(function(d){
+    sensitiveFetch('/admin/settings/opening-fees', { membership_fee: mf, insurance_fee: ins, initial_savings: sav }, function(d){
       showGcashToast(d.success ? 'Opening fees saved!' : d.message||'Error', !d.success);
-    }).catch(function(e){ showGcashToast(e.message, true); });
+    });
   });
   </script>
   `;
@@ -2777,25 +2986,33 @@ router.get('/savings-settings', requireRole(1), asyncHandler(async (req, res) =>
   }));
 }));
 
-router.post('/settings/gcash', requireRole(3), asyncHandler(async (req, res) => {
+router.post('/settings/gcash', requireRole(3), requirePassword, asyncHandler(async (req, res) => {
   if (!req.body.gcash_number || !req.body.gcash_name) {
     return res.status(400).json({ success: false, message: 'Both gcash_number and gcash_name are required' });
   }
   await store.setSetting('gcash_number', req.body.gcash_number.trim());
   await store.setSetting('gcash_name', req.body.gcash_name.trim());
+  await sendAlertEmail(
+    'Security Alert: GCash Settings Changed',
+    `<p>GCash settings were updated by <b>${req.session.adminName}</b>.</p><p>IP: ${req.ip}</p><p>Time: ${new Date().toISOString()}</p>`
+  );
   res.json({ success: true });
 }));
 
-router.post('/settings/maintaining-balance', requireRole(3), asyncHandler(async (req, res) => {
+router.post('/settings/maintaining-balance', requireRole(3), requirePassword, asyncHandler(async (req, res) => {
   const amount = parseFloat(req.body.amount);
   if (isNaN(amount) || amount < 0) {
     return res.status(400).json({ success: false, message: 'Amount must be a positive number' });
   }
   await store.setSetting('default_maintaining_balance', String(amount));
+  await sendAlertEmail(
+    'Security Alert: Maintaining Balance Changed',
+    `<p>Maintaining balance was changed to ₱${amount} by <b>${req.session.adminName}</b>.</p><p>IP: ${req.ip}</p><p>Time: ${new Date().toISOString()}</p>`
+  );
   res.json({ success: true, amount });
 }));
 
-router.post('/settings/savings-rate', requireRole(3), asyncHandler(async (req, res) => {
+router.post('/settings/savings-rate', requireRole(3), requirePassword, asyncHandler(async (req, res) => {
   const rate = parseFloat(req.body.rate);
   const frequency = req.body.frequency || 'monthly';
   if (isNaN(rate) || rate < 0 || rate > 1) {
@@ -2815,14 +3032,22 @@ router.post('/settings/savings-rate', requireRole(3), asyncHandler(async (req, r
       [rate, frequency, new Date().toISOString()]
     );
   }
+  await sendAlertEmail(
+    'Security Alert: Savings Interest Rate Changed',
+    `<p>Savings interest rate was changed to ${(rate * 100).toFixed(1)}% (${frequency}) by <b>${req.session.adminName}</b>.</p><p>IP: ${req.ip}</p><p>Time: ${new Date().toISOString()}</p>`
+  );
   res.json({ success: true, rate, frequency });
 }));
 
-router.post('/settings/opening-fees', requireRole(3), asyncHandler(async (req, res) => {
+router.post('/settings/opening-fees', requireRole(3), requirePassword, asyncHandler(async (req, res) => {
   const { membership_fee, insurance_fee, initial_savings } = req.body;
   if (membership_fee !== undefined) await store.setSetting('membership_fee', String(Number(membership_fee).toFixed(2)));
   if (insurance_fee !== undefined) await store.setSetting('insurance_fee', String(Number(insurance_fee).toFixed(2)));
   if (initial_savings !== undefined) await store.setSetting('initial_savings', String(Number(initial_savings).toFixed(2)));
+  await sendAlertEmail(
+    'Security Alert: Opening Fees Changed',
+    `<p>Opening fees were updated by <b>${req.session.adminName}</b>.</p><p>IP: ${req.ip}</p><p>Time: ${new Date().toISOString()}</p>`
+  );
   res.json({ success: true });
 }));
 
@@ -2927,6 +3152,12 @@ router.post('/reset-data', requireRole(4), asyncHandler(async (req, res) => {
     }
     try { store.query("DELETE FROM sqlite_sequence WHERE name IN ('" + tables.join("','") + "')"); } catch (_) {}
   }
+  await sendAlertEmail(
+    'CRITICAL: Admin Data Reset Performed',
+    `<p><b>CRITICAL ACTION:</b> All member data was reset by <b>${req.session.adminName}</b>.</p>
+     <p>All accounts, transactions, goals, badges, and audit data have been permanently deleted.</p>
+     <p>IP: ${req.ip}<br>Time: ${new Date().toISOString()}</p>`
+  );
   res.redirect('/admin?msg=All+data+reset+successful');
 }));
 
@@ -5268,6 +5499,13 @@ router.post('/teller/void/:txId', requireRole(3), tellerFormParser, asyncHandler
       amount: val, reason, reversalTxId: revTxId, originalType: tx.type,
       reversedBalance, voidedBy: req.session.adminName || 'admin'
     });
+
+    await sendAlertEmail(
+      'Security Alert: Transaction Voided',
+      `<p>Transaction was voided by <b>${req.session.adminName}</b>.</p>
+       <p>Amount: ₱${val}<br>Reason: ${reason}<br>Original TX: ${txId.slice(0,8)}<br>Account: ${account.child_name} (${account.member_id || account.account_id.slice(0,8)})</p>
+       <p>IP: ${req.ip}<br>Time: ${new Date().toISOString()}</p>`
+    );
 
     const sq = req.body.q ? '&q=' + encodeURIComponent(req.body.q) : '';
     if (isAjax(req)) return res.json({ success: true, type: 'void', transaction: { voidedTxId: txId, reversalTxId: revTxId, amount: tx.amount, type: 'void', description: voidDesc, account_id: tx.account_id } });
@@ -7667,38 +7905,81 @@ router.get('/gl/journal', requireRole(1), asyncHandler(async (req, res) => {
 
 router.get('/audit-log', requireRole(3), asyncHandler(async (req, res) => {
   const { getLogs } = require('../services/audit');
-  const limit = Number(req.query.limit) || 100;
+  const limit = Math.min(200, Number(req.query.limit) || 100);
   const offset = Number(req.query.offset) || 0;
-  const logs = await getLogs(limit, offset);
+  const actionFilter = req.query.action || '';
+  const search = req.query.search || '';
+  const fromDate = req.query.from || '';
+  const toDate = req.query.to || '';
+  let query = 'SELECT * FROM audit_log WHERE 1=1';
+  const params = [];
+  if (actionFilter) { query += ' AND action = $' + (params.length + 1); params.push(actionFilter); }
+  if (search) { query += ' AND (admin_name ILIKE $' + (params.length + 1) + ' OR entity_type ILIKE $' + (params.length + 2) + ' OR entity_id ILIKE $' + (params.length + 3) + ' OR details ILIKE $' + (params.length + 4) + ')'; const s = '%' + search + '%'; params.push(s, s, s, s); }
+  if (fromDate) { query += ' AND created_at >= $' + (params.length + 1); params.push(fromDate + 'T00:00:00'); }
+  if (toDate) { query += ' AND created_at <= $' + (params.length + 1); params.push(toDate + 'T23:59:59'); }
+  const totalResult = await store.query(query.replace('SELECT *', 'SELECT COUNT(*) as cnt'), params);
+  const totalCount = parseInt(totalResult.rows[0]?.cnt || '0', 10);
+  query += ' ORDER BY created_at DESC LIMIT $' + (params.length + 1) + ' OFFSET $' + (params.length + 2);
+  params.push(limit, offset);
+  const logs = (await store.query(query, params)).rows;
+  const distinctActions = (await store.query("SELECT DISTINCT action FROM audit_log ORDER BY action")).rows.map(r => r.action);
   const actionColors = {
     TELLER_DEPOSIT:'badge-green',TELLER_WITHDRAWAL:'badge-red',
     LOAN_APPROVE:'badge-green',LOAN_REJECT:'badge-red',LOAN_DISBURSE:'badge-amber',
     ACCOUNT_CREATE:'badge-blue',ADMIN_DEPOSIT:'badge-green',ADMIN_WITHDRAWAL:'badge-red',
-    TELLER_LOAN_PAYMENT:'badge-purple'
+    TELLER_LOAN_PAYMENT:'badge-purple',
+    TRANSACTION_VOID:'badge-red',admin_login:'badge-blue',admin_login_failed:'badge-red',
+    admin_2fa_enabled:'badge-green',admin_2fa_disabled:'badge-orange',
+    admin_password_changed:'badge-purple',admin_totp_failed:'badge-red',
+    admin_totp_login:'badge-green',sensitive_action_password_failed:'badge-red',
   };
   const content = `
+  <style>
+  .audit-filter { display:flex; gap:8px; flex-wrap:wrap; align-items:end; margin-bottom:16px }
+  .audit-filter .field { margin-bottom:0 }
+  .audit-filter label { font-size:11px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:3px; text-transform:uppercase; letter-spacing:0.5px }
+  .audit-filter input, .audit-filter select { padding:7px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px; background:var(--bg); color:var(--text) }
+  </style>
+  <form method="get" action="/admin/audit-log" class="audit-filter">
+    <div class="field"><label>Search</label><input type="text" name="search" value="${h(search)}" placeholder="Admin, entity, IP..." style="width:180px"></div>
+    <div class="field"><label>Action</label><select name="action" style="min-width:150px"><option value="">All Actions</option>${distinctActions.map(a => `<option value="${h(a)}" ${actionFilter === a ? 'selected' : ''}>${h(a.replace(/_/g,' '))}</option>`).join('')}</select></div>
+    <div class="field"><label>From</label><input type="date" name="from" value="${fromDate}"></div>
+    <div class="field"><label>To</label><input type="date" name="to" value="${toDate}"></div>
+    <div class="field"><label>Per page</label><select name="limit"><option value="50" ${limit===50?'selected':''}>50</option><option value="100" ${limit===100?'selected':''}>100</option><option value="200" ${limit===200?'selected':''}>200</option></select></div>
+    <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-search"></i> Filter</button>
+    <a href="/admin/audit-log" class="btn btn-outline btn-sm"><i class="fas fa-undo"></i> Reset</a>
+  </form>
+  <div class="stats-grid" style="margin-bottom:16px">
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-clipboard-list"></i></div><div class="stat-value">${totalCount}</div><div class="stat-label">Total Entries</div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-eye"></i></div><div class="stat-value">${logs.length}</div><div class="stat-label">Showing</div></div>
+  </div>
   <div class="card">
-    <div class="card-header"><h3>&#x1F4DD; Audit Log</h3><span class="count">${logs.length} entries</span></div>
+    <div class="card-header"><h3>&#x1F4DD; Audit Log</h3><span class="count">${logs.length} of ${totalCount}</span></div>
     <div class="card-body" style="padding:0">
+    <div style="overflow-x:auto">
     <table>
-      <tr><th>Date</th><th>Admin</th><th>Action</th><th>Entity</th><th>ID</th><th>IP</th></tr>
-      ${logs.length === 0 ? '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)">No audit entries yet</td></tr>' :
+      <tr><th>Date</th><th>Admin</th><th>Action</th><th>Entity</th><th>ID</th><th>IP</th><th>Details</th></tr>
+      ${logs.length === 0 ? '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">No audit entries found</td></tr>' :
         logs.map(l => {
           const badge = actionColors[l.action] || 'badge-blue';
+          let details = '';
+          try { const d = JSON.parse(l.details || '{}'); details = Object.keys(d).map(k => `${k}: ${typeof d[k] === 'object' ? JSON.stringify(d[k]).slice(0,50) : String(d[k]).slice(0,50)}`).join(', ').slice(0,100); } catch(_) { details = String(l.details || '').slice(0,100); }
           return `<tr>
-            <td class="mono" style="font-size:11px">${(l.created_at||'').slice(0,19).replace('T',' ')}</td>
-            <td>${l.admin_name || l.admin_id || '-'}</td>
-            <td><span class="badge ${badge}">${l.action.replace(/_/g,' ')}</span></td>
-            <td>${l.entity_type || '-'}</td>
+            <td class="mono" style="font-size:11px;white-space:nowrap">${(l.created_at||'').slice(0,19).replace('T',' ')}</td>
+            <td style="white-space:nowrap">${h(l.admin_name || l.admin_id || '-')}</td>
+            <td><span class="badge ${badge}" style="font-size:11px">${h(l.action.replace(/_/g,' '))}</span></td>
+            <td style="font-size:12px">${h(l.entity_type || '-')}</td>
             <td class="mono" style="font-size:10px;color:var(--text-muted)">${l.entity_id ? l.entity_id.slice(0,8) : '-'}</td>
-            <td class="mono" style="font-size:10px;color:var(--text-muted)">${l.ip_address || '-'}</td>
+            <td class="mono" style="font-size:10px;color:var(--text-muted)">${h(l.ip_address || '-')}</td>
+            <td style="font-size:11px;color:var(--text-muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${h(details)}">${h(details) || '-'}</td>
           </tr>`;
         }).join('')}
-    </table></div>
+    </table></div></div>
   </div>
-  <div style="display:flex;gap:8px;justify-content:center">
-    ${offset > 0 ? `<a href="/admin/audit-log?limit=${limit}&offset=${Math.max(0, offset - limit)}" class="btn btn-outline btn-sm">&#x25C0; Previous ${limit}</a>` : ''}
-    ${logs.length === limit ? `<a href="/admin/audit-log?limit=${limit}&offset=${offset + limit}" class="btn btn-outline btn-sm">Next ${limit} &#x25B6;</a>` : ''}
+  <div style="display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap">
+    ${offset > 0 ? `<a href="/admin/audit-log?limit=${limit}&offset=${Math.max(0, offset - limit)}&action=${encodeURIComponent(actionFilter)}&search=${encodeURIComponent(search)}&from=${fromDate}&to=${toDate}" class="btn btn-outline btn-sm">&#x25C0; Previous ${limit}</a>` : ''}
+    <span style="font-size:12px;color:var(--text-muted)">Page ${Math.floor(offset / limit) + 1} of ${Math.max(1, Math.ceil(totalCount / limit))}</span>
+    ${logs.length === limit ? `<a href="/admin/audit-log?limit=${limit}&offset=${offset + limit}&action=${encodeURIComponent(actionFilter)}&search=${encodeURIComponent(search)}&from=${fromDate}&to=${toDate}" class="btn btn-outline btn-sm">Next ${limit} &#x25B6;</a>` : ''}
   </div>`;
   res.type('html').send(layout('Audit Log', 'audit-log', content, { subtitle: 'Track all admin actions with timestamps' }));
 }));

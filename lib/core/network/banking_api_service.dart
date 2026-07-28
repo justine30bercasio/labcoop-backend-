@@ -752,11 +752,13 @@ return null;
     try {
       final resp = await Dio(BaseOptions(
         baseUrl: AppConstants.baseUrl,
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 10),
+        connectTimeout: const Duration(seconds: 30),
+        receiveTimeout: const Duration(seconds: 30),
       )).get('/api/config');
       return resp.data as Map<String, dynamic>;
-    } catch (_) {
+    } catch (e) {
+      // ignore: avoid_print
+      print('[BankingApiService] getConfig failed: $e');
       return null;
     }
   }

@@ -43,6 +43,7 @@ class _BankingPageState extends State<BankingPage> {
   @override
   void initState() {
     super.initState();
+    AppConfig().load();
     context.read<BankingBloc>().add(LoadTransactions(widget.accountId));
     _loadInterest();
     _startWithdrawPolling();

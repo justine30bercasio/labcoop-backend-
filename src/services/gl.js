@@ -98,8 +98,15 @@ async function getBalanceSheet(asOf) {
   const nonCurrentLiabilities = adjustedRows.filter(r => r.type === 'liability' && r.category === 'non_current_liability');
   const equity = adjustedRows.filter(r => r.type === 'equity');
   // Calculate net income from income/expense accounts not yet closed to retained earnings
-  const income = rows.filter(r => r.type === 'income').reduce((s, r) => s + r.balance, 0);
-  const expense = rows.filter(r => r.type === 'expense').reduce((s, r) => s + r.balance, 0);
+  // Apply contra negation: contra-income reduces income, contra-expense reduces expense
+  const income = rows.filter(r => r.type === 'income').reduce((s, r) => {
+    const isContra = r.is_contra == 1 || r.is_contra === '1';
+    return s + (isContra ? -r.balance : r.balance);
+  }, 0);
+  const expense = rows.filter(r => r.type === 'expense').reduce((s, r) => {
+    const isContra = r.is_contra == 1 || r.is_contra === '1';
+    return s + (isContra ? -r.balance : r.balance);
+  }, 0);
   const netIncome = income - expense;
   const totalCurrentAssets = currentAssets.reduce((s, r) => s + r.balance, 0);
   const totalNonCurrentAssets = nonCurrentAssets.reduce((s, r) => s + r.balance, 0);
@@ -142,22 +149,24 @@ async function getProfitAndLoss(fromDate, toDate) {
     const balance = isDebitNormal
       ? Number(r.total_debit) - Number(r.total_credit)
       : Number(r.total_credit) - Number(r.total_debit);
-    const item = { code: r.code, name: r.name, amount: balance, category: r.category || '', is_contra: r.is_contra };
+    // For P&L: contra-income reduces income, contra-expense reduces expense
+    const pnlAmount = isContra ? -balance : balance;
+    const item = { code: r.code, name: r.name, amount: pnlAmount, category: r.category || '', is_contra: r.is_contra };
     if (r.type === 'income') {
       if (r.category === 'other_income') {
         otherIncome.push(item);
-        totalOtherIncome += balance;
+        totalOtherIncome += pnlAmount;
       } else {
         operatingIncome.push(item);
-        totalOperatingIncome += balance;
+        totalOperatingIncome += pnlAmount;
       }
     } else {
       if (r.category === 'other_expense') {
         otherExpense.push(item);
-        totalOtherExpense += balance;
+        totalOtherExpense += pnlAmount;
       } else {
         operatingExpense.push(item);
-        totalOperatingExpense += balance;
+        totalOperatingExpense += pnlAmount;
       }
     }
   }

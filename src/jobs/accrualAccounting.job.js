@@ -24,21 +24,15 @@ module.exports = {
       const monthlyInt = Math.round(Number(loan.principal) * Number(loan.interest_rate) / 100 / 12 * 100) / 100;
       if (monthlyInt <= 0) continue;
       await gl.postDoubleEntry(require('uuid').v4(), [
-        { account_code: '1300', debit: monthlyInt, description: `Accrued interest receivable — ${loan.name}` },
+        { account_code: '1200', debit: monthlyInt, description: `Accrued interest receivable — ${loan.name}` },
         { account_code: '4000', credit: monthlyInt, description: `Interest income accrual — ${loan.name}` }
       ], { postedBy: 'scheduler', referenceType: 'accrual', referenceNumber: `ACR-${period}-${loan.loan_id.slice(0,8)}` });
     }
 
-    const savings = await sql("SELECT account_id, actual_balance FROM accounts WHERE actual_balance > 0");
-    const savingsRate = Number(await store.getSetting('savings_interest_rate') || '2') / 100 / 12;
-    for (const s of savings) {
-      const monthlyInt = Math.round(Number(s.actual_balance) * savingsRate * 100) / 100;
-      if (monthlyInt <= 0) continue;
-      await gl.postDoubleEntry(require('uuid').v4(), [
-        { account_code: '5000', debit: monthlyInt, description: `Interest expense accrual — savings` },
-        { account_code: '2500', credit: monthlyInt, description: `Accrued interest payable — savings` }
-      ], { postedBy: 'scheduler', referenceType: 'accrual', referenceNumber: `ACP-${period}-${s.account_id.slice(0,8)}` });
-    }
+    // NOTE: Savings interest is NOT accrued monthly.
+    // Interest expense is booked at time of credit (interestPosting job uses DR 5000 / CR 2400 / CR 2000).
+    // Accruing here would double-count the expense AND orphan 2500 (accrued payable) when interest is credited.
+    // The correct treatment: recognize interest expense when paid/credited.
 
     const activeTDs = await sql("SELECT * FROM term_deposits WHERE status='active'");
     for (const td of activeTDs) {

@@ -268,7 +268,10 @@ router.get('/late-fees/charge/:id', requireRole(2), asyncHandler(async (req, res
     [txId, loan.account_id, 'fee', fee, Number(acc.actual_balance), Number(acc.actual_balance)-fee, 'Late payment fee - Loan '+loan.loan_id.slice(0,8), new Date().toISOString()]);
   await store.query('UPDATE accounts SET actual_balance = actual_balance - $1 WHERE account_id = $2', [fee, loan.account_id]);
   const gl = require('../services/gl');
-  await gl.postDoubleEntry(txId, [{account_code:'1000',credit:fee,description:'Late fee charged'},{account_code:'4100',debit:fee,description:'Late fee income'}], { postedBy: req.session.adminName || 'admin', referenceType: 'late_fee', referenceNumber: txId });
+  await gl.postDoubleEntry(txId, [
+    { account_code: '2000', debit: fee, description: 'Late fee charged to savings' },
+    { account_code: '4100', credit: fee, description: 'Late fee income' }
+  ], { postedBy: req.session.adminName || 'admin', referenceType: 'late_fee', referenceNumber: txId });
   res.redirect('/admin/late-fees?charged=ok');
 }));
 
@@ -340,7 +343,7 @@ router.post('/term-deposits/create', requireRole(2), asyncHandler(async (req, re
     const gl = require('../services/gl');
     const txIdForGl = uuidv4();
     await gl.postDoubleEntry(txIdForGl, [
-      { account_code: '1000', debit: Number(amount), description: 'Time deposit placement ' + tdNumber },
+      { account_code: '2000', debit: Number(amount), description: 'Time deposit placement (from savings) ' + tdNumber },
       { account_code: '2100', credit: Number(amount), description: 'Time deposit placement ' + tdNumber }
     ], { postedBy: req.session.adminName || 'admin', referenceType: 'td_placement', referenceNumber: tdNumber });
     // Link GL entry to transaction
@@ -356,19 +359,8 @@ router.get('/term-deposits/mature/:id', requireRole(2), asyncHandler(async (req,
   if (!td) return res.redirect('/admin/term-deposits?error=TD+not+found');
   const interest = Number(td.amount) * Number(td.interest_rate)/100 * Number(td.term_days)/365;
   await store.query('UPDATE term_deposits SET status=$1, interest_earned=$2 WHERE td_id=$3', ['matured', interest, req.params.id]);
-  // Post GL for interest accrual reversal
-  try {
-    const gl = require('../services/gl');
-    const interestVal = Math.round(interest * 100) / 100;
-    if (interestVal > 0) {
-      await gl.postDoubleEntry(uuidv4(), [
-        { account_code: '2100', debit: interestVal, description: 'TD interest accrual reversal ' + td.td_number },
-        { account_code: '5000', credit: interestVal, description: 'TD interest expense ' + td.td_number }
-      ], { postedBy: req.session.adminName || 'admin', referenceType: 'td_maturity', referenceNumber: td.td_number });
-    }
-  } catch (glErr) {
-    console.error('[TermDeposit] GL maturity post failed:', glErr.message);
-  }
+  // NOTE: No GL entry at maturity. Interest was accrued monthly (DR 5000 / CR 2500).
+  // At payout we clear the accrued liability (2500) and return all funds to savings (2000).
   res.redirect('/admin/term-deposits?matured=ok');
 }));
 
@@ -388,9 +380,9 @@ router.get('/term-deposits/close/:id', requireRole(2), asyncHandler(async (req, 
     const gl = require('../services/gl');
     const interestEarned = Number(td.interest_earned || 0);
     await gl.postDoubleEntry(txId, [
-      { account_code: '2100', debit: Number(td.amount), description: 'TD maturity payout ' + td.td_number },
-      { account_code: '5000', debit: interestEarned, description: 'TD interest expense ' + td.td_number },
-      { account_code: '1000', credit: payout, description: 'TD maturity payout ' + td.td_number }
+      { account_code: '2100', debit: Number(td.amount), description: 'TD principal returned ' + td.td_number },
+      { account_code: '2500', debit: interestEarned, description: 'TD interest paid (clears accrued) ' + td.td_number },
+      { account_code: '2000', credit: payout, description: 'TD maturity payout to savings ' + td.td_number }
     ], { postedBy: req.session.adminName || 'admin', referenceType: 'td_payout', referenceNumber: td.td_number });
   } catch (glErr) {
     console.error('[TermDeposit] GL payout post failed:', glErr.message);
@@ -457,7 +449,7 @@ router.post('/share-capital/subscribe', requireRole(2), asyncHandler(async (req,
   try {
     const gl = require('../services/gl');
     await gl.postDoubleEntry(uuidv4(), [
-      { account_code: '1000', debit: total, description: 'Share subscription - ' + shares + ' shares' },
+      { account_code: '2000', debit: total, description: 'Share subscription (from savings) - ' + shares + ' shares' },
       { account_code: '3000', credit: total, description: 'Share subscription - ' + shares + ' shares' }
     ], { postedBy: req.session.adminName || 'admin', referenceType: 'share_subscription', referenceNumber: txId });
   } catch (glErr) {
@@ -552,7 +544,7 @@ router.get('/dividends/pay/:id', requireRole(3), asyncHandler(async (req, res) =
       const gl = require('../services/gl');
       await gl.postDoubleEntry(uuidv4(), [
         { account_code: '2300', debit: totalPayout, description: 'Dividend payout (net) ' + div.year },
-        { account_code: '1000', credit: totalPayout, description: 'Dividend payout (net) ' + div.year }
+        { account_code: '2000', credit: totalPayout, description: 'Dividend payout credited to savings ' + div.year }
       ], { postedBy: req.session.adminName || 'admin', referenceType: 'dividend_payout', referenceNumber: 'DIV-' + div.year });
     }
   } catch (glErr) {

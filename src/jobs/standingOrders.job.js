@@ -33,13 +33,10 @@ module.exports = {
         const newUnallocated = Math.round((Number(order.unallocated_balance) - amount) * 100) / 100;
         await store.query("UPDATE accounts SET actual_balance = $1, unallocated_balance = $2, updated_at = CURRENT_TIMESTAMP WHERE account_id = $3", [newBalance, Math.max(0, newUnallocated), order.account_id]);
         const soTxRecord = await store.addTransaction({ account_id: order.account_id, type: 'auto_save', amount, description: order.description || 'Auto-save transfer', balance_before: Number(order.actual_balance), balance_after: newBalance });
-        try {
-          const gl = require('../services/gl');
-          await gl.postDoubleEntry(soTxRecord.transaction_id, [
-            { account_code: '5100', debit: amount, description: `Auto-save transfer: ${order.child_name} — ${order.description || 'Auto-save'}` },
-            { account_code: '1000', credit: amount, description: `Auto-save transfer: ${order.child_name} — ${order.description || 'Auto-save'}` },
-          ], { postedBy: 'system', referenceType: 'auto_save', referenceNumber: order.order_id });
-        } catch (glErr) { errors.push('GL auto-save failed: ' + glErr.message); }
+        // NOTE: Auto-save is an INTERNAL reallocation (unallocated → goal). No GL entry needed
+        // because the cooperative's total liability to the member (actual_balance) decreases,
+        // but the goal allocation is a member-level ledger item, not a co-op GL event.
+        // Previously this incorrectly posted DR 5100 (Operating Expense) which overstated expenses.
         const nextRun = new Date();
         switch (order.frequency) { case 'daily': nextRun.setDate(nextRun.getDate() + 1); break; case 'weekly': nextRun.setDate(nextRun.getDate() + 7); break; case 'monthly': nextRun.setMonth(nextRun.getMonth() + 1); break; }
         await store.query("UPDATE standing_orders SET next_run = $1, updated_at = CURRENT_TIMESTAMP WHERE order_id = $2", [nextRun.toISOString(), order.order_id]);

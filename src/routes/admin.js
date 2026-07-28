@@ -6577,20 +6577,14 @@ router.get('/eom', requireRole(1), asyncHandler(async (req, res) => {
         const monthlyInt = Math.round(Number(loan.principal) * Number(loan.interest_rate) / 100 / 12 * 100) / 100;
         if (monthlyInt <= 0) continue;
         await gl.postDoubleEntry(uuidv4(), [
-          { account_code: '1300', debit: monthlyInt, description: `Accrued interest — ${loan.name}` },
+          { account_code: '1200', debit: monthlyInt, description: `Accrued interest receivable — ${loan.name}` },
           { account_code: '4000', credit: monthlyInt, description: `Interest income — ${loan.name}` }
         ], { postedBy: req.session.adminName || 'admin', referenceType: 'accrual', referenceNumber: `EOM-${monthPrefix}-${loan.loan_id.slice(0,8)}` });
         accCount++;
       }
-      for (const s of savings) {
-        const monthlyInt = Math.round(Number(s.actual_balance) * sRate * 100) / 100;
-        if (monthlyInt <= 0) continue;
-        await gl.postDoubleEntry(uuidv4(), [
-          { account_code: '5000', debit: monthlyInt, description: 'Interest expense accrual — savings' },
-          { account_code: '2500', credit: monthlyInt, description: 'Accrued interest payable — savings' }
-        ], { postedBy: req.session.adminName || 'admin', referenceType: 'accrual', referenceNumber: `EOM-${monthPrefix}-${s.account_id.slice(0,8)}` });
-        accCount++;
-      }
+      // NOTE: Savings interest is NOT accrued monthly to avoid double-counting.
+      // Interest expense is booked when credited (DR 5000 / CR 2400 / CR 2000 in interestPosting job).
+      // Accruing here would accumulate orphaned 2500 balances and overstate expenses.
       await store.setSetting('last_accrual_run', monthPrefix);
       return res.redirect('/admin/eom?year=' + year + '&month=' + month + '&msg=Accrual+completed:+' + accCount + '+entries');
     } catch (err) {
@@ -7566,6 +7560,7 @@ router.get('/gl/balance-sheet', requireRole(1), asyncHandler(async (req, res) =>
   // Notes text
   const notes = await store.getSetting('fs_notes_bs') || '';
   const diff = result.totalAssets - (result.totalLiabilities + result.totalEquity);
+  const eqBalanced = Math.abs(diff) < 0.01;
 
   const content = `
     <form method="get" action="/admin/gl/balance-sheet" style="display:flex;gap:8px;align-items:end;margin-bottom:16px">
@@ -7583,7 +7578,7 @@ router.get('/gl/balance-sheet', requireRole(1), asyncHandler(async (req, res) =>
       <div class="stat-card" style="border-left:3px solid var(--accent)"><div class="stat-icon">&#x1F4B0;</div><div class="stat-value" style="color:#16a34a">${fmt(result.totalAssets)}</div><div class="stat-label">Total Assets ${date ? '| Prior: ' + fmt(priorAssets) : ''}</div></div>
       <div class="stat-card"><div class="stat-icon">&#x1F4B3;</div><div class="stat-value" style="color:#dc2626">${fmt(result.totalLiabilities)}</div><div class="stat-label">Total Liabilities ${date ? '| Prior: ' + fmt(priorLiabilities) : ''}</div></div>
       <div class="stat-card"><div class="stat-icon">&#x1F511;</div><div class="stat-value" style="color:#2563eb">${fmt(result.totalEquity)}</div><div class="stat-label">Total Equity ${date ? '| Prior: ' + fmt(priorEquity) : ''}</div></div>
-      <div class="stat-card"><div class="stat-icon">&#x2696;</div><div class="stat-value" style="color:${diff === 0 ? '#16a34a' : '#dc2626'}">${diff === 0 ? '&#x2705; A = L + E' : '&#x26A0; Off by ' + fmt(diff)}</div><div class="stat-label">Accounting Equation</div></div>
+      <div class="stat-card"><div class="stat-icon">&#x2696;</div><div class="stat-value" style="color:${eqBalanced ? '#16a34a' : '#dc2626'}">${eqBalanced ? '&#x2705; A = L + E' : '&#x26A0; Off by ' + fmt(diff)}</div><div class="stat-label">Accounting Equation</div></div>
     </div>
     ${result.currentAssets.length ? bsSection('Current Assets', result.currentAssets, result.totalCurrentAssets, '#16a34a') : ''}
     ${result.nonCurrentAssets.length ? bsSection('Non-Current Assets', result.nonCurrentAssets, result.totalNonCurrentAssets, '#22c55e') : ''}

@@ -329,7 +329,7 @@ app.use(helmet({
 }));
 app.set('trust proxy', 1);
 app.use(cors({
-  origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : ['http://localhost:3000', 'https://labcoop-backend.onrender.com', 'https://labcoop.online', 'https://www.labcoop.online'],
+  origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : (process.env.NODE_ENV === 'production' ? ['https://labcoop-backend.onrender.com', 'https://labcoop.online', 'https://www.labcoop.online'] : ['http://localhost:3000']),
   credentials: true,
 }));
 app.use(express.json({ limit: '1mb', verify: (req, res, buf) => { req.rawBody = buf.toString(); } }));
@@ -395,7 +395,7 @@ app.use(globalLimiter);
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: 10,
   message: { message: 'Too many login attempts. Try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -536,7 +536,7 @@ app.use('/api/v1', apiRouter);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── Clear all user data (keep reference tables) — requires super_admin role ──
-app.post('/reset-database', async (req, res) => {
+app.post('/reset-database', csrfProtection, async (req, res) => {
   if (!req.session || !req.session.adminId) {
     return res.status(401).json({ success: false, message: 'Unauthorized' });
   }

@@ -1043,7 +1043,11 @@ router.get('/login', (req, res) => {
   res.type('html').send(loginPage(error));
 });
 
-const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5, message: { message: 'Too many login attempts, try again in 15 minutes' }, standardHeaders: true, legacyHeaders: false });
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5,
+  handler: (req, res) => {
+    res.redirect('/admin/login?error=' + encodeURIComponent('Too many login attempts. Try again in 15 minutes.'));
+  },
+  standardHeaders: true, legacyHeaders: false });
 
 router.post('/login', loginLimiter, async (req, res) => {
   const { username, password } = req.body;
@@ -1199,7 +1203,9 @@ router.post('/login/forgot', async (req, res) => {
 const otpVerifyLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
-  message: 'Too many OTP verification attempts. Try again in 15 minutes.',
+  handler: (req, res) => {
+    res.type('html').send(loginPage('Too many OTP verification attempts. Try again in 15 minutes.'));
+  },
   standardHeaders: true,
   legacyHeaders: false,
 });

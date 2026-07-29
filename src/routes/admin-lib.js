@@ -57,7 +57,7 @@ function layout(title, active, content, opts = {}) {
       { minRole: 2, icon: '<i class="fas fa-money-check"></i>', label: 'Checks', href: '/admin/checks', key: 'checks', featureFlag: 'checks' },
       { minRole: 2, icon: '<i class="fas fa-book"></i>', label: 'Checkbooks', href: '/admin/checkbooks', key: 'checkbooks', featureFlag: 'checks' },
       { minRole: 2, icon: '<i class="fas fa-file-invoice"></i>', label: 'Demand Drafts', href: '/admin/demand-drafts', key: 'demand-drafts', featureFlag: 'checks' },
-      { minRole: 2, icon: '<i class="fas fa-money-bill-transfer"></i>', label: 'Withdrawals', href: '/admin/withdrawal-requests', key: 'withdrawal-requests', featureFlag: 'transfers' },
+      { minRole: 2, icon: '<i class="fas fa-money-bill-transfer"></i>', label: 'Withdrawals', href: '/admin/withdrawal-requests', key: 'withdrawal-requests' },
     ]},
     { minRole: 1, icon: '<i class="fas fa-chart-bar"></i>', label: 'Reports', key: 'reports', children: [
       { minRole: 2, icon: '<i class="fas fa-coins"></i>', label: 'Deposit Summary', href: '/admin/reports/deposit-summary', key: 'deposit-summary' },

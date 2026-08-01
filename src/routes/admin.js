@@ -797,7 +797,7 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
     <span class="lm-chip"><i class="fas fa-users"></i> <span id="lmOnline">0</span> online</span>
     <span class="lm-chip"><i class="fas fa-satellite-dish"></i> Real &middot; Infanta, Quezon</span>
     <div class="lm-legend" style="margin-left:auto">
-      <span><span class="dot" style="background:#22c55e"></span> Active now</span>
+      <span><span class="dot" style="background:#dc2626"></span> Active now</span>
       <span><span class="dot" style="background:#f59e0b"></span> &lt; 15 min</span>
     </div>
   </div>
@@ -842,40 +842,41 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
   }
   function upsert(u){
     var key = u.account_id;
+    var isNew = !children[key];
     children[key] = u;
     var name = u.child_name || ('Member ' + (u.member_id || key.slice(0,4)));
+    var pinHtml = colorFor(u.last_seen) === '#22c55e'
+      ? '<i class="fas fa-location-dot" style="color:#dc2626;font-size:26px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));text-shadow:0 0 0 2px #fff"></i>'
+      : '<i class="fas fa-location-dot" style="color:#f59e0b;font-size:26px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4))"></i>';
     if(markers[key]){ markers[key].setLatLng([u.lat, u.lng]); }
     else {
       var icon = L.divIcon({
         className: '',
-        html: '<div style="width:14px;height:14px;border-radius:50%;background:'+colorFor(u.last_seen)+';border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.3)"></div>',
-        iconSize: [14,14], iconAnchor: [7,7]
+        html: '<div style="text-align:center;line-height:1">' + pinHtml + '</div>',
+        iconSize: [26,26], iconAnchor: [13,24], popupAnchor: [0,-20]
       });
       markers[key] = L.marker([u.lat, u.lng], { icon: icon }).addTo(map);
     }
     markers[key].bindPopup('<b>'+esc(name)+'</b><br>' + (u.city ? esc(u.city)+(u.province ? ', '+esc(u.province) : '') : '') + '<br><small>'+timeAgo(u.last_seen)+'</small>');
     renderList();
-    fitToMarkers();
+    if(isNew) fitToMarkers();
   }
   function removeUser(id){
     if(markers[id]){ map.removeLayer(markers[id]); delete markers[id]; }
     delete children[id];
     renderList();
   }
-  // Keep every reported marker visible: if any live marker is off the current view,
-  // pan/zoom the map to show all live markers.
+  // Only zoom out to show the whole live range when a NEW user appears.
+  // Existing users' heartbeat updates move the pin WITHOUT re-zooming the map.
   var _fitTimer = null;
   function fitToMarkers(){
     var latlngs = Object.keys(markers).map(function(k){ return markers[k].getLatLng(); });
     if(!latlngs.length) return;
     var all = L.latLngBounds(latlngs);
     if(!all.isValid()) return;
-    var view = map.getBounds();
-    var anyOutside = latlngs.some(function(ll){ return !view.contains(ll); });
-    if(!anyOutside) return;
     clearTimeout(_fitTimer);
     _fitTimer = setTimeout(function(){
-      try { map.fitBounds(all.pad(0.25), { maxZoom: 14, animate: true }); } catch(_) {}
+      try { map.fitBounds(all.pad(0.3), { maxZoom: 14, animate: true }); } catch(_) {}
     }, 150);
   }
   function renderList(){

@@ -318,7 +318,7 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", 'cdn.datatables.net', 'cdnjs.cloudflare.com', 'unpkg.com'],
       imgSrc: ["'self'", 'data:', 'https://*'],
       fontSrc: ["'self'", 'cdnjs.cloudflare.com', 'data:'],
-      connectSrc: ["'self'", 'cdn.jsdelivr.net', 'ws:', 'wss:', 'https://www.google-analytics.com'],
+      connectSrc: ["'self'", 'cdn.jsdelivr.net', 'unpkg.com', 'ws:', 'wss:', 'https://www.google-analytics.com'],
       formAction: ["'self'"],
     },
   },

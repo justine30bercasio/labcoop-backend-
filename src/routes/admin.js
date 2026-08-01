@@ -857,7 +857,7 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
     var arr = Object.values(children);
     document.getElementById('lmOnline').textContent = arr.length;
     if(!arr.length){
-      list.innerHTML = '<div class="lm-empty"><i class="fas fa-map-location-dot" style="font-size:28px;opacity:0.3;margin-bottom:8px;display:block"></i>No users sharing location right now.<br><small>Users opt in from the app's Settings &rarr; Live Location.</small></div>';
+      list.innerHTML = '<div class="lm-empty"><i class="fas fa-map-location-dot" style="font-size:28px;opacity:0.3;margin-bottom:8px;display:block"></i>No users sharing location right now.<br><small>Users opt in from the app Settings &rarr; Live Location.</small></div>';
       return;
     }
     list.innerHTML = arr.map(function(u){

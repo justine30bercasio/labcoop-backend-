@@ -736,6 +736,14 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
         (data.users || []).forEach(function(u){ seen[u.account_id] = true; upsertOnline(u); });
         Object.keys(onlineUsers).forEach(function(id){ if(!seen[id]) removeOnline(id); });
       }).catch(function(){});
+      // Transaction feed fallback
+      fetch('/admin/api/recent-transactions', { credentials: 'same-origin' }).then(function(r){ return r.json(); }).then(function(data){
+        var seen = {};
+        (data.transactions || []).forEach(function(t){
+          seen[t.tx_id || (t.id + '|' + t.created_at)] = true;
+          prependTx(t);
+        });
+      }).catch(function(){});
     }, 20000);
   })();
   </script>
@@ -764,6 +772,13 @@ const REAL_INFANTA_BOUNDS = {
 router.get('/api/live-locations', requireRole(1), asyncHandler(async (req, res) => {
   const users = await store.getLiveUserLocations({ withinMinutes: 15 });
   res.json({ users });
+}));
+
+// Recent transactions for the dashboard feed (socket fallback polling).
+router.get('/api/recent-transactions', requireRole(1), asyncHandler(async (req, res) => {
+  const sql = (q, p) => store.query(q, p || []).then(r => (r && r.rows) || []);
+  const rows = await sql('SELECT t.*, a.child_name FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id ORDER BY t.created_at DESC LIMIT 10');
+  res.json({ transactions: rows });
 }));
 
 router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
@@ -819,6 +834,8 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
     maxZoom: 18,
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
+  // Show the whole Real/Infanta range by default — don't zoom into any single pin.
+  setTimeout(function(){ try { map.fitBounds(maxBounds, { maxZoom: 12 }); } catch(_){} }, 100);
 
   // Municipal boundary hint circles (Real + Infanta area)
   L.circle([14.7048, 121.6272], { radius: 15000, color: '#2E7D32', fillColor: '#2E7D32', fillOpacity: 0.05, weight: 1, dashArray: '4 4' }).addTo(map);
@@ -840,7 +857,7 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
     var mins = (Date.now() - new Date(p).getTime())/60000;
     return mins < 5 ? '#22c55e' : '#f59e0b';
   }
-  function upsert(u){
+  function upsert(u, fromSeed){
     var key = u.account_id;
     var isNew = !children[key];
     children[key] = u;
@@ -859,14 +876,15 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
     }
     markers[key].bindPopup('<b>'+esc(name)+'</b><br>' + (u.city ? esc(u.city)+(u.province ? ', '+esc(u.province) : '') : '') + '<br><small>'+timeAgo(u.last_seen)+'</small>');
     renderList();
-    if(isNew) fitToMarkers();
+    // Seed on page load should NOT re-zoom the map — only real-time arrivals do.
+    if(isNew && !fromSeed) fitToMarkers();
   }
   function removeUser(id){
     if(markers[id]){ map.removeLayer(markers[id]); delete markers[id]; }
     delete children[id];
     renderList();
   }
-  // Only zoom out to show the whole live range when a NEW user appears.
+  // Only zoom to fit when a NEW user appears outside the current view.
   // Existing users' heartbeat updates move the pin WITHOUT re-zooming the map.
   var _fitTimer = null;
   function fitToMarkers(){
@@ -874,9 +892,12 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
     if(!latlngs.length) return;
     var all = L.latLngBounds(latlngs);
     if(!all.isValid()) return;
+    var view = map.getBounds();
+    var anyOutside = latlngs.some(function(ll){ return !view.contains(ll); });
+    if(!anyOutside) return;
     clearTimeout(_fitTimer);
     _fitTimer = setTimeout(function(){
-      try { map.fitBounds(all.pad(0.3), { maxZoom: 14, animate: true }); } catch(_) {}
+      try { map.fitBounds(all.pad(0.15), { maxZoom: 13, animate: true }); } catch(_) {}
     }, 150);
   }
   function renderList(){
@@ -901,7 +922,7 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
 
   // Initial data
   var initial = ${JSON.stringify(users)};
-  initial.forEach(upsert);
+  initial.forEach(function(u){ upsert(u, true); });
   renderList();
 
   // Real-time updates via socket

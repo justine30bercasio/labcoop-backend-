@@ -473,6 +473,7 @@ const accountDeletionRouter = require('./routes/account-deletion');
 const { router: parentRouter } = require('./routes/parent');
 const coinsRouter = require('./routes/coins');
 const spinRouter = require('./routes/spin');
+const locationRouter = require('./routes/location');
 
 apiRouter.use('/accounts', authMiddleware, requireOwnership, accountsRouter);
 apiRouter.get('/accounts/:accountId/goals', authMiddleware, requireOwnership, (req, res, next) => {
@@ -513,6 +514,7 @@ apiRouter.use('/leaderboard', authMiddleware, leaderboardRouter);
 apiRouter.use('/settings', authMiddleware, requireOwnership, settingsRouter);
 apiRouter.use('/coins', authMiddleware, requireOwnership, coinsRouter);
 apiRouter.use('/spin', authMiddleware, requireOwnership, spinRouter);
+apiRouter.use('/location', authMiddleware, locationRouter);
 // Admin typing endpoints
 apiRouter.post('/messages/admin-typing', (req, res, next) => {
   if (!req.session?.adminId) return res.status(401).json({ message: 'Unauthorized' });

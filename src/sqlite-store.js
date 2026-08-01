@@ -179,6 +179,8 @@ function getDb() {
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type)"); } catch (_) {}
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_loans_status ON loans(status)"); } catch (_) {}
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_standing_orders_next_run ON standing_orders(next_run)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS user_locations (account_id TEXT PRIMARY KEY, lat REAL, lng REAL, accuracy REAL, device_platform TEXT DEFAULT '', last_seen TEXT, created_at TEXT)"); } catch (_) {}
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_user_locations_last_seen ON user_locations(last_seen)"); } catch (_) {}
     const accounts = [
       ['1000','Cash on Hand','asset','current_asset',0], ['1010','Cash in Bank','asset','current_asset',0],
       ['1020','Petty Cash','asset','current_asset',0], ['1100','Loans Receivable','asset','current_asset',0],
@@ -1188,6 +1190,43 @@ function revokeAllAccountTokens(accountId) {
   getDb().prepare('UPDATE refresh_tokens SET revoked = 1 WHERE account_id = ? AND revoked = 0').run(accountId);
 }
 
+// ── Live User Locations ──
+
+function upsertUserLocation({ accountId, lat, lng, accuracy, devicePlatform }) {
+  const now = new Date().toISOString();
+  getDb().prepare(`
+    INSERT INTO user_locations (account_id, lat, lng, accuracy, device_platform, last_seen, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(account_id) DO UPDATE SET
+      lat = excluded.lat,
+      lng = excluded.lng,
+      accuracy = excluded.accuracy,
+      device_platform = excluded.device_platform,
+      last_seen = excluded.last_seen
+  `).run(accountId, lat, lng, accuracy, devicePlatform || '', now, now);
+}
+
+function clearUserLocation(accountId) {
+  getDb().prepare('DELETE FROM user_locations WHERE account_id = ?').run(accountId);
+}
+
+function getLiveUserLocations({ withinMinutes = 15 } = {}) {
+  const cutoff = new Date(Date.now() - withinMinutes * 60 * 1000).toISOString();
+  return getDb().prepare(`
+    SELECT ul.account_id, ul.lat, ul.lng, ul.accuracy, ul.device_platform, ul.last_seen,
+           a.child_name, a.member_id, a.city, a.province
+    FROM user_locations ul
+    LEFT JOIN accounts a ON a.account_id = ul.account_id
+    WHERE ul.last_seen >= ?
+    ORDER BY ul.last_seen DESC
+  `).all(cutoff);
+}
+
+function pruneStaleLocations(maxAgeMinutes = 1440) {
+  const cutoff = new Date(Date.now() - maxAgeMinutes * 60 * 1000).toISOString();
+  return getDb().prepare('DELETE FROM user_locations WHERE last_seen < ?').run(cutoff);
+}
+
 module.exports = {
   getDb,
   getAccount,
@@ -1282,4 +1321,9 @@ module.exports = {
   // ── Parent FCM Tokens ──
   getParentFcmTokens,
   registerParentFcmToken,
+  // ── Live User Locations ──
+  upsertUserLocation,
+  clearUserLocation,
+  getLiveUserLocations,
+  pruneStaleLocations,
 };

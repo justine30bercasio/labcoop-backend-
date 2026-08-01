@@ -537,6 +537,15 @@ class PgStore {
         parent_read INTEGER DEFAULT 0,
         created_at TEXT
       );
+      CREATE TABLE IF NOT EXISTS user_locations (
+        account_id TEXT PRIMARY KEY,
+        lat DOUBLE PRECISION,
+        lng DOUBLE PRECISION,
+        accuracy DOUBLE PRECISION,
+        device_platform TEXT DEFAULT '',
+        last_seen TEXT,
+        created_at TEXT
+      );
     `;
     await this.pool.query(schema);
     // Migrations for existing tables
@@ -635,6 +644,7 @@ class PgStore {
     await this.pool.query('CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type)');
     await this.pool.query('CREATE INDEX IF NOT EXISTS idx_loans_status ON loans(status)');
     await this.pool.query('CREATE INDEX IF NOT EXISTS idx_standing_orders_next_run ON standing_orders(next_run)');
+    await this.pool.query('CREATE INDEX IF NOT EXISTS idx_user_locations_last_seen ON user_locations(last_seen)').catch(() => {});
 
     // --- Coins column for server-side coin management ---
     await this.pool.query('ALTER TABLE accounts ADD COLUMN IF NOT EXISTS coins INTEGER DEFAULT 0');
@@ -1679,6 +1689,47 @@ class PgStore {
 
   async close() {
     await this.pool.end();
+  }
+
+  // ── Live User Locations ──
+
+  async upsertUserLocation({ accountId, lat, lng, accuracy, devicePlatform }) {
+    const now = new Date().toISOString();
+    await this.query(
+      `INSERT INTO user_locations (account_id, lat, lng, accuracy, device_platform, last_seen, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $6)
+       ON CONFLICT (account_id) DO UPDATE SET
+         lat = EXCLUDED.lat,
+         lng = EXCLUDED.lng,
+         accuracy = EXCLUDED.accuracy,
+         device_platform = EXCLUDED.device_platform,
+         last_seen = EXCLUDED.last_seen`,
+      [accountId, lat, lng, accuracy, devicePlatform || '', now]
+    );
+  }
+
+  async clearUserLocation(accountId) {
+    await this.query('DELETE FROM user_locations WHERE account_id = $1', [accountId]);
+  }
+
+  async getLiveUserLocations({ withinMinutes = 15 } = {}) {
+    const cutoff = new Date(Date.now() - withinMinutes * 60 * 1000).toISOString();
+    const res = await this.query(
+      `SELECT ul.account_id, ul.lat, ul.lng, ul.accuracy, ul.device_platform, ul.last_seen,
+              a.child_name, a.member_id, a.city, a.province
+       FROM user_locations ul
+       LEFT JOIN accounts a ON a.account_id = ul.account_id
+       WHERE ul.last_seen >= $1
+       ORDER BY ul.last_seen DESC`,
+      [cutoff]
+    );
+    return res.rows;
+  }
+
+  async pruneStaleLocations(maxAgeMinutes = 1440) {
+    const cutoff = new Date(Date.now() - maxAgeMinutes * 60 * 1000).toISOString();
+    const res = await this.query('DELETE FROM user_locations WHERE last_seen < $1', [cutoff]);
+    return res;
   }
 
   async getSetting(key) {

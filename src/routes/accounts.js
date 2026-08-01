@@ -140,6 +140,20 @@ router.put('/:accountId/deposit',
         console.error('[Accounts] Audit log failed:', auditErr.message);
       }
       res.json(result);
+      // Broadcast real-time transaction to admins for the live dashboard feed
+      try {
+        const { getIO } = require('../services/socket');
+        const io = getIO();
+        if (io) {
+          io.to('admin').emit('transactionUpdate', {
+            account_id: req.params.accountId,
+            child_name: result.child_name || '',
+            type: 'deposit',
+            amount: Number(amount),
+            created_at: new Date().toISOString(),
+          });
+        }
+      } catch (_) {}
     } catch (e) {
       res.status(404).json({ message: e.message });
     }

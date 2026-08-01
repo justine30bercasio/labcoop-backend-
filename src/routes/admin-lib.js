@@ -25,6 +25,7 @@ function layout(title, active, content, opts = {}) {
 
    const menuGroups = [
     { minRole: 1, icon: '<i class="fas fa-chart-pie"></i>', label: 'Dashboard', key: 'dashboard', href: '/admin' },
+    { minRole: 1, icon: '<i class="fas fa-map-location-dot"></i>', label: 'Live Map', key: 'live-map', href: '/admin/live-map' },
     { minRole: 1, icon: '<i class="fas fa-comments"></i>', label: 'Messages', key: 'messages', href: '/admin/messages' },
     { minRole: 1, icon: '<i class="fas fa-users"></i>', label: 'Members', key: 'members', children: [
       { minRole: 1, icon: '<i class="fas fa-user"></i>', label: 'Accounts', href: '/admin/accounts', key: 'accounts' },

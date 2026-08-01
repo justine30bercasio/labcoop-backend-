@@ -253,6 +253,8 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
 
   const pendingTotal = pendingLoans + pendingWithdrawals + pendingOnlineDeposits;
 
+  const seedOnlineUsers = await store.getLiveUserLocations({ withinMinutes: 15 });
+
   // Compute trend percentages
   const weekAgoDeps = dayDeposits.slice(0, 3).reduce((s, v) => s + v, 0);
   const weekRecentDeps = dayDeposits.slice(3).reduce((s, v) => s + v, 0);
@@ -297,6 +299,48 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
   .no-data { padding:24px; text-align:center; color:var(--text-muted); font-size:13px; }
   .chart-container { position:relative; height:180px; width:100%; }
   .chart-container-sm { position:relative; height:150px; width:100%; }
+
+  /* ── Bank-Grade Live Dashboard ── */
+  .live-strip { display:flex; align-items:center; gap:14px; background:linear-gradient(90deg,#0d2818,#1a4a2a 60%,#0d2818); border-radius:var(--radius); padding:12px 18px; margin-bottom:18px; color:#e8f5e9; flex-wrap:wrap; box-shadow:var(--shadow); position:relative; overflow:hidden; }
+  .live-strip::before { content:''; position:absolute; inset:0; background:repeating-linear-gradient(90deg, transparent, transparent 60px, rgba(255,255,255,0.02) 60px, rgba(255,255,255,0.02) 120px); pointer-events:none; }
+  .live-strip .ls-clock { font-family:var(--mono); font-size:20px; font-weight:700; letter-spacing:1px; white-space:nowrap; }
+  .live-strip .ls-sep { width:1px; height:26px; background:rgba(255,255,255,0.15); }
+  .live-strip .ls-item { display:flex; flex-direction:column; gap:1px; }
+  .live-strip .ls-label { font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#9fd0a8; opacity:0.9; }
+  .live-strip .ls-value { font-size:14px; font-weight:700; color:#fff; }
+  .live-strip .ls-value small { font-size:10px; font-weight:400; color:#9fd0a8; }
+  .ls-pulse { width:10px; height:10px; border-radius:50%; background:#22c55e; animation:lmPulse 1.4s infinite; flex-shrink:0; }
+  .ls-status { display:flex; align-items:center; gap:8px; margin-left:auto; padding:6px 14px; border-radius:20px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.14); font-size:12px; font-weight:600; }
+  .ls-status.offline { opacity:0.6; }
+  .live-feed { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; }
+  @media(max-width:900px){ .live-feed { grid-template-columns:1fr; } }
+  .feed-card { background:var(--card); border-radius:var(--radius); border:1px solid var(--border); box-shadow:var(--shadow); overflow:hidden; }
+  .feed-card .fc-head { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--border); }
+  .feed-card .fc-head h4 { font-size:13px; font-weight:700; display:flex; align-items:center; gap:8px; }
+  .feed-card .fc-body { max-height:300px; overflow-y:auto; }
+  .feed-card .fc-body::-webkit-scrollbar { width:4px; }
+  .feed-card .fc-body::-webkit-scrollbar-thumb { background:#e2e8f0; border-radius:2px; }
+  .feed-item { display:flex; align-items:center; gap:10px; padding:9px 16px; border-bottom:1px solid #f1f5f9; animation:fadeUp 0.3s ease both; }
+  .feed-item:last-child { border-bottom:none; }
+  .feed-item .fi-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .feed-item .fi-info { flex:1; min-width:0; }
+  .feed-item .fi-title { font-size:12px; font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .feed-item .fi-sub { font-size:11px; color:var(--text-muted); }
+  .feed-item .fi-amt { font-size:13px; font-weight:700; color:var(--accent); font-variant-numeric:tabular-nums; }
+  .feed-item .fi-amt.neg { color:var(--red); }
+  .feed-item .fi-time { font-size:10px; color:var(--text-muted); opacity:0.7; }
+  .fc-empty { padding:28px 16px; text-align:center; color:var(--text-muted); font-size:12px; }
+  .kpi-badge { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:12px; font-size:10px; font-weight:700; }
+  .kpi-badge.green { background:#e8f5e9; color:#15803d; }
+  .kpi-badge.amber { background:#fff8e1; color:#b45309; }
+  .kpi-badge.red { background:#fce4ec; color:#b91c1c; }
+  .kpi-badge.blue { background:#e3f2fd; color:#1d4ed8; }
+  .live-ticker { display:flex; align-items:center; gap:10px; padding:8px 16px; border-radius:10px; background:#f8fafc; border:1px solid var(--border); margin-bottom:18px; font-size:12px; color:var(--text-muted); overflow:hidden; white-space:nowrap; }
+  [data-theme="dark"] .live-ticker { background:#141d16; }
+  .live-ticker .lt-label { display:inline-flex; align-items:center; gap:6px; font-weight:700; color:var(--accent); text-transform:uppercase; font-size:10px; letter-spacing:0.5px; flex-shrink:0; }
+  .live-ticker .lt-stream { overflow:hidden; flex:1; }
+  .live-ticker .lt-msg { display:inline-block; animation:ticker 12s linear infinite; }
+  @keyframes ticker { 0%{transform:translateX(100%)} 100%{transform:translateX(-100%)} }
   </style>
 
   ${pendingTotal > 0 ? `
@@ -307,6 +351,57 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
     ${pendingWithdrawals > 0 ? `<a href="/admin/withdrawal-requests?status=pending" class="btn btn-amber btn-xs">Review Withdrawals</a>` : ''}
     ${pendingOnlineDeposits > 0 ? `<a href="/admin/online-deposits?status=pending" class="btn btn-amber btn-xs">Review Deposits</a>` : ''}
   </div>` : ''}
+
+  <!-- Live Status Strip (bank-grade) -->
+  <div class="live-strip">
+    <span class="ls-pulse"></span>
+    <div class="ls-item">
+      <span class="ls-label">Philippine Standard Time</span>
+      <span class="ls-clock" id="liveClock">--:--:--</span>
+    </div>
+    <span class="ls-sep"></span>
+    <div class="ls-item">
+      <span class="ls-label">Sessions Today</span>
+      <span class="ls-value"><span id="liveSessions">${accounts.length}</span></span>
+    </div>
+    <div class="ls-item">
+      <span class="ls-label">Deposits Today</span>
+      <span class="ls-value"><span id="liveDeposits">${fmt(dayDeposits[6] || 0)}</span></span>
+    </div>
+    <div class="ls-item">
+      <span class="ls-label">Withdrawals Today</span>
+      <span class="ls-value"><span id="liveWithdrawals">${fmt(dayWithdrawals[6] || 0)}</span></span>
+    </div>
+    <div class="ls-item">
+      <span class="ls-label">Avg Deposit</span>
+      <span class="ls-value"><span id="liveAvg">${fmt((dayDeposits[6] || 0) / ((dayCounts[6] || 1)))}</span></span>
+    </div>
+    <div class="ls-status"><i class="fas fa-wifi"></i> <span id="liveConn">Live</span></div>
+  </div>
+
+  <!-- Live Activity Feed -->
+  <div class="section-title"><i class="fas fa-bolt"></i> Live Activity</div>
+  <div class="live-feed">
+    <div class="feed-card">
+      <div class="fc-head">
+        <h4><i class="fas fa-users" style="color:var(--blue)"></i> Users Online Now</h4>
+        <span class="kpi-badge blue" id="onlineBadge">0 online</span>
+        <a href="/admin/live-map" class="btn btn-outline btn-xs"><i class="fas fa-map-location-dot"></i> Live Map</a>
+      </div>
+      <div class="fc-body" id="onlineFeed">
+        <div class="fc-empty"><i class="fas fa-map-pin" style="opacity:0.3;margin-right:4px"></i>No users sharing location right now.</div>
+      </div>
+    </div>
+    <div class="feed-card">
+      <div class="fc-head">
+        <h4><i class="fas fa-arrows-spin" style="color:var(--accent)"></i> Real-Time Transactions</h4>
+        <a href="/admin/transactions" class="btn btn-outline btn-xs"><i class="fas fa-eye"></i> View All</a>
+      </div>
+      <div class="fc-body" id="txFeed">
+        <div class="fc-empty"><i class="fas fa-spinner fa-spin" style="opacity:0.4;margin-right:4px"></i>Waiting for activity&hellip;</div>
+      </div>
+    </div>
+  </div>
 
   <!-- Quick Actions -->
   <div class="section-title"><i class="fas fa-bolt"></i> Quick Actions</div>
@@ -527,6 +622,113 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
     }
   });
   </script>
+  <script>
+  (function(){
+    // ── Live PH clock ──
+    var clockEl = document.getElementById('liveClock');
+    function tickClock(){
+      if(!clockEl) return;
+      var now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+      clockEl.textContent = now.toLocaleTimeString('en-US', { hour12: true });
+    }
+    tickClock();
+    setInterval(tickClock, 1000);
+
+    // ── Real-time activity feed ──
+    var txFeed = document.getElementById('txFeed');
+    var onlineFeed = document.getElementById('onlineFeed');
+    var onlineBadge = document.getElementById('onlineBadge');
+    var liveConn = document.getElementById('liveConn');
+    var liveDeposits = document.getElementById('liveDeposits');
+    var liveWithdrawals = document.getElementById('liveWithdrawals');
+    var liveAvg = document.getElementById('liveAvg');
+    var liveSessions = document.getElementById('liveSessions');
+    var onlineUsers = {};
+    var onlineCount = 0;
+
+    function fmtMoney(v){
+      return '₱' + Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function timeAgo(iso){
+      if(!iso) return '';
+      var s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime())/1000));
+      if(s < 5) return 'just now';
+      if(s < 60) return s + 's ago';
+      if(s < 3600) return Math.floor(s/60) + 'm ago';
+      return Math.floor(s/3600) + 'h ago';
+    }
+    function prependTx(t){
+      if(!txFeed) return;
+      txFeed.querySelector('.fc-empty')?.remove();
+      var isInflow = ['deposit','loan_disbursement','interest_credit','interest','interest_income','td_maturity','reward'].includes(t.type);
+      var dotColor = isInflow ? '#22c55e' : '#ef4444';
+      var el = document.createElement('div');
+      el.className = 'feed-item';
+      el.innerHTML = '<span class="fi-dot" style="background:' + dotColor + '"></span>' +
+        '<div class="fi-info"><div class="fi-title">' + (t.child_name || 'Member') + '</div>' +
+        '<div class="fi-sub">' + String(t.type||'').replace(/_/g,' ') + '</div></div>' +
+        '<div><div class="fi-amt' + (isInflow ? '' : ' neg') + '">' + (isInflow ? '+' : '-') + fmtMoney(t.amount) + '</div>' +
+        '<div class="fi-time">' + timeAgo(t.created_at) + '</div></div>';
+      txFeed.prepend(el);
+      while(txFeed.children.length > 8) txFeed.removeChild(txFeed.lastChild);
+    }
+    function upsertOnline(u){
+      onlineUsers[u.account_id] = u;
+      renderOnline();
+    }
+    function removeOnline(id){
+      delete onlineUsers[id];
+      renderOnline();
+    }
+    function renderOnline(){
+      var arr = Object.values(onlineUsers);
+      onlineCount = arr.length;
+      if(onlineBadge) onlineBadge.textContent = onlineCount + ' online';
+      if(!onlineFeed) return;
+      if(!arr.length){
+        onlineFeed.innerHTML = '<div class="fc-empty"><i class="fas fa-map-pin" style="opacity:0.3;margin-right:4px"></i>No users sharing location right now.</div>';
+        return;
+      }
+      onlineFeed.innerHTML = arr.map(function(u){
+        var name = u.child_name || ('Member ' + (u.member_id || u.account_id.slice(0,4)));
+        return '<div class="feed-item"><span class="fi-dot" style="background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,0.2)"></span>' +
+          '<div class="fi-info"><div class="fi-title">' + name + '</div>' +
+          '<div class="fi-sub">' + (u.city ? u.city + (u.province ? ', '+u.province : '') : 'Quezon') + '</div></div>' +
+          '<div class="fi-time">' + timeAgo(u.last_seen) + '</div></div>';
+      }).join('');
+    }
+
+    // Seed online feed from server data (live locations loaded server-side)
+    var seedOnline = ${JSON.stringify(seedOnlineUsers)};
+    seedOnline.forEach(upsertOnline);
+
+    // ── Socket.IO real-time wiring ──
+    function wire(sio){
+      if(!sio) return;
+      sio.on('connect', function(){
+        if(liveConn) liveConn.textContent = 'Live';
+        sio.emit('joinRoom', 'admin');
+      });
+      sio.on('disconnect', function(){ if(liveConn) liveConn.textContent = 'Reconnecting...'; });
+      sio.on('transactionUpdate', function(t){
+        prependTx(t);
+        // bump today's counters
+        if(t.type === 'deposit' && liveDeposits){
+          var cur = parseFloat(String(liveDeposits.textContent).replace(/[^0-9.]/g,'')) || 0;
+          liveDeposits.textContent = fmtMoney(cur + Number(t.amount));
+        }
+        if(t.type === 'withdrawal' && liveWithdrawals){
+          var cur2 = parseFloat(String(liveWithdrawals.textContent).replace(/[^0-9.]/g,'')) || 0;
+          liveWithdrawals.textContent = fmtMoney(cur2 + Number(t.amount));
+        }
+      });
+      sio.on('liveLocation', function(u){ upsertOnline(u); });
+      sio.on('liveLocationOffline', function(d){ removeOnline(d.account_id); });
+    }
+    wire(window.adminSocket);
+    if(window.adminSocket && window.adminSocket.connected) { window.adminSocket.emit('joinRoom', 'admin'); }
+  })();
+  </script>
   `;
 
   // Inject transaction data as a global variable for the chart script
@@ -537,6 +739,162 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
         subtitle: new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila', weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
     headerActions: '<a href="/admin/gl/trial-balance" class="btn btn-outline btn-sm"><i class="fas fa-scale-balanced"></i> Trial Balance</a><a href="/api/excel/export/all" class="btn btn-secondary btn-sm"><i class="fas fa-download"></i> Export</a>',
     toast: msg ? `success:${msg}` : undefined,
+  }));
+}));
+
+// ── Live Map — real-time user locations (Real–Infanta, Quezon focus) ──
+
+const REAL_INFANTA_BOUNDS = {
+  center: [14.7048, 121.6272],
+  zoom: 12,
+  southWest: [14.52, 121.36],
+  northEast: [14.90, 121.90],
+};
+
+router.get('/api/live-locations', requireRole(1), asyncHandler(async (req, res) => {
+  const users = await store.getLiveUserLocations({ withinMinutes: 15 });
+  res.json({ users });
+}));
+
+router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
+  const users = await store.getLiveUserLocations({ withinMinutes: 15 });
+
+  const content = `
+  <style>
+  .lm-toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+  .lm-chip { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:20px; font-size:12px; font-weight:600; background:var(--card); border:1px solid var(--border); }
+  .lm-chip.live { background:#dcfce7; color:#15803d; border-color:#86efac; }
+  .lm-chip.live .pulse { width:8px; height:8px; border-radius:50%; background:#22c55e; animation:lmPulse 1.2s infinite; }
+  @keyframes lmPulse { 0%{box-shadow:0 0 0 0 rgba(34,197,94,0.5)} 100%{box-shadow:0 0 0 8px rgba(34,197,94,0)} }
+  #lmap { height: calc(100vh - 220px); min-height: 460px; border-radius: var(--radius); border:1px solid var(--border); box-shadow: var(--shadow); z-index:1; background:#e8f0e8; }
+  .lm-side { display:grid; grid-template-columns: 1fr 320px; gap:16px; }
+  @media(max-width:900px){ .lm-side { grid-template-columns: 1fr; } }
+  .lm-list { max-height: calc(100vh - 220px); overflow-y:auto; border:1px solid var(--border); border-radius: var(--radius); background:var(--card); }
+  .lm-list .lm-item { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--border); }
+  .lm-list .lm-item:last-child { border-bottom:none; }
+  .lm-avatar { width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg,#2E7D32,#1B5E20); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; flex-shrink:0; }
+  .lm-list .lm-info { flex:1; min-width:0; }
+  .lm-list .lm-name { font-size:13px; font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .lm-list .lm-meta { font-size:11px; color:var(--text-muted); margin-top:1px; }
+  .lm-list .lm-time { font-size:10px; color:var(--text-muted); opacity:0.7; }
+  .lm-empty { padding:32px 16px; text-align:center; color:var(--text-muted); font-size:13px; }
+  .lm-legend { display:flex; gap:16px; align-items:center; font-size:11px; color:var(--text-muted); flex-wrap:wrap; }
+  .lm-legend .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+  </style>
+
+  <div class="lm-toolbar">
+    <span class="lm-chip live"><span class="pulse"></span> Live Tracking</span>
+    <span class="lm-chip"><i class="fas fa-users"></i> <span id="lmOnline">0</span> online</span>
+    <span class="lm-chip"><i class="fas fa-satellite-dish"></i> Real &middot; Infanta, Quezon</span>
+    <div class="lm-legend" style="margin-left:auto">
+      <span><span class="dot" style="background:#22c55e"></span> Active now</span>
+      <span><span class="dot" style="background:#f59e0b"></span> &lt; 15 min</span>
+    </div>
+  </div>
+
+  <div class="lm-side">
+    <div id="lmap"></div>
+    <div class="lm-list" id="lmList"></div>
+  </div>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+  var BOUNDS = ${JSON.stringify(REAL_INFANTA_BOUNDS)};
+  var map = L.map('lmap').setView(BOUNDS.center, BOUNDS.zoom);
+  var maxBounds = L.latLngBounds(BOUNDS.southWest, BOUNDS.northEast);
+  map.setMaxBounds(maxBounds);
+  map.setMinZoom(11);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18,
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  // Municipal boundary hint circles (Real + Infanta area)
+  L.circle([14.7048, 121.6272], { radius: 15000, color: '#2E7D32', fillColor: '#2E7D32', fillOpacity: 0.05, weight: 1, dashArray: '4 4' }).addTo(map);
+
+  var markers = {};
+  var children = {};
+
+  function esc(s){ return String(s||'').replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function timeAgo(iso){
+    if(!iso) return '';
+    var t = new Date(iso).getTime();
+    var s = Math.max(0, Math.floor((Date.now()-t)/1000));
+    if(s < 60) return 'just now';
+    if(s < 3600) return Math.floor(s/60) + 'm ago';
+    return Math.floor(s/3600) + 'h ago';
+  }
+  function colorFor(p){
+    if(!p) return '#22c55e';
+    var mins = (Date.now() - new Date(p).getTime())/60000;
+    return mins < 5 ? '#22c55e' : '#f59e0b';
+  }
+  function upsert(u){
+    var key = u.account_id;
+    children[key] = u;
+    var name = u.child_name || ('Member ' + (u.member_id || key.slice(0,4)));
+    if(markers[key]){ markers[key].setLatLng([u.lat, u.lng]); }
+    else {
+      var icon = L.divIcon({
+        className: '',
+        html: '<div style="width:14px;height:14px;border-radius:50%;background:'+colorFor(u.last_seen)+';border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.3)"></div>',
+        iconSize: [14,14], iconAnchor: [7,7]
+      });
+      markers[key] = L.marker([u.lat, u.lng], { icon: icon }).addTo(map);
+    }
+    markers[key].bindPopup('<b>'+esc(name)+'</b><br>' + (u.city ? esc(u.city)+(u.province ? ', '+esc(u.province) : '') : '') + '<br><small>'+timeAgo(u.last_seen)+'</small>');
+    renderList();
+  }
+  function removeUser(id){
+    if(markers[id]){ map.removeLayer(markers[id]); delete markers[id]; }
+    delete children[id];
+    renderList();
+  }
+  function renderList(){
+    var list = document.getElementById('lmList');
+    var arr = Object.values(children);
+    document.getElementById('lmOnline').textContent = arr.length;
+    if(!arr.length){
+      list.innerHTML = '<div class="lm-empty"><i class="fas fa-map-location-dot" style="font-size:28px;opacity:0.3;margin-bottom:8px;display:block"></i>No users sharing location right now.<br><small>Users opt in from the app's Settings &rarr; Live Location.</small></div>';
+      return;
+    }
+    list.innerHTML = arr.map(function(u){
+      var name = u.child_name || ('Member ' + (u.member_id || u.account_id.slice(0,4)));
+      return '<div class="lm-item">' +
+        '<div class="lm-avatar">' + esc((name||'?').charAt(0).toUpperCase()) + '</div>' +
+        '<div class="lm-info"><div class="lm-name">' + esc(name) + '</div>' +
+        '<div class="lm-meta">' + (u.city ? esc(u.city)+(u.province ? ', '+esc(u.province) : '') : 'Quezon') + '</div>' +
+        '<div class="lm-time">' + timeAgo(u.last_seen) + '</div></div>' +
+        '<span class="lm-chip" style="font-size:10px;padding:2px 8px">' + Math.round(u.lat*10000)/10000 + ', ' + Math.round(u.lng*10000)/10000 + '</span>' +
+        '</div>';
+    }).join('');
+  }
+
+  // Initial data
+  var initial = ${JSON.stringify(users)};
+  initial.forEach(upsert);
+  renderList();
+
+  // Real-time updates via socket
+  if (typeof window.adminSocket !== 'undefined') {
+    window.adminSocket.on('liveLocation', function(u){ upsert(u); });
+    window.adminSocket.on('liveLocationOffline', function(d){ removeUser(d.account_id); });
+  }
+  // Polling fallback (every 20s)
+  setInterval(function(){
+    fetch('/admin/api/live-locations').then(function(r){ return r.json(); }).then(function(data){
+      var seen = {};
+      (data.users || []).forEach(function(u){ seen[u.account_id] = true; upsert(u); });
+      Object.keys(children).forEach(function(id){ if(!seen[id]) removeUser(id); });
+    }).catch(function(){});
+  }, 20000);
+  </script>
+  `;
+
+  res.type('html').send(layout('Live Map', 'live-map', content, {
+    subtitle: 'Real-time location of app users &mdash; Real &middot; Infanta &middot; Gen. Nakar (Quezon)',
+    headerActions: '<a href="/admin" class="btn btn-outline btn-sm"><i class="fas fa-arrow-left"></i> Dashboard</a>',
   }));
 }));
 

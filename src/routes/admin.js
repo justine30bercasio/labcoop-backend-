@@ -689,13 +689,35 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
       if(!arr.length){
         onlineFeed.innerHTML = '<div class="fc-empty"><i class="fas fa-map-pin" style="opacity:0.3;margin-right:4px"></i>No users sharing location right now.</div>';        return;
       }
-      onlineFeed.innerHTML = arr.map(function(u){
+      // In-place diffing so the feed doesn't visibly "bounce" every poll.
+      var existing = {};
+      onlineFeed.querySelectorAll('.feed-item').forEach(function(el){
+        existing[el.getAttribute('data-id')] = el;
+      });
+      var keep = {};
+      arr.forEach(function(u){
+        var id = u.account_id;
+        keep[id] = true;
+        var el = existing[id];
+        if(el){
+          var t = el.querySelector('.fi-time');
+          if(t) t.setAttribute('data-ts', u.last_seen || '');
+          return;
+        }
         var name = u.child_name || ('Member ' + (u.member_id || u.account_id.slice(0,4)));
-        return '<div class="feed-item"><span class="fi-dot" style="background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,0.2)"></span>' +
-          '<div class="fi-info"><div class="fi-title">' + name + '</div>' +
-          '<div class="fi-sub">' + (u.city ? u.city + (u.province ? ', '+u.province : '') : 'Quezon') + '</div></div>' +
-          '<div class="fi-time" data-ts="' + (u.last_seen || '') + '">' + timeAgo(u.last_seen) + '</div></div>';
-      }).join('');
+        var n = document.createElement('div');
+        n.className = 'feed-item';
+        n.setAttribute('data-id', id);
+        n.innerHTML = '<span class="fi-dot" style="background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,0.2)"></span>' +
+          '<div class="fi-info"><div class="fi-title">' + esc(name) + '</div>' +
+          '<div class="fi-sub">' + esc(u.city ? u.city + (u.province ? ', '+u.province : '') : 'Quezon') + '</div></div>' +
+          '<div class="fi-time" data-ts="' + esc(u.last_seen || '') + '">' + timeAgo(u.last_seen) + '</div></div>';
+        onlineFeed.appendChild(n);
+        if(onlineFeed.children.length > 8) onlineFeed.removeChild(onlineFeed.lastChild);
+      });
+      Object.keys(existing).forEach(function(id){
+        if(!keep[id]) existing[id].remove();
+      });
     }
 
     // Seed online feed from server data (live locations loaded server-side)
@@ -808,6 +830,8 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
   .lm-avatar img { width:100%; height:100%; object-fit:cover; }
   .lm-list .lm-info { flex:1; min-width:0; }
   .lm-list .lm-name { font-size:13px; font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .lm-list .lm-live-dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#22c55e; margin-left:6px; vertical-align:middle; animation:lmListPulse 1.4s infinite; }
+  @keyframes lmListPulse { 0%{ box-shadow:0 0 0 0 rgba(34,197,94,0.5);} 70%{ box-shadow:0 0 0 6px rgba(34,197,94,0);} 100%{ box-shadow:0 0 0 0 rgba(34,197,94,0);} }
   .lm-list .lm-meta { font-size:11px; color:var(--text-muted); margin-top:1px; }
   .lm-list .lm-time { font-size:10px; color:var(--text-muted); opacity:0.7; }
   .lm-list .lm-status { font-size:10px; font-weight:600; text-transform:uppercase; }
@@ -831,6 +855,13 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
   .lm-popup .pp-badge .dot { width:7px; height:7px; border-radius:50%; display:inline-block; }
   .lm-popup .pp-row { font-size:11px; color:#6b7280; margin-top:3px; display:flex; align-items:center; gap:6px; }
   .lm-popup .pp-row i { width:13px; text-align:center; color:#9ca3af; }
+  .lm-pin { position:relative; display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; }
+  .lm-pin .ring { position:absolute; left:50%; top:50%; width:34px; height:34px; margin:-17px 0 0 -17px; border-radius:50%; pointer-events:none; }
+  .lm-pin.on .ring { background:rgba(34,197,94,0.28); animation:lmPing 1.8s ease-out infinite; }
+  .lm-pin.on .pin-body { font-size:32px; line-height:1; color:#22c55e; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.45)); text-shadow:0 0 3px #fff, 0 0 6px #fff; }
+  .lm-pin.off .ring { background:rgba(220,38,38,0.18); }
+  .lm-pin.off .pin-body { font-size:24px; line-height:1; color:#dc2626; opacity:0.75; filter:drop-shadow(0 1px 2px rgba(0,0,0,0.35)); }
+  @keyframes lmPing { 0%{ transform:scale(0.45); opacity:0.9; } 100%{ transform:scale(1.9); opacity:0; } }
   </style>
 
   <div class="lm-toolbar">
@@ -881,8 +912,8 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
   function pinHtmlFor(u){
     var online = isOnline(u);
     return online
-      ? '<i class="fas fa-location-dot" style="color:#22c55e;font-size:26px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));text-shadow:0 0 0 2px #fff"></i>'
-      : '<i class="fas fa-location-dot" style="color:#dc2626;font-size:26px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4))"></i>';
+      ? '<span class="lm-pin on"><i class="fas fa-location-dot pin-body"></i><span class="ring"></span></span>'
+      : '<span class="lm-pin off"><i class="fas fa-location-dot pin-body"></i><span class="ring"></span></span>';
   }
   function avatarHtml(u, sizeCls){
     var name = u.child_name || ('Member ' + (u.member_id || ''));
@@ -927,7 +958,7 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
       var icon = L.divIcon({
         className: '',
         html: '<div style="text-align:center;line-height:1">' + pinHtmlFor(u) + '</div>',
-        iconSize: [26,26], iconAnchor: [13,24], popupAnchor: [0,-20]
+        iconSize: [38,38], iconAnchor: [19,38], popupAnchor: [0,-34]
       });
       markers[key] = L.marker([u.lat, u.lng], { icon: icon }).addTo(map);
       markers[key].bindPopup(popupHtml(u));
@@ -941,7 +972,7 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
     children[id].is_online = 0;
     if(markers[id]){
       markers[id].setLatLng([children[id].lat, children[id].lng]);
-      markers[id].setIcon(L.divIcon({ className:'', html:'<div style="text-align:center;line-height:1">'+pinHtmlFor(children[id])+'</div>', iconSize:[26,26], iconAnchor:[13,24], popupAnchor:[0,-20] }));
+      markers[id].setIcon(L.divIcon({ className:'', html:'<div style="text-align:center;line-height:1">'+pinHtmlFor(children[id])+'</div>', iconSize:[38,38], iconAnchor:[19,38], popupAnchor:[0,-34] }));
       markers[id].setPopupContent(popupHtml(children[id]));
     }
     renderList();
@@ -970,6 +1001,19 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
       try { map.fitBounds(all.pad(0.15), { maxZoom: 15, animate: true }); } catch(_) {}
     }, 150);
   }
+  function rowHtmlFor(u){
+    var name = u.child_name || ('Member ' + (u.member_id || u.account_id.slice(0,4)));
+    var online = isOnline(u);
+    return '<div class="lm-item" data-id="' + esc(u.account_id) + '" onclick="zoomToUser(&#39;' + esc(u.account_id) + '&#39;, true)">' +
+      avatarHtml(u) +
+      '<div class="lm-info"><div class="lm-name">' + esc(name) + (online ? '<span class="lm-live-dot"></span>' : '') + '</div>' +
+      '<div class="lm-status" style="color:'+(online?'#16a34a':'#dc2626')+'">'+(online?'Online':'Offline')+'</div>' +
+      '<div class="lm-meta">' + (u.city ? esc(u.city)+(u.province ? ', '+esc(u.province) : '') : '') + '</div>' +
+      '<div class="lm-time" data-ts="' + esc(u.last_seen||'') + '">' + timeAgo(u.last_seen) + '</div></div>' +
+      '<button type="button" class="lm-locate" title="Zoom to this user" onclick="event.stopPropagation();zoomToUser(&#39;' + esc(u.account_id) + '&#39;, true)"><i class="fas fa-crosshairs"></i></button>' +
+      '</div>';
+  }
+  var _listSig = {};
   function renderList(){
     var list = document.getElementById('lmList');
     var arr = Object.values(children);
@@ -978,20 +1022,43 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
     document.getElementById('lmTotal').textContent = arr.length;
     if(!arr.length){
       list.innerHTML = '<div class="lm-empty"><i class="fas fa-map-location-dot" style="font-size:28px;opacity:0.3;margin-bottom:8px;display:block"></i>No users on the tracker yet.<br><small>Users appear here once they open the app with location enabled.</small></div>';
+      _listSig = {};
       return;
     }
-    list.innerHTML = arr.map(function(u){
-      var name = u.child_name || ('Member ' + (u.member_id || u.account_id.slice(0,4)));
-      var online = isOnline(u);
-      return '<div class="lm-item" data-id="' + esc(u.account_id) + '" onclick="zoomToUser(&#39;' + esc(u.account_id) + '&#39;, true)">' +
-        avatarHtml(u) +
-        '<div class="lm-info"><div class="lm-name">' + esc(name) + '</div>' +
-        '<div class="lm-status" style="color:'+(online?'#16a34a':'#dc2626')+'">'+(online?'Online':'Offline')+'</div>' +
-        '<div class="lm-meta">' + (u.city ? esc(u.city)+(u.province ? ', '+esc(u.province) : '') : '') + '</div>' +
-        '<div class="lm-time">' + timeAgo(u.last_seen) + '</div></div>' +
-        '<button type="button" class="lm-locate" title="Zoom to this user" onclick="event.stopPropagation();zoomToUser(&#39;' + esc(u.account_id) + '&#39;, true)"><i class="fas fa-crosshairs"></i></button>' +
-        '</div>';
-    }).join('');
+    var items = list.querySelectorAll('.lm-item');
+    var rowById = {};
+    items.forEach(function(el){ rowById[el.getAttribute('data-id')] = el; });
+    var keep = {};
+    arr.forEach(function(u){
+      var id = u.account_id;
+      keep[id] = true;
+      var sig = (Number(u.is_online)===1?'1':'0') + '|' + (u.lat||'') + '|' + (u.lng||'') + '|' + (u.city||'') + '|' + (u.profile_pic_url||'');
+      var el = rowById[id];
+      if(el && _listSig[id] === sig){
+        // Same row + same status → just refresh the time label in place.
+        var t = el.querySelector('.lm-time');
+        if(t) t.textContent = timeAgo(u.last_seen);
+        return;
+      }
+      var n = document.createElement('div');
+      n.innerHTML = rowHtmlFor(u);
+      if(el){ el.replaceWith(n); } else { list.appendChild(n); }
+      _listSig[id] = sig;
+    });
+    // Remove rows no longer tracked.
+    Object.keys(rowById).forEach(function(id){
+      if(!keep[id]){ rowById[id].remove(); delete _listSig[id]; }
+    });
+  }
+  // Live time labels without rebuilding the DOM (prevents list "bouncing").
+  function tickTimes(){
+    var list = document.getElementById('lmList');
+    if(!list) return;
+    var items = list.querySelectorAll('.lm-item .lm-time');
+    items.forEach(function(el){
+      var ts = el.getAttribute('data-ts');
+      if(ts) el.textContent = timeAgo(ts);
+    });
   }
 
   // Seed on page load: fit the map to where the users actually are.
@@ -1000,8 +1067,15 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
   renderList();
   if (Object.keys(markers).length) fitToMarkers(true);
 
-  // Live time labels: re-render list every 15s so "5m ago" ticks without a refresh.
-  setInterval(function(){ renderList(); }, 15000);
+  // Live time labels: update in place so "5m ago" ticks WITHOUT rebuilding the
+  // list DOM (which caused the list to visibly "bounce" every few seconds).
+  setInterval(function(){ tickTimes(); }, 15000);
+  // Also refresh the online/offline legend counts on the same light timer.
+  setInterval(function(){
+    var arr = Object.values(children);
+    document.getElementById('lmOnline').textContent = arr.filter(isOnline).length;
+    document.getElementById('lmTotal').textContent = arr.length;
+  }, 10000);
 
   // Real-time updates via socket
   if (typeof window.adminSocket !== 'undefined') {
@@ -1009,14 +1083,15 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
     window.adminSocket.on('liveLocationOffline', function(d){ setOffline(d.account_id); });
     window.adminSocket.on('liveLocationPurge', function(d){ removeUser(d.account_id); });
   }
-  // Polling fallback (every 5s) — keeps pins + online/offline status fresh
+  // Polling fallback — keeps pins + online/offline status fresh. Runs less
+  // often than before (10s) and renderList() now diffs rows, so no bouncing.
   setInterval(function(){
     fetch('/admin/api/all-locations').then(function(r){ return r.json(); }).then(function(data){
       var seen = {};
       (data.users || []).forEach(function(u){ seen[u.account_id] = true; upsert(u); });
       Object.keys(children).forEach(function(id){ if(!seen[id]) removeUser(id); });
     }).catch(function(){});
-  }, 5000);
+  }, 10000);
   </script>
   `;
 

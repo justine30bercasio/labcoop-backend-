@@ -887,7 +887,7 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
   function avatarHtml(u, sizeCls){
     var name = u.child_name || ('Member ' + (u.member_id || ''));
     if(u.profile_pic_url){
-      return '<div class="'+(sizeCls||'lm-avatar')+'"><img src="' + esc(u.profile_pic_url) + '" onerror="this.style.display=\'none\'"></div>';
+      return '<div class="'+(sizeCls||'lm-avatar')+'"><img src="' + esc(u.profile_pic_url) + '" onerror="this.style.display=&#39;none&#39;"></div>';
     }
     return '<div class="'+(sizeCls||'lm-avatar')+'">' + esc((name||'?').charAt(0).toUpperCase()) + '</div>';
   }

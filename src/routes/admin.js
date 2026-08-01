@@ -687,8 +687,7 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
       if(onlineBadge) onlineBadge.textContent = onlineCount + ' online';
       if(!onlineFeed) return;
       if(!arr.length){
-        onlineFeed.innerHTML = '<div class="fc-empty"><i class="fas fa-map-pin" style="opacity:0.3;margin-right:4px"></i>No users sharing location right now.</div>';
-        return;
+        onlineFeed.innerHTML = '<div class="fc-empty"><i class="fas fa-map-pin" style="opacity:0.3;margin-right:4px"></i>No users sharing location right now.</div>';        return;
       }
       onlineFeed.innerHTML = arr.map(function(u){
         var name = u.child_name || ('Member ' + (u.member_id || u.account_id.slice(0,4)));
@@ -810,7 +809,7 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
   <div class="lm-toolbar">
     <span class="lm-chip live"><span class="pulse"></span> Live Tracking</span>
     <span class="lm-chip"><i class="fas fa-users"></i> <span id="lmOnline">0</span> online</span>
-    <span class="lm-chip"><i class="fas fa-satellite-dish"></i> Real &middot; Infanta, Quezon</span>
+    <span class="lm-chip"><i class="fas fa-satellite-dish"></i> Live locations of all users</span>
     <div class="lm-legend" style="margin-left:auto">
       <span><span class="dot" style="background:#dc2626"></span> Active now</span>
       <span><span class="dot" style="background:#f59e0b"></span> &lt; 15 min</span>
@@ -826,16 +825,12 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
   var BOUNDS = ${JSON.stringify(REAL_INFANTA_BOUNDS)};
+  // Default to the Real/Infanta area, then fit to the actual user pins below.
   var map = L.map('lmap').setView(BOUNDS.center, BOUNDS.zoom);
-  var maxBounds = L.latLngBounds(BOUNDS.southWest, BOUNDS.northEast);
-  map.setMaxBounds(maxBounds);
-  map.setMinZoom(11);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
-  // Show the whole Real/Infanta range by default — don't zoom into any single pin.
-  setTimeout(function(){ try { map.fitBounds(maxBounds, { maxZoom: 12 }); } catch(_){} }, 100);
 
   // Municipal boundary hint circles (Real + Infanta area)
   L.circle([14.7048, 121.6272], { radius: 15000, color: '#2E7D32', fillColor: '#2E7D32', fillOpacity: 0.05, weight: 1, dashArray: '4 4' }).addTo(map);
@@ -884,20 +879,23 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
     delete children[id];
     renderList();
   }
-  // Only zoom to fit when a NEW user appears outside the current view.
-  // Existing users' heartbeat updates move the pin WITHOUT re-zooming the map.
+  // Fit the map to the actual user pins. On first load (force=true) always fit;
+  // on real-time arrivals only fit if a new user is outside the current view.
+  // No hard area limit — the map shows wherever the users are.
   var _fitTimer = null;
-  function fitToMarkers(){
+  function fitToMarkers(force){
     var latlngs = Object.keys(markers).map(function(k){ return markers[k].getLatLng(); });
     if(!latlngs.length) return;
     var all = L.latLngBounds(latlngs);
     if(!all.isValid()) return;
-    var view = map.getBounds();
-    var anyOutside = latlngs.some(function(ll){ return !view.contains(ll); });
-    if(!anyOutside) return;
+    if(!force){
+      var view = map.getBounds();
+      var anyOutside = latlngs.some(function(ll){ return !view.contains(ll); });
+      if(!anyOutside) return;
+    }
     clearTimeout(_fitTimer);
     _fitTimer = setTimeout(function(){
-      try { map.fitBounds(all.pad(0.15), { maxZoom: 13, animate: true }); } catch(_) {}
+      try { map.fitBounds(all.pad(0.15), { maxZoom: 15, animate: true }); } catch(_) {}
     }, 150);
   }
   function renderList(){
@@ -905,7 +903,7 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
     var arr = Object.values(children);
     document.getElementById('lmOnline').textContent = arr.length;
     if(!arr.length){
-      list.innerHTML = '<div class="lm-empty"><i class="fas fa-map-location-dot" style="font-size:28px;opacity:0.3;margin-bottom:8px;display:block"></i>No users sharing location right now.<br><small>Users opt in from the app Settings &rarr; Live Location.</small></div>';
+      list.innerHTML = '<div class="lm-empty"><i class="fas fa-map-location-dot" style="font-size:28px;opacity:0.3;margin-bottom:8px;display:block"></i>No users sharing location right now.<br><small>Location sharing is on by default &mdash; users appear here while the app is open.</small></div>';
       return;
     }
     list.innerHTML = arr.map(function(u){
@@ -920,10 +918,11 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
     }).join('');
   }
 
-  // Initial data
+  // Seed on page load: fit the map to where the users actually are.
   var initial = ${JSON.stringify(users)};
   initial.forEach(function(u){ upsert(u, true); });
   renderList();
+  if (Object.keys(markers).length) fitToMarkers(true);
 
   // Real-time updates via socket
   if (typeof window.adminSocket !== 'undefined') {
@@ -942,7 +941,7 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
   `;
 
   res.type('html').send(layout('Live Map', 'live-map', content, {
-    subtitle: 'Real-time location of app users &mdash; Real &middot; Infanta &middot; Gen. Nakar (Quezon)',
+    subtitle: 'Real-time location of app users &mdash; map auto-fits to where they are',
     headerActions: '<a href="/admin" class="btn btn-outline btn-sm"><i class="fas fa-arrow-left"></i> Dashboard</a>',
   }));
 }));

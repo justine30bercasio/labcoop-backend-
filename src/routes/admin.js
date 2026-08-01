@@ -633,6 +633,8 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
   <script>
   (function(){
     // ── Live PH clock ──
+    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    var gridColor = isDark ? '#2a3a2e' : '#e2e8f0';
     var clockEl = document.getElementById('liveClock');
     function tickClock(){
       if(!clockEl) return;

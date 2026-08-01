@@ -983,13 +983,13 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
     list.innerHTML = arr.map(function(u){
       var name = u.child_name || ('Member ' + (u.member_id || u.account_id.slice(0,4)));
       var online = isOnline(u);
-      return '<div class="lm-item" data-id="' + esc(u.account_id) + '" onclick="zoomToUser(\'' + esc(u.account_id) + '\', true)">' +
+      return '<div class="lm-item" data-id="' + esc(u.account_id) + '" onclick="zoomToUser(&#39;' + esc(u.account_id) + '&#39;, true)">' +
         avatarHtml(u) +
         '<div class="lm-info"><div class="lm-name">' + esc(name) + '</div>' +
         '<div class="lm-status" style="color:'+(online?'#16a34a':'#dc2626')+'">'+(online?'Online':'Offline')+'</div>' +
         '<div class="lm-meta">' + (u.city ? esc(u.city)+(u.province ? ', '+esc(u.province) : '') : '') + '</div>' +
         '<div class="lm-time">' + timeAgo(u.last_seen) + '</div></div>' +
-        '<button type="button" class="lm-locate" title="Zoom to this user" onclick="event.stopPropagation();zoomToUser(\'' + esc(u.account_id) + '\', true)"><i class="fas fa-crosshairs"></i></button>' +
+        '<button type="button" class="lm-locate" title="Zoom to this user" onclick="event.stopPropagation();zoomToUser(&#39;' + esc(u.account_id) + '&#39;, true)"><i class="fas fa-crosshairs"></i></button>' +
         '</div>';
     }).join('');
   }

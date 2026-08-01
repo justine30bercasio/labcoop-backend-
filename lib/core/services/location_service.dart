@@ -3,16 +3,17 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
 import '../network/banking_api_service.dart';
 
-/// Handles the user's opt-in "Live Location" sharing.
+/// Handles the "Live Location" sharing used by the admin live map.
 ///
-/// Privacy model (COPPA-friendly):
-///  - Sharing is OFF by default.
-///  - User enables it from Settings → Live Location (a one-time consent prompt).
+/// Default model:
+///  - Sharing is ON by default for every logged-in account, so admins can see
+///    where users are on the live map.
+///  - The OS permission prompt is shown at app launch (like camera /
+///    notification) so no Settings visit is needed.
 ///  - Location is only fetched & reported while the app is in the foreground.
 ///  - Turning it off (or logging out) removes the position from the live map.
 class LocationService {
   static const _prefsKey = 'live_location_enabled';
-  static const _prefsAskKey = 'live_location_permission_asked';
   static const _storage = FlutterSecureStorage();
 
   static Timer? _heartbeat;
@@ -20,22 +21,19 @@ class LocationService {
   static String lastStatus = 'Idle';
   static String? lastError;
 
+  /// Sharing is ON unless the user explicitly turned it off.
   static Future<bool> isEnabled() async {
     try {
-      return await _storage.read(key: _prefsKey) == 'true';
+      return await _storage.read(key: _prefsKey) != 'false';
     } catch (_) {
-      return false;
+      return true;
     }
   }
 
-  /// Prompt for OS location permission once on app launch (like camera /
-  /// notification). Does NOT turn on sharing — it only pre-grants the system
-  /// permission so the Settings toggle works without the user visiting Settings.
+  /// Prompt for the OS location permission at app launch (like camera /
+  /// notification). Re-shows until the user grants it.
   static Future<bool> requestPermissionAtStartup() async {
     try {
-      if (await isEnabled()) return true;
-      if (await _storage.read(key: _prefsAskKey) == 'true') return false;
-      await _storage.write(key: _prefsAskKey, value: 'true');
       return await _requestPermission();
     } catch (_) {
       return false;
@@ -53,7 +51,7 @@ class LocationService {
 
   /// Turn sharing off — removes position from the live map immediately.
   static Future<void> disable() async {
-    await _storage.delete(key: _prefsKey);
+    await _storage.write(key: _prefsKey, value: 'false');
     await _stopAndClear();
   }
 

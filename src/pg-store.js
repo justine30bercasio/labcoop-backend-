@@ -646,6 +646,7 @@ class PgStore {
     await this.pool.query('CREATE INDEX IF NOT EXISTS idx_loans_status ON loans(status)');
     await this.pool.query('CREATE INDEX IF NOT EXISTS idx_standing_orders_next_run ON standing_orders(next_run)');
     await this.pool.query('CREATE INDEX IF NOT EXISTS idx_user_locations_last_seen ON user_locations(last_seen)').catch(() => {});
+    await this.pool.query('ALTER TABLE user_locations ADD COLUMN IF NOT EXISTS is_online INTEGER DEFAULT 1').catch(() => {});
 
     // --- Coins column for server-side coin management ---
     await this.pool.query('ALTER TABLE accounts ADD COLUMN IF NOT EXISTS coins INTEGER DEFAULT 0');

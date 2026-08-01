@@ -728,6 +728,15 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
     }
     wire(window.adminSocket);
     if(window.adminSocket && window.adminSocket.connected) { window.adminSocket.emit('joinRoom', 'admin'); }
+
+    // Polling fallback (every 20s) so the online feed stays fresh even if the socket drops
+    setInterval(function(){
+      fetch('/admin/api/live-locations', { credentials: 'same-origin' }).then(function(r){ return r.json(); }).then(function(data){
+        var seen = {};
+        (data.users || []).forEach(function(u){ seen[u.account_id] = true; upsertOnline(u); });
+        Object.keys(onlineUsers).forEach(function(id){ if(!seen[id]) removeOnline(id); });
+      }).catch(function(){});
+    }, 20000);
   })();
   </script>
   `;
@@ -846,11 +855,28 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
     }
     markers[key].bindPopup('<b>'+esc(name)+'</b><br>' + (u.city ? esc(u.city)+(u.province ? ', '+esc(u.province) : '') : '') + '<br><small>'+timeAgo(u.last_seen)+'</small>');
     renderList();
+    fitToMarkers();
   }
   function removeUser(id){
     if(markers[id]){ map.removeLayer(markers[id]); delete markers[id]; }
     delete children[id];
     renderList();
+  }
+  // Keep every reported marker visible: if any live marker is off the current view,
+  // pan/zoom the map to show all live markers.
+  var _fitTimer = null;
+  function fitToMarkers(){
+    var latlngs = Object.keys(markers).map(function(k){ return markers[k].getLatLng(); });
+    if(!latlngs.length) return;
+    var all = L.latLngBounds(latlngs);
+    if(!all.isValid()) return;
+    var view = map.getBounds();
+    var anyOutside = latlngs.some(function(ll){ return !view.contains(ll); });
+    if(!anyOutside) return;
+    clearTimeout(_fitTimer);
+    _fitTimer = setTimeout(function(){
+      try { map.fitBounds(all.pad(0.25), { maxZoom: 14, animate: true }); } catch(_) {}
+    }, 150);
   }
   function renderList(){
     var list = document.getElementById('lmList');

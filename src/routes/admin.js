@@ -691,6 +691,9 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
         onlineFeed.innerHTML = '<div class="fc-empty"><i class="fas fa-map-pin" style="opacity:0.3;margin-right:4px"></i>No users sharing location right now.</div>';        return;
       }
       // In-place diffing so the feed doesn't visibly "bounce" every poll.
+      // Remove the "No users" placeholder if present so it never sits next to rows.
+      var placeholder = onlineFeed.querySelector('.fc-empty');
+      if(placeholder) placeholder.remove();
       var existing = {};
       onlineFeed.querySelectorAll('.feed-item').forEach(function(el){
         existing[el.getAttribute('data-id')] = el;

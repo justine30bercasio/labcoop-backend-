@@ -459,6 +459,7 @@ class _ProfilePageState extends State<ProfilePage>
             ),
           );
           if (confirm != true) return;
+          await LocationService.disable();
           await const FlutterSecureStorage().deleteAll();
           await LocalDbSource().clearAll();
           if (!context.mounted) return;

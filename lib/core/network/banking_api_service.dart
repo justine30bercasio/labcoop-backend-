@@ -762,4 +762,28 @@ return null;
       return null;
     }
   }
+
+  // ── Live Location Sharing ──
+
+  static Future<bool> reportLocation({required double lat, required double lng, double? accuracy}) async {
+    try {
+      await _dio.post('/api/location', data: {
+        'lat': lat,
+        'lng': lng,
+        'accuracy': accuracy,
+      });
+      return true;
+    } on DioException {
+      return false;
+    }
+  }
+
+  static Future<bool> clearLocation() async {
+    try {
+      await _dio.delete('/api/location');
+      return true;
+    } on DioException {
+      return false;
+    }
+  }
 }

@@ -7,6 +7,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/design_system.dart';
 import '../../core/network/banking_api_service.dart';
 import '../../core/services/inactivity_timer.dart';
+import '../../core/services/location_service.dart';
 import '../blocs/savings_bloc.dart';
 import '../blocs/savings_event.dart';
 import '../blocs/savings_state.dart';
@@ -27,7 +28,7 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   int _currentIndex = 0;
   String _accountId = '';
   bool _loading = true;
@@ -38,7 +39,17 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadSession();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      LocationService.pause();
+    } else if (state == AppLifecycleState.resumed && _accountId.isNotEmpty) {
+      LocationService.start(_accountId);
+    }
   }
 
   void _startMsgPolling() {
@@ -55,6 +66,8 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    LocationService.pause();
     _msgPollTimer?.cancel();
     _inactivityTimer?.dispose();
     super.dispose();
@@ -62,6 +75,7 @@ class _HomePageState extends State<HomePage> {
 
   void _onSessionExpired() {
     if (!mounted) return;
+    LocationService.disable();
     const FlutterSecureStorage().deleteAll();
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginPage()),
@@ -97,6 +111,7 @@ class _HomePageState extends State<HomePage> {
 
     _inactivityTimer = InactivityTimer(_onSessionExpired);
     _startMsgPolling();
+    LocationService.start(accountId);
     if (!mounted) return;
     context.read<SavingsBloc>().add(LoadSavings(accountId));
   }

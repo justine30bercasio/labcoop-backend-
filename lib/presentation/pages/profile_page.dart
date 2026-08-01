@@ -19,6 +19,7 @@ import '../widgets/support_bell.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/network/banking_api_service.dart';
 import '../../core/network/dio_client.dart';
+import '../../core/services/location_service.dart';
 import 'package:dio/dio.dart';
 import 'kyc_page.dart';
 import 'board_page.dart';
@@ -1467,6 +1468,10 @@ class _SettingsPageState extends State<_SettingsPage> {
   String? _linkParentError;
   String? _linkParentSuccess;
 
+  // Live Location sharing (opt-in)
+  bool _locationEnabled = false;
+  bool _locationBusy = false;
+
   @override
   void initState() {
     super.initState();
@@ -1480,8 +1485,64 @@ class _SettingsPageState extends State<_SettingsPage> {
         : await _source.getChildName();
     _nameController.text = name;
     final img = await _source.getProfileImageBytes();
-    if (mounted) setState(() => _profileImageBytes = img);
+    final locEnabled = await LocationService.isEnabled();
+    if (mounted) setState(() {
+      _profileImageBytes = img;
+      _locationEnabled = locEnabled;
+    });
     _refreshDeletionStatus();
+  }
+
+  Future<void> _toggleLocation(bool value) async {
+    if (_locationBusy) return;
+    setState(() => _locationBusy = true);
+    if (value) {
+      final state = context.read<SavingsBloc>().state;
+      final accountId = state is SavingsLoaded ? state.account.accountId : '';
+      if (accountId.isEmpty) {
+        if (mounted) {
+          setState(() => _locationBusy = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Account not loaded yet. Please try again.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+      final enabled = await LocationService.enable(accountId);
+      if (mounted) {
+        setState(() {
+          _locationEnabled = enabled;
+          _locationBusy = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              enabled
+                  ? 'Live Location sharing is ON. You appear on the coop map while the app is open.'
+                  : 'Could not enable location. Check that location services are allowed for this app.',
+            ),
+            backgroundColor: enabled ? AppTheme.primaryGreen : Colors.red,
+          ),
+        );
+      }
+    } else {
+      await LocationService.disable();
+      if (mounted) {
+        setState(() {
+          _locationEnabled = false;
+          _locationBusy = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Live Location sharing is OFF. Your position was removed from the map.'),
+            backgroundColor: AppTheme.primaryGreen,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _refreshDeletionStatus() async {
@@ -2015,6 +2076,47 @@ class _SettingsPageState extends State<_SettingsPage> {
                 ),
               ],
               const SizedBox(height: 32),
+              const Divider(),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Icon(Icons.location_on, color: AppTheme.primaryGreen, size: 24),
+                  const SizedBox(width: 8),
+                  const Text('Live Location',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Optional: share your location so the coop can see member activity '
+                'around Real\u2013Infanta on the live map. This is OFF by default and '
+                'only works while the app is open.',
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              SwitchListTile(
+                value: _locationEnabled,
+                onChanged: _locationBusy ? null : _toggleLocation,
+                activeColor: AppTheme.primaryGreen,
+                activeTrackColor: AppTheme.primaryGreen.withValues(alpha: 0.4),
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  _locationEnabled ? 'Location sharing ON' : 'Location sharing OFF',
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                ),
+                subtitle: Text(
+                  _locationEnabled
+                      ? 'Your position is visible on the coop live map while the app is open.'
+                      : 'Tap to turn on live location sharing.',
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
+                ),
+              ),
+              if (_locationBusy)
+                const Padding(
+                  padding: EdgeInsets.only(top: 4),
+                  child: LinearProgressIndicator(minHeight: 2),
+                ),
+              const SizedBox(height: 8),
               const Divider(),
               const SizedBox(height: 16),
               Row(

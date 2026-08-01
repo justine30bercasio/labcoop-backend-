@@ -51,5 +51,7 @@
 	<string>LabCoop uses Face ID to unlock the app and protect your financial information.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>LabCoop accesses your photo library to upload profile pictures and KYC documents.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>LabCoop uses your location while the app is open to show your branch and nearby coop presence on the live map. This is optional and can be turned off anytime in Settings.</string>
 </dict>
 </plist>

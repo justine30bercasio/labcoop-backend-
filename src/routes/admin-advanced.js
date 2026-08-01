@@ -601,7 +601,7 @@ router.post('/overdrafts/save/:id', requireRole(3), asyncHandler(async (req, res
 // 10. FULL MEMBER DEMOGRAPHICS
 // ============================================================
 router.get('/member-demographics', requireRole(1), asyncHandler(async (req, res) => {
-  const accounts = await sql('SELECT account_id, child_name, member_id, birthday, age, gender, civil_status, occupation, employer, monthly_income, address, city, province, postal_code, parent_phone, email FROM accounts ORDER BY child_name');
+  const accounts = await sql('SELECT account_id, child_name, member_id, birthday, age, gender, civil_status, occupation, employer, monthly_income, address, city, province, postal_code, parent_phone, parent_email AS email FROM accounts ORDER BY child_name');
   const q = req.query; const toast = q.updated?'success:Demographics updated.':q.error?'error:'+q.error:'';
   const content = `<div class="card"><div class="card-header"><h3>Member Demographics</h3></div>
   <div class="card-body" style="padding:0"><table><tr><th>Name</th><th>Member ID</th><th>Birthday</th><th>Age</th><th>Gender</th><th>Civil Status</th><th>Occupation</th><th>City</th><th></th></tr>

@@ -12,6 +12,7 @@ import '../network/banking_api_service.dart';
 ///  - Turning it off (or logging out) removes the position from the live map.
 class LocationService {
   static const _prefsKey = 'live_location_enabled';
+  static const _prefsAskKey = 'live_location_permission_asked';
   static const _storage = FlutterSecureStorage();
 
   static Timer? _heartbeat;
@@ -22,6 +23,20 @@ class LocationService {
   static Future<bool> isEnabled() async {
     try {
       return await _storage.read(key: _prefsKey) == 'true';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Prompt for OS location permission once on app launch (like camera /
+  /// notification). Does NOT turn on sharing — it only pre-grants the system
+  /// permission so the Settings toggle works without the user visiting Settings.
+  static Future<bool> requestPermissionAtStartup() async {
+    try {
+      if (await isEnabled()) return true;
+      if (await _storage.read(key: _prefsAskKey) == 'true') return false;
+      await _storage.write(key: _prefsAskKey, value: 'true');
+      return await _requestPermission();
     } catch (_) {
       return false;
     }

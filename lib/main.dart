@@ -16,6 +16,7 @@ import 'presentation/blocs/loan_bloc.dart';
 import 'presentation/pages/splash_page.dart';
 import 'presentation/pages/login_page.dart';
 import 'core/services/notification_service.dart';
+import 'core/services/location_service.dart';
 import 'core/config/app_config.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -39,6 +40,14 @@ void main() async {
     await NotificationService.init();
   } catch (e) {
     debugPrint('Firebase init failed — $e');
+  }
+
+  // Ask for location permission once at launch (like camera/notification),
+  // so the Settings toggle doesn't require visiting Settings.
+  try {
+    await LocationService.requestPermissionAtStartup();
+  } catch (e) {
+    debugPrint('Location permission prompt failed — $e');
   }
 
   runApp(const LabCoopApp());

@@ -543,6 +543,7 @@ class PgStore {
         lng DOUBLE PRECISION,
         accuracy DOUBLE PRECISION,
         device_platform TEXT DEFAULT '',
+        is_online INTEGER DEFAULT 1,
         last_seen TEXT,
         created_at TEXT
       );
@@ -1696,38 +1697,57 @@ class PgStore {
   async upsertUserLocation({ accountId, lat, lng, accuracy, devicePlatform }) {
     const now = new Date().toISOString();
     await this.query(
-      `INSERT INTO user_locations (account_id, lat, lng, accuracy, device_platform, last_seen, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $6)
+      `INSERT INTO user_locations (account_id, lat, lng, accuracy, device_platform, is_online, last_seen, created_at)
+       VALUES ($1, $2, $3, $4, $5, 1, $6, $6)
        ON CONFLICT (account_id) DO UPDATE SET
          lat = EXCLUDED.lat,
          lng = EXCLUDED.lng,
          accuracy = EXCLUDED.accuracy,
          device_platform = EXCLUDED.device_platform,
+         is_online = 1,
          last_seen = EXCLUDED.last_seen`,
       [accountId, lat, lng, accuracy, devicePlatform || '', now]
     );
+  }
+
+  // Keep the pin but mark the user offline (logged out / app closed).
+  async markUserLocationOffline(accountId) {
+    const now = new Date().toISOString();
+    await this.query('UPDATE user_locations SET is_online = 0, last_seen = $1 WHERE account_id = $2', [now, accountId]);
   }
 
   async clearUserLocation(accountId) {
     await this.query('DELETE FROM user_locations WHERE account_id = $1', [accountId]);
   }
 
-  async getLiveUserLocations({ withinMinutes = 15 } = {}) {
-    const cutoff = new Date(Date.now() - withinMinutes * 60 * 1000).toISOString();
+  // Return every account that has ever shared a location, plus live status.
+  async getAllUserLocations() {
     const res = await this.query(
-      `SELECT ul.account_id, ul.lat, ul.lng, ul.accuracy, ul.device_platform, ul.last_seen,
-              a.child_name, a.member_id, a.city, a.province
+      `SELECT ul.account_id, ul.lat, ul.lng, ul.accuracy, ul.device_platform, ul.is_online, ul.last_seen,
+              a.child_name, a.member_id, a.city, a.province, a.profile_pic_url
        FROM user_locations ul
        LEFT JOIN accounts a ON a.account_id = ul.account_id
-       WHERE ul.last_seen >= $1
+       ORDER BY ul.is_online DESC, ul.last_seen DESC`
+    );
+    return res.rows;
+  }
+
+  async getLiveUserLocations({ withinMinutes = 10 } = {}) {
+    const cutoff = new Date(Date.now() - withinMinutes * 60 * 1000).toISOString();
+    const res = await this.query(
+      `SELECT ul.account_id, ul.lat, ul.lng, ul.accuracy, ul.device_platform, ul.is_online, ul.last_seen,
+              a.child_name, a.member_id, a.city, a.province, a.profile_pic_url
+       FROM user_locations ul
+       LEFT JOIN accounts a ON a.account_id = ul.account_id
+       WHERE ul.is_online = 1 AND ul.last_seen >= $1
        ORDER BY ul.last_seen DESC`,
       [cutoff]
     );
     return res.rows;
   }
 
-  async pruneStaleLocations(maxAgeMinutes = 1440) {
-    const cutoff = new Date(Date.now() - maxAgeMinutes * 60 * 1000).toISOString();
+  async pruneStaleLocations(maxAgeDays = 30) {
+    const cutoff = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString();
     const res = await this.query('DELETE FROM user_locations WHERE last_seen < $1', [cutoff]);
     return res;
   }

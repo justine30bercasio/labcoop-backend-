@@ -669,7 +669,7 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
         '<div class="fi-info"><div class="fi-title">' + (t.child_name || 'Member') + '</div>' +
         '<div class="fi-sub">' + String(t.type||'').replace(/_/g,' ') + '</div></div>' +
         '<div><div class="fi-amt' + (isInflow ? '' : ' neg') + '">' + (isInflow ? '+' : '-') + fmtMoney(t.amount) + '</div>' +
-        '<div class="fi-time">' + timeAgo(t.created_at) + '</div></div>';
+        '<div class="fi-time" data-ts="' + (t.created_at || '') + '">' + timeAgo(t.created_at) + '</div></div>';
       txFeed.prepend(el);
       while(txFeed.children.length > 8) txFeed.removeChild(txFeed.lastChild);
     }
@@ -694,7 +694,7 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
         return '<div class="feed-item"><span class="fi-dot" style="background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,0.2)"></span>' +
           '<div class="fi-info"><div class="fi-title">' + name + '</div>' +
           '<div class="fi-sub">' + (u.city ? u.city + (u.province ? ', '+u.province : '') : 'Quezon') + '</div></div>' +
-          '<div class="fi-time">' + timeAgo(u.last_seen) + '</div></div>';
+          '<div class="fi-time" data-ts="' + (u.last_seen || '') + '">' + timeAgo(u.last_seen) + '</div></div>';
       }).join('');
     }
 
@@ -728,7 +728,7 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
     wire(window.adminSocket);
     if(window.adminSocket && window.adminSocket.connected) { window.adminSocket.emit('joinRoom', 'admin'); }
 
-    // Polling fallback (every 20s) so the online feed stays fresh even if the socket drops
+    // Polling fallback (every 5s) so the online feed stays fresh even if the socket drops
     setInterval(function(){
       fetch('/admin/api/live-locations', { credentials: 'same-origin' }).then(function(r){ return r.json(); }).then(function(data){
         var seen = {};
@@ -743,7 +743,9 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
           prependTx(t);
         });
       }).catch(function(){});
-    }, 20000);
+    }, 5000);
+    // Live "x ago" time labels on the online feed
+    setInterval(function(){ if(onlineFeed) onlineFeed.querySelectorAll('.fi-time').forEach(function(el){ el.textContent = timeAgo(el.dataset.ts); }); }, 15000);
   })();
   </script>
   `;
@@ -769,7 +771,13 @@ const REAL_INFANTA_BOUNDS = {
 };
 
 router.get('/api/live-locations', requireRole(1), asyncHandler(async (req, res) => {
-  const users = await store.getLiveUserLocations({ withinMinutes: 15 });
+  const users = await store.getLiveUserLocations({ withinMinutes: 10 });
+  res.json({ users });
+}));
+
+// All tracked users (online + offline) for the live-map polling fallback.
+router.get('/api/all-locations', requireRole(1), asyncHandler(async (req, res) => {
+  const users = await store.getAllUserLocations();
   res.json({ users });
 }));
 
@@ -781,7 +789,7 @@ router.get('/api/recent-transactions', requireRole(1), asyncHandler(async (req, 
 }));
 
 router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
-  const users = await store.getLiveUserLocations({ withinMinutes: 15 });
+  const users = await store.getAllUserLocations();
 
   const content = `
   <style>
@@ -796,23 +804,42 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
   .lm-list { max-height: calc(100vh - 220px); overflow-y:auto; border:1px solid var(--border); border-radius: var(--radius); background:var(--card); }
   .lm-list .lm-item { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--border); }
   .lm-list .lm-item:last-child { border-bottom:none; }
-  .lm-avatar { width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg,#2E7D32,#1B5E20); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; flex-shrink:0; }
+  .lm-avatar { width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg,#2E7D32,#1B5E20); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; flex-shrink:0; overflow:hidden; }
+  .lm-avatar img { width:100%; height:100%; object-fit:cover; }
   .lm-list .lm-info { flex:1; min-width:0; }
   .lm-list .lm-name { font-size:13px; font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .lm-list .lm-meta { font-size:11px; color:var(--text-muted); margin-top:1px; }
   .lm-list .lm-time { font-size:10px; color:var(--text-muted); opacity:0.7; }
+  .lm-list .lm-status { font-size:10px; font-weight:600; text-transform:uppercase; }
+  .lm-list .lm-item { cursor:pointer; transition:background .15s; }
+  .lm-list .lm-item:hover { background:rgba(46,125,50,0.07); }
+  .lm-list .lm-item.active { background:rgba(46,125,50,0.12); box-shadow: inset 3px 0 0 #2E7D32; }
+  .lm-locate { width:28px; height:28px; border-radius:8px; border:1px solid var(--border); background:var(--card); color:#2E7D32; display:flex; align-items:center; justify-content:center; font-size:11px; cursor:pointer; flex-shrink:0; transition:all .15s; }
+  .lm-locate:hover { background:#2E7D32; color:#fff; border-color:#2E7D32; }
   .lm-empty { padding:32px 16px; text-align:center; color:var(--text-muted); font-size:13px; }
   .lm-legend { display:flex; gap:16px; align-items:center; font-size:11px; color:var(--text-muted); flex-wrap:wrap; }
   .lm-legend .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+  .lm-popup { min-width:190px; font-family:inherit; }
+  .lm-popup .pp-head { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+  .lm-popup .pp-avatar { width:42px; height:42px; border-radius:50%; overflow:hidden; background:linear-gradient(135deg,#2E7D32,#1B5E20); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:16px; flex-shrink:0; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,0.25); }
+  .lm-popup .pp-avatar img { width:100%; height:100%; object-fit:cover; }
+  .lm-popup .pp-name { font-size:14px; font-weight:700; color:#1f2937; line-height:1.2; }
+  .lm-popup .pp-member { font-size:11px; color:#6b7280; }
+  .lm-popup .pp-badge { display:inline-flex; align-items:center; gap:5px; font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; margin-top:4px; }
+  .lm-popup .pp-badge.on { background:#dcfce7; color:#15803d; }
+  .lm-popup .pp-badge.off { background:#fee2e2; color:#b91c1c; }
+  .lm-popup .pp-badge .dot { width:7px; height:7px; border-radius:50%; display:inline-block; }
+  .lm-popup .pp-row { font-size:11px; color:#6b7280; margin-top:3px; display:flex; align-items:center; gap:6px; }
+  .lm-popup .pp-row i { width:13px; text-align:center; color:#9ca3af; }
   </style>
 
   <div class="lm-toolbar">
     <span class="lm-chip live"><span class="pulse"></span> Live Tracking</span>
-    <span class="lm-chip"><i class="fas fa-users"></i> <span id="lmOnline">0</span> online</span>
+    <span class="lm-chip"><i class="fas fa-users"></i> <span id="lmOnline">0</span> online &middot; <span id="lmTotal">0</span> tracked</span>
     <span class="lm-chip"><i class="fas fa-satellite-dish"></i> Live locations of all users</span>
     <div class="lm-legend" style="margin-left:auto">
-      <span><span class="dot" style="background:#dc2626"></span> Active now</span>
-      <span><span class="dot" style="background:#f59e0b"></span> &lt; 15 min</span>
+      <span><span class="dot" style="background:#22c55e"></span> Online now</span>
+      <span><span class="dot" style="background:#dc2626"></span> Offline / logged out</span>
     </div>
   </div>
 
@@ -832,9 +859,6 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
 
-  // Municipal boundary hint circles (Real + Infanta area)
-  L.circle([14.7048, 121.6272], { radius: 15000, color: '#2E7D32', fillColor: '#2E7D32', fillOpacity: 0.05, weight: 1, dashArray: '4 4' }).addTo(map);
-
   var markers = {};
   var children = {};
 
@@ -845,34 +869,82 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
     var s = Math.max(0, Math.floor((Date.now()-t)/1000));
     if(s < 60) return 'just now';
     if(s < 3600) return Math.floor(s/60) + 'm ago';
-    return Math.floor(s/3600) + 'h ago';
+    if(s < 86400) return Math.floor(s/3600) + 'h ago';
+    return Math.floor(s/86400) + 'd ago';
   }
-  function colorFor(p){
-    if(!p) return '#22c55e';
-    var mins = (Date.now() - new Date(p).getTime())/60000;
-    return mins < 5 ? '#22c55e' : '#f59e0b';
+  function isOnline(u){
+    if(!u) return false;
+    if(Number(u.is_online) !== 1) return false;
+    if(!u.last_seen) return false;
+    return (Date.now() - new Date(u.last_seen).getTime()) < 10*60*1000;
+  }
+  function pinHtmlFor(u){
+    var online = isOnline(u);
+    return online
+      ? '<i class="fas fa-location-dot" style="color:#22c55e;font-size:26px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));text-shadow:0 0 0 2px #fff"></i>'
+      : '<i class="fas fa-location-dot" style="color:#dc2626;font-size:26px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4))"></i>';
+  }
+  function avatarHtml(u, sizeCls){
+    var name = u.child_name || ('Member ' + (u.member_id || ''));
+    if(u.profile_pic_url){
+      return '<div class="'+(sizeCls||'lm-avatar')+'"><img src="' + esc(u.profile_pic_url) + '" onerror="this.style.display=\'none\'"></div>';
+    }
+    return '<div class="'+(sizeCls||'lm-avatar')+'">' + esc((name||'?').charAt(0).toUpperCase()) + '</div>';
+  }
+  function zoomToUser(id, openPopup){
+    if(!markers[id]) return;
+    map.setView(markers[id].getLatLng(), 16, { animate: true });
+    if(openPopup) markers[id].openPopup();
+    document.querySelectorAll('#lmList .lm-item').forEach(function(el){
+      el.classList.toggle('active', el.getAttribute('data-id') === id);
+    });
+  }
+  function popupHtml(u){
+    var name = u.child_name || ('Member ' + (u.member_id || ''));
+    var online = isOnline(u);
+    var place = (u.city ? esc(u.city) + (u.province ? ', ' + esc(u.province) : '') : '');
+    return '<div class="lm-popup">' +
+      '<div class="pp-head">' + avatarHtml(u, 'pp-avatar') +
+      '<div><div class="pp-name">' + esc(name) + '</div>' +
+      '<div class="pp-member">' + esc(u.member_id || '') + '</div>' +
+      '<div class="pp-badge ' + (online ? 'on' : 'off') + '"><span class="dot" style="background:' + (online ? '#22c55e' : '#dc2626') + '"></span>' + (online ? 'Online' : 'Offline') + ' &middot; ' + timeAgo(u.last_seen) + '</div></div></div>' +
+      (place ? '<div class="pp-row"><i class="fas fa-map-pin"></i> ' + place + '</div>' : '') +
+      '<div class="pp-row"><i class="fas fa-crosshairs"></i> ' + Math.round(u.lat*100000)/100000 + ', ' + Math.round(u.lng*100000)/100000 + '</div>' +
+      (u.device_platform ? '<div class="pp-row"><i class="fas fa-mobile-screen"></i> ' + esc(u.device_platform) + '</div>' : '') +
+      '</div>';
   }
   function upsert(u, fromSeed){
     var key = u.account_id;
+    if(!key) return;
     var isNew = !children[key];
     children[key] = u;
     var name = u.child_name || ('Member ' + (u.member_id || key.slice(0,4)));
-    var pinHtml = colorFor(u.last_seen) === '#22c55e'
-      ? '<i class="fas fa-location-dot" style="color:#dc2626;font-size:26px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));text-shadow:0 0 0 2px #fff"></i>'
-      : '<i class="fas fa-location-dot" style="color:#f59e0b;font-size:26px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4))"></i>';
-    if(markers[key]){ markers[key].setLatLng([u.lat, u.lng]); }
+    if(markers[key]){
+      markers[key].setLatLng([u.lat, u.lng]);
+      if(markers[key].getPopup()) markers[key].setPopupContent(popupHtml(u));
+    }
     else {
       var icon = L.divIcon({
         className: '',
-        html: '<div style="text-align:center;line-height:1">' + pinHtml + '</div>',
+        html: '<div style="text-align:center;line-height:1">' + pinHtmlFor(u) + '</div>',
         iconSize: [26,26], iconAnchor: [13,24], popupAnchor: [0,-20]
       });
       markers[key] = L.marker([u.lat, u.lng], { icon: icon }).addTo(map);
+      markers[key].bindPopup(popupHtml(u));
+      markers[key].on('click', function(){ zoomToUser(key); });
     }
-    markers[key].bindPopup('<b>'+esc(name)+'</b><br>' + (u.city ? esc(u.city)+(u.province ? ', '+esc(u.province) : '') : '') + '<br><small>'+timeAgo(u.last_seen)+'</small>');
     renderList();
-    // Seed on page load should NOT re-zoom the map — only real-time arrivals do.
     if(isNew && !fromSeed) fitToMarkers();
+  }
+  function setOffline(id){
+    if(!children[id]) return;
+    children[id].is_online = 0;
+    if(markers[id]){
+      markers[id].setLatLng([children[id].lat, children[id].lng]);
+      markers[id].setIcon(L.divIcon({ className:'', html:'<div style="text-align:center;line-height:1">'+pinHtmlFor(children[id])+'</div>', iconSize:[26,26], iconAnchor:[13,24], popupAnchor:[0,-20] }));
+      markers[id].setPopupContent(popupHtml(children[id]));
+    }
+    renderList();
   }
   function removeUser(id){
     if(markers[id]){ map.removeLayer(markers[id]); delete markers[id]; }
@@ -901,19 +973,23 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
   function renderList(){
     var list = document.getElementById('lmList');
     var arr = Object.values(children);
-    document.getElementById('lmOnline').textContent = arr.length;
+    var onlineCount = arr.filter(isOnline).length;
+    document.getElementById('lmOnline').textContent = onlineCount;
+    document.getElementById('lmTotal').textContent = arr.length;
     if(!arr.length){
-      list.innerHTML = '<div class="lm-empty"><i class="fas fa-map-location-dot" style="font-size:28px;opacity:0.3;margin-bottom:8px;display:block"></i>No users sharing location right now.<br><small>Location sharing is on by default &mdash; users appear here while the app is open.</small></div>';
+      list.innerHTML = '<div class="lm-empty"><i class="fas fa-map-location-dot" style="font-size:28px;opacity:0.3;margin-bottom:8px;display:block"></i>No users on the tracker yet.<br><small>Users appear here once they open the app with location enabled.</small></div>';
       return;
     }
     list.innerHTML = arr.map(function(u){
       var name = u.child_name || ('Member ' + (u.member_id || u.account_id.slice(0,4)));
-      return '<div class="lm-item">' +
-        '<div class="lm-avatar">' + esc((name||'?').charAt(0).toUpperCase()) + '</div>' +
+      var online = isOnline(u);
+      return '<div class="lm-item" data-id="' + esc(u.account_id) + '" onclick="zoomToUser(\'' + esc(u.account_id) + '\', true)">' +
+        avatarHtml(u) +
         '<div class="lm-info"><div class="lm-name">' + esc(name) + '</div>' +
-        '<div class="lm-meta">' + (u.city ? esc(u.city)+(u.province ? ', '+esc(u.province) : '') : 'Quezon') + '</div>' +
+        '<div class="lm-status" style="color:'+(online?'#16a34a':'#dc2626')+'">'+(online?'Online':'Offline')+'</div>' +
+        '<div class="lm-meta">' + (u.city ? esc(u.city)+(u.province ? ', '+esc(u.province) : '') : '') + '</div>' +
         '<div class="lm-time">' + timeAgo(u.last_seen) + '</div></div>' +
-        '<span class="lm-chip" style="font-size:10px;padding:2px 8px">' + Math.round(u.lat*10000)/10000 + ', ' + Math.round(u.lng*10000)/10000 + '</span>' +
+        '<button type="button" class="lm-locate" title="Zoom to this user" onclick="event.stopPropagation();zoomToUser(\'' + esc(u.account_id) + '\', true)"><i class="fas fa-crosshairs"></i></button>' +
         '</div>';
     }).join('');
   }
@@ -924,24 +1000,28 @@ router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {
   renderList();
   if (Object.keys(markers).length) fitToMarkers(true);
 
+  // Live time labels: re-render list every 15s so "5m ago" ticks without a refresh.
+  setInterval(function(){ renderList(); }, 15000);
+
   // Real-time updates via socket
   if (typeof window.adminSocket !== 'undefined') {
     window.adminSocket.on('liveLocation', function(u){ upsert(u); });
-    window.adminSocket.on('liveLocationOffline', function(d){ removeUser(d.account_id); });
+    window.adminSocket.on('liveLocationOffline', function(d){ setOffline(d.account_id); });
+    window.adminSocket.on('liveLocationPurge', function(d){ removeUser(d.account_id); });
   }
-  // Polling fallback (every 20s)
+  // Polling fallback (every 5s) — keeps pins + online/offline status fresh
   setInterval(function(){
-    fetch('/admin/api/live-locations').then(function(r){ return r.json(); }).then(function(data){
+    fetch('/admin/api/all-locations').then(function(r){ return r.json(); }).then(function(data){
       var seen = {};
       (data.users || []).forEach(function(u){ seen[u.account_id] = true; upsert(u); });
       Object.keys(children).forEach(function(id){ if(!seen[id]) removeUser(id); });
     }).catch(function(){});
-  }, 20000);
+  }, 5000);
   </script>
   `;
 
   res.type('html').send(layout('Live Map', 'live-map', content, {
-    subtitle: 'Real-time location of app users &mdash; map auto-fits to where they are',
+    subtitle: 'Real-time user tracker &mdash; green = online, red = offline (last seen)',
     headerActions: '<a href="/admin" class="btn btn-outline btn-sm"><i class="fas fa-arrow-left"></i> Dashboard</a>',
   }));
 }));

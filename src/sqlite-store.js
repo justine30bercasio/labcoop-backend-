@@ -179,8 +179,9 @@ function getDb() {
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type)"); } catch (_) {}
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_loans_status ON loans(status)"); } catch (_) {}
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_standing_orders_next_run ON standing_orders(next_run)"); } catch (_) {}
-    try { db.exec("CREATE TABLE IF NOT EXISTS user_locations (account_id TEXT PRIMARY KEY, lat REAL, lng REAL, accuracy REAL, device_platform TEXT DEFAULT '', last_seen TEXT, created_at TEXT)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS user_locations (account_id TEXT PRIMARY KEY, lat REAL, lng REAL, accuracy REAL, device_platform TEXT DEFAULT '', is_online INTEGER DEFAULT 1, last_seen TEXT, created_at TEXT)"); } catch (_) {}
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_user_locations_last_seen ON user_locations(last_seen)"); } catch (_) {}
+    try { db.exec("ALTER TABLE user_locations ADD COLUMN is_online INTEGER DEFAULT 1"); } catch (_) {}
     const accounts = [
       ['1000','Cash on Hand','asset','current_asset',0], ['1010','Cash in Bank','asset','current_asset',0],
       ['1020','Petty Cash','asset','current_asset',0], ['1100','Loans Receivable','asset','current_asset',0],
@@ -1195,35 +1196,56 @@ function revokeAllAccountTokens(accountId) {
 function upsertUserLocation({ accountId, lat, lng, accuracy, devicePlatform }) {
   const now = new Date().toISOString();
   getDb().prepare(`
-    INSERT INTO user_locations (account_id, lat, lng, accuracy, device_platform, last_seen, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO user_locations (account_id, lat, lng, accuracy, device_platform, is_online, last_seen, created_at)
+    VALUES (?, ?, ?, ?, ?, 1, ?, ?)
     ON CONFLICT(account_id) DO UPDATE SET
       lat = excluded.lat,
       lng = excluded.lng,
       accuracy = excluded.accuracy,
       device_platform = excluded.device_platform,
+      is_online = 1,
       last_seen = excluded.last_seen
   `).run(accountId, lat, lng, accuracy, devicePlatform || '', now, now);
+}
+
+// Keep the pin but mark the user offline (logged out / app closed).
+function markUserLocationOffline(accountId) {
+  const now = new Date().toISOString();
+  getDb().prepare('UPDATE user_locations SET is_online = 0, last_seen = ? WHERE account_id = ?').run(now, accountId);
 }
 
 function clearUserLocation(accountId) {
   getDb().prepare('DELETE FROM user_locations WHERE account_id = ?').run(accountId);
 }
 
-function getLiveUserLocations({ withinMinutes = 15 } = {}) {
+// Return every account that has ever shared a location, plus live status.
+// is_online=1 + recent last_seen → online (green); otherwise offline (red).
+function getAllUserLocations({ withinMinutes = 10 } = {}) {
   const cutoff = new Date(Date.now() - withinMinutes * 60 * 1000).toISOString();
   return getDb().prepare(`
-    SELECT ul.account_id, ul.lat, ul.lng, ul.accuracy, ul.device_platform, ul.last_seen,
-           a.child_name, a.member_id, a.city, a.province
+    SELECT ul.account_id, ul.lat, ul.lng, ul.accuracy, ul.device_platform, ul.is_online, ul.last_seen,
+           a.child_name, a.member_id, a.city, a.province, a.profile_pic_url
     FROM user_locations ul
     LEFT JOIN accounts a ON a.account_id = ul.account_id
-    WHERE ul.last_seen >= ?
+    ORDER BY ul.is_online DESC, ul.last_seen DESC
+  `).all();
+}
+
+// Online users only (for the dashboard online count).
+function getLiveUserLocations({ withinMinutes = 10 } = {}) {
+  const cutoff = new Date(Date.now() - withinMinutes * 60 * 1000).toISOString();
+  return getDb().prepare(`
+    SELECT ul.account_id, ul.lat, ul.lng, ul.accuracy, ul.device_platform, ul.is_online, ul.last_seen,
+           a.child_name, a.member_id, a.city, a.province, a.profile_pic_url
+    FROM user_locations ul
+    LEFT JOIN accounts a ON a.account_id = ul.account_id
+    WHERE ul.is_online = 1 AND ul.last_seen >= ?
     ORDER BY ul.last_seen DESC
   `).all(cutoff);
 }
 
-function pruneStaleLocations(maxAgeMinutes = 1440) {
-  const cutoff = new Date(Date.now() - maxAgeMinutes * 60 * 1000).toISOString();
+function pruneStaleLocations(maxAgeDays = 30) {
+  const cutoff = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString();
   return getDb().prepare('DELETE FROM user_locations WHERE last_seen < ?').run(cutoff);
 }
 
@@ -1323,7 +1345,9 @@ module.exports = {
   registerParentFcmToken,
   // ── Live User Locations ──
   upsertUserLocation,
+  markUserLocationOffline,
   clearUserLocation,
+  getAllUserLocations,
   getLiveUserLocations,
   pruneStaleLocations,
 };

@@ -1,8 +1,18 @@
 const express = require('express');
 const { store } = require('../db');
 const { asyncHandler } = require('../async-handler');
+const rateLimit = require('express-rate-limit');
 
 const router = express.Router();
+
+// Rate limit raw transaction creation: 10 per 15 minutes per IP
+const txCreateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { message: 'Too many transaction requests. Try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 router.get('/account/:accountId', asyncHandler(async (req, res) => {
   const { limit = 50, offset = 0 } = req.query;
@@ -10,7 +20,7 @@ router.get('/account/:accountId', asyncHandler(async (req, res) => {
   res.json(txns);
 }));
 
-router.post('/', asyncHandler(async (req, res) => {
+router.post('/', txCreateLimiter, asyncHandler(async (req, res) => {
   const tx = await store.addTransaction(req.body);
   res.status(201).json(tx);
 }));

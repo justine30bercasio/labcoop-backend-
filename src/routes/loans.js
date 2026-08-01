@@ -6,8 +6,29 @@ const { calculateLoanSummary } = require('../services/interest');
 const gl = require('../services/gl');
 const audit = require('../services/audit');
 const { requireConsent } = require('../middleware/auth');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 
 const router = express.Router();
+
+// Rate limit loan applications: 5 per 15 minutes per account
+const loanApplyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => req.body?.account_id || ipKeyGenerator(req.ip),
+  message: { message: 'Too many loan applications. Try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Rate limit loan payments: 20 per 15 minutes per account
+const loanPayLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  keyGenerator: (req) => req.body?.account_id || ipKeyGenerator(req.ip),
+  message: { message: 'Too many loan payment attempts. Try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // ── Feature flag check for API mutation routes ──
 async function requireLoansFeature(req, res, next) {
@@ -82,6 +103,7 @@ router.get('/loans/:loanId',
 );
 
 router.post('/loans/apply',
+  loanApplyLimiter,
   requireLoansFeature,
   requireConsent,
   body('account_id').isString().notEmpty().trim(),
@@ -255,6 +277,7 @@ router.put('/loans/:loanId/disburse',
 );
 
 router.post('/loans/:loanId/pay',
+  loanPayLimiter,
   requireLoansFeature,
   param('loanId').isString().notEmpty().trim(),
   body('amount').isFloat({ min: 0.01 }),

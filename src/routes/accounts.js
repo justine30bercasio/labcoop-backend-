@@ -1,6 +1,6 @@
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const multer = require('multer');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
@@ -27,6 +27,26 @@ const depositLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   message: { message: 'Too many deposit attempts. Try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Rate limit parent-link code generation: 5 per 15 minutes per account
+const linkCodeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => req.params?.accountId || ipKeyGenerator(req.ip),
+  message: { message: 'Too many link code requests. Try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Rate limit profile photo uploads: 10 per 15 minutes per account
+const profilePhotoLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  keyGenerator: (req) => req.params?.accountId || ipKeyGenerator(req.ip),
+  message: { message: 'Too many photo uploads. Try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -128,6 +148,7 @@ router.put('/:accountId/deposit',
 
 // ── Generate temporary link code for parent linking ──
 router.post('/:accountId/generate-link-code',
+  linkCodeLimiter,
   param('accountId').isString().notEmpty().trim(),
   asyncHandler(async (req, res) => {
     const account = await store.getAccount(req.params.accountId);
@@ -143,6 +164,7 @@ router.post('/:accountId/generate-link-code',
 );
 
 router.post('/:accountId/profile-photo',
+  profilePhotoLimiter,
   profileUpload.single('file'),
   asyncHandler(async (req, res) => {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded' });

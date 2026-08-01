@@ -2,8 +2,20 @@ const express = require('express');
 const { body, param, validationResult } = require('express-validator');
 const { store } = require('../db');
 const { asyncHandler } = require('../async-handler');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 
 const router = express.Router();
+
+// Rate limit coin adds (quiz/game rewards) to prevent self-minting abuse:
+// 50 per 15 minutes per account — generous for gameplay, blocks automated spam.
+const coinAddLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 50,
+  keyGenerator: (req) => req.params?.accountId || ipKeyGenerator(req.ip),
+  message: { message: 'Too many coin reward requests. Try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // GET /api/coins/:accountId — get current coin balance
 router.get('/:accountId',
@@ -19,6 +31,7 @@ router.get('/:accountId',
 
 // POST /api/coins/:accountId/add — add coins (quiz/game rewards)
 router.post('/:accountId/add',
+  coinAddLimiter,
   param('accountId').isString().notEmpty().trim(),
   body('amount').isInt({ min: 1 }).withMessage('amount must be a positive integer'),
   body('reason').optional().isString().trim(),

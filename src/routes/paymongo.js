@@ -6,11 +6,22 @@ const { asyncHandler } = require('../async-handler');
 const { authMiddleware, requireOwnership } = require('../middleware/auth');
 const paymongo = require('../services/paymongo');
 const { notifyPaymongoPaymentSuccess } = require('../services/notifications');
+const rateLimit = require('express-rate-limit');
 
 const router = express.Router();
 
+// Rate limiter for creating payment intents: 5 per 15 minutes per account
+const createPaymentLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => req.body?.account_id || ipKeyGenerator(req.ip),
+  message: { message: 'Too many payment attempts. Try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 router.post('/create-payment',
-  authMiddleware, requireOwnership,
+  authMiddleware, requireOwnership, createPaymentLimiter,
   body('account_id').isString().notEmpty().trim(),
   body('amount').isFloat({ min: 1 }),
   asyncHandler(async (req, res) => {

@@ -1,7 +1,7 @@
 const express = require('express');
 const { body, param, query, validationResult } = require('express-validator');
 const { v4: uuidv4 } = require('uuid');
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const { store } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const { generateAmortizationSchedule } = require('../services/interest');
@@ -14,7 +14,7 @@ const router = express.Router();
 const withdrawalLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 3,
-  keyGenerator: (req) => req.body?.account_id || req.ip,
+  keyGenerator: (req) => req.body?.account_id || ipKeyGenerator(req.ip),
   message: { message: 'Too many withdrawal requests. Maximum 3 per hour. Please wait and try again.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -325,9 +325,20 @@ router.get('/transactions/:txId/receipt',
   })
 );
 
+// Rate limit online deposit submissions: 5 per 15 minutes per account
+const onlineDepositLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => req.body?.account_id || ipKeyGenerator(req.ip),
+  message: { message: 'Too many deposit submissions. Try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // ── Online Deposits (GCash / Digital Payments) ──
 
 router.post('/online-deposits',
+  onlineDepositLimiter,
   body('account_id').isString().notEmpty().trim(),
   body('amount').isString().notEmpty().trim(),
   body('reference_number').isString().notEmpty().trim(),

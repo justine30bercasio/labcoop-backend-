@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { Resend } = require('resend');
 const crypto = require('crypto');
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const speakeasy = require('speakeasy');
 const qrcode = require('qrcode');
 const { store } = require('../db');
@@ -1121,7 +1121,19 @@ router.get('/login/totp', (req, res) => {
   res.type('html').send(totpPage(''));
 });
 
-router.post('/login/totp', async (req, res) => {
+// Rate limiter for 2FA TOTP attempts: 5 per 15 minutes per pending-login session
+const totpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => req.session?.totpAuthId || ipKeyGenerator(req.ip),
+  handler: (req, res) => {
+    res.type('html').send(totpPage('Too many 2FA code attempts. Try again in 15 minutes.'));
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+router.post('/login/totp', totpLimiter, async (req, res) => {
   if (!req.session.totpAuthId) return res.type('html').send(loginPage('Session expired. Please login again.'));
   const { totp } = req.body;
   if (!totp) return res.type('html').send(totpPage('Please enter the 6-digit code.'));

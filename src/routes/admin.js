@@ -11,6 +11,7 @@ const qrcode = require('qrcode');
 const { store, isPostgres } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const fileStorage = require('../services/file-storage');
+const { log } = require('../services/audit');
 const adminLib = require('./admin-lib');
 const { layout, printLayout, h, fmt, fmtTrn, phTime, phDate, reportTable, reportSection, reportStats } = adminLib;
 const notifs = require('../services/notifications');

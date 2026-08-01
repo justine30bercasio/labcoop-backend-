@@ -650,6 +650,7 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
     function fmtMoney(v){
       return '₱' + Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
+    function esc(s){ return String(s||'').replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
     function timeAgo(iso){
       if(!iso) return '';
       var s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime())/1000));

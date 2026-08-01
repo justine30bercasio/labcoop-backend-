@@ -313,9 +313,9 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", 'code.jquery.com', 'cdn.datatables.net', 'cdn.jsdelivr.net', 'blob:'],
+      scriptSrc: ["'self'", "'unsafe-inline'", 'code.jquery.com', 'cdn.datatables.net', 'cdn.jsdelivr.net', 'unpkg.com', 'blob:'],
       scriptSrcAttr: ["'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'", 'cdn.datatables.net', 'cdnjs.cloudflare.com'],
+      styleSrc: ["'self'", "'unsafe-inline'", 'cdn.datatables.net', 'cdnjs.cloudflare.com', 'unpkg.com'],
       imgSrc: ["'self'", 'data:', 'https://*'],
       fontSrc: ["'self'", 'cdnjs.cloudflare.com', 'data:'],
       connectSrc: ["'self'", 'cdn.jsdelivr.net', 'ws:', 'wss:', 'https://www.google-analytics.com'],

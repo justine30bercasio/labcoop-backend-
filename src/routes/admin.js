@@ -671,7 +671,13 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
     var analyticsPeak = document.getElementById('analyticsPeak');
     function updateAnalytics(data){
       if(analyticsBadge) analyticsBadge.textContent = (data.onlineNow || 0) + ' online now';
-      var snap = data.snapshots || [];
+      var snap = (data.snapshots || []).slice();
+      // Always append a "now" point using the live counts so the chart is
+      // visible immediately, even before enough 5-min snapshots accumulate.
+      var lastT = snap.length ? new Date(snap[snap.length-1].t).getTime() : 0;
+      if(Date.now() - lastT > 60 * 1000){
+        snap.push({ t: new Date().toISOString(), online: data.onlineNow || 0, tracked: data.totalTracked || 0 });
+      }
       var peak = 0;
       snap.forEach(function(s){ if(s.online > peak) peak = s.online; });
       if(analyticsPeak) analyticsPeak.textContent = 'Peak: ' + peak + ' online';
@@ -699,9 +705,9 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
         data: {
           labels: labels,
           datasets: [
-            { label: 'Online', data: online, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.12)', fill: true, tension: 0.35, pointRadius: 2, borderWidth: 2 },
-            { label: 'Offline', data: offline, borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,0.08)', fill: true, tension: 0.35, pointRadius: 2, borderWidth: 1.5, borderDash: [3,3] },
-            { label: 'Tracked', data: tracked, borderColor: '#64748b', backgroundColor: 'transparent', borderDash: [4,4], tension: 0.35, pointRadius: 0, borderWidth: 1 }
+            { label: 'Online', data: online, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.12)', fill: true, tension: 0.35, pointRadius: 3, pointHoverRadius: 5, borderWidth: 2 },
+            { label: 'Offline', data: offline, borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,0.08)', fill: true, tension: 0.35, pointRadius: 3, pointHoverRadius: 5, borderWidth: 1.5, borderDash: [3,3] },
+            { label: 'Tracked', data: tracked, borderColor: '#64748b', backgroundColor: 'transparent', borderDash: [4,4], tension: 0.35, pointRadius: 2, pointHoverRadius: 4, borderWidth: 1 }
           ]
         },
         options: {
@@ -710,7 +716,7 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
           plugins: { legend: { display: true, position: 'top', labels: { boxWidth: 10, padding: 8, font: { size: 10 } } } },
           scales: {
             x: { grid: { display: false }, ticks: { maxTicksLimit: 6, font: { size: 9 } } },
-            y: { beginAtZero: true, grid: { color: gridColor }, ticks: { precision: 0, font: { size: 9 } } }
+            y: { beginAtZero: true, suggestedMax: Math.max(1, data.totalTracked || 1, peak), grid: { color: gridColor }, ticks: { precision: 0, font: { size: 9 } } }
           }
         }
       });

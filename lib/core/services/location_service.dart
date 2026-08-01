@@ -16,6 +16,8 @@ class LocationService {
 
   static Timer? _heartbeat;
   static bool _reporting = false;
+  static String lastStatus = 'Idle';
+  static String? lastError;
 
   static Future<bool> isEnabled() async {
     try {
@@ -87,20 +89,40 @@ class LocationService {
   static Future<void> _reportNow() async {
     if (!_reporting) return;
     try {
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.medium,
-          timeLimit: Duration(seconds: 10),
-        ),
-      );
+      Position pos;
+      try {
+        pos = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.medium,
+            timeLimit: Duration(seconds: 10),
+          ),
+        );
+      } catch (gpsError) {
+        // Fresh GPS fix failed (e.g. indoors) — fall back to last known position.
+        final last = await Geolocator.getLastKnownPosition();
+        if (last == null) {
+          lastError = 'No GPS fix and no last known position ($gpsError)';
+          lastStatus = 'Waiting for GPS';
+          return;
+        }
+        pos = last;
+      }
       if (!_reporting) return;
-      await BankingApiService.reportLocation(
+      final ok = await BankingApiService.reportLocation(
         lat: pos.latitude,
         lng: pos.longitude,
         accuracy: pos.accuracy,
       );
-    } catch (_) {
-      // Silent — next heartbeat will retry.
+      if (ok) {
+        lastStatus = 'Reported ${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}';
+        lastError = null;
+      } else {
+        lastError = 'Server rejected the report';
+        lastStatus = 'Server error';
+      }
+    } catch (e) {
+      lastError = '$e';
+      lastStatus = 'Error';
     }
   }
 }

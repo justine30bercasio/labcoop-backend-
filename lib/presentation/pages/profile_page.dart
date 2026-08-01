@@ -2111,6 +2111,19 @@ class _SettingsPageState extends State<_SettingsPage> {
                   style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
                 ),
               ),
+              if (_locationEnabled)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2, bottom: 4),
+                  child: Text(
+                    'Status: ${LocationService.lastStatus}',
+                    style: TextStyle(
+                      color: LocationService.lastError == null
+                          ? AppTheme.primaryGreen
+                          : Colors.red,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
               if (_locationBusy)
                 const Padding(
                   padding: EdgeInsets.only(top: 4),

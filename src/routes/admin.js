@@ -395,11 +395,17 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
     </div>
     <div class="feed-card">
       <div class="fc-head">
-        <h4><i class="fas fa-arrows-spin" style="color:var(--accent)"></i> Real-Time Transactions</h4>
-        <a href="/admin/transactions" class="btn btn-outline btn-xs"><i class="fas fa-eye"></i> View All</a>
+        <h4><i class="fas fa-chart-line" style="color:var(--accent)"></i> Online Users Analytics</h4>
+        <span class="kpi-badge green" id="analyticsBadge">0 online now</span>
+        <a href="/admin/live-map" class="btn btn-outline btn-xs"><i class="fas fa-map-location-dot"></i> Live Map</a>
       </div>
-      <div class="fc-body" id="txFeed">
-        <div class="fc-empty"><i class="fas fa-spinner fa-spin" style="opacity:0.4;margin-right:4px"></i>Waiting for activity&hellip;</div>
+      <div class="fc-body">
+        <div class="chart-container-sm"><canvas id="onlineTrendChart"></canvas></div>
+        <div class="mini-legend">
+          <span><span class="dot" style="background:#22c55e"></span> Users online (24h)</span>
+          <span><span class="dot" style="background:#86efac"></span> Tracked users</span>
+          <span style="margin-left:auto" id="analyticsPeak"></span>
+        </div>
       </div>
     </div>
   </div>
@@ -636,7 +642,6 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
     setInterval(tickClock, 1000);
 
     // ── Real-time activity feed ──
-    var txFeed = document.getElementById('txFeed');
     var onlineFeed = document.getElementById('onlineFeed');
     var onlineBadge = document.getElementById('onlineBadge');
     var liveConn = document.getElementById('liveConn');
@@ -659,20 +664,51 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
       if(s < 3600) return Math.floor(s/60) + 'm ago';
       return Math.floor(s/3600) + 'h ago';
     }
-    function prependTx(t){
-      if(!txFeed) return;
-      txFeed.querySelector('.fc-empty')?.remove();
-      var isInflow = ['deposit','loan_disbursement','interest_credit','interest','interest_income','td_maturity','reward'].includes(t.type);
-      var dotColor = isInflow ? '#22c55e' : '#ef4444';
-      var el = document.createElement('div');
-      el.className = 'feed-item';
-      el.innerHTML = '<span class="fi-dot" style="background:' + dotColor + '"></span>' +
-        '<div class="fi-info"><div class="fi-title">' + (t.child_name || 'Member') + '</div>' +
-        '<div class="fi-sub">' + String(t.type||'').replace(/_/g,' ') + '</div></div>' +
-        '<div><div class="fi-amt' + (isInflow ? '' : ' neg') + '">' + (isInflow ? '+' : '-') + fmtMoney(t.amount) + '</div>' +
-        '<div class="fi-time" data-ts="' + (t.created_at || '') + '">' + timeAgo(t.created_at) + '</div></div>';
-      txFeed.prepend(el);
-      while(txFeed.children.length > 8) txFeed.removeChild(txFeed.lastChild);
+    // Online-users analytics line chart (last 24h).
+    var analyticsChart = null;
+    var analyticsBadge = document.getElementById('analyticsBadge');
+    var analyticsPeak = document.getElementById('analyticsPeak');
+    function updateAnalytics(data){
+      if(analyticsBadge) analyticsBadge.textContent = (data.onlineNow || 0) + ' online now';
+      var snap = data.snapshots || [];
+      var peak = 0;
+      snap.forEach(function(s){ if(s.online > peak) peak = s.online; });
+      if(analyticsPeak) analyticsPeak.textContent = 'Peak: ' + peak + ' online';
+      var labels = snap.map(function(s){
+        var d = new Date(s.t);
+        var hh = String(d.getHours()).padStart(2,'0');
+        var mm = String(d.getMinutes()).padStart(2,'0');
+        return hh + ':' + mm;
+      });
+      var online = snap.map(function(s){ return s.online; });
+      var tracked = snap.map(function(s){ return s.tracked; });
+      var canvas = document.getElementById('onlineTrendChart');
+      if(!canvas) return;
+      if(analyticsChart){
+        analyticsChart.data.labels = labels;
+        analyticsChart.data.datasets[0].data = online;
+        analyticsChart.data.datasets[1].data = tracked;
+        analyticsChart.update();
+        return;
+      }
+      analyticsChart = new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: 'Users online', data: online, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.12)', fill: true, tension: 0.35, pointRadius: 2, borderWidth: 2 },
+            { label: 'Tracked', data: tracked, borderColor: '#86efac', backgroundColor: 'transparent', borderDash: [4,4], tension: 0.35, pointRadius: 0, borderWidth: 1.5 }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { display: false }, ticks: { maxTicksLimit: 6, font: { size: 9 } } },
+            y: { beginAtZero: true, grid: { color: gridColor }, ticks: { precision: 0, font: { size: 9 } } }
+          }
+        }
+      });
     }
     function upsertOnline(u){
       onlineUsers[u.account_id] = u;
@@ -737,7 +773,6 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
       });
       sio.on('disconnect', function(){ if(liveConn) liveConn.textContent = 'Reconnecting...'; });
       sio.on('transactionUpdate', function(t){
-        prependTx(t);
         // bump today's counters
         if(t.type === 'deposit' && liveDeposits){
           var cur = parseFloat(String(liveDeposits.textContent).replace(/[^0-9.]/g,'')) || 0;
@@ -761,15 +796,12 @@ router.get('/', requireRole(1), asyncHandler(async (req, res) => {
         (data.users || []).forEach(function(u){ seen[u.account_id] = true; upsertOnline(u); });
         Object.keys(onlineUsers).forEach(function(id){ if(!seen[id]) removeOnline(id); });
       }).catch(function(){});
-      // Transaction feed fallback
-      fetch('/admin/api/recent-transactions', { credentials: 'same-origin' }).then(function(r){ return r.json(); }).then(function(data){
-        var seen = {};
-        (data.transactions || []).forEach(function(t){
-          seen[t.tx_id || (t.id + '|' + t.created_at)] = true;
-          prependTx(t);
-        });
-      }).catch(function(){});
     }, 5000);
+    // Online analytics graph (refresh every 30s)
+    fetch('/admin/api/online-analytics', { credentials: 'same-origin' }).then(function(r){ return r.json(); }).then(updateAnalytics).catch(function(){});
+    setInterval(function(){
+      fetch('/admin/api/online-analytics', { credentials: 'same-origin' }).then(function(r){ return r.json(); }).then(updateAnalytics).catch(function(){});
+    }, 30000);
     // Live "x ago" time labels on the online feed
     setInterval(function(){ if(onlineFeed) onlineFeed.querySelectorAll('.fi-time').forEach(function(el){ el.textContent = timeAgo(el.dataset.ts); }); }, 15000);
   })();
@@ -812,6 +844,24 @@ router.get('/api/recent-transactions', requireRole(1), asyncHandler(async (req, 
   const sql = (q, p) => store.query(q, p || []).then(r => (r && r.rows) || []);
   const rows = await sql('SELECT t.*, a.child_name FROM transactions t LEFT JOIN accounts a ON t.account_id = a.account_id ORDER BY t.created_at DESC LIMIT 10');
   res.json({ transactions: rows });
+}));
+
+// Online analytics for the dashboard "users online" graph.
+router.get('/api/online-analytics', requireRole(1), asyncHandler(async (req, res) => {
+  const [live, all, snapshots] = await Promise.all([
+    store.getLiveUserLocations({ withinMinutes: 10 }),
+    store.getAllUserLocations(),
+    store.getOnlineSnapshots({ hours: 24 }),
+  ]);
+  res.json({
+    onlineNow: live.length,
+    totalTracked: all.length,
+    snapshots: snapshots.map(s => ({
+      t: s.recorded_at,
+      online: Number(s.online_count || 0),
+      tracked: Number(s.tracked_count || 0),
+    })),
+  });
 }));
 
 router.get('/live-map', requireRole(1), asyncHandler(async (req, res) => {

@@ -182,6 +182,7 @@ function getDb() {
     try { db.exec("CREATE TABLE IF NOT EXISTS user_locations (account_id TEXT PRIMARY KEY, lat REAL, lng REAL, accuracy REAL, device_platform TEXT DEFAULT '', is_online INTEGER DEFAULT 1, last_seen TEXT, created_at TEXT)"); } catch (_) {}
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_user_locations_last_seen ON user_locations(last_seen)"); } catch (_) {}
     try { db.exec("ALTER TABLE user_locations ADD COLUMN is_online INTEGER DEFAULT 1"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS online_snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, recorded_at TEXT, online_count INTEGER DEFAULT 0, tracked_count INTEGER DEFAULT 0)"); } catch (_) {}
     const accounts = [
       ['1000','Cash on Hand','asset','current_asset',0], ['1010','Cash in Bank','asset','current_asset',0],
       ['1020','Petty Cash','asset','current_asset',0], ['1100','Loans Receivable','asset','current_asset',0],
@@ -1249,6 +1250,21 @@ function pruneStaleLocations(maxAgeDays = 30) {
   return getDb().prepare('DELETE FROM user_locations WHERE last_seen < ?').run(cutoff);
 }
 
+// ── Online analytics snapshots (dashboard "users online" graph) ──
+
+function recordOnlineSnapshot({ onlineCount, trackedCount } = {}) {
+  return getDb().prepare(
+    'INSERT INTO online_snapshots (recorded_at, online_count, tracked_count) VALUES (?, ?, ?)'
+  ).run(new Date().toISOString(), onlineCount || 0, trackedCount || 0);
+}
+
+function getOnlineSnapshots({ hours = 24 } = {}) {
+  const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+  return getDb().prepare(
+    'SELECT recorded_at, online_count, tracked_count FROM online_snapshots WHERE recorded_at >= ? ORDER BY recorded_at ASC'
+  ).all(cutoff);
+}
+
 module.exports = {
   getDb,
   getAccount,
@@ -1350,4 +1366,7 @@ module.exports = {
   getAllUserLocations,
   getLiveUserLocations,
   pruneStaleLocations,
+  // ── Online analytics snapshots ──
+  recordOnlineSnapshot,
+  getOnlineSnapshots,
 };

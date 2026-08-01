@@ -775,6 +775,26 @@ server.listen(PORT, () => {
   } else {
     logger.info('Production mode — setInterval disabled. Configure QStash to POST /api/scheduler/tick');
   }
+
+  // ── Online analytics snapshots ──
+  // Records how many users are online every 5 minutes so the dashboard can draw
+  // a "users online" graph. A single lightweight COUNT query — safe to run even
+  // in production (unlike the hourly scheduler which is QStash-driven).
+  const recordOnlineSnapshot = async () => {
+    try {
+      const live = await store.getLiveUserLocations({ withinMinutes: 10 });
+      const all = await store.getAllUserLocations();
+      await store.recordOnlineSnapshot({
+        onlineCount: live.length,
+        trackedCount: all.length,
+      });
+    } catch (err) {
+      logger.warn('Online snapshot record failed', { error: err.message });
+    }
+  };
+  recordOnlineSnapshot();
+  setInterval(recordOnlineSnapshot, 5 * 60 * 1000);
+  logger.info('Online analytics snapshot recorder started (every 5 min)');
 });
 
 module.exports = app;

@@ -547,6 +547,12 @@ class PgStore {
         last_seen TEXT,
         created_at TEXT
       );
+      CREATE TABLE IF NOT EXISTS online_snapshots (
+        id SERIAL PRIMARY KEY,
+        recorded_at TEXT,
+        online_count INTEGER DEFAULT 0,
+        tracked_count INTEGER DEFAULT 0
+      );
     `;
     await this.pool.query(schema);
     // Migrations for existing tables
@@ -1751,6 +1757,23 @@ class PgStore {
     const cutoff = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString();
     const res = await this.query('DELETE FROM user_locations WHERE last_seen < $1', [cutoff]);
     return res;
+  }
+
+  async recordOnlineSnapshot({ onlineCount, trackedCount } = {}) {
+    const res = await this.query(
+      'INSERT INTO online_snapshots (recorded_at, online_count, tracked_count) VALUES ($1, $2, $3)',
+      [new Date().toISOString(), onlineCount || 0, trackedCount || 0]
+    );
+    return res;
+  }
+
+  async getOnlineSnapshots({ hours = 24 } = {}) {
+    const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+    const res = await this.query(
+      'SELECT recorded_at, online_count, tracked_count FROM online_snapshots WHERE recorded_at >= $1 ORDER BY recorded_at ASC',
+      [cutoff]
+    );
+    return res.rows;
   }
 
   async getSetting(key) {

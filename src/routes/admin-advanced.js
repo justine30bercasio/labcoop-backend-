@@ -601,7 +601,7 @@ router.post('/overdrafts/save/:id', requireRole(3), asyncHandler(async (req, res
 // 10. FULL MEMBER DEMOGRAPHICS
 // ============================================================
 router.get('/member-demographics', requireRole(1), asyncHandler(async (req, res) => {
-  const accounts = await sql('SELECT account_id, child_name, member_id, birthday, age, gender, employer, monthly_income, address, city, province, postal_code, parent_phone, parent_email AS email FROM accounts ORDER BY child_name');
+  const accounts = await sql('SELECT account_id, child_name, member_id, birthday, age, gender, address, city, province, postal_code, parent_phone, parent_email AS email FROM accounts ORDER BY child_name');
   const q = req.query; const toast = q.updated?'success:Demographics updated.':q.error?'error:'+q.error:'';
   const content = `<div class="card"><div class="card-header"><h3>Member Demographics</h3></div>
   <div class="card-body" style="padding:0"><table><tr><th>Name</th><th>Member ID</th><th>Birthday</th><th>Age</th><th>Gender</th><th>City</th><th></th></tr>
@@ -613,8 +613,6 @@ router.get('/member-demographics', requireRole(1), asyncHandler(async (req, res)
   ${accounts.map(a => `<div id="demo-${a.account_id}" class="modal-overlay"><div class="modal" style="max-width:560px"><a href="#" class="close">&times;</a>
   <h2>Demographics: ${a.child_name}</h2>
   <form method="post" action="/admin/member-demographics/update/${a.account_id}">
-    <div class="form-row"><div><label>Employer</label><input type="text" name="employer" value="${a.employer||''}"></div>
-      <div><label>Monthly Income</label><input type="number" name="monthly_income" min="0" step="0.01" value="${a.monthly_income||0}"></div></div>
     <label>Address</label><input type="text" name="address" value="${a.address||''}">
     <div class="form-row"><div><label>City</label><input type="text" name="city" value="${a.city||''}"></div>
       <div><label>Province</label><input type="text" name="province" value="${a.province||''}"></div>
@@ -625,9 +623,9 @@ router.get('/member-demographics', requireRole(1), asyncHandler(async (req, res)
 }));
 
 router.post('/member-demographics/update/:id', requireRole(1), asyncHandler(async (req, res) => {
-  const { employer, monthly_income, address, city, province, postal_code } = req.body;
+  const { address, city, province, postal_code } = req.body;
   await store.query('UPDATE accounts SET civil_status=$1, occupation=$2, employer=$3, monthly_income=$4, address=$5, city=$6, province=$7, postal_code=$8 WHERE account_id=$9',
-    ['', '', employer||'', Number(monthly_income)||0, address||'', city||'', province||'', postal_code||'', req.params.id]);
+    ['', '', '', '', address||'', city||'', province||'', postal_code||'', req.params.id]);
   res.redirect('/admin/member-demographics?updated=ok');
 }));
 

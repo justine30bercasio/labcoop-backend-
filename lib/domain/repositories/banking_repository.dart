@@ -31,4 +31,8 @@ abstract class BankingRepository {
   Future<int> addCoins(String accountId, int amount, String reason);
   Future<int> spendCoins(String accountId, int amount, String reason);
   Future<List<Map<String, dynamic>>> getCoinHistory(String accountId);
+
+  // ── XP Management ──
+  Future<int> getXp(String accountId);
+  Future<int> addXp(String accountId, int amount, String reason);
 }

@@ -236,6 +236,20 @@ class RemoteApiSource {
         .toList();
   }
 
+  // ── Milestones & Recognition ──
+
+  Future<Map<String, dynamic>> fetchMilestones(String accountId) async {
+    final response = await _dio.get('/api/milestones/$accountId');
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> claimMilestone(String accountId, String milestoneId) async {
+    final response = await _dio.post('/api/milestones/$accountId/claim', data: {
+      'milestone_id': milestoneId,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
   // ── Banking / Transactions ──
 
   Future<List<TransactionModel>> fetchTransactions(String accountId, {int limit = 50, int offset = 0}) async {
@@ -367,6 +381,17 @@ class RemoteApiSource {
   Future<List<Map<String, dynamic>>> getCoinHistory(String accountId) async {
     final response = await _dio.get('/api/coins/$accountId/history');
     return (response.data as List).cast<Map<String, dynamic>>();
+  }
+
+  // ── XP Management ──
+
+  Future<int> addXp(String accountId, int amount, String reason) async {
+    final response = await _dio.post('/api/xp/$accountId/add', data: {
+      'amount': amount,
+      'reason': reason,
+    });
+    final data = response.data as Map<String, dynamic>;
+    return (data['xp'] as num).toInt();
   }
 
   // ── Spin Wheel ──

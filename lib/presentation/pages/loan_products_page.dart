@@ -28,60 +28,66 @@ class _LoanProductsPageState extends State<LoanProductsPage> {
           if (state.loanProducts.isEmpty) {
             return const Center(child: Text('No loan products available'));
           }
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: state.loanProducts.length,
-            itemBuilder: (context, index) {
-              final product = state.loanProducts[index];
-              return Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(product.name, style: AppTextStyle.heading3(context)),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.green.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text('${(product.interestRate * 100).toStringAsFixed(1)}% ${product.interestType == InterestType.flat ? 'Flat' : 'Diminishing'}',
-                              style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600, fontSize: 12),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(product.description, style: AppTextStyle.body(context)),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(child: _infoChip('Min', 'PHP ${product.minAmount.toStringAsFixed(0)}')),
-                          const SizedBox(width: 8),
-                          Expanded(child: _infoChip('Max', 'PHP ${product.maxAmount.toStringAsFixed(0)}')),
-                          const SizedBox(width: 8),
-                          Expanded(child: _infoChip('Term', '${product.minTerm}-${product.maxTerm} mo')),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: () => Navigator.push(context, PageTransition.slideUp(LoanApplyPage(product: product))),
-                          icon: const Icon(Icons.send, size: 18),
-                          label: const Text('Apply Now'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
+          return RefreshIndicator(
+            onRefresh: () async {
+              context.read<LoanBloc>().add(const LoadLoanProducts());
             },
+            child: ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16),
+              itemCount: state.loanProducts.length,
+              itemBuilder: (context, index) {
+                final product = state.loanProducts[index];
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(product.name, style: AppTextStyle.heading3(context)),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text('${(product.interestRate * 100).toStringAsFixed(1)}% ${product.interestType == InterestType.flat ? 'Flat' : 'Diminishing'}',
+                                style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600, fontSize: 12),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(product.description, style: AppTextStyle.body(context)),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(child: _infoChip('Min', 'PHP ${product.minAmount.toStringAsFixed(0)}')),
+                            const SizedBox(width: 8),
+                            Expanded(child: _infoChip('Max', 'PHP ${product.maxAmount.toStringAsFixed(0)}')),
+                            const SizedBox(width: 8),
+                            Expanded(child: _infoChip('Term', '${product.minTerm}-${product.maxTerm} mo')),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () => Navigator.push(context, PageTransition.slideUp(LoanApplyPage(product: product))),
+                            icon: const Icon(Icons.send, size: 18),
+                            label: const Text('Apply Now'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
           );
         },
       ),

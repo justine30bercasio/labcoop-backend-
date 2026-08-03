@@ -734,13 +734,10 @@ class _ShopPageState extends State<_ShopPage> with TickerProviderStateMixin {
   final _api = RemoteApiSource(DioClient.create());
   final _secureStorage = const FlutterSecureStorage();
   int _coins = 0;
-  String _currentAvatar = '🐱';
   String _currentBorder = 'b_default';
   List<String> _purchased = [];
-  int _tabIndex = 0;
   String? _message;
   late AnimationController _glowController;
-  List<ShopItem> _avatars = fallbackAvatarItems;
   List<BorderItem> _borders = fallbackBorderItems;
   bool _shopLoading = true;
   final Map<String, Uint8List> _borderImageCache = {};
@@ -762,13 +759,11 @@ class _ShopPageState extends State<_ShopPage> with TickerProviderStateMixin {
 
   Future<void> _load() async {
     _coins = await _source.getCoins();
-    _currentAvatar = await _source.getAvatar();
     _currentBorder = await _source.getAvatarBorder();
     _purchased = await _source.getPurchasedItems();
     try {
       final api = GetIt.instance<RemoteApiSource>();
       final rawBorders = await api.fetchShopItems(type: 'border');
-      final rawAvatars = await api.fetchShopItems(type: 'avatar');
       final borders = rawBorders.map((j) => BorderItem.fromJson(j)).toList();
       for (final b in borders) {
         if (b.imageUrl.isNotEmpty && !_borderImageCache.containsKey(b.id)) {
@@ -785,36 +780,12 @@ class _ShopPageState extends State<_ShopPage> with TickerProviderStateMixin {
       if (mounted) {
         setState(() {
           _borders = borders;
-          _avatars = rawAvatars.map((j) => ShopItem.fromJson(j)).toList();
           _shopLoading = false;
         });
       }
     } catch (_) {
       if (mounted) setState(() => _shopLoading = false);
     }
-  }
-
-  Future<void> _buyAvatar(ShopItem item) async {
-    if (_purchased.contains(item.id)) {
-      await _source.setAvatar(item.emoji);
-      setState(() => _currentAvatar = item.emoji);
-      _showMsg('${item.emoji} equipped!');
-      return;
-    }
-    final success = await _source.spendCoins(item.cost);
-    if (!success) {
-      _showMsg('Need ${item.cost} 🪙');
-      return;
-    }
-    await _source.addPurchasedItem(item.id);
-    await _source.setAvatar(item.emoji);
-    setState(() {
-      _currentAvatar = item.emoji;
-      _coins -= item.cost;
-      _purchased.add(item.id);
-    });
-    _syncSpendToServer(item.cost, 'avatar_purchase');
-    _showMsg('${item.emoji} purchased!');
   }
 
   Future<void> _buyBorder(BorderItem item) async {
@@ -878,12 +849,6 @@ class _ShopPageState extends State<_ShopPage> with TickerProviderStateMixin {
       ),
       body: Column(
         children: [
-          Row(
-            children: [
-              Expanded(child: _tabBtn('Avatars', 0)),
-              Expanded(child: _tabBtn('Borders', 1)),
-            ],
-          ),
           if (_message != null)
             Container(
               width: double.infinity,
@@ -900,79 +865,10 @@ class _ShopPageState extends State<_ShopPage> with TickerProviderStateMixin {
                 ? const Center(child: CircularProgressIndicator())
                 : ListView(
                     padding: const EdgeInsets.all(16),
-                    children: _tabIndex == 0
-                        ? _avatars.map(_avatarCard).toList()
-                        : _borders.map(_borderCard).toList(),
+                    children: _borders.map(_borderCard).toList(),
                   ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _tabBtn(String label, int index) {
-    final active = _tabIndex == index;
-    return GestureDetector(
-      onTap: () => setState(() => _tabIndex = index),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          border: Border(
-              bottom: BorderSide(
-                  color: active ? AppTheme.primaryGreen : Colors.transparent,
-                  width: 3)),
-        ),
-        child: Center(
-          child: Text(label,
-              style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: active ? AppTheme.primaryGreen : Colors.grey)),
-        ),
-      ),
-    );
-  }
-
-  Widget _avatarCard(ShopItem item) {
-    final owned = _purchased.contains(item.id);
-    final equipped = item.emoji == _currentAvatar;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: ListTile(
-        leading: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: AppTheme.primaryGreen.withValues(alpha: 0.1),
-            shape: BoxShape.circle,
-          ),
-          child: Center(
-              child: Text(item.emoji, style: const TextStyle(fontSize: 24))),
-        ),
-        title: Text(item.name,
-            style: const TextStyle(fontWeight: FontWeight.bold),
-            overflow: TextOverflow.ellipsis),
-        subtitle: Text(
-            owned ? (equipped ? '✅ Equipped' : 'Owned') : '${item.cost} 🪙',
-            overflow: TextOverflow.ellipsis),
-        trailing: equipped
-            ? const Icon(Icons.check_circle, color: AppTheme.primaryGreen)
-            : SizedBox(
-                height: 36,
-                child: ElevatedButton(
-                  onPressed: () => _buyAvatar(item),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor:
-                        owned ? Colors.grey.shade300 : AppTheme.accentAmber,
-                    foregroundColor:
-                        owned ? Colors.grey.shade700 : Theme.of(context).colorScheme.onSurface,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8)),
-                  ),
-                  child: Text(owned ? 'Use' : 'Buy',
-                      style: const TextStyle(fontSize: 12)),
-                ),
-              ),
       ),
     );
   }

@@ -223,6 +223,10 @@ class BankingRepositoryImpl implements BankingRepository {
             final p = op['payload'] as Map<String, dynamic>;
             await _remoteSource.addCoins(p['accountId'] as String, (p['amount'] as num).toInt(), (p['reason'] as String? ?? 'coins_added'));
             break;
+          case 'ADD_XP':
+            final p = op['payload'] as Map<String, dynamic>;
+            await _remoteSource.addXp(p['accountId'] as String, (p['amount'] as num).toInt(), (p['reason'] as String? ?? 'xp_added'));
+            break;
           case 'SPEND_COINS':
             final p = op['payload'] as Map<String, dynamic>;
             await _remoteSource.spendCoins(p['accountId'] as String, (p['amount'] as num).toInt(), (p['reason'] as String? ?? 'coins_spent'));
@@ -302,5 +306,40 @@ class BankingRepositoryImpl implements BankingRepository {
       } catch (_) {}
     }
     return await _localSource.getCoinHistory();
+  }
+
+  // ── XP Management ──
+
+  @override
+  Future<int> getXp(String accountId) async {
+    if (await _isOnline) {
+      try {
+        final model = await _remoteSource.fetchAccount(accountId);
+        await _localSource.saveAccount(model);
+        await _localSource.setXp(model.currentXp);
+        return model.currentXp;
+      } catch (_) {}
+    }
+    return await _localSource.getXp();
+  }
+
+  @override
+  Future<int> addXp(String accountId, int amount, String reason) async {
+    if (await _isOnline) {
+      try {
+        final newXp = await _remoteSource.addXp(accountId, amount, reason);
+        await _localSource.setXp(newXp);
+        return newXp;
+      } catch (_) {}
+    }
+    // Offline fallback: add locally, queue for sync
+    await _localSource.addXp(amount);
+    await _localSource.addPendingOp({
+      'type': 'ADD_XP',
+      'payload': {'accountId': accountId, 'amount': amount, 'reason': reason},
+      'createdAt': DateTime.now().toUtc().toIso8601String(),
+      'retryCount': 0,
+    });
+    return await _localSource.getXp();
   }
 }

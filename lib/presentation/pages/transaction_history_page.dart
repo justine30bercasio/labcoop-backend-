@@ -39,14 +39,20 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
               ],
             ));
           }
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: filtered.length + 1,
-            itemBuilder: (context, index) {
-              if (index == 0) return _headerEntry(filtered.length);
-              final t = filtered[index - 1];
-              return _transactionTile(t);
+          return RefreshIndicator(
+            onRefresh: () async {
+              context.read<BankingBloc>().add(LoadTransactions(widget.accountId));
             },
+            child: ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16),
+              itemCount: filtered.length + 1,
+              itemBuilder: (context, index) {
+                if (index == 0) return _headerEntry(filtered.length);
+                final t = filtered[index - 1];
+                return _transactionTile(t);
+              },
+            ),
           );
         },
       ),

@@ -255,72 +255,76 @@ class _SupportPageState extends State<SupportPage> {
                           ],
                         ),
                       )
-                    : ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.all(12),
-                        itemCount: _messages.length,
-                        itemBuilder: (ctx, i) {
-                          final m = _messages[i];
-                          final isAdmin = m['sender_type'] == 'admin';
-                          final name = (m['sender_name'] as String?) ?? (isAdmin ? 'Admin' : 'You');
-                          final content = (m['content'] as String?) ?? '';
-                          final time = (m['created_at'] as String?) ?? '';
-                          final ts = time.length >= 16 ? time.substring(0, 16).replaceAll('T', ' ') : time;
-                          final adminRead = m['admin_read'] as int?;
-                          final childRead = m['child_read'] as int?;
-                          return Align(
-                            alignment: isAdmin ? Alignment.centerLeft : Alignment.centerRight,
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 10),
-                              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-                              child: Column(
-                                crossAxisAlignment: isAdmin ? CrossAxisAlignment.start : CrossAxisAlignment.end,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                    decoration: BoxDecoration(
-                                      color: isAdmin ? const Color(0xFFF1F5F9) : const Color(0xFF2E7D32),
-                                      borderRadius: BorderRadius.only(
-                                        topLeft: const Radius.circular(14),
-                                        topRight: const Radius.circular(14),
-                                        bottomLeft: Radius.circular(isAdmin ? 4 : 14),
-                                        bottomRight: Radius.circular(isAdmin ? 14 : 4),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      content,
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        color: isAdmin ? Colors.black87 : Colors.white,
-                                        height: 1.4,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 3),
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    mainAxisAlignment: isAdmin ? MainAxisAlignment.start : MainAxisAlignment.end,
-                                    children: [
-                                      if (isAdmin && childRead == 1)
-                                        Padding(
-                                          padding: const EdgeInsets.only(right: 4),
-                                          child: Icon(Icons.check_circle, size: 10, color: Colors.green.shade400),
+                    : RefreshIndicator(
+                        onRefresh: _load,
+                        child: ListView.builder(
+                          controller: _scrollController,
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.all(12),
+                          itemCount: _messages.length,
+                          itemBuilder: (ctx, i) {
+                            final m = _messages[i];
+                            final isAdmin = m['sender_type'] == 'admin';
+                            final name = (m['sender_name'] as String?) ?? (isAdmin ? 'Admin' : 'You');
+                            final content = (m['content'] as String?) ?? '';
+                            final time = (m['created_at'] as String?) ?? '';
+                            final ts = time.length >= 16 ? time.substring(0, 16).replaceAll('T', ' ') : time;
+                            final adminRead = m['admin_read'] as int?;
+                            final childRead = m['child_read'] as int?;
+                            return Align(
+                              alignment: isAdmin ? Alignment.centerLeft : Alignment.centerRight,
+                              child: Container(
+                                margin: const EdgeInsets.only(bottom: 10),
+                                constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                                child: Column(
+                                  crossAxisAlignment: isAdmin ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                      decoration: BoxDecoration(
+                                        color: isAdmin ? const Color(0xFFF1F5F9) : const Color(0xFF2E7D32),
+                                        borderRadius: BorderRadius.only(
+                                          topLeft: const Radius.circular(14),
+                                          topRight: const Radius.circular(14),
+                                          bottomLeft: Radius.circular(isAdmin ? 4 : 14),
+                                          bottomRight: Radius.circular(isAdmin ? 14 : 4),
                                         ),
-                                      Text(
-                                        '$name · $ts',
-                                        style: TextStyle(fontSize: 9, color: Colors.grey.shade500),
                                       ),
-                                      if (!isAdmin) ...[
-                                        const SizedBox(width: 4),
-                                        _readReceipt(adminRead, 'child'),
+                                      child: Text(
+                                        content,
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: isAdmin ? Colors.black87 : Colors.white,
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      mainAxisAlignment: isAdmin ? MainAxisAlignment.start : MainAxisAlignment.end,
+                                      children: [
+                                        if (isAdmin && childRead == 1)
+                                          Padding(
+                                            padding: const EdgeInsets.only(right: 4),
+                                            child: Icon(Icons.check_circle, size: 10, color: Colors.green.shade400),
+                                          ),
+                                        Text(
+                                          '$name · $ts',
+                                          style: TextStyle(fontSize: 9, color: Colors.grey.shade500),
+                                        ),
+                                        if (!isAdmin) ...[
+                                          const SizedBox(width: 4),
+                                          _readReceipt(adminRead, 'child'),
+                                        ],
                                       ],
-                                    ],
-                                  ),
-                                ],
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          );
-                        },
+                            );
+                          },
+                        ),
                       ),
           ),
           // Admin typing indicator

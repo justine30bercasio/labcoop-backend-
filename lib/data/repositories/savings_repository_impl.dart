@@ -40,14 +40,24 @@ class SavingsRepositoryImpl implements SavingsRepository {
       try {
         final model = await _remoteSource.fetchAccount(accountId);
         await _localSource.saveAccount(model);
-        return model.toEntity();
+        return _blendLocalXp(model.toEntity());
       } catch (_) {}
     }
 
     final cached = await _localSource.getAccount(accountId);
-    if (cached != null) return cached.toEntity();
+    if (cached != null) return _blendLocalXp(cached.toEntity());
 
     throw NetworkException('No internet connection');
+  }
+
+  Future<SavingsAccount> _blendLocalXp(SavingsAccount account) async {
+    try {
+      final localXp = await _localSource.getXp();
+      if (localXp > account.currentXp) {
+        return account.copyWith(currentXp: localXp);
+      }
+    } catch (_) {}
+    return account;
   }
 
   @override
@@ -247,6 +257,30 @@ class SavingsRepositoryImpl implements SavingsRepository {
           case 'DELETE_GOAL':
             final goalId = op['payload']['goalId'] as String;
             await _remoteSource.deleteGoal(goalId);
+            break;
+          case 'ADD_COINS':
+            final p = op['payload'] as Map<String, dynamic>;
+            await _remoteSource.addCoins(
+              p['accountId'] as String,
+              (p['amount'] as num).toInt(),
+              p['reason'] as String? ?? 'coins_added',
+            );
+            break;
+          case 'SPEND_COINS':
+            final p = op['payload'] as Map<String, dynamic>;
+            await _remoteSource.spendCoins(
+              p['accountId'] as String,
+              (p['amount'] as num).toInt(),
+              p['reason'] as String? ?? 'coins_spent',
+            );
+            break;
+          case 'ADD_XP':
+            final p = op['payload'] as Map<String, dynamic>;
+            await _remoteSource.addXp(
+              p['accountId'] as String,
+              (p['amount'] as num).toInt(),
+              p['reason'] as String? ?? 'xp_added',
+            );
             break;
         }
         await _localSource.removePendingOp(i);

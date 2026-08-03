@@ -100,108 +100,115 @@ class _TransferPageState extends State<TransferPage> {
           final goals = state.goals;
           final amount = double.tryParse(_amountController.text) ?? 0;
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildGoalDropdown('From', Icons.remove_circle_outline, goals, _from,
-                    (v) => setState(() { _from = v; _error = null; })),
-                const SizedBox(height: 12),
-                Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryGreen.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.arrow_downward, color: AppTheme.primaryGreen, size: 28),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _buildGoalDropdown('To', Icons.add_circle_outline, goals, _to,
-                    (v) => setState(() { _to = v; _error = null; })),
-                const SizedBox(height: 28),
-                TextField(
-                  controller: _amountController,
-                  keyboardType: TextInputType.number,
-                  onChanged: (_) => setState(() => _error = null),
-                  decoration: InputDecoration(
-                    labelText: 'Amount (₱)',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-                    prefixText: '₱ ',
-                    filled: true,
-                    fillColor: Colors.white,
-                    suffixText: _from != null
-                        ? 'Available: ₱${_from!.currentAllocated.toStringAsFixed(0)}'
-                        : null,
-                  ),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.error_outline, color: Colors.red, size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
-                        ),
-                      ],
+          return RefreshIndicator(
+            color: AppTheme.primaryGreen,
+            onRefresh: () async {
+              context.read<SavingsBloc>().add(LoadSavings(state.account.accountId));
+            },
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildGoalDropdown('From', Icons.remove_circle_outline, goals, _from,
+                      (v) => setState(() { _from = v; _error = null; })),
+                  const SizedBox(height: 12),
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryGreen.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.arrow_downward, color: AppTheme.primaryGreen, size: 28),
                     ),
                   ),
-                ],
-                if (_from != null && amount > _from!.currentAllocated) ...[
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade50,
-                      borderRadius: BorderRadius.circular(12),
+                  const SizedBox(height: 12),
+                  _buildGoalDropdown('To', Icons.add_circle_outline, goals, _to,
+                      (v) => setState(() { _to = v; _error = null; })),
+                  const SizedBox(height: 28),
+                  TextField(
+                    controller: _amountController,
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => setState(() => _error = null),
+                    decoration: InputDecoration(
+                      labelText: 'Amount (₱)',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                      prefixText: '₱ ',
+                      filled: true,
+                      fillColor: Colors.white,
+                      suffixText: _from != null
+                          ? 'Available: ₱${_from!.currentAllocated.toStringAsFixed(0)}'
+                          : null,
                     ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.warning_amber, color: Colors.orange, size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '"${_from!.title}" only has ₱${_from!.currentAllocated.toStringAsFixed(0)}',
-                            style: TextStyle(color: Colors.orange.shade800, fontSize: 13),
+                  ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.error_outline, color: Colors.red, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
+                    ),
+                  ],
+                  if (_from != null && amount > _from!.currentAllocated) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.warning_amber, color: Colors.orange, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '"${_from!.title}" only has ₱${_from!.currentAllocated.toStringAsFixed(0)}',
+                              style: TextStyle(color: Colors.orange.shade800, fontSize: 13),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    height: 56,
+                    child: ElevatedButton.icon(
+                      onPressed: _canTransfer && !_isTransferring ? _transfer : null,
+                      icon: _isTransferring
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.swap_horiz),
+                      label: Text(_isTransferring ? 'Transferring...' : 'Transfer'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryGreen,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
                     ),
                   ),
+                  if (_from != null && _to != null)
+                    _buildTransferPreview(_from!, _to!, amount),
                 ],
-                const SizedBox(height: 24),
-                SizedBox(
-                  height: 56,
-                  child: ElevatedButton.icon(
-                    onPressed: _canTransfer && !_isTransferring ? _transfer : null,
-                    icon: _isTransferring
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Icon(Icons.swap_horiz),
-                    label: Text(_isTransferring ? 'Transferring...' : 'Transfer'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryGreen,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ),
-                if (_from != null && _to != null)
-                  _buildTransferPreview(_from!, _to!, amount),
-              ],
+              ),
             ),
           );
         },

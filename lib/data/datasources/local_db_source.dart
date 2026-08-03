@@ -172,6 +172,22 @@ class LocalDbSource {
     return (raw as List).cast<Map<String, dynamic>>();
   }
 
+  Future<int> getXp() async {
+    final box = await _openBox('_meta');
+    return box.get('xp', defaultValue: 0) as int;
+  }
+
+  Future<void> setXp(int amount) async {
+    final box = await _openBox('_meta');
+    await box.put('xp', amount);
+  }
+
+  Future<void> addXp(int amount) async {
+    final box = await _openBox('_meta');
+    final current = box.get('xp', defaultValue: 0) as int;
+    await box.put('xp', current + amount);
+  }
+
   Future<String> getAvatar() async {
     final box = await _openBox('_meta');
     return box.get('avatar', defaultValue: '🐱') as String;

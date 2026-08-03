@@ -273,24 +273,29 @@ class _TownPageState extends State<TownPage> {
             colors: [Color(0xFFE3F2FD), Color(0xFFF1F8E9)],
           ),
         ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildTownMap(),
-              const SizedBox(height: 16),
-              _buildInventory(),
-              const SizedBox(height: 20),
-              _buildActiveBonuses(),
-              const SizedBox(height: 20),
-              Text(
-                'Building Shop ($unlockedCount/${AppConstants.townBuildings.length} built)',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface),
-              ),
-              const SizedBox(height: 8),
-              ...AppConstants.townBuildings.map((b) => _buildingCard(b, ownedIds.contains(b['id'] as String))),
-            ],
+        child: RefreshIndicator(
+          color: AppTheme.primaryGreen,
+          onRefresh: _load,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildTownMap(),
+                const SizedBox(height: 16),
+                _buildInventory(),
+                const SizedBox(height: 20),
+                _buildActiveBonuses(),
+                const SizedBox(height: 20),
+                Text(
+                  'Building Shop ($unlockedCount/${AppConstants.townBuildings.length} built)',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface),
+                ),
+                const SizedBox(height: 8),
+                ...AppConstants.townBuildings.map((b) => _buildingCard(b, ownedIds.contains(b['id'] as String))),
+              ],
+            ),
           ),
         ),
       ),

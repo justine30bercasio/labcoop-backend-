@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../../core/theme/app_theme.dart';
+import '../../data/services/game_reward_service.dart';
 
 class GameWebViewPage extends StatefulWidget {
   final String url;
@@ -47,6 +48,15 @@ class _GameWebViewPageState extends State<GameWebViewPage> {
     super.dispose();
   }
 
+  void _awardRewards() {
+    if (_hasError) return;
+    GameRewardService.instance().award(
+      coins: widget.coinReward,
+      xp: widget.xpReward,
+      reason: 'game_reward',
+    );
+  }
+
   Future<bool> _claimReward() async {
     if (_rewarded) return true;
     if (widget.coinReward <= 0 && widget.xpReward <= 0) return true;
@@ -55,7 +65,8 @@ class _GameWebViewPageState extends State<GameWebViewPage> {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text('${widget.gameEmoji} ${widget.gameTitle}'),
-        content: const Text('Enjoyed playing? You can close this page.'),
+        content: Text(
+            'Enjoyed playing? You can close this page.\nReward: ${widget.coinReward} 🪙 · ${widget.xpReward} ✨'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -64,6 +75,7 @@ class _GameWebViewPageState extends State<GameWebViewPage> {
           FilledButton(
             onPressed: () {
               _rewarded = true;
+              _awardRewards();
               Navigator.pop(ctx, true);
             },
             style: FilledButton.styleFrom(
@@ -88,6 +100,7 @@ class _GameWebViewPageState extends State<GameWebViewPage> {
 
   void _closeImmediately() {
     _rewarded = true;
+    _awardRewards();
     Navigator.of(context).pop();
   }
 

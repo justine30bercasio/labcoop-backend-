@@ -6,6 +6,7 @@ import '../../domain/entities/goal_jar.dart';
 import '../../domain/entities/transaction.dart';
 import '../blocs/banking_bloc.dart';
 import '../blocs/savings_bloc.dart';
+import '../blocs/savings_event.dart';
 import '../blocs/savings_state.dart';
 import '../widgets/notification_bell.dart';
 import '../widgets/support_bell.dart';
@@ -47,9 +48,19 @@ class _PlayPageState extends State<PlayPage> {
             colors: [Color(0xFFE8F5E9), Color(0xFFF1F8E9)],
           ),
         ),
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
+        child: RefreshIndicator(
+          color: AppTheme.primaryGreen,
+          onRefresh: () async {
+            final accountId = (savings is SavingsLoaded) ? savings.account.accountId : '';
+            if (accountId.isNotEmpty) {
+              context.read<SavingsBloc>().add(LoadSavings(accountId));
+              context.read<BankingBloc>().add(LoadTransactions(accountId));
+            }
+          },
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            children: [
             const GameCenterPage(),
             const SizedBox(height: 16),
             if (goals.isNotEmpty) ...[
@@ -92,6 +103,7 @@ class _PlayPageState extends State<PlayPage> {
               ...allocations.take(5).map((t) => _allocationTile(t)),
             ],
           ],
+        ),
         ),
       ),
     );

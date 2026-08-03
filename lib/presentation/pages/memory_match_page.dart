@@ -1,10 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../../core/network/dio_client.dart';
 import '../../core/theme/app_theme.dart';
-import '../../data/datasources/local_db_source.dart';
-import '../../data/datasources/remote_api_source.dart';
+import '../../data/services/game_reward_service.dart';
 
 class MemoryMatchPage extends StatefulWidget {
   const MemoryMatchPage({super.key});
@@ -14,9 +11,6 @@ class MemoryMatchPage extends StatefulWidget {
 }
 
 class _MemoryMatchPageState extends State<MemoryMatchPage> {
-  final _source = LocalDbSource();
-  final _api = RemoteApiSource(DioClient.create());
-  final _secureStorage = const FlutterSecureStorage();
   final _rng = Random();
 
   static const List<_CardItem> _allCards = [
@@ -117,17 +111,7 @@ class _MemoryMatchPageState extends State<MemoryMatchPage> {
   }
 
   Future<void> _awardCoins() async {
-    await _source.addCoins(_coinsEarned);
-    // Sync to server (fire-and-forget)
-    _syncCoinsToServer();
-  }
-
-  Future<void> _syncCoinsToServer() async {
-    try {
-      final accountId = await _secureStorage.read(key: 'account_id');
-      if (accountId == null || _coinsEarned <= 0) return;
-      await _api.addCoins(accountId, _coinsEarned, 'game_reward');
-    } catch (_) {}
+    await GameRewardService.instance().award(coins: _coinsEarned, xp: 8);
   }
 
   @override
@@ -266,7 +250,7 @@ class _MemoryMatchPageState extends State<MemoryMatchPage> {
                         color: AppTheme.coinGold.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Text('+$_coinsEarned coins added!',
+                      child: Text('+$_coinsEarned coins · +8 XP added!',
                           style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.coinGold)),
                     ),
                   ),

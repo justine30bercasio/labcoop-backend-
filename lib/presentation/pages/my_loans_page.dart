@@ -33,10 +33,17 @@ class _MyLoansPageState extends State<MyLoansPage> {
           if (state.loans.isEmpty) {
             return const Center(child: Text('No loans yet'));
           }
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: state.loans.length,
-            itemBuilder: (context, index) => _loanCard(state.loans[index]),
+          return RefreshIndicator(
+            color: AppTheme.primaryGreen,
+            onRefresh: () async {
+              context.read<LoanBloc>().add(LoadMyLoans(widget.accountId));
+            },
+            child: ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16),
+              itemCount: state.loans.length,
+              itemBuilder: (context, index) => _loanCard(state.loans[index]),
+            ),
           );
         },
       ),

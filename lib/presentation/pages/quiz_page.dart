@@ -1,12 +1,12 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/network/dio_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/datasources/local_db_source.dart';
 import '../../data/datasources/remote_api_source.dart';
 import '../../data/models/quiz_question_model.dart';
+import '../../data/services/game_reward_service.dart';
 
 class QuizPage extends StatefulWidget {
   const QuizPage({super.key});
@@ -18,7 +18,6 @@ class QuizPage extends StatefulWidget {
 class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
   final _source = LocalDbSource();
   final _api = RemoteApiSource(DioClient.create());
-  final _secureStorage = const FlutterSecureStorage();
   late AnimationController _celebrationCtrl;
 
   String? _selectedDifficulty;
@@ -109,10 +108,28 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
     }).toList();
   }
 
+  QuizQuestionModel _shuffleOptions(QuizQuestionModel q) {
+    final order = List<int>.generate(q.options.length, (i) => i)..shuffle();
+    final options = order.map((i) => q.options[i]).toList();
+    final newCorrect = order.indexOf(q.correctIndex);
+    return QuizQuestionModel(
+      id: q.id,
+      question: q.question,
+      options: options,
+      correctIndex: newCorrect,
+      explanation: q.explanation,
+      category: q.category,
+      difficultyLevel: q.difficultyLevel,
+      xpReward: q.xpReward,
+      coinReward: q.coinReward,
+    );
+  }
+
   void _startQuiz(List<QuizQuestionModel> questions) {
-    final indices = List.generate(questions.length, (i) => i)..shuffle();
+    final shuffledQuestions = questions.map(_shuffleOptions).toList();
+    final indices = List.generate(shuffledQuestions.length, (i) => i)..shuffle();
     setState(() {
-      _allQuestions = questions;
+      _allQuestions = shuffledQuestions;
       _questionOrder = indices;
       _totalQuestions = questions.length;
       _currentIndex = 0;
@@ -144,23 +161,11 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
       final coinGain = q.coinReward + (_streak >= 5 ? 2 : 0);
       _score += xpGain;
       _coinsEarned += coinGain;
-      // Save coins locally immediately
-      _source.addCoins(coinGain);
-      // Also send to server (fire-and-forget)
-      _syncCoinsToServer(coinGain);
+      // Award coins + XP (queued offline, synced to server when online)
+      GameRewardService.instance().award(coins: coinGain, xp: xpGain, reason: 'quiz_reward');
       _celebrationCtrl.forward(from: 0);
     } else {
       _streak = 0;
-    }
-  }
-
-  Future<void> _syncCoinsToServer(int amount) async {
-    try {
-      final accountId = await _secureStorage.read(key: 'account_id');
-      if (accountId == null) return;
-      await _api.addCoins(accountId, amount, 'quiz_reward');
-    } catch (_) {
-      // Will be retried via pending ops or next sync
     }
   }
 
@@ -181,10 +186,6 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
     if (_score > _highScore) {
       await _source.setQuizHighScore(_score);
       setState(() => _highScore = _score);
-    }
-    // Sync final coin total to server
-    if (_coinsEarned > 0) {
-      await _syncCoinsToServer(0); // just triggers the server sync for remaining
     }
   }
 

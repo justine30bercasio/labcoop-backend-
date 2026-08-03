@@ -5,8 +5,11 @@ import '../../core/theme/design_system.dart';
 import '../../data/datasources/local_db_source.dart';
 import '../../data/datasources/remote_api_source.dart';
 import '../../domain/entities/badge.dart' as entities;
+import '../../domain/entities/certificate.dart';
+import '../../domain/entities/milestone.dart';
 import '../widgets/animated_counter.dart';
 import '../widgets/app_card.dart';
+import '../widgets/confetti_widget.dart';
 import '../widgets/fortune_wheel.dart';
 import '../widgets/interactive_badge_card.dart';
 import '../widgets/notification_bell.dart';
@@ -35,12 +38,16 @@ class RewardsPage extends StatefulWidget {
 class _RewardsPageState extends State<RewardsPage> {
   final _source = LocalDbSource();
   final _api = RemoteApiSource(DioClient.create());
-  int _petLevel = 1;
   int _quizHighScore = 0;
   int _townBuildings = 0;
   int _coins = 0;
   bool _canSpin = true;
   bool _spinExpanded = false;
+  List<Milestone> _milestones = [];
+  List<Certificate> _certificates = [];
+  double _totalSaved = 0;
+  bool _milestonesReady = false;
+  String? _claimingId;
 
   @override
   void initState() {
@@ -49,11 +56,29 @@ class _RewardsPageState extends State<RewardsPage> {
   }
 
   Future<void> _load() async {
-    final petData = await _source.getPetData();
     final quiz = await _source.getQuizHighScore();
     final buildings = await _source.getTownBuildings();
     final unlocked = buildings.where((b) => b['isUnlocked'] == true).length;
     final coins = await _source.getCoins();
+
+    List<Milestone> milestones = [];
+    List<Certificate> certificates = [];
+    double totalSaved = 0;
+    bool ready = false;
+    try {
+      final data = await _api.fetchMilestones(widget.accountId);
+      totalSaved = (data['total_saved'] as num?)?.toDouble() ?? 0;
+      milestones = ((data['milestones'] as List?) ?? [])
+          .map((e) => Milestone.fromJson(e as Map<String, dynamic>))
+          .toList();
+      certificates = ((data['certificates'] as List?) ?? [])
+          .map((e) => Certificate.fromJson(e as Map<String, dynamic>))
+          .toList();
+      ready = true;
+    } catch (_) {
+      ready = false;
+    }
+
     if (!mounted) return;
 
     bool canSpin = false;
@@ -64,10 +89,13 @@ class _RewardsPageState extends State<RewardsPage> {
     }
 
     setState(() {
-      _petLevel = petData['level'] as int? ?? 1;
       _quizHighScore = quiz;
       _townBuildings = unlocked;
       _coins = coins;
+      _milestones = milestones;
+      _certificates = certificates;
+      _totalSaved = totalSaved;
+      _milestonesReady = ready;
       _canSpin = canSpin;
     });
   }
@@ -79,29 +107,36 @@ class _RewardsPageState extends State<RewardsPage> {
         title: const Text('Rewards & Progress'),
         actions: [const SupportBell(), const NotificationBell()],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(Spacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildCoinHeader(),
-            const SizedBox(height: Spacing.md),
-            XpBarWidget(
-              currentXp: widget.currentXp,
-              lastGainedXp: widget.lastGainedXp,
-            ),
-            const SizedBox(height: Spacing.md),
-            _buildTreasureChests(),
-            const SizedBox(height: Spacing.md),
-            _buildFortuneWheelSection(),
-            const SizedBox(height: Spacing.md),
-            _buildProgressCards(),
-            const SizedBox(height: Spacing.md),
-            _buildBadgesSection(),
-            const SizedBox(height: Spacing.md),
-            _buildRareUnlocks(),
-            const SizedBox(height: 24),
-          ],
+      body: RefreshIndicator(
+        color: AppTheme.primaryGreen,
+        onRefresh: _load,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(Spacing.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildCoinHeader(),
+              const SizedBox(height: Spacing.md),
+              XpBarWidget(
+                currentXp: widget.currentXp,
+                lastGainedXp: widget.lastGainedXp,
+              ),
+              const SizedBox(height: Spacing.md),
+              _buildSavingsRecognition(),
+              const SizedBox(height: Spacing.md),
+              _buildTreasureChests(),
+              const SizedBox(height: Spacing.md),
+              _buildFortuneWheelSection(),
+              const SizedBox(height: Spacing.md),
+              _buildProgressCards(),
+              const SizedBox(height: Spacing.md),
+              _buildBadgesSection(),
+              const SizedBox(height: Spacing.md),
+              _buildMilestones(),
+              const SizedBox(height: 24),
+            ],
+          ),
         ),
       ),
     );
@@ -408,12 +443,13 @@ class _RewardsPageState extends State<RewardsPage> {
   }
 
   Widget _buildProgressCards() {
-    final maxLevel = _petLevel >= 7 ? _petLevel.toDouble() : _petLevel.toDouble();
+    final claimedCount = _milestones.where((m) => m.claimed).length;
+    final totalCount = _milestones.length;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Row(
         children: [
-          Expanded(child: _progressCard(Icons.pets, 'Pet Level', maxLevel, 7, AppTheme.primaryGreen)),
+          Expanded(child: _progressCard(Icons.military_tech, 'Milestones', claimedCount.toDouble(), totalCount > 0 ? totalCount.toDouble() : 1, AppTheme.primaryGreen)),
           const SizedBox(width: Spacing.sm),
           Expanded(child: _progressCard(Icons.location_city, 'Town', _townBuildings.toDouble(), 10, Colors.blue)),
           const SizedBox(width: Spacing.sm),
@@ -510,7 +546,16 @@ class _RewardsPageState extends State<RewardsPage> {
     );
   }
 
-  Widget _buildRareUnlocks() {
+  Widget _buildSavingsRecognition() {
+    final achieved = _milestones.where((m) => m.achieved && !m.claimed).length;
+    final next = _milestones.where((m) => !m.achieved).toList()
+      ..sort((a, b) => a.threshold.compareTo(b.threshold));
+    final nextM = next.isNotEmpty ? next.first : null;
+    final remaining = nextM != null ? nextM.threshold - _totalSaved : 0.0;
+    final progress = nextM != null
+        ? (_totalSaved / nextM.threshold).clamp(0.0, 1.0)
+        : 1.0;
+
     return AppCard(
       padding: const EdgeInsets.all(Spacing.lg),
       borderRadius: RadiusTokens.xl,
@@ -518,7 +563,9 @@ class _RewardsPageState extends State<RewardsPage> {
       child: Container(
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [Color(0xFFFFF8E1), Color(0xFFFFF3E0)],
+            colors: [Color(0xFFE8F5E9), Color(0xFFFFF8E1)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(RadiusTokens.xl),
         ),
@@ -527,54 +574,73 @@ class _RewardsPageState extends State<RewardsPage> {
           children: [
             Row(
               children: [
-                const Icon(Icons.auto_awesome, color: AppTheme.coinGold, size: 22),
+                const Icon(Icons.emoji_events, color: AppTheme.coinGold, size: 22),
                 const SizedBox(width: Spacing.sm),
-                Text('Rare Unlocks', style: AppTextStyle.heading3(context)),
-              ],
-            ),
-            const SizedBox(height: Spacing.sm + 4),
-            _unlockItem(
-              '\u{1F437} \u{2192} \u{1F409}',
-              'Evolve Piggy to Legendary',
-              _petLevel >= 7,
-              _petLevel >= 7 ? 1.0 : (_petLevel / 7).clamp(0.0, 1.0),
-            ),
-            _unlockItem(
-              '\u{1F3E0} \u{2192} \u{1F3F0}',
-              'Build the full Dream Town',
-              _townBuildings >= 10,
-              (_townBuildings / 10).clamp(0.0, 1.0),
-            ),
-            _unlockItem(
-              '\u{1F4DD} \u{2192} \u{1F3C6}',
-              'Score 100+ in Quiz',
-              _quizHighScore >= 100,
-              (_quizHighScore / 100).clamp(0.0, 1.0),
-            ),
-            _unlockItem(
-              '\u{1FA99} \u{2192} \u{1F451}',
-              'Save \u{20B1}5,000 total',
-              widget.currentXp >= 5000,
-              (widget.currentXp / 5000).clamp(0.0, 1.0),
-            ),
-            const SizedBox(height: Spacing.sm + 4),
-            Container(
-              padding: const EdgeInsets.all(Spacing.sm + 4),
-              decoration: BoxDecoration(
-                color: AppTheme.accentAmber.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(RadiusTokens.md),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.star, color: AppTheme.coinGold, size: 16),
-                  SizedBox(width: 8),
-                  Expanded(
+                Expanded(
+                  child: Text('My Savings Journey', style: AppTextStyle.heading3(context)),
+                ),
+                if (achieved > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryGreen.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
                     child: Text(
-                      'Complete all unlocks to earn exclusive avatars, borders, and pets!',
-                      style: TextStyle(fontSize: 12, color: Colors.brown),
+                      '$achieved reward ready!',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.primaryGreen,
+                      ),
                     ),
                   ),
-                ],
+              ],
+            ),
+            const SizedBox(height: Spacing.md),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                const Text('\u{1F3C6}', style: TextStyle(fontSize: 36)),
+                const SizedBox(width: 8),
+                AnimatedCounter(
+                  value: _totalSaved,
+                  prefix: '\u{20B1}',
+                  style: const TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.coinGold,
+                  ),
+                ),
+                const Spacer(),
+                if (nextM != null)
+                  Text(
+                    'Goal: \u{20B1}${_formatMoney(nextM.threshold)}',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: Spacing.sm),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: LinearProgressIndicator(
+                value: progress.toDouble(),
+                backgroundColor: Colors.grey.shade200,
+                valueColor: const AlwaysStoppedAnimation(AppTheme.coinGold),
+                minHeight: 10,
+              ),
+            ),
+            const SizedBox(height: Spacing.sm),
+            Text(
+              nextM != null
+                  ? 'Save \u{20B1}${_formatMoney(remaining)} more to earn "${nextM.title}"!'
+                  : 'You reached every milestone — keep saving!',
+              style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -583,63 +649,604 @@ class _RewardsPageState extends State<RewardsPage> {
     );
   }
 
-  Widget _unlockItem(String emoji, String description, bool unlocked, double progress) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: Spacing.sm),
+  Widget _buildMilestones() {
+    return AppCard(
+      padding: const EdgeInsets.all(Spacing.lg),
+      borderRadius: RadiusTokens.xl,
+      elevation: 0,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: unlocked
-                      ? AppTheme.primaryGreen.withValues(alpha: 0.1)
-                      : Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(RadiusTokens.sm),
-                ),
-                child: Center(
-                  child: Icon(
-                    unlocked ? Icons.check_circle : Icons.lock,
-                    color: unlocked
-                        ? AppTheme.primaryGreen
-                        : Theme.of(context).colorScheme.onSurfaceVariant,
-                    size: 18,
-                  ),
-                ),
-              ),
-              const SizedBox(width: Spacing.sm + 4),
-              Text(emoji, style: const TextStyle(fontSize: 18)),
+              const Icon(Icons.military_tech, color: AppTheme.coinGold, size: 22),
               const SizedBox(width: Spacing.sm),
-              Expanded(
-                child: Text(
-                  description,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: unlocked ? FontWeight.bold : FontWeight.normal,
-                    color: unlocked
-                        ? Theme.of(context).colorScheme.onSurface
-                        : Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+              Expanded(child: Text('Savings Milestones', style: AppTextStyle.heading3(context))),
+              Text(
+                '${_milestones.where((m) => m.claimed).length}/${_milestones.length} claimed',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: progress,
-              backgroundColor: Colors.grey.shade200,
-              valueColor: AlwaysStoppedAnimation(
-                unlocked ? AppTheme.primaryGreen : AppTheme.accentAmber,
+          const SizedBox(height: Spacing.sm + 4),
+          if (!_milestonesReady)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Center(
+                child: Text(
+                  'Connect to the internet to see your milestones.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ),
-              minHeight: 4,
+            )
+          else if (_milestones.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Center(
+                child: Text(
+                  'No milestones yet — check back soon!',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            )
+          else
+            ..._milestones.map((m) => _milestoneCard(m)),
+        ],
+      ),
+    );
+  }
+
+  Widget _milestoneCard(Milestone m) {
+    final progress = m.achieved
+        ? 1.0
+        : (_totalSaved / m.threshold).clamp(0.0, 1.0);
+    final isClaiming = _claimingId == m.id;
+    Certificate? cert;
+    if (m.rewardType == 'certificate') {
+      for (final c in _certificates) {
+        if (c.title == m.title) {
+          cert = c;
+          break;
+        }
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: Spacing.sm + 4),
+      decoration: BoxDecoration(
+        color: m.achieved
+            ? AppTheme.primaryGreen.withValues(alpha: 0.06)
+            : Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(RadiusTokens.lg),
+        border: Border.all(
+          color: m.achieved
+              ? AppTheme.primaryGreen.withValues(alpha: 0.3)
+              : Colors.grey.shade200,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (m.achieved)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              decoration: const BoxDecoration(
+                color: AppTheme.primaryGreen,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(RadiusTokens.lg - 1),
+                  topRight: Radius.circular(RadiusTokens.lg - 1),
+                ),
+              ),
+              child: const Center(
+                child: Text(
+                  'ACHIEVED',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 2,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.all(Spacing.sm + 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: m.achieved
+                              ? [AppTheme.coinGold, Color(0xFFFF8F00)]
+                              : [Colors.grey.shade300, Colors.grey.shade400],
+                        ),
+                        borderRadius: BorderRadius.circular(RadiusTokens.md),
+                      ),
+                      child: Center(
+                        child: Text(m.icon, style: const TextStyle(fontSize: 24)),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            m.title,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: m.achieved
+                                  ? Theme.of(context).colorScheme.onSurface
+                                  : Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Save \u{20B1}${_formatMoney(m.threshold)} total',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _rewardChip(m),
+                  ],
+                ),
+                const SizedBox(height: Spacing.sm + 2),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    backgroundColor: Colors.grey.shade200,
+                    valueColor: AlwaysStoppedAnimation(
+                      m.achieved ? AppTheme.primaryGreen : AppTheme.accentAmber,
+                    ),
+                    minHeight: 8,
+                  ),
+                ),
+                const SizedBox(height: Spacing.sm),
+                if (m.claimed)
+                  Row(
+                    children: [
+                      const Icon(Icons.check_circle, color: AppTheme.primaryGreen, size: 16),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Reward claimed!',
+                        style: TextStyle(fontSize: 12, color: AppTheme.primaryGreen),
+                      ),
+                      const Spacer(),
+                      if (cert != null)
+                        TextButton.icon(
+                          onPressed: () => _viewCertificate(cert!),
+                          icon: const Icon(Icons.receipt_long, size: 16),
+                          label: const Text('View Certificate'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppTheme.accentAmber,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
+                      if (m.claimedAt != null)
+                        Text(
+                          m.claimedAt!,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                    ],
+                  )
+                else if (m.achieved)
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: isClaiming ? null : () => _claimMilestone(m),
+                      icon: const Icon(Icons.emoji_events, size: 18),
+                      label: Text(isClaiming ? 'Claiming...' : 'Claim Reward'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryGreen,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  Row(
+                    children: [
+                      const Icon(Icons.lock_clock, size: 16, color: Colors.grey),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Save \u{20B1}${_formatMoney(m.threshold - _totalSaved)} more to reach this',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
             ),
           ),
         ],
       ),
     );
+  }
+
+  Widget _rewardChip(Milestone m) {
+    final Color bg;
+    final Color fg;
+    switch (m.rewardType) {
+      case 'coins':
+        bg = AppTheme.coinGold.withValues(alpha: 0.15);
+        fg = AppTheme.coinGold;
+        break;
+      case 'xp':
+        bg = AppTheme.xpPurple.withValues(alpha: 0.12);
+        fg = AppTheme.xpPurple;
+        break;
+      case 'border':
+        bg = AppTheme.primaryGreen.withValues(alpha: 0.12);
+        fg = AppTheme.primaryGreen;
+        break;
+      default:
+        bg = AppTheme.accentAmber.withValues(alpha: 0.15);
+        fg = AppTheme.accentAmber;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        m.rewardLabel,
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: fg),
+      ),
+    );
+  }
+
+  Future<void> _claimMilestone(Milestone m) async {
+    if (_claimingId != null) return;
+    setState(() => _claimingId = m.id);
+    try {
+      final result = await _api.claimMilestone(widget.accountId, m.id);
+      final granted = result['granted'] as Map<String, dynamic>? ?? const {};
+      final coins = (granted['coins'] as num?)?.toInt() ?? 0;
+      if (coins > 0) {
+        await _source.addCoins(coins);
+        setState(() => _coins += coins);
+      }
+      final border = granted['border'] as String?;
+      if (border != null && border.isNotEmpty) {
+        await _source.addPurchasedItem(border);
+      }
+      if (!mounted) return;
+      await _load();
+      if (mounted) _showClaimCelebration(m, granted);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not claim reward. Please try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _claimingId = null);
+    }
+  }
+
+  void _showClaimCelebration(Milestone m, Map<String, dynamic> granted) {
+    final coins = (granted['coins'] as num?)?.toInt() ?? 0;
+    final xp = (granted['xp'] as num?)?.toInt() ?? 0;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        backgroundColor: Colors.transparent,
+        child: Stack(
+          children: [
+            Container(
+              margin: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFFF8E1), Color(0xFFFFF3E0)],
+                ),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: AppTheme.coinGold.withValues(alpha: 0.5), width: 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.coinGold.withValues(alpha: 0.25),
+                    blurRadius: 30,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        colors: [AppTheme.coinGold, Color(0xFFFF8F00)],
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.coinGold.withValues(alpha: 0.5),
+                          blurRadius: 16,
+                        ),
+                      ],
+                    ),
+                    child: const Center(
+                      child: Text('\u{1F3C6}', style: TextStyle(fontSize: 36)),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'MILESTONE UNLOCKED',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 2,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    m.title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.coinGold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'You saved \u{20B1}${_formatMoney(m.threshold)} in total!',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.7),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Column(
+                      children: [
+                        if (coins > 0) _rewardRow('\u{1FA99}', '+$coins coins', AppTheme.coinGold),
+                        if (xp > 0) _rewardRow('\u{2B50}', '+$xp XP', AppTheme.xpPurple),
+                        if (m.rewardType == 'border')
+                          _rewardRow('\u{1F3C6}', 'Free ${m.rewardItemName ?? 'border'} unlocked!', AppTheme.primaryGreen),
+                        if (m.rewardType == 'certificate')
+                          _rewardRow('\u{1F396}\u{FE0F}', 'Certificate earned in your name!', AppTheme.accentAmber),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryGreen,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Text('Awesome!'),
+                  ),
+                ],
+              ),
+            ),
+            Positioned.fill(
+              child: IgnorePointer(
+                child: ConfettiWidget(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _viewCertificate(Certificate cert) {
+    final issued = cert.issuedAt != null ? _formatDate(cert.issuedAt!) : '';
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: Colors.transparent,
+        child: Container(
+          margin: const EdgeInsets.all(4),
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFFFFFDF3), Color(0xFFFFF3D6)],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppTheme.coinGold.withValues(alpha: 0.6), width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 24,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  const Text('🏅', style: TextStyle(fontSize: 28)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      cert.certificateNumber,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        letterSpacing: 1.5,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Certificate of Achievement',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  letterSpacing: 2,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text('This certifies that', style: TextStyle(fontSize: 14, fontStyle: FontStyle.italic)),
+              const SizedBox(height: 8),
+              Text(
+                cert.childName,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.w800,
+                  fontFamily: 'serif',
+                  color: AppTheme.primaryGreen,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'has achieved the milestone:',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                cert.title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.coinGold,
+                ),
+              ),
+              if (cert.description.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  cert.description,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              Text(
+                'Total savings: \u{20B1}${_formatMoney(cert.thresholdAmount)}',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 4),
+              if (issued.isNotEmpty)
+                Text(
+                  'Issued on $issued',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  TextButton.icon(
+                    onPressed: () => Navigator.pop(ctx),
+                    icon: const Icon(Icons.close, size: 18),
+                    label: const Text('Close'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: () => Navigator.pop(ctx),
+                    icon: const Icon(Icons.share, size: 18),
+                    label: const Text('Share'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryGreen,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatDate(String iso) {
+    try {
+      final d = DateTime.parse(iso).toLocal();
+      const months = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      ];
+      return '${months[d.month - 1]} ${d.day}, ${d.year}';
+    } catch (_) {
+      return iso;
+    }
+  }
+
+  String _formatMoney(double value) {
+    final v = value.round();
+    final s = v.toString();
+    final buf = StringBuffer();
+    for (int i = 0; i < s.length; i++) {
+      buf.write(s[i]);
+      final rem = s.length - 1 - i;
+      if (rem > 0 && rem % 3 == 0) buf.write(',');
+    }
+    return buf.toString();
   }
 }

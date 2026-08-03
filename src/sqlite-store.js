@@ -138,6 +138,10 @@ function getDb() {
     try { db.exec("CREATE TABLE IF NOT EXISTS coin_transactions (id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE, amount INTEGER NOT NULL, balance_before INTEGER NOT NULL, balance_after INTEGER NOT NULL, reason TEXT DEFAULT '', created_at TEXT NOT NULL)"); } catch (_) {}
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_coin_tx_account ON coin_transactions(account_id)"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS refresh_tokens (token_id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE, token_hash TEXT NOT NULL, expires_at TEXT NOT NULL, revoked INTEGER DEFAULT 0, created_at TEXT NOT NULL)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS milestones (id TEXT PRIMARY KEY, threshold_amount DECIMAL(12,2) NOT NULL DEFAULT 0, title VARCHAR(255) NOT NULL, description TEXT DEFAULT '', icon VARCHAR(50) DEFAULT '🏆', reward_type VARCHAR(20) NOT NULL DEFAULT 'coins', reward_value INTEGER DEFAULT 0, reward_item_id TEXT, sort_order INTEGER DEFAULT 0, is_active INTEGER DEFAULT 1, created_at TEXT, updated_at TEXT)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS milestone_claims (id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE, milestone_id TEXT NOT NULL, claimed_at TEXT, UNIQUE(account_id, milestone_id))"); } catch (_) {}
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_milestone_claims_account ON milestone_claims(account_id)"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS shop_purchases (id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE, item_id TEXT NOT NULL, source VARCHAR(20) DEFAULT 'shop', created_at TEXT, UNIQUE(account_id, item_id))"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS parent_notifications (notif_id TEXT PRIMARY KEY, parent_id TEXT NOT NULL, title TEXT NOT NULL, body TEXT DEFAULT '', type TEXT DEFAULT 'info', is_read INTEGER DEFAULT 0, created_at TEXT)"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS support_messages (message_id TEXT PRIMARY KEY, account_id TEXT, parent_id TEXT, child_name TEXT DEFAULT '', sender_type TEXT NOT NULL DEFAULT 'child' CHECK(sender_type IN ('child','parent','admin')), sender_name TEXT DEFAULT '', content TEXT NOT NULL, admin_read INTEGER DEFAULT 0, child_read INTEGER DEFAULT 0, parent_read INTEGER DEFAULT 0, created_at TEXT)"); } catch (_) {}
     try { db.exec("ALTER TABLE support_messages ADD COLUMN parent_id TEXT"); } catch (_) {}
@@ -1136,6 +1140,96 @@ function getCoinHistory(accountId) {
   return getDb().prepare('SELECT * FROM coin_transactions WHERE account_id = ? ORDER BY created_at DESC LIMIT 100').all(accountId);
 }
 
+// ── Milestones & Rewards ──
+
+function getMilestones() {
+  return getDb().prepare('SELECT * FROM milestones ORDER BY sort_order ASC, threshold_amount ASC').all();
+}
+
+function getMilestone(id) {
+  return getDb().prepare('SELECT * FROM milestones WHERE id = ?').get(id);
+}
+
+function createMilestone(data) {
+  const id = data.id || uuidv4();
+  const now = new Date().toISOString();
+  getDb().prepare(`
+    INSERT INTO milestones (id, threshold_amount, title, description, icon, reward_type, reward_value, reward_item_id, sort_order, is_active, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    Number(data.threshold_amount) || 0,
+    data.title || 'Untitled',
+    data.description || '',
+    data.icon || '🏆',
+    data.reward_type || 'coins',
+    Number(data.reward_value) || 0,
+    data.reward_item_id || null,
+    Number(data.sort_order) || 0,
+    data.is_active === false ? 0 : 1,
+    now,
+    now
+  );
+  return getMilestone(id);
+}
+
+function updateMilestone(id, data) {
+  const existing = getMilestone(id);
+  if (!existing) return null;
+  getDb().prepare(`
+    UPDATE milestones SET threshold_amount=?, title=?, description=?, icon=?, reward_type=?, reward_value=?, reward_item_id=?, sort_order=?, is_active=?, updated_at=? WHERE id=?
+  `).run(
+    data.threshold_amount !== undefined ? Number(data.threshold_amount) : existing.threshold_amount,
+    data.title !== undefined ? data.title : existing.title,
+    data.description !== undefined ? data.description : existing.description,
+    data.icon !== undefined ? data.icon : existing.icon,
+    data.reward_type !== undefined ? data.reward_type : existing.reward_type,
+    data.reward_value !== undefined ? Number(data.reward_value) : existing.reward_value,
+    data.reward_item_id !== undefined ? data.reward_item_id : existing.reward_item_id,
+    data.sort_order !== undefined ? Number(data.sort_order) : existing.sort_order,
+    data.is_active !== undefined ? (data.is_active ? 1 : 0) : existing.is_active,
+    new Date().toISOString(),
+    id
+  );
+  return getMilestone(id);
+}
+
+function deleteMilestone(id) {
+  getDb().prepare('DELETE FROM milestone_claims WHERE milestone_id = ?').run(id);
+  getDb().prepare('DELETE FROM milestones WHERE id = ?').run(id);
+}
+
+function getTotalSaved(accountId) {
+  const row = getDb().prepare(`
+    SELECT COALESCE(SUM(amount), 0) AS total FROM transactions
+    WHERE account_id = ? AND type IN ('deposit','interest_credit','interest','auto_save')
+  `).get(accountId);
+  return Number(row.total) || 0;
+}
+
+function getMilestoneClaims(accountId) {
+  return getDb().prepare('SELECT * FROM milestone_claims WHERE account_id = ?').all(accountId);
+}
+
+function claimMilestone(accountId, milestoneId) {
+  const now = new Date().toISOString();
+  getDb().prepare('INSERT OR IGNORE INTO milestone_claims (id, account_id, milestone_id, claimed_at) VALUES (?, ?, ?, ?)')
+    .run(uuidv4(), accountId, milestoneId, now);
+  return getDb().prepare('SELECT * FROM milestone_claims WHERE account_id = ? AND milestone_id = ?').get(accountId, milestoneId);
+}
+
+function grantShopItem(accountId, itemId, source) {
+  const exists = getDb().prepare('SELECT * FROM shop_purchases WHERE account_id = ? AND item_id = ?').get(accountId, itemId);
+  if (exists) return exists;
+  getDb().prepare('INSERT INTO shop_purchases (id, account_id, item_id, source, created_at) VALUES (?, ?, ?, ?, ?)')
+    .run(uuidv4(), accountId, itemId, source || 'shop', new Date().toISOString());
+  return getDb().prepare('SELECT * FROM shop_purchases WHERE account_id = ? AND item_id = ?').get(accountId, itemId);
+}
+
+function getOwnedShopItems(accountId) {
+  return getDb().prepare('SELECT item_id FROM shop_purchases WHERE account_id = ?').all(accountId).map(r => r.item_id);
+}
+
 // ── Spin Wheel ──
 
 function getLastSpinDate(accountId) {
@@ -1345,6 +1439,17 @@ module.exports = {
   getLastSpinDate,
   recordSpin,
   addXp,
+  // ── Milestones & Rewards ──
+  getMilestones,
+  getMilestone,
+  createMilestone,
+  updateMilestone,
+  deleteMilestone,
+  getTotalSaved,
+  getMilestoneClaims,
+  claimMilestone,
+  grantShopItem,
+  getOwnedShopItems,
   // ── Refresh Tokens ──
   saveRefreshToken,
   getRefreshToken,

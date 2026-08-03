@@ -100,6 +100,7 @@ function layout(title, active, content, opts = {}) {
       { minRole: 1, icon: '<i class="fas fa-circle-question"></i>', label: 'Quiz', href: '/admin/quiz', key: 'quiz' },
       { minRole: 1, icon: '<i class="fas fa-bullseye"></i>', label: 'Goals', href: '/admin/goals', key: 'goals' },
       { minRole: 1, icon: '<i class="fas fa-medal"></i>', label: 'Badges', href: '/admin/badges', key: 'badges' },
+      { minRole: 2, icon: '<i class="fas fa-trophy"></i>', label: 'Milestones', href: '/admin/milestones', key: 'milestones' },
       { minRole: 1, icon: '<i class="fas fa-users"></i>', label: 'Board of Directors', href: '/admin/board', key: 'board' },
     ]},
     { minRole: 1, icon: '<i class="fas fa-clipboard-list"></i>', label: 'Administration', key: 'admin-group', children: [

@@ -180,6 +180,36 @@ class PgStore {
         is_active INTEGER DEFAULT 1,
         updated_at TEXT
       );
+      CREATE TABLE IF NOT EXISTS milestones (
+        id TEXT PRIMARY KEY,
+        threshold_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+        title VARCHAR(255) NOT NULL,
+        description TEXT DEFAULT '',
+        icon VARCHAR(50) DEFAULT '🏆',
+        reward_type VARCHAR(20) NOT NULL DEFAULT 'coins',
+        reward_value INTEGER DEFAULT 0,
+        reward_item_id TEXT,
+        sort_order INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT,
+        updated_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS milestone_claims (
+        id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+        milestone_id TEXT NOT NULL,
+        claimed_at TEXT,
+        UNIQUE(account_id, milestone_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_milestone_claims_account ON milestone_claims(account_id);
+      CREATE TABLE IF NOT EXISTS shop_purchases (
+        id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+        item_id TEXT NOT NULL,
+        source VARCHAR(20) DEFAULT 'shop',
+        created_at TEXT,
+        UNIQUE(account_id, item_id)
+      );
       CREATE TABLE IF NOT EXISTS quiz_questions (
         id TEXT PRIMARY KEY,
         question TEXT NOT NULL,
@@ -1884,6 +1914,95 @@ class PgStore {
       [accountId]
     );
     return res.rows;
+  }
+
+  // ── Milestones & Rewards ──
+
+  async getMilestones() {
+    const res = await this.query('SELECT * FROM milestones ORDER BY sort_order ASC, threshold_amount ASC');
+    return res.rows;
+  }
+
+  async getMilestone(id) {
+    const res = await this.query('SELECT * FROM milestones WHERE id = $1', [id]);
+    return res.rows[0];
+  }
+
+  async createMilestone(data) {
+    const id = data.id || uuidv4();
+    const now = new Date().toISOString();
+    await this.query(
+      `INSERT INTO milestones (id, threshold_amount, title, description, icon, reward_type, reward_value, reward_item_id, sort_order, is_active, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      [id, Number(data.threshold_amount) || 0, data.title || 'Untitled', data.description || '', data.icon || '🏆',
+       data.reward_type || 'coins', Number(data.reward_value) || 0, data.reward_item_id || null,
+       Number(data.sort_order) || 0, data.is_active === false ? 0 : 1, now, now]
+    );
+    return this.getMilestone(id);
+  }
+
+  async updateMilestone(id, data) {
+    const existing = await this.getMilestone(id);
+    if (!existing) return null;
+    await this.query(
+      `UPDATE milestones SET threshold_amount=$1, title=$2, description=$3, icon=$4, reward_type=$5, reward_value=$6, reward_item_id=$7, sort_order=$8, is_active=$9, updated_at=$10 WHERE id=$11`,
+      [data.threshold_amount !== undefined ? Number(data.threshold_amount) : existing.threshold_amount,
+       data.title !== undefined ? data.title : existing.title,
+       data.description !== undefined ? data.description : existing.description,
+       data.icon !== undefined ? data.icon : existing.icon,
+       data.reward_type !== undefined ? data.reward_type : existing.reward_type,
+       data.reward_value !== undefined ? Number(data.reward_value) : existing.reward_value,
+       data.reward_item_id !== undefined ? data.reward_item_id : existing.reward_item_id,
+       data.sort_order !== undefined ? Number(data.sort_order) : existing.sort_order,
+       data.is_active !== undefined ? (data.is_active ? 1 : 0) : existing.is_active,
+       new Date().toISOString(), id]
+    );
+    return this.getMilestone(id);
+  }
+
+  async deleteMilestone(id) {
+    await this.query('DELETE FROM milestone_claims WHERE milestone_id = $1', [id]);
+    await this.query('DELETE FROM milestones WHERE id = $1', [id]);
+  }
+
+  async getTotalSaved(accountId) {
+    const res = await this.query(
+      `SELECT COALESCE(SUM(amount), 0) AS total FROM transactions
+       WHERE account_id = $1 AND type IN ('deposit','interest_credit','interest','auto_save')`,
+      [accountId]
+    );
+    return Number(res.rows[0]?.total) || 0;
+  }
+
+  async getMilestoneClaims(accountId) {
+    const res = await this.query('SELECT * FROM milestone_claims WHERE account_id = $1', [accountId]);
+    return res.rows;
+  }
+
+  async claimMilestone(accountId, milestoneId) {
+    const now = new Date().toISOString();
+    await this.query(
+      `INSERT INTO milestone_claims (id, account_id, milestone_id, claimed_at)
+       VALUES ($1,$2,$3,$4) ON CONFLICT (account_id, milestone_id) DO NOTHING`,
+      [uuidv4(), accountId, milestoneId, now]
+    );
+    const res = await this.query('SELECT * FROM milestone_claims WHERE account_id = $1 AND milestone_id = $2', [accountId, milestoneId]);
+    return res.rows[0];
+  }
+
+  async grantShopItem(accountId, itemId, source) {
+    await this.query(
+      `INSERT INTO shop_purchases (id, account_id, item_id, source, created_at)
+       VALUES ($1,$2,$3,$4,$5) ON CONFLICT (account_id, item_id) DO NOTHING`,
+      [uuidv4(), accountId, itemId, source || 'shop', new Date().toISOString()]
+    );
+    const res = await this.query('SELECT * FROM shop_purchases WHERE account_id = $1 AND item_id = $2', [accountId, itemId]);
+    return res.rows[0];
+  }
+
+  async getOwnedShopItems(accountId) {
+    const res = await this.query('SELECT item_id FROM shop_purchases WHERE account_id = $1', [accountId]);
+    return res.rows.map(r => r.item_id);
   }
 
   // ── Parent Notifications ──

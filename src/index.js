@@ -472,7 +472,9 @@ const parentalConsentRouter = require('./routes/parental-consent');
 const accountDeletionRouter = require('./routes/account-deletion');
 const { router: parentRouter } = require('./routes/parent');
 const coinsRouter = require('./routes/coins');
+const xpRouter = require('./routes/xp');
 const spinRouter = require('./routes/spin');
+const milestonesRouter = require('./routes/milestones');
 const locationRouter = require('./routes/location');
 
 apiRouter.use('/accounts', authMiddleware, requireOwnership, accountsRouter);
@@ -513,6 +515,8 @@ apiRouter.use(authMiddleware, requireOwnership, bankingFeaturesRouter);
 apiRouter.use('/leaderboard', authMiddleware, leaderboardRouter);
 apiRouter.use('/settings', authMiddleware, requireOwnership, settingsRouter);
 apiRouter.use('/coins', authMiddleware, requireOwnership, coinsRouter);
+apiRouter.use('/xp', authMiddleware, requireOwnership, xpRouter);
+apiRouter.use('/milestones', authMiddleware, requireOwnership, milestonesRouter);
 apiRouter.use('/spin', authMiddleware, requireOwnership, spinRouter);
 apiRouter.use('/location', authMiddleware, locationRouter);
 // Admin typing endpoints
@@ -672,6 +676,7 @@ const adminRouter = require('./routes/admin');
 const microbankRouter = require('./routes/admin-microbank');
 const advancedRouter = require('./routes/admin-advanced');
 const bankReportRouter = require('./routes/admin-reports-bank');
+const adminMilestonesRouter = require('./routes/admin-milestones');
 const adminLib = require('./routes/admin-lib');
 // Set role level for sidebar filtering
 app.use('/admin', (req, res, next) => {
@@ -701,6 +706,7 @@ app.use('/admin', csrfProtection, adminRouter);
 app.use('/admin', csrfProtection, microbankRouter);
 app.use('/admin', csrfProtection, advancedRouter);
 app.use('/admin', csrfProtection, bankReportRouter);
+app.use('/admin', csrfProtection, adminMilestonesRouter);
 
 // ── SPA fallback: serve Flutter web index.html for non-API routes ──
 app.use((req, res, next) => {

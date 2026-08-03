@@ -43,6 +43,7 @@ async function getBorders() {
 router.get('/milestones', requireRole(2), asyncHandler(async (req, res) => {
   const milestones = await store.getMilestones();
   const borders = await getBorders();
+  const certificates = await sql('SELECT c.*, a.member_id FROM certificates c LEFT JOIN accounts a ON c.account_id = a.account_id ORDER BY c.issued_at DESC').catch(() => []);
   const editId = req.query.edit || null;
   const toast = req.query.created ? 'success:Milestone created.' :
     req.query.updated ? 'success:Milestone updated.' :
@@ -133,6 +134,21 @@ router.get('/milestones', requireRole(2), asyncHandler(async (req, res) => {
         </tr></thead>
         <tbody>${milestones.length ? rows : '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)">No milestones yet. Add one above.</td></tr>'}</tbody>
       </table>
+    </div>
+    <div style="height:22px"></div>
+    <div class="card" style="padding:18px">
+      <h3 style="margin:0 0 12px">🏅 Issued Certificates</h3>
+      ${certificates.length ? `
+        <table class="table table-striped" style="margin:0">
+          <thead><tr><th>Cert #</th><th>Child</th><th>Title</th><th>Issued</th></tr></thead>
+          <tbody>${certificates.map(c => `
+            <tr>
+              <td class="mono">${h(c.certificate_number)}</td>
+              <td><b>${h(c.child_name)}</b><br><span style="color:var(--text-muted);font-size:11px">${c.member_id || ''}</span></td>
+              <td>${h(c.title)}</td>
+              <td class="mono" style="font-size:11px">${new Date(c.issued_at).toLocaleString()}</td>
+            </tr>`).join('')}</tbody>
+        </table>` : '<p style="color:var(--text-muted);margin:0">No certificates issued yet. Certificates are auto-created in the child\'s name when they claim a "Certificate / Title" milestone.</p>'}
     </div>
     <script>
       document.addEventListener('change', function(e) {

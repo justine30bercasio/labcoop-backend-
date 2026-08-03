@@ -31,6 +31,8 @@ async function buildMilestones(accountId) {
   const claimedAt = {};
   for (const c of claims) claimedAt[c.milestone_id] = c.claimed_at || null;
 
+  const certificates = await store.getCertificates(accountId);
+
   const all = await store.getMilestones();
   const active = (all || [])
     .filter(m => Number(m.is_active) !== 0)
@@ -63,7 +65,7 @@ async function buildMilestones(accountId) {
     });
   }
 
-  return { total_saved: totalSaved, milestones: items };
+  return { total_saved: totalSaved, milestones: items, certificates };
 }
 
 // GET /api/milestones/:accountId — milestones + child progress + claim status
@@ -103,7 +105,23 @@ router.post('/:accountId/claim', claimLimiter, asyncHandler(async (req, res) => 
       await store.grantShopItem(accountId, milestone.reward_item_id, 'milestone');
       granted.border = milestone.reward_item_id;
     } else if (milestone.reward_type === 'certificate') {
-      granted.certificate = milestone.title || 'Milestone Champion';
+      const acct = await store.getAccount(accountId);
+      const childName = (acct && (acct.child_name || [acct.first_name, acct.middle_name, acct.last_name].filter(Boolean).join(' '))) || 'Member';
+      const cert = await store.createCertificate({
+        accountId,
+        milestoneId,
+        childName,
+        title: milestone.title || 'Milestone Champion',
+        description: milestone.description || '',
+        thresholdAmount: milestone.threshold_amount,
+      });
+      granted.certificate = {
+        id: cert.id,
+        certificate_number: cert.certificate_number,
+        child_name: cert.child_name,
+        title: cert.title,
+        issued_at: cert.issued_at,
+      };
     }
     await store.claimMilestone(accountId, milestoneId);
   } catch (e) {

@@ -210,6 +210,19 @@ class PgStore {
         created_at TEXT,
         UNIQUE(account_id, item_id)
       );
+      CREATE TABLE IF NOT EXISTS certificates (
+        id TEXT PRIMARY KEY,
+        certificate_number VARCHAR(40) NOT NULL UNIQUE,
+        account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+        milestone_id TEXT,
+        child_name VARCHAR(255) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        description TEXT DEFAULT '',
+        threshold_amount DECIMAL(12,2) DEFAULT 0,
+        issued_at TEXT,
+        created_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_certificates_account ON certificates(account_id);
       CREATE TABLE IF NOT EXISTS quiz_questions (
         id TEXT PRIMARY KEY,
         question TEXT NOT NULL,
@@ -2003,6 +2016,28 @@ class PgStore {
   async getOwnedShopItems(accountId) {
     const res = await this.query('SELECT item_id FROM shop_purchases WHERE account_id = $1', [accountId]);
     return res.rows.map(r => r.item_id);
+  }
+
+  // ── Certificates ──
+
+  async createCertificate({ accountId, milestoneId, childName, title, description, thresholdAmount }) {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+    const year = new Date().getFullYear();
+    const num = id.replace(/-/g, '').slice(0, 6).toUpperCase();
+    const certificateNumber = `LBC-${year}-${num}`;
+    await this.query(
+      `INSERT INTO certificates (id, certificate_number, account_id, milestone_id, child_name, title, description, threshold_amount, issued_at, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [id, certificateNumber, accountId, milestoneId || null, childName, title, description || '', Number(thresholdAmount) || 0, now, now]
+    );
+    const res = await this.query('SELECT * FROM certificates WHERE id = $1', [id]);
+    return res.rows[0];
+  }
+
+  async getCertificates(accountId) {
+    const res = await this.query('SELECT * FROM certificates WHERE account_id = $1 ORDER BY issued_at DESC', [accountId]);
+    return res.rows;
   }
 
   // ── Parent Notifications ──

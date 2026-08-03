@@ -142,6 +142,8 @@ function getDb() {
     try { db.exec("CREATE TABLE IF NOT EXISTS milestone_claims (id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE, milestone_id TEXT NOT NULL, claimed_at TEXT, UNIQUE(account_id, milestone_id))"); } catch (_) {}
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_milestone_claims_account ON milestone_claims(account_id)"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS shop_purchases (id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE, item_id TEXT NOT NULL, source VARCHAR(20) DEFAULT 'shop', created_at TEXT, UNIQUE(account_id, item_id))"); } catch (_) {}
+    try { db.exec("CREATE TABLE IF NOT EXISTS certificates (id TEXT PRIMARY KEY, certificate_number VARCHAR(40) NOT NULL UNIQUE, account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE, milestone_id TEXT, child_name VARCHAR(255) NOT NULL, title VARCHAR(255) NOT NULL, description TEXT DEFAULT '', threshold_amount DECIMAL(12,2) DEFAULT 0, issued_at TEXT, created_at TEXT)"); } catch (_) {}
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_certificates_account ON certificates(account_id)"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS parent_notifications (notif_id TEXT PRIMARY KEY, parent_id TEXT NOT NULL, title TEXT NOT NULL, body TEXT DEFAULT '', type TEXT DEFAULT 'info', is_read INTEGER DEFAULT 0, created_at TEXT)"); } catch (_) {}
     try { db.exec("CREATE TABLE IF NOT EXISTS support_messages (message_id TEXT PRIMARY KEY, account_id TEXT, parent_id TEXT, child_name TEXT DEFAULT '', sender_type TEXT NOT NULL DEFAULT 'child' CHECK(sender_type IN ('child','parent','admin')), sender_name TEXT DEFAULT '', content TEXT NOT NULL, admin_read INTEGER DEFAULT 0, child_read INTEGER DEFAULT 0, parent_read INTEGER DEFAULT 0, created_at TEXT)"); } catch (_) {}
     try { db.exec("ALTER TABLE support_messages ADD COLUMN parent_id TEXT"); } catch (_) {}
@@ -1230,6 +1232,25 @@ function getOwnedShopItems(accountId) {
   return getDb().prepare('SELECT item_id FROM shop_purchases WHERE account_id = ?').all(accountId).map(r => r.item_id);
 }
 
+// ── Certificates ──
+
+function createCertificate({ accountId, milestoneId, childName, title, description, thresholdAmount }) {
+  const id = uuidv4();
+  const now = new Date().toISOString();
+  const year = new Date().getFullYear();
+  const num = id.replace(/-/g, '').slice(0, 6).toUpperCase();
+  const certificateNumber = `LBC-${year}-${num}`;
+  getDb().prepare(`
+    INSERT INTO certificates (id, certificate_number, account_id, milestone_id, child_name, title, description, threshold_amount, issued_at, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, certificateNumber, accountId, milestoneId || null, childName, title, description || '', Number(thresholdAmount) || 0, now, now);
+  return getDb().prepare('SELECT * FROM certificates WHERE id = ?').get(id);
+}
+
+function getCertificates(accountId) {
+  return getDb().prepare('SELECT * FROM certificates WHERE account_id = ? ORDER BY issued_at DESC').all(accountId);
+}
+
 // ── Spin Wheel ──
 
 function getLastSpinDate(accountId) {
@@ -1450,6 +1471,9 @@ module.exports = {
   claimMilestone,
   grantShopItem,
   getOwnedShopItems,
+  // ── Certificates ──
+  createCertificate,
+  getCertificates,
   // ── Refresh Tokens ──
   saveRefreshToken,
   getRefreshToken,

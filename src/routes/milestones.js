@@ -65,7 +65,12 @@ async function buildMilestones(accountId) {
     });
   }
 
-  return { total_saved: totalSaved, milestones: items, certificates };
+  const certs = (certificates || []).map(c => ({
+    ...c,
+    threshold_amount: Number(c.threshold_amount) || 0,
+  }));
+
+  return { total_saved: totalSaved, milestones: items, certificates: certs };
 }
 
 // GET /api/milestones/:accountId — milestones + child progress + claim status

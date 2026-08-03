@@ -197,7 +197,7 @@ async function ensureDb() {
       await store.query(
       `INSERT INTO savings_products (product_id, name, description, interest_rate, interest_frequency, min_balance, is_active, created_at)
        VALUES ('sp_regular', 'Regular Savings', 'Default savings account with automatic interest', 0.02, 'yearly', 0, 1, $1)
-       ON CONFLICT (product_id) DO UPDATE SET interest_rate = 0.02, interest_frequency = 'yearly'`,
+       ON CONFLICT (product_id) DO NOTHING`,
       [new Date().toISOString()]
     );
     // Seed default maintaining balance setting if not set

@@ -20,8 +20,33 @@ router.get('/account/:accountId', asyncHandler(async (req, res) => {
   res.json(txns);
 }));
 
+// Raw transaction creation is intentionally locked down (S9):
+// - Only the account owner may record a transaction (defense-in-depth on top of requireOwnership).
+// - Only informational, non-balance-affecting types are allowed. Balance-affecting types
+//   (deposit, withdrawal, interest, loan_*, auto_save, void, etc.) are created exclusively by
+//   server-side business logic (admin teller, loan engine, interest scheduler) to prevent a child
+//   from fabricating ledger history that could later be voided into a real balance deduction.
+const CLIENT_SAFE_TYPES = ['allocation', 'deallocation'];
+
 router.post('/', txCreateLimiter, asyncHandler(async (req, res) => {
-  const tx = await store.addTransaction(req.body);
+  const body = req.body || {};
+
+  // Ownership: account_id in body must match the authenticated child.
+  if (!body.account_id || body.account_id !== req.accountId) {
+    return res.status(403).json({ message: 'Forbidden: you can only record transactions on your own account' });
+  }
+
+  // Type whitelist — reject balance-affecting or unknown types.
+  if (!CLIENT_SAFE_TYPES.includes(body.type)) {
+    return res.status(400).json({
+      message: `Transaction type '${body.type}' is not allowed here. Use the appropriate banking flow instead.`,
+    });
+  }
+
+  // Strip client-supplied running balances; the store recomputes them from the actual account balance.
+  const { balance_before, balance_after, ...safeBody } = body;
+
+  const tx = await store.addTransaction(safeBody);
   res.status(201).json(tx);
 }));
 

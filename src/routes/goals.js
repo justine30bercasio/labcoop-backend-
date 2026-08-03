@@ -100,7 +100,43 @@ router.delete('/:goalId',
   asyncHandler(async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-    await store.deleteGoal(req.params.goalId);
+
+    // Ownership check: the goal must belong to the authenticated child.
+    const existing = await store.getGoal(req.params.goalId);
+    if (!existing) return res.status(404).json({ message: 'Goal not found' });
+    if (existing.account_id !== req.accountId) {
+      return res.status(403).json({ message: 'Forbidden: you can only delete your own goals' });
+    }
+
+    const refund = Number(existing.current_allocated) || 0;
+
+    const doDelete = async (tx) => {
+      const q = (tx && tx.query) ? tx.query.bind(tx) : (sql, p) => store.query(sql, p);
+
+      if (refund > 0) {
+        // Refund the allocated money back to the account's unallocated_balance
+        await q(
+          'UPDATE accounts SET unallocated_balance = unallocated_balance + $1, updated_at = $2 WHERE account_id = $3',
+          [refund, new Date().toISOString(), existing.account_id]
+        );
+        await store.addTransaction({
+          account_id: existing.account_id,
+          goal_id: req.params.goalId,
+          type: 'deallocation',
+          amount: refund,
+          description: 'Refunded from deleted goal',
+        }, tx);
+      }
+
+      await q('DELETE FROM goal_jars WHERE goal_id = $1', [req.params.goalId]);
+    };
+
+    if (isPostgres) {
+      await store.transaction(async (tx) => doDelete(tx));
+    } else {
+      await doDelete();
+    }
+
     res.status(204).send();
   })
 );

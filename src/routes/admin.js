@@ -4291,7 +4291,7 @@ router.post('/withdrawal-requests/pay/:id', requireRole(2), asyncHandler(async (
     const newUnallocated = Math.round((Number(account.unallocated_balance) - val) * 100) / 100;
 
     await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3", [newBalance, Math.max(0, newUnallocated), reqData.account_id]);
-    await store.addTransaction({
+    const result = await store.addTransaction({
       account_id: reqData.account_id,
       type: 'withdrawal',
       amount: val,
@@ -4299,6 +4299,16 @@ router.post('/withdrawal-requests/pay/:id', requireRole(2), asyncHandler(async (
       balance_before: Number(account.actual_balance),
       balance_after: newBalance,
     });
+    // ── Post GL reversal (liability reduced, cash paid out) ──
+    const txId = result?.transaction_id || '';
+    try {
+      const gl = require('../services/gl');
+      const wtNumber = await store.assignOrNumber('withdrawal');
+      await gl.postDoubleEntry(txId, [
+        { account_code: '2000', debit: val, description: 'Withdrawal request payout: ' + (account.child_name || 'Member') },
+        { account_code: '1000', credit: val, description: 'Withdrawal request payout: ' + (account.child_name || 'Member') },
+      ], { postedBy: req.session.adminName || 'admin', referenceType: 'withdrawal', referenceNumber: wtNumber });
+    } catch (glErr) { console.error('Withdrawal payout GL post failed:', glErr.message); }
     await store.updateWithdrawalRequest(req.params.id, { status: 'paid', resolved_at: new Date().toISOString() });
     notifs.notifyWithdrawalPaid(reqData.account_id, reqData.amount).catch(() => {});
     res.redirect('/admin/withdrawal-requests?paid=ok');
@@ -4431,19 +4441,58 @@ router.post('/online-deposits/approve/:id', requireRole(2), asyncHandler(async (
     const account = await store.getAccount(deposit.account_id);
     if (!account) return res.redirect('/admin/online-deposits?error=Account+not+found');
 
+    // ── Idempotency guard: never credit the same deposit twice ──
+    // If a deposit transaction for this online_deposit already exists, the
+    // balance was already credited — just mark it approved and stop.
+    const existing = await store.query(
+      "SELECT * FROM transactions WHERE reference_type = 'online_deposit' AND reference_id = $1 AND type = 'deposit' AND voided_at IS NULL LIMIT 1",
+      [deposit.deposit_id]
+    );
+    if (existing.rows.length > 0) {
+      await store.updateOnlineDeposit(req.params.id, { status: 'approved', admin_notes: req.body.admin_notes || 'Approved via admin', resolved_at: new Date().toISOString() });
+      notifs.notifyDepositApproved(deposit.account_id, deposit.amount, deposit.reference_number).catch(() => {});
+      return res.redirect('/admin/online-deposits?paid=ok');
+    }
+
     const val = Number(deposit.amount);
     const newBalance = Math.round((Number(account.actual_balance) + val) * 100) / 100;
     const newUnallocated = Math.round((Number(account.unallocated_balance) + val) * 100) / 100;
 
-    await store.query("UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3", [newBalance, newUnallocated, deposit.account_id]);
-    await store.addTransaction({
-      account_id: deposit.account_id,
-      type: 'deposit',
-      amount: val,
-      description: `GCash deposit: ${deposit.reference_number || 'No ref'} (${deposit.sender_name || 'Unknown sender'})`,
-      balance_before: Number(account.actual_balance),
-      balance_after: newBalance,
-    });
+    // ── Atomic: update balance + transaction + GL in one transaction ──
+    const runApprove = async (tx) => {
+      const q = (tx && tx.query) ? tx.query.bind(tx) : (sql, p) => store.query(sql, p);
+
+      await q(
+        "UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3",
+        [newBalance, newUnallocated, deposit.account_id]
+      );
+      const txRecord = await store.addTransaction({
+        account_id: deposit.account_id,
+        type: 'deposit',
+        amount: val,
+        description: `GCash deposit: ${deposit.reference_number || 'No ref'} (${deposit.sender_name || 'Unknown sender'})`,
+        reference_type: 'online_deposit',
+        reference_id: deposit.deposit_id,
+        balance_before: Number(account.actual_balance),
+        balance_after: newBalance,
+      }, tx);
+      const gl = require('../services/gl');
+      const txId = txRecord?.transaction_id || require('uuid').v4();
+      const orNumber = await store.assignOrNumber('deposit');
+      await gl.postDoubleEntry(txId, [
+        { account_code: '1000', debit: val, description: 'GCash deposit: ' + (account.child_name || 'Member') },
+        { account_code: '2000', credit: val, description: 'GCash deposit: ' + (account.child_name || 'Member') }
+      ], { postedBy: req.session.adminName || 'admin', referenceType: 'online_deposit', referenceNumber: orNumber, tx });
+      return txRecord;
+    };
+
+    let txRecord;
+    if (typeof store.transaction === 'function') {
+      txRecord = await store.transaction(runApprove);
+    } else {
+      txRecord = await runApprove();
+    }
+
     await store.updateOnlineDeposit(req.params.id, { status: 'approved', admin_notes: req.body.admin_notes || 'Approved via admin', resolved_at: new Date().toISOString() });
     notifs.notifyDepositApproved(deposit.account_id, val, deposit.reference_number).catch(() => {});
     res.redirect('/admin/online-deposits?paid=ok');

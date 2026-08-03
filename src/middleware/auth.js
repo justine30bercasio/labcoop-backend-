@@ -40,7 +40,9 @@ function requireRole(...roles) {
 
 function requireConsent(req, res, next) {
   const { store } = require('../db');
-  store.getAccount(req.accountId).then(account => {
+  // Support both async (PostgreSQL) and sync (SQLite) stores.
+  const accountResult = store.getAccount(req.accountId);
+  Promise.resolve(accountResult).then(account => {
     if (!account) {
       return res.status(404).json({ message: 'Account not found' });
     }

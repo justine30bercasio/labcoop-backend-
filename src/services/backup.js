@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const logger = require('./logger');
 
@@ -8,6 +8,9 @@ const fileStorage = require('./file-storage');
 const { store, isPostgres } = require('../db');
 
 const BACKUP_DIR = path.join(__dirname, '..', '..', 'backups');
+
+// System tables excluded from backup/restore (mirrors admin.js)
+const SYSTEM_TABLES = new Set(['sequences', 'audit_log', 'admin_users', 'fcm_tokens', 'gl_accounts', 'backup_logs']);
 
 function phTimestamp() {
   const d = new Date();
@@ -17,37 +20,53 @@ function phTimestamp() {
   return `${datePart}_${timePart.replace(/:/g, '-')}`;
 }
 
-function pgDumpAvailable() {
-  try {
-    execSync('pg_dump --version', { stdio: 'pipe', timeout: 5000 });
-    return true;
-  } catch { return false; }
+function sha256(str) {
+  return crypto.createHash('sha256').update(str, 'utf8').digest('hex');
 }
 
-async function pgDumpBackup(filepath) {
-  const dbUrl = process.env.DATABASE_URL || '';
-  execSync(
-    `pg_dump "${dbUrl}" --format=custom --file="${filepath}" --no-owner --no-acl`,
-    { timeout: 300000, stdio: 'pipe' }
-  );
-}
-
-async function nodePgDumpBackup(filepath) {
-  const { Pool } = require('pg');
-  const dbUrl = process.env.DATABASE_URL || '';
-  const pool = new Pool({ connectionString: dbUrl, connectionTimeoutMillis: 10000 });
-  try {
-    const tablesRes = await pool.query("SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public' ORDER BY tablename");
-    const dump = {};
-    for (const row of tablesRes.rows) {
-      const tableName = row.tablename;
-      const dataRes = await pool.query(`SELECT * FROM "${tableName}"`);
-      dump[tableName] = dataRes.rows;
-    }
-    fs.writeFileSync(filepath, JSON.stringify(dump, null, 2), 'utf8');
-  } finally {
-    await pool.end();
+async function getAllTables() {
+  let tables;
+  if (isPostgres) {
+    const r = await store.query("SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' ORDER BY table_name");
+    tables = r.rows.map(t => t.table_name);
+  } else {
+    const r = await store.query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name", []);
+    tables = r.rows.map(t => t.name);
   }
+  return tables.filter(t => !SYSTEM_TABLES.has(t));
+}
+
+// Produce the same JSON structure as the admin "Download Backup" (/admin/backup),
+// so auto-backups can be restored through the web UI's Restore page.
+async function nodeDumpBackup(filepath) {
+  const tables = await getAllTables();
+  const backup = {
+    manifest: {
+      app: 'LabCoop',
+      version: '1.0.0',
+      generated_at: new Date().toISOString(),
+      tables: tables,
+      total_tables: tables.length,
+      total_rows: 0,
+      db_type: isPostgres ? 'postgresql' : 'sqlite',
+    },
+    data: {},
+  };
+  for (const t of tables) {
+    let rows = [];
+    try {
+      const res = await store.query(`SELECT * FROM "${t}"`);
+      rows = res.rows || [];
+    } catch (err) {
+      logger.warn('[Backup] Skipping table ' + t + ': ' + err.message);
+    }
+    backup.data[t] = rows;
+    backup.manifest.total_rows += rows.length;
+  }
+  const jsonStr = JSON.stringify(backup, null, 2);
+  backup.manifest.checksum = sha256(jsonStr);
+  const finalJson = JSON.stringify(backup, null, 2);
+  fs.writeFileSync(filepath, finalJson, 'utf8');
 }
 
 async function runDatabaseBackup() {
@@ -61,36 +80,13 @@ async function runDatabaseBackup() {
   }
 
   const timestamp = phTimestamp();
-  let filename, filepath, backupType, stats;
+  const filename = `labcoop-backup-${timestamp}.json`;
+  const filepath = path.join(BACKUP_DIR, filename);
+  const backupType = 'node_dump';
+  let stats;
 
   try {
-    if (isPostgres) {
-      if (pgDumpAvailable()) {
-        backupType = 'pg_dump';
-        filename = `labcoop-backup-${timestamp}.pgdump`;
-        filepath = path.join(BACKUP_DIR, filename);
-        await pgDumpBackup(filepath);
-      } else {
-        backupType = 'node_dump';
-        filename = `labcoop-backup-${timestamp}.json`;
-        filepath = path.join(BACKUP_DIR, filename);
-        await nodePgDumpBackup(filepath);
-      }
-    } else {
-      backupType = 'sqlite_copy';
-      filename = `labcoop-backup-${timestamp}.db`;
-      filepath = path.join(BACKUP_DIR, filename);
-      const sqlitePath = path.join(__dirname, '..', 'labcoop.db');
-      if (!fs.existsSync(sqlitePath)) {
-        throw new Error('SQLite database file not found at ' + sqlitePath);
-      }
-      const walPath = sqlitePath + '-wal';
-      const shmPath = sqlitePath + '-shm';
-      if (fs.existsSync(walPath)) { try { fs.unlinkSync(walPath); } catch {} }
-      if (fs.existsSync(shmPath)) { try { fs.unlinkSync(shmPath); } catch {} }
-      fs.copyFileSync(sqlitePath, filepath);
-    }
-
+    await nodeDumpBackup(filepath);
     stats = fs.statSync(filepath);
     if (stats.size === 0) throw new Error('Backup file is empty (0 bytes)');
     logger.info('[Backup] Dump completed', { type: backupType, size: stats.size, filename });
@@ -103,7 +99,7 @@ async function runDatabaseBackup() {
   const r2Key = `backups/${filename}`;
   try {
     const content = fs.readFileSync(filepath);
-    await fileStorage.uploadFile(content, r2Key, backupType === 'node_dump' ? 'application/json' : 'application/octet-stream');
+    await fileStorage.uploadFile(content, r2Key, 'application/json');
     logger.info('[Backup] Uploaded to R2', { key: r2Key, size: content.length });
   } catch (err) {
     logger.error('[Backup] R2 upload failed', { error: err.message });

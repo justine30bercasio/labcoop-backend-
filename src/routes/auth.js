@@ -9,6 +9,7 @@ const { Resend } = require('resend');
 const { store } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const fileStorage = require('../services/file-storage');
+const { absoluteUrl } = require('../services/app-url');
 const otpStore = new Map();
 
 const router = express.Router();
@@ -325,7 +326,7 @@ router.post('/register', regLimiter, regUpload.fields([
     );
     account.consent_status = 'pending';
     // Try to send consent email
-    const consentLink = `https://labcoop-backend.onrender.com/api/parental-consent/approve?token=${consentToken}`;
+    const consentLink = absoluteUrl('/api/parental-consent/approve?token=' + consentToken);
     try {
       if (process.env.RESEND_API_KEY) {
         const resend = new Resend(process.env.RESEND_API_KEY);

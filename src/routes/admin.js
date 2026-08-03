@@ -7789,14 +7789,14 @@ router.get('/backup', requireRole(1), asyncHandler(async (req, res) => {
     <div class="card-header"><h3><i class="fas fa-history"></i> Backup History</h3></div>
     <div class="card-body" style="padding:0">
     <table>
-      <tr><th>Date</th><th>Filename</th><th>Size</th><th>Tables</th><th>Rows</th><th>Checksum</th><th>By</th></tr>
+      <tr><th>Date</th><th>Filename</th><th>Size</th><th>Status</th><th>Tables</th><th>Rows</th><th>By</th></tr>
       ${backupHistory.map(b => '<tr>' +
         '<td class="mono" style="font-size:11px">' + (b.created_at||'').slice(0,19).replace('T',' ') + '</td>' +
-        '<td style="font-size:12px">' + b.filename + '</td>' +
+        '<td style="font-size:12px">' + adminLib.h(String(b.filename||'')) + '</td>' +
         '<td>' + fmtSize(Number(b.file_size)) + '</td>' +
+        '<td>' + (b.status === 'failed' ? '<span class="badge badge-red">FAILED</span>' : '<span class="badge badge-green">OK</span>') + '</td>' +
         '<td>' + b.table_count + '</td>' +
         '<td>' + b.row_count + '</td>' +
-        '<td class="mono" style="font-size:10px">' + (b.checksum||'').slice(0,16) + '...</td>' +
         '<td>' + (b.created_by||'-') + '</td>' +
       '</tr>').join('')}
     </table></div>

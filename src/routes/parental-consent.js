@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const { store } = require('../db');
 const { asyncHandler } = require('../async-handler');
 const { authMiddleware } = require('../middleware/auth');
+const { absoluteUrl } = require('../services/app-url');
 
 const router = express.Router();
 
@@ -53,7 +54,7 @@ async function sendConsentEmail(parentEmail, childName, consentLink) {
           </div>
           <div style="background: #f8fafc; padding: 16px 24px; text-align: center; border-top: 1px solid #e2e8f0;">
             <p style="color: #94a3b8; font-size: 12px; margin: 0;">
-              LabCoop Cooperative &bull; <a href="https://labcoop-backend.onrender.com/legal/privacy" style="color: #16a34a;">Privacy Policy</a> &bull; <a href="https://labcoop-backend.onrender.com/legal/terms" style="color: #16a34a;">Terms of Service</a>
+              LabCoop Cooperative &bull; <a href="${absoluteUrl('/legal/privacy')}" style="color: #16a34a;">Privacy Policy</a> &bull; <a href="${absoluteUrl('/legal/terms')}" style="color: #16a34a;">Terms of Service</a>
             </p>
           </div>
         </div>
@@ -89,7 +90,7 @@ router.post('/request', authMiddleware, asyncHandler(async (req, res) => {
   if (existing.rows.length > 0) {
     // Re-send the existing token
     const token = existing.rows[0].consent_token;
-    const consentLink = `https://labcoop-backend.onrender.com/api/parental-consent/approve?token=${token}`;
+    const consentLink = absoluteUrl('/api/parental-consent/approve?token=' + token);
     await sendConsentEmail(parentEmail, account.child_name, consentLink);
     return res.json({ message: 'Consent email re-sent to parent email.' });
   }
@@ -104,7 +105,7 @@ router.post('/request', authMiddleware, asyncHandler(async (req, res) => {
     'UPDATE accounts SET consent_status = $1 WHERE account_id = $2',
     ['pending', req.accountId]
   );
-  const consentLink = `https://labcoop-backend.onrender.com/api/parental-consent/approve?token=${token}`;
+  const consentLink = absoluteUrl('/api/parental-consent/approve?token=' + token);
   const emailSent = await sendConsentEmail(parentEmail, account.child_name, consentLink);
   res.json({
     message: emailSent ? 'Consent request sent to parent email' : 'Consent request created (email delivery pending — check Resend config)',

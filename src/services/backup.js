@@ -71,7 +71,15 @@ async function nodeDumpBackup(filepath) {
 
 async function runDatabaseBackup() {
   if (!fileStorage.isConfigured()) {
-    logger.warn('[Backup] R2 not configured — skipping database backup');
+    logger.error('[Backup] R2 not configured — database backup FAILED. Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY (and R2_BUCKET_NAME) to enable automatic backups.');
+    try {
+      await store.query(
+        'INSERT INTO backup_logs (backup_id, filename, file_size, status, notes, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
+        [uuidv4(), 'AUTO-BACKUP-DISABLED', 0, 'failed', JSON.stringify({ reason: 'R2 not configured', error: 'R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY not set' }), new Date().toISOString()]
+      );
+    } catch (logErr) {
+      logger.warn('[Backup] Failed to log disabled backup', { error: logErr.message });
+    }
     return { success: false, reason: 'R2 not configured' };
   }
 

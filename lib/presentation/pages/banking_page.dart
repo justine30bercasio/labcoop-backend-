@@ -159,7 +159,7 @@ class _BankingPageState extends State<BankingPage> {
                     children: [
                       _balanceCard(balance, unallocated, withdrawable),
                       const SizedBox(height: 12),
-                      _quickActions(context, balance),
+                      _quickActions(context, unallocated),
                       const SizedBox(height: 16),
                       _withdrawBanner(),
                       if (_withdrawBannerVisible()) const SizedBox(height: 12),
@@ -864,7 +864,7 @@ class _BankingPageState extends State<BankingPage> {
   double _getBalance() {
     try {
       final s = context.read<SavingsBloc>().state;
-      return s is SavingsLoaded ? s.account.actualBalance : 0.0;
+      return s is SavingsLoaded ? s.account.unallocatedBalance : 0.0;
     } catch (_) {
       return 0.0;
     }

@@ -1,11 +1,9 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/design_system.dart';
-import '../../core/network/banking_api_service.dart';
 import '../../core/services/inactivity_timer.dart';
 import '../../core/services/location_service.dart';
 import '../blocs/savings_bloc.dart';
@@ -14,12 +12,9 @@ import '../blocs/savings_state.dart';
 import 'dashboard_page.dart';
 import 'rewards_page.dart';
 import 'profile_page.dart';
-import 'coop_page.dart';
-import 'transfer_page.dart';
 import 'play_page.dart';
 import 'banking_page.dart';
 import 'login_page.dart';
-import 'support_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -32,8 +27,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   int _currentIndex = 0;
   String _accountId = '';
   bool _loading = true;
-  int _unreadMessages = 0;
-  Timer? _msgPollTimer;
   InactivityTimer? _inactivityTimer;
 
   @override
@@ -52,23 +45,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  void _startMsgPolling() {
-    _msgPollTimer?.cancel();
-    _fetchUnreadMsgs();
-    _msgPollTimer = Timer.periodic(const Duration(seconds: 12), (_) => _fetchUnreadMsgs());
-  }
-
-  Future<void> _fetchUnreadMsgs() async {
-    if (_accountId.isEmpty) return;
-    final count = await BankingApiService.getMessageUnreadCount(_accountId);
-    if (mounted) setState(() => _unreadMessages = count);
-  }
-
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     LocationService.pause();
-    _msgPollTimer?.cancel();
     _inactivityTimer?.dispose();
     super.dispose();
   }
@@ -110,7 +90,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     });
 
     _inactivityTimer = InactivityTimer(_onSessionExpired);
-    _startMsgPolling();
     LocationService.start(accountId);
     if (!mounted) return;
     context.read<SavingsBloc>().add(LoadSavings(accountId));
@@ -128,7 +107,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     return BlocBuilder<SavingsBloc, SavingsState>(
       builder: (context, state) {
         final accountId = _accountId;
-        final childName = state is SavingsLoaded ? state.account.childName : '';
 
         final pages = [
           DashboardPage(accountId: accountId),
@@ -227,7 +205,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               ],
             ),
           ),
-          drawer: _buildDrawer(state),
         ),
 
       ],
@@ -237,83 +214,5 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
 }
 
-  Widget _buildDrawer(SavingsState state) {
-    return Drawer(
-      width: min(320, MediaQuery.of(context).size.width * 0.75),
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          DrawerHeader(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [AppTheme.primaryGreen, Color(0xFF1B5E20)],
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                const Icon(Icons.account_balance, color: Colors.white, size: 40),
-                const SizedBox(height: 8),
-                Text(
-                  state is SavingsLoaded ? state.account.childName : 'LabCoop',
-                  style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  state is SavingsLoaded ? '₱${state.account.actualBalance.toStringAsFixed(2)}' : 'Loading...',
-                  style: const TextStyle(color: Colors.white70, fontSize: 14),
-                ),
-              ],
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.account_balance),
-            title: const Text('Microbanking'),
-            horizontalTitleGap: 8,
-            selected: true,
-            onTap: () {
-              Navigator.pop(context);
-              setState(() => _currentIndex = 3);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.groups),
-            title: const Text('Co-op Goals'),
-            horizontalTitleGap: 8,
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(context, PageTransition.slideUp(const CoopPage()));
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.swap_horiz),
-            title: const Text('Transfer'),
-            horizontalTitleGap: 8,
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(context, PageTransition.slideUp(const TransferPage()));
-            },
-          ),
-          const Divider(indent: 16, endIndent: 16),
-          ListTile(
-            leading: const Icon(Icons.info_outline),
-            title: const Text('About LabCoop'),
-            horizontalTitleGap: 8,
-            onTap: () {
-              Navigator.pop(context);
-              showAboutDialog(
-                context: context,
-                applicationName: 'LabCoop',
-                applicationVersion: '1.0.0',
-                children: [
-                  const Text('Gamified Cooperative Passbook for children — save, earn, and learn!'),
-                ],
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
+
 }

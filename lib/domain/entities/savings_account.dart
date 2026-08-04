@@ -54,7 +54,11 @@ class SavingsAccount {
 
   double get allocatedBalance => actualBalance - unallocatedBalance;
 
-  double get withdrawableBalance => actualBalance - maintainingBalance;
+  // Only money not set aside in goal jars can be withdrawn.
+  double get withdrawableBalance {
+    final available = unallocatedBalance - maintainingBalance;
+    return available < 0 ? 0 : available;
+  }
 
   SavingsAccount copyWith({
     String? accountId,

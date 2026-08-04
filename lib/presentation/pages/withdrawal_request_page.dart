@@ -116,7 +116,18 @@ class _WithdrawalRequestPageState extends State<WithdrawalRequestPage> {
           children: [
             Text('Request a Withdrawal', style: AppTextStyle.heading3(context)),
             const SizedBox(height: 4),
-            Text('Available: PHP ${widget.currentBalance.toStringAsFixed(2)}', style: AppTextStyle.bodySmall(context)),
+            Text(
+              'Available (not in goal jars): PHP ${widget.currentBalance.toStringAsFixed(2)}',
+              style: AppTextStyle.bodySmall(context),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Money saved toward a goal must be withdrawn from the goal first.',
+              style: TextStyle(
+                fontSize: 11,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
             const SizedBox(height: 12),
             TextField(
               controller: _amountCtrl,

@@ -603,22 +603,33 @@ class _RewardsPageState extends State<RewardsPage> {
               children: [
                 const Text('\u{1F3C6}', style: TextStyle(fontSize: 36)),
                 const SizedBox(width: 8),
-                AnimatedCounter(
-                  value: _totalSaved,
-                  prefix: '\u{20B1}',
-                  style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.coinGold,
+                Expanded(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: AnimatedCounter(
+                      value: _totalSaved,
+                      prefix: '\u{20B1}',
+                      style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.coinGold,
+                      ),
+                    ),
                   ),
                 ),
-                const Spacer(),
                 if (nextM != null)
-                  Text(
-                    'Goal: \u{20B1}${_formatMoney(nextM.threshold)}',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  Flexible(
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: Text(
+                        'Goal: \u{20B1}${_formatMoney(nextM.threshold)}',
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                     ),
                   ),
               ],
@@ -788,6 +799,8 @@ class _RewardsPageState extends State<RewardsPage> {
                         children: [
                           Text(
                             m.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w700,
@@ -799,6 +812,8 @@ class _RewardsPageState extends State<RewardsPage> {
                           const SizedBox(height: 2),
                           Text(
                             'Save \u{20B1}${_formatMoney(m.threshold)} total',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 12,
                               color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -807,7 +822,8 @@ class _RewardsPageState extends State<RewardsPage> {
                         ],
                       ),
                     ),
-                    _rewardChip(m),
+                    const SizedBox(width: 8),
+                    Flexible(child: _rewardChip(m)),
                   ],
                 ),
                 const SizedBox(height: Spacing.sm + 2),
@@ -824,15 +840,16 @@ class _RewardsPageState extends State<RewardsPage> {
                 ),
                 const SizedBox(height: Spacing.sm),
                 if (m.claimed)
-                  Row(
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       const Icon(Icons.check_circle, color: AppTheme.primaryGreen, size: 16),
-                      const SizedBox(width: 6),
                       Text(
                         'Reward claimed!',
                         style: TextStyle(fontSize: 12, color: AppTheme.primaryGreen),
                       ),
-                      const Spacer(),
                       if (cert != null)
                         TextButton.icon(
                           onPressed: () => _viewCertificate(cert!),
@@ -921,6 +938,9 @@ class _RewardsPageState extends State<RewardsPage> {
       ),
       child: Text(
         m.rewardLabel,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        softWrap: false,
         style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: fg),
       ),
     );

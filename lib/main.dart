@@ -96,15 +96,48 @@ class _LabCoopAppState extends State<LabCoopApp> {
         navigatorKey: _navigatorKey,
         title: 'LabCoop',
         theme: AppTheme.lightTheme,
-        darkTheme: AppTheme.darkTheme,
-        themeMode: ThemeMode.system,
+        darkTheme: AppTheme.lightTheme,
+        themeMode: ThemeMode.light,
         debugShowCheckedModeBanner: false,
         home: home,
         builder: (context, child) {
-          return Listener(
-            onPointerDown: (_) => InactivityTimer.recordActivity(),
-            behavior: HitTestBehavior.translucent,
-            child: child!,
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth > 700;
+              final app = Listener(
+                onPointerDown: (_) => InactivityTimer.recordActivity(),
+                behavior: HitTestBehavior.translucent,
+                child: child!,
+              );
+              if (!isWide) return app;
+              return Container(
+                color: Theme.of(context).colorScheme.surfaceContainerLow,
+                child: Center(
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 600),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x33000000),
+                          blurRadius: 24,
+                          offset: Offset(0, 0),
+                        ),
+                      ],
+                    ),
+                    child: MediaQuery(
+                      data: MediaQuery.of(context).copyWith(
+                        size: Size(
+                          constraints.maxWidth.clamp(0, 600),
+                          constraints.maxHeight,
+                        ),
+                      ),
+                      child: app,
+                    ),
+                  ),
+                ),
+              );
+            },
           );
         },
       ),

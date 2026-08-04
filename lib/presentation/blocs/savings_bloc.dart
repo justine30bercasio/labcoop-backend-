@@ -21,6 +21,7 @@ class SavingsBloc extends Bloc<SavingsEvent, SavingsState> {
   ) : super(SavingsInitial()) {
     on<LoadSavings>(_onLoadSavings);
     on<AllocateFunds>(_onAllocateFunds);
+    on<DeallocateFunds>(_onDeallocateFunds);
     on<TransferFunds>(_onTransferFunds);
     on<SyncWithServer>(_onSyncWithServer);
     on<CreateGoal>(_onCreateGoal);
@@ -91,6 +92,39 @@ class SavingsBloc extends Bloc<SavingsEvent, SavingsState> {
     }
   }
 
+  Future<void> _onDeallocateFunds(
+    DeallocateFunds event,
+    Emitter<SavingsState> emit,
+  ) async {
+    if (state is! SavingsLoaded) return;
+    final current = state as SavingsLoaded;
+    if (event.amount <= 0) return;
+    if (event.amount > event.goal.currentAllocated) return;
+
+    try {
+      final updatedGoal = event.goal.copyWith(
+        currentAllocated: event.goal.currentAllocated - event.amount,
+      );
+      final updatedAccount = current.account.copyWith(
+        unallocatedBalance: current.account.unallocatedBalance + event.amount,
+      );
+
+      await _repository.updateGoal(updatedGoal);
+
+      emit(
+        current.copyWith(
+          account: updatedAccount,
+          goals: current.goals.map((g) {
+            if (g.goalId == updatedGoal.goalId) return updatedGoal;
+            return g;
+          }).toList(),
+        ),
+      );
+    } catch (e) {
+      emit(SavingsError('Could not withdraw from goal. Please try again.'));
+    }
+  }
+
   Future<void> _onTransferFunds(
     TransferFunds event,
     Emitter<SavingsState> emit,
@@ -104,7 +138,6 @@ class SavingsBloc extends Bloc<SavingsEvent, SavingsState> {
         to: event.to,
         amount: event.amount,
       );
-
       emit(
         current.copyWith(
           goals: current.goals.map((g) {

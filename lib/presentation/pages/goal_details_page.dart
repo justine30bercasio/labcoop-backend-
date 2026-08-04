@@ -1,13 +1,94 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../core/theme/app_theme.dart';
 import '../../domain/entities/goal_jar.dart';
 import '../../domain/usecases/calculate_goal_progress_usecase.dart';
+import '../blocs/savings_bloc.dart';
+import '../blocs/savings_event.dart';
 import '../widgets/animated_jar_widget.dart';
 
 class GoalDetailsPage extends StatelessWidget {
   final GoalJar goal;
 
   const GoalDetailsPage({super.key, required this.goal});
+
+  void _showWithdrawDialog(BuildContext context) {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Withdraw from Goal',
+            style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'This moves money back to your available balance so you can withdraw it.',
+              style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Saved toward "${goal.title}": ₱${goal.currentAllocated.toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: 'Amount to withdraw',
+                prefixText: '₱ ',
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final amount = double.tryParse(controller.text) ?? 0;
+              if (amount <= 0) {
+                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
+                    content: Text('Enter a valid amount'),
+                    backgroundColor: Colors.red));
+                return;
+              }
+              if (amount > goal.currentAllocated) {
+                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
+                    content: Text('Amount exceeds what is saved in this goal'),
+                    backgroundColor: Colors.red));
+                return;
+              }
+              context.read<SavingsBloc>().add(
+                    DeallocateFunds(goal: goal, amount: amount),
+                  );
+              Navigator.pop(ctx);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Withdraw'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -107,6 +188,25 @@ class GoalDetailsPage extends StatelessWidget {
                 ),
               ),
             ),
+            if (goal.currentAllocated > 0) ...[
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _showWithdrawDialog(context),
+                  icon: const Icon(Icons.money_off_csred_outlined),
+                  label: const Text('Withdraw from Goal'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.orange,
+                    side: const BorderSide(color: Colors.orange),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

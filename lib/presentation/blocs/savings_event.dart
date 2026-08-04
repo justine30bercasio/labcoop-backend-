@@ -42,6 +42,16 @@ class TransferFunds extends SavingsEvent {
   List<Object?> get props => [from, to, amount];
 }
 
+class DeallocateFunds extends SavingsEvent {
+  final GoalJar goal;
+  final double amount;
+
+  const DeallocateFunds({required this.goal, required this.amount});
+
+  @override
+  List<Object?> get props => [goal, amount];
+}
+
 class SyncWithServer extends SavingsEvent {
   final String? accountId;
 

@@ -99,6 +99,30 @@ async function ensureDb() {
       );
     }
 
+    await ensureQuizQuestions();
+    await store.query(
+      `INSERT INTO savings_products (product_id, name, description, interest_rate, interest_frequency, min_balance, is_active, created_at)
+       VALUES ('sp_regular', 'Regular Savings', 'Default savings account with automatic interest', 0.02, 'yearly', 0, 1, $1)
+       ON CONFLICT (product_id) DO NOTHING`,
+      [new Date().toISOString()]
+    );
+    // Seed default maintaining balance setting if not set
+    try {
+      const existing = await store.query("SELECT * FROM settings WHERE key = 'default_maintaining_balance'");
+      if (!existing.rows.length) {
+        await store.query("INSERT INTO settings (key, value) VALUES ('default_maintaining_balance', '100')");
+        logger.info('Default maintaining balance set to PHP 100');
+      }
+    } catch (_) {}
+    logger.info('Seed data ensured.');
+  } catch (err) {
+    logger.error('Seed failed', { error: err.message });
+    process.exit(1);
+  }
+}
+
+async function ensureQuizQuestions() {
+  try {
     const quizSeed = [
       // ── EASY (20) ──
       ['q_e01','What is saving money?','["Spending all you have","Keeping money for later","Giving it away","Losing it"]',1,'Saving means setting aside money for future use instead of spending it all now.','Savings','easy',10,5],
@@ -194,24 +218,9 @@ async function ensureDb() {
         q.map(v => typeof v === 'string' ? v : JSON.stringify(v))
       );
     }
-      await store.query(
-      `INSERT INTO savings_products (product_id, name, description, interest_rate, interest_frequency, min_balance, is_active, created_at)
-       VALUES ('sp_regular', 'Regular Savings', 'Default savings account with automatic interest', 0.02, 'yearly', 0, 1, $1)
-       ON CONFLICT (product_id) DO NOTHING`,
-      [new Date().toISOString()]
-    );
-    // Seed default maintaining balance setting if not set
-    try {
-      const existing = await store.query("SELECT * FROM settings WHERE key = 'default_maintaining_balance'");
-      if (!existing.rows.length) {
-        await store.query("INSERT INTO settings (key, value) VALUES ('default_maintaining_balance', '100')");
-        logger.info('Default maintaining balance set to PHP 100');
-      }
-    } catch (_) {}
-    logger.info('Seed data ensured.');
+    logger.info(`Quiz seed ensured (${quizSeed.length} questions).`);
   } catch (err) {
-    logger.error('Seed failed', { error: err.message });
-    process.exit(1);
+    logger.error('Quiz seed failed (non-fatal)', { error: err.message });
   }
 }
 
@@ -269,6 +278,7 @@ const crypto = require('crypto');
   await ensureDb();
   await ensureAdmin();
   await ensureSavingsProduct();
+  await ensureQuizQuestions();
   startServer();
 })();
 const messagesRouter = require('./routes/messages');

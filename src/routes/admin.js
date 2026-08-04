@@ -1392,7 +1392,7 @@ router.post('/shop/upload/:id', requireRole(2), shopUpload.single('image'), asyn
 
 router.get('/quiz', requireRole(1), asyncHandler(async (req, res) => {
 
-  const questions = await sql('SELECT * FROM quiz_questions ORDER BY difficulty_level, category, question');
+  const allQuestions = await sql('SELECT * FROM quiz_questions ORDER BY difficulty_level, category, question');
   const q = req.query;
   const toast = q.added ? 'success:Question created.'
     : q.updated ? 'success:Question updated.'
@@ -1401,23 +1401,35 @@ router.get('/quiz', requireRole(1), asyncHandler(async (req, res) => {
     : '';
 
   const difficultyColors = { easy: 'badge-green', medium: 'badge-amber', hard: 'badge-red', expert: 'badge-purple' };
+  const difficultyEmojis = { easy: '&#x1F331;', medium: '&#x26A1;', hard: '&#x1F525;', expert: '&#x1F4A1;' };
+  const tab = ['easy', 'medium', 'hard', 'expert'].includes(q.tab) ? q.tab : 'all';
+  const filtered = tab === 'all' ? allQuestions : allQuestions.filter(x => x.difficulty_level === tab);
+
+  const tabs = `
+  <div class="tabs" style="display:flex;gap:4px;margin-bottom:16px;flex-wrap:wrap">
+    <a href="/admin/quiz" class="btn ${tab === 'all' ? 'btn-primary' : 'btn-outline'} btn-sm">&#x1F4DD; All (${allQuestions.length})</a>
+    ${['easy','medium','hard','expert'].map(d => `<a href="/admin/quiz?tab=${d}" class="btn ${tab === d ? 'btn-primary' : 'btn-outline'} btn-sm">${difficultyEmojis[d]} ${d.charAt(0).toUpperCase() + d.slice(1)} (${allQuestions.filter(x => x.difficulty_level === d).length})</a>`).join('')}
+  </div>`;
 
   const content = `
   <div class="stats-grid">
-    <div class="stat-card"><div class="stat-icon">&#x1F4DD;</div><div class="stat-value">${questions.length}</div><div class="stat-label">Total Questions</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F331;</div><div class="stat-value">${questions.filter(x => x.difficulty_level === 'easy').length}</div><div class="stat-label">Easy</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x26A1;</div><div class="stat-value">${questions.filter(x => x.difficulty_level === 'medium').length}</div><div class="stat-label">Medium</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F525;</div><div class="stat-value">${questions.filter(x => x.difficulty_level === 'hard').length}</div><div class="stat-label">Hard</div></div>
-    <div class="stat-card"><div class="stat-icon">&#x1F4A1;</div><div class="stat-value">${questions.filter(x => x.difficulty_level === 'expert').length}</div><div class="stat-label">Expert</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4DD;</div><div class="stat-value">${allQuestions.length}</div><div class="stat-label">Total Questions</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F331;</div><div class="stat-value">${allQuestions.filter(x => x.difficulty_level === 'easy').length}</div><div class="stat-label">Easy</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x26A1;</div><div class="stat-value">${allQuestions.filter(x => x.difficulty_level === 'medium').length}</div><div class="stat-label">Medium</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F525;</div><div class="stat-value">${allQuestions.filter(x => x.difficulty_level === 'hard').length}</div><div class="stat-label">Hard</div></div>
+    <div class="stat-card"><div class="stat-icon">&#x1F4A1;</div><div class="stat-value">${allQuestions.filter(x => x.difficulty_level === 'expert').length}</div><div class="stat-label">Expert</div></div>
   </div>
 
+  ${tabs}
+
   <div class="card">
-    <div class="card-header"><h3>&#x1F4DD; Quiz Questions</h3>
+    <div class="card-header"><h3>&#x1F4DD; Quiz Questions ${tab !== 'all' ? `— ${tab.charAt(0).toUpperCase() + tab.slice(1)}` : ''}</h3>
       <div><a href="#add-question" class="btn btn-primary btn-sm">&#x2795; New Question</a></div>
     </div>
     <div class="card-body">
+    ${filtered.length === 0 ? '<p style="color:var(--text-muted);margin:0">No questions in this category yet. Click "New Question" to add one.</p>' : `
     <table><tr><th>Question</th><th>Category</th><th>Level</th><th>Options</th><th>Answer</th><th>XP</th><th>Coins</th><th>Active</th><th>Actions</th></tr>
-    ${questions.map(qu => {
+    ${filtered.map(qu => {
       const opts = JSON.parse(qu.options || '[]');
       return `<tr>
         <td><b>${qu.question}</b></td>
@@ -1436,7 +1448,8 @@ router.get('/quiz', requireRole(1), asyncHandler(async (req, res) => {
         </div></td>
       </tr>`;
     }).join('')}
-    </table></div>
+    </table>`}
+    </div>
   </div>
 
   <!-- Add Question Modal -->
@@ -1474,7 +1487,7 @@ router.get('/quiz', requireRole(1), asyncHandler(async (req, res) => {
   </div>
   </div>
 
-  ${questions.map(qu => {
+  ${allQuestions.map(qu => {
     const opts = JSON.parse(qu.options || '[]');
     return `
   <div id="edit-${qu.id}" class="modal-overlay">

@@ -5,6 +5,7 @@ import '../../domain/entities/goal_jar.dart';
 import '../../domain/usecases/calculate_goal_progress_usecase.dart';
 import '../blocs/savings_bloc.dart';
 import '../blocs/savings_event.dart';
+import '../blocs/savings_state.dart';
 import '../widgets/animated_jar_widget.dart';
 
 class GoalDetailsPage extends StatelessWidget {
@@ -12,7 +13,17 @@ class GoalDetailsPage extends StatelessWidget {
 
   const GoalDetailsPage({super.key, required this.goal});
 
-  void _showWithdrawDialog(BuildContext context) {
+  GoalJar _liveGoal(BuildContext context) {
+    final state = context.read<SavingsBloc>().state;
+    if (state is SavingsLoaded) {
+      for (final g in state.goals) {
+        if (g.goalId == goal.goalId) return g;
+      }
+    }
+    return goal;
+  }
+
+  void _showWithdrawDialog(BuildContext context, GoalJar liveGoal) {
     final controller = TextEditingController();
     showDialog(
       context: context,
@@ -33,7 +44,7 @@ class GoalDetailsPage extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              'Saved toward "${goal.title}": ₱${goal.currentAllocated.toStringAsFixed(2)}',
+              'Saved toward "${liveGoal.title}": ₱${liveGoal.currentAllocated.toStringAsFixed(2)}',
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 12),
@@ -66,14 +77,14 @@ class GoalDetailsPage extends StatelessWidget {
                     backgroundColor: Colors.red));
                 return;
               }
-              if (amount > goal.currentAllocated) {
+              if (amount > liveGoal.currentAllocated) {
                 ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
                     content: Text('Amount exceeds what is saved in this goal'),
                     backgroundColor: Colors.red));
                 return;
               }
               context.read<SavingsBloc>().add(
-                    DeallocateFunds(goal: goal, amount: amount),
+                    DeallocateFunds(goal: liveGoal, amount: amount),
                   );
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(
@@ -109,6 +120,26 @@ class GoalDetailsPage extends StatelessWidget {
       ),
     );
   }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<SavingsBloc, SavingsState>(
+      builder: (context, state) {
+        final liveGoal = _liveGoal(context);
+        return _GoalDetailsBody(
+          goal: liveGoal,
+          onWithdraw: () => _showWithdrawDialog(context, liveGoal),
+        );
+      },
+    );
+  }
+}
+
+class _GoalDetailsBody extends StatelessWidget {
+  final GoalJar goal;
+  final VoidCallback onWithdraw;
+
+  const _GoalDetailsBody({required this.goal, required this.onWithdraw});
 
   @override
   Widget build(BuildContext context) {
@@ -213,7 +244,7 @@ class GoalDetailsPage extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: () => _showWithdrawDialog(context),
+                  onPressed: onWithdraw,
                   icon: const Icon(Icons.money_off_csred_outlined),
                   label: const Text('Withdraw from Goal'),
                   style: OutlinedButton.styleFrom(

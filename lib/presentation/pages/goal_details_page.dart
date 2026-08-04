@@ -76,6 +76,26 @@ class GoalDetailsPage extends StatelessWidget {
                     DeallocateFunds(goal: goal, amount: amount),
                   );
               Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Row(
+                    children: [
+                      const Icon(Icons.check_circle,
+                          color: Colors.white, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                            '₱${amount.toStringAsFixed(2)} moved back to your available balance!'),
+                      ),
+                    ],
+                  ),
+                  backgroundColor: AppTheme.primaryGreen,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  duration: const Duration(seconds: 3),
+                ),
+              );
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.orange,

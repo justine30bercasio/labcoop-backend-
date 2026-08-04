@@ -2333,7 +2333,7 @@ router.post('/accounts/withdraw/:id', requireRole(2), asyncHandler(async (req, r
 
     const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
     if (!account) return res.redirect('/admin/accounts?error=Account+not+found');
-    if (Number(account.actual_balance) < val) return res.redirect('/admin/accounts?error=Insufficient+balance');
+    if (Number(account.unallocated_balance) < val) return res.redirect('/admin/accounts?error=Insufficient+available+balance');
     const newBalance = Math.round((Number(account.actual_balance) - val) * 100) / 100;
     const newUnallocated = Math.round((Number(account.unallocated_balance) - val) * 100) / 100;
     await store.query('UPDATE accounts SET actual_balance=$1, unallocated_balance=$2, updated_at=CURRENT_TIMESTAMP WHERE account_id=$3', [newBalance, Math.max(0, newUnallocated), req.params.id]);
@@ -4278,11 +4278,11 @@ router.post('/withdrawal-requests/pay/:id', requireRole(2), asyncHandler(async (
 
     const account = await store.getAccount(reqData.account_id);
     if (!account) return res.redirect('/admin/withdrawal-requests?error=Account+not+found');
-    if (Number(account.actual_balance) < Number(reqData.amount)) {
-      return res.redirect('/admin/withdrawal-requests?error=Insufficient+balance');
+    if (Number(account.unallocated_balance) < Number(reqData.amount)) {
+      return res.redirect('/admin/withdrawal-requests?error=Insufficient+available+balance');
     }
     const maintainingBalance = Number(account.maintaining_balance || 0);
-    if (Number(account.actual_balance) - Number(reqData.amount) < maintainingBalance) {
+    if (Number(account.unallocated_balance) - Number(reqData.amount) < maintainingBalance) {
       return res.redirect(`/admin/withdrawal-requests?error=Cannot+withdraw+below+maintaining+balance+of+%E2%82%B1${maintainingBalance.toFixed(2)}`);
     }
 
@@ -6004,9 +6004,9 @@ router.post('/teller/withdraw/:id', requireRole(2), tellerFormParser, asyncHandl
 
     const account = await one('SELECT * FROM accounts WHERE account_id = $1', [req.params.id]);
     if (!account) return redirectOrJson(req, res, '/admin/teller?error=Account+not+found');
-    if (Number(account.actual_balance) < val) return redirectOrJson(req, res, '/admin/teller?error=Insufficient+balance');
+    if (Number(account.unallocated_balance) < val) return redirectOrJson(req, res, '/admin/teller?error=Insufficient+available+balance');
     const maintainingBalance = Number(account.maintaining_balance || 0);
-    if (Number(account.actual_balance) - val < maintainingBalance) {
+    if (Number(account.unallocated_balance) - val < maintainingBalance) {
       return redirectOrJson(req, res, `/admin/teller?error=Cannot+withdraw+below+maintaining+balance+of+%E2%82%B1${maintainingBalance.toFixed(2)}`);
     }
     const newBalance = Math.round((Number(account.actual_balance) - val) * 100) / 100;

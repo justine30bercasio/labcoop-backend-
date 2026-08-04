@@ -176,11 +176,13 @@ router.post('/withdrawals/request',
     const { account_id, amount, reason } = req.body;
     const account = await store.getAccount(account_id);
     if (!account) return res.status(404).json({ message: 'Account not found' });
-    if (Number(account.actual_balance) < Number(amount)) {
-      return res.status(400).json({ message: 'Insufficient balance' });
+    // Only unallocated money can be withdrawn — money set aside in goal jars
+    // must be deallocated first.
+    if (Number(account.unallocated_balance) < Number(amount)) {
+      return res.status(400).json({ message: 'Insufficient available balance. Money allocated to goal jars must be withdrawn from the goal first.' });
     }
     const maintainingBalance = Number(account.maintaining_balance || 0);
-    if (Number(account.actual_balance) - Number(amount) < maintainingBalance) {
+    if (Number(account.unallocated_balance) - Number(amount) < maintainingBalance) {
       return res.status(400).json({ message: `Cannot withdraw below maintaining balance of ₱${maintainingBalance.toFixed(2)}` });
     }
 
